@@ -173,30 +173,68 @@ class DataRetriever:
     
     def calculate_features(self, window=20):
         """Calculate technical features for regime classification"""
-        # Returns
+        # Basic returns and volatility
         self.data['Returns'] = self.data['Close'].pct_change()
+        self.data['Log_Returns'] = np.log(self.data['Close'] / self.data['Close'].shift(1))
+        
+        # Volatility measures
+        self.data['Volatility'] = self.data['Returns'].rolling(window=window).std()
+        self.data['High_Low_Range'] = (self.data['High'] - self.data['Low']) / self.data['Close']
         
         # Trend indicators
         self.data['SMA20'] = self.data['Close'].rolling(window=window).mean()
         self.data['SMA50'] = self.data['Close'].rolling(window=50).mean()
-        
-        # Volatility
-        self.data['Volatility'] = self.data['Returns'].rolling(window=window).std()
-        
-        # Price relative to moving averages
         self.data['Price_to_SMA20'] = self.data['Close'] / self.data['SMA20']
         self.data['SMA20_to_SMA50'] = self.data['SMA20'] / self.data['SMA50']
+        
+        # Momentum indicators
+        self.data['RSI'] = self._calculate_rsi(self.data['Close'], window)
+        self.data['MACD'], self.data['MACD_Signal'] = self._calculate_macd(self.data['Close'])
+        self.data['MACD_Hist'] = self.data['MACD'] - self.data['MACD_Signal']
         
         # Volume features
         self.data['Volume_SMA'] = self.data['Volume'].rolling(window=window).mean()
         self.data['Volume_Ratio'] = self.data['Volume'] / self.data['Volume_SMA']
+        self.data['OBV'] = self._calculate_obv(self.data['Close'], self.data['Volume'])
         
         # Options features
         self.calculate_option_features()
         
         # Drop NaN values
         self.data = self.data.dropna()
-    
+
+    def _calculate_rsi(self, prices, window=14):
+        """Calculate Relative Strength Index"""
+        delta = prices.diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=window).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=window).mean()
+        rs = gain / loss
+        return 100 - (100 / (1 + rs))
+
+    def _calculate_macd(self, prices, fast=12, slow=26, signal=9):
+        """Calculate MACD and Signal line"""
+        exp1 = prices.ewm(span=fast, adjust=False).mean()
+        exp2 = prices.ewm(span=slow, adjust=False).mean()
+        macd = exp1 - exp2
+        signal_line = macd.ewm(span=signal, adjust=False).mean()
+        return macd, signal_line
+
+    def _calculate_obv(self, prices, volume):
+        """Calculate On-Balance Volume"""
+        price_change = prices.diff()
+        obv = pd.Series(index=prices.index, dtype=float)
+        obv.iloc[0] = volume.iloc[0]
+        
+        for i in range(1, len(prices)):
+            if price_change.iloc[i] > 0:
+                obv.iloc[i] = obv.iloc[i-1] + volume.iloc[i]
+            elif price_change.iloc[i] < 0:
+                obv.iloc[i] = obv.iloc[i-1] - volume.iloc[i]
+            else:
+                obv.iloc[i] = obv.iloc[i-1]
+        
+        return obv
+
     def find_optimal_states(self, max_states=5):
         """Find optimal number of states using HMM with multiple criteria"""
         # Prepare features for HMM - excluding options performance metrics
@@ -309,7 +347,7 @@ class DataRetriever:
         return self.n_states
     
     def prepare_data(self, sequence_length=60):
-        """Prepare data for LSTM model with all features including options data"""
+        """Prepare data for LSTM model with enhanced features"""
         # Calculate features
         self.calculate_features()
         
@@ -319,8 +357,10 @@ class DataRetriever:
         
         # Prepare feature matrix for LSTM (including all features)
         feature_columns = [
-            'Returns', 'Volatility', 'Price_to_SMA20', 
-            'SMA20_to_SMA50', 'Volume_Ratio',
+            'Returns', 'Log_Returns', 'Volatility', 'High_Low_Range',
+            'Price_to_SMA20', 'SMA20_to_SMA50',
+            'RSI', 'MACD', 'MACD_Hist',
+            'Volume_Ratio', 'OBV',
             'ATM_Call_Return', 'ATM_Put_Return',
             'Call_Put_Ratio', 'Option_Volume_Ratio'
         ]
@@ -332,7 +372,7 @@ class DataRetriever:
         n_samples = len(self.features) - sequence_length
         
         # Pre-allocate arrays
-        X = np.zeros((n_samples, sequence_length, self.features.shape[1]))
+        X = np.zeros((n_samples, sequence_length, len(feature_columns)))
         y = np.zeros(n_samples)
         
         # Fill arrays using vectorized operations

@@ -22,7 +22,7 @@ class StockPredictor:
         self.X_train, self.y_train, self.X_test, self.y_test = \
             self.data_retriever.prepare_data(sequence_length=self.sequence_length)
             
-    def train_model(self, epochs=50, batch_size=32):
+    def train_model(self, epochs=30, batch_size=32):
         """Train the LSTM model"""
         if self.X_train is None:
             raise ValueError("Data not prepared. Call prepare_data() first.")
