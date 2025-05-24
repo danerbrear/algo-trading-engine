@@ -199,21 +199,18 @@ class DataRetriever:
     
     def find_optimal_states(self, max_states=5):
         """Find optimal number of states using HMM with multiple criteria"""
-        # Prepare features for HMM
+        # Prepare features for HMM - excluding options performance metrics
         feature_matrix = np.column_stack([
             self.data['Returns'],
             self.data['Volatility'],
             self.data['Price_to_SMA20'],
             self.data['SMA20_to_SMA50'],
-            self.data['Volume_Ratio'],
-            self.data['ATM_Call_Return'],
-            self.data['ATM_Put_Return'],
-            self.data['Call_Put_Ratio'],
-            self.data['Option_Volume_Ratio']
+            self.data['Volume_Ratio']
         ])
         
         # Scale features
-        scaled_features = self.scaler.fit_transform(feature_matrix)
+        hmm_scaler = StandardScaler()
+        scaled_features = hmm_scaler.fit_transform(feature_matrix)
         
         # Try different numbers of states and evaluate using multiple criteria
         best_score = float('-inf')
@@ -249,10 +246,6 @@ class DataRetriever:
                 stability = np.min(np.abs(eigenvals))
                 
                 # Combined score considering multiple factors
-                # - Higher log likelihood is better
-                # - Lower AIC/BIC is better
-                # - Want reasonable state proportions (not too imbalanced)
-                # - Want stable transitions
                 combined_score = (log_likelihood 
                                 - 0.5 * (aic + bic) / len(scaled_features)
                                 + 100 * min_state_prop 
@@ -310,13 +303,13 @@ class DataRetriever:
                 print(f"Proportion: {len(state_data) / len(self.data):.2%}")
                 print(f"Average Return: {state_data['Returns'].mean():.4%}")
                 print(f"Volatility: {state_data['Volatility'].mean():.4f}")
-                print(f"Average Volume Ratio: {state_data['Volume_Ratio'].mean():.2f}")
-                print(f"Call/Put Ratio: {state_data['Call_Put_Ratio'].mean():.2f}")
+                print(f"Price/SMA20 Ratio: {state_data['Price_to_SMA20'].mean():.4f}")
+                print(f"Volume Ratio: {state_data['Volume_Ratio'].mean():.2f}")
         
         return self.n_states
     
     def prepare_data(self, sequence_length=60):
-        """Prepare data for LSTM model with optimized processing"""
+        """Prepare data for LSTM model with all features including options data"""
         # Calculate features
         self.calculate_features()
         
@@ -324,7 +317,7 @@ class DataRetriever:
         n_states = self.find_optimal_states()
         print(f"Optimal number of market states found: {n_states}")
         
-        # Prepare feature matrix
+        # Prepare feature matrix for LSTM (including all features)
         feature_columns = [
             'Returns', 'Volatility', 'Price_to_SMA20', 
             'SMA20_to_SMA50', 'Volume_Ratio',
@@ -364,16 +357,15 @@ class DataRetriever:
         avg_return = state_data['Returns'].mean()
         avg_vol = state_data['Volatility'].mean()
         avg_volume = state_data['Volume_Ratio'].mean()
-        avg_call_return = state_data['ATM_Call_Return'].mean()
-        avg_put_return = state_data['ATM_Put_Return'].mean()
-        avg_cp_ratio = state_data['Call_Put_Ratio'].mean()
+        avg_price_sma = state_data['Price_to_SMA20'].mean()
+        avg_sma_trend = state_data['SMA20_to_SMA50'].mean()
         
         # Determine state characteristics
         trend = "Bullish" if avg_return > 0 else "Bearish"
         volatility = "High" if avg_vol > self.data['Volatility'].mean() else "Low"
         volume = "High" if avg_volume > 1 else "Low"
-        options_sentiment = "Call-heavy" if avg_cp_ratio > 1 else "Put-heavy"
-        options_return = "Calls outperforming" if avg_call_return > avg_put_return else "Puts outperforming"
+        price_trend = "Above MA" if avg_price_sma > 1 else "Below MA"
+        ma_trend = "Upward" if avg_sma_trend > 1 else "Downward"
         
         return (f"State {state_id}: {trend} with {volatility} volatility, {volume} volume, "
-                f"{options_sentiment}, {options_return}") 
+                f"Price {price_trend}, Moving Averages trending {ma_trend}") 
