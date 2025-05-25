@@ -1,12 +1,17 @@
 import tensorflow as tf
 import keras
 from keras import Sequential
-from keras.layers import LSTM, Dense, Dropout, BatchNormalization, Input, Bidirectional, LayerNormalization
+from keras.layers import LSTM, Dense, Dropout, Input, Bidirectional, LayerNormalization
 from keras.optimizers import Adam
 from keras.metrics import SparseCategoricalAccuracy
 from keras.callbacks import EarlyStopping
 from keras.regularizers import l2
 import numpy as np
+from config import (
+    EPOCHS, BATCH_SIZE, VALIDATION_SPLIT, LSTM_UNITS, 
+    DENSE_UNITS, DROPOUT_RATE, LEARNING_RATE,
+    EARLY_STOPPING_PATIENCE, EARLY_STOPPING_MIN_DELTA
+)
 
 # Enable GPU memory growth to prevent TF from taking all GPU memory
 physical_devices = tf.config.list_physical_devices('GPU')
@@ -25,86 +30,52 @@ class LSTMModel:
         self.model = self._build_model()
         
     def _build_model(self):
-        """Build an enhanced LSTM model architecture"""
-        model = Sequential()
+        """Build a simplified LSTM model architecture"""
+        model = Sequential([
+            # Input layer
+            Input(shape=(self.sequence_length, self.n_features)),
+            
+            # First Bidirectional LSTM layer
+            Bidirectional(LSTM(units=LSTM_UNITS[0], return_sequences=True,
+                             kernel_regularizer=l2(0.01))),
+            LayerNormalization(),
+            Dropout(DROPOUT_RATE),
+            
+            # Second LSTM layer
+            LSTM(units=LSTM_UNITS[1], return_sequences=False,
+                 kernel_regularizer=l2(0.01)),
+            LayerNormalization(),
+            Dropout(DROPOUT_RATE),
+            
+            # Dense layer
+            Dense(units=DENSE_UNITS[0], activation='relu',
+                 kernel_regularizer=l2(0.01)),
+            LayerNormalization(),
+            Dropout(DROPOUT_RATE),
+            
+            # Output layer
+            Dense(units=self.n_states, activation='softmax')
+        ])
         
-        # Input layer
-        model.add(Input(shape=(self.sequence_length, self.n_features)))
-        
-        # First Bidirectional LSTM layer
-        model.add(Bidirectional(LSTM(units=128, return_sequences=True,
-                                   activation='tanh',
-                                   recurrent_activation='sigmoid',
-                                   recurrent_dropout=0.0,
-                                   kernel_regularizer=l2(0.01),
-                                   recurrent_regularizer=l2(0.01),
-                                   unroll=True)))
-        model.add(LayerNormalization())
-        model.add(Dropout(0.4))
-        
-        # Second Bidirectional LSTM layer
-        model.add(Bidirectional(LSTM(units=64, return_sequences=True,
-                                   activation='tanh',
-                                   recurrent_activation='sigmoid',
-                                   recurrent_dropout=0.0,
-                                   kernel_regularizer=l2(0.01),
-                                   recurrent_regularizer=l2(0.01),
-                                   unroll=True)))
-        model.add(LayerNormalization())
-        model.add(Dropout(0.4))
-        
-        # Third LSTM layer
-        model.add(LSTM(units=32, return_sequences=False,
-                      activation='tanh',
-                      recurrent_activation='sigmoid',
-                      recurrent_dropout=0.0,
-                      kernel_regularizer=l2(0.01),
-                      recurrent_regularizer=l2(0.01),
-                      unroll=True))
-        model.add(LayerNormalization())
-        model.add(Dropout(0.3))
-        
-        # Dense layers with residual connections
-        model.add(Dense(units=64, activation='selu',
-                       kernel_regularizer=l2(0.01)))
-        model.add(LayerNormalization())
-        model.add(Dropout(0.3))
-        
-        model.add(Dense(units=32, activation='selu',
-                       kernel_regularizer=l2(0.01)))
-        model.add(LayerNormalization())
-        model.add(Dropout(0.2))
-        
-        # Output layer
-        model.add(Dense(units=self.n_states, activation='softmax'))
-        
-        # Use fixed learning rate with decay
-        optimizer = Adam(
-            learning_rate=0.001,
-            beta_1=0.9,
-            beta_2=0.999,
-            epsilon=1e-07,
-            clipnorm=1.0
-        )
+        # Use fixed learning rate
+        optimizer = Adam(learning_rate=LEARNING_RATE)
         
         model.compile(
             optimizer=optimizer,
             loss='sparse_categorical_crossentropy',
-            metrics=[
-                SparseCategoricalAccuracy(name='accuracy'),
-            ],
+            metrics=['accuracy'],
             jit_compile=True
         )
         return model
     
-    def train(self, X_train, y_train, epochs=50, batch_size=32, validation_split=0.2):
-        """Train the LSTM model with enhanced callbacks and monitoring"""
+    def train(self, X_train, y_train, epochs=EPOCHS, batch_size=BATCH_SIZE, validation_split=VALIDATION_SPLIT):
+        """Train the LSTM model with early stopping"""
         # Early stopping with restoration of best weights
         early_stopping = EarlyStopping(
             monitor='val_accuracy',
-            patience=10,
+            patience=EARLY_STOPPING_PATIENCE,
             restore_best_weights=True,
-            min_delta=0.001
+            min_delta=EARLY_STOPPING_MIN_DELTA
         )
         
         # Class weights to handle imbalance

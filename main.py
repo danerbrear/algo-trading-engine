@@ -4,9 +4,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.metrics import classification_report, confusion_matrix
 import seaborn as sns
+from config import EPOCHS, BATCH_SIZE, SEQUENCE_LENGTH
 
 class StockPredictor:
-    def __init__(self, symbol='SPY', start_date='2010-01-01', sequence_length=60):
+    def __init__(self, symbol='SPY', start_date='2010-01-01', sequence_length=SEQUENCE_LENGTH):
         self.sequence_length = sequence_length
         self.data_retriever = DataRetriever(symbol=symbol, start_date=start_date)
         self.model = None
@@ -22,7 +23,7 @@ class StockPredictor:
         self.X_train, self.y_train, self.X_test, self.y_test = \
             self.data_retriever.prepare_data(sequence_length=self.sequence_length)
             
-    def train_model(self, epochs=30, batch_size=32):
+    def train_model(self, epochs=EPOCHS, batch_size=BATCH_SIZE):
         """Train the LSTM model"""
         if self.X_train is None:
             raise ValueError("Data not prepared. Call prepare_data() first.")
@@ -148,7 +149,7 @@ if __name__ == "__main__":
     # Example usage
     predictor = StockPredictor(start_date='2015-01-01')
     predictor.prepare_data()
-    history = predictor.train_model(epochs=50)
+    history = predictor.train_model()
     results = predictor.evaluate_model()
     predictor.plot_results(results)
     

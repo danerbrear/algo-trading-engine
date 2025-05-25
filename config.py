@@ -1,0 +1,15 @@
+# Model Training Parameters
+EPOCHS = 50
+BATCH_SIZE = 32
+VALIDATION_SPLIT = 0.2
+SEQUENCE_LENGTH = 60
+
+# Model Architecture Parameters
+LSTM_UNITS = [64, 32]
+DENSE_UNITS = [32]
+DROPOUT_RATE = 0.3
+
+# Training Parameters
+LEARNING_RATE = 0.001
+EARLY_STOPPING_PATIENCE = 6
+EARLY_STOPPING_MIN_DELTA = 0.001 
