@@ -12,6 +12,7 @@ import pickle
 from pathlib import Path
 from market_state_classifier import MarketStateClassifier
 from options_handler import OptionsHandler
+from cache_manager import CacheManager
 
 class DataRetriever:
     def __init__(self, symbol='SPY', start_date='2010-01-01'):
@@ -22,12 +23,8 @@ class DataRetriever:
         self.features = None
         self.ticker = None
         self.state_classifier = MarketStateClassifier()
-        self.options_handler = OptionsHandler(symbol, start_date=start_date)
-        
-        # Create cache directories
-        self.cache_dir = Path('data_cache')
-        self.options_cache_dir = self.cache_dir / 'options' / symbol
-        self.options_cache_dir.mkdir(parents=True, exist_ok=True)
+        self.cache_manager = CacheManager()
+        self.options_handler = OptionsHandler(symbol, start_date=start_date, cache_dir=self.cache_manager.base_dir)
         
     def prepare_data(self, sequence_length=60):
         """Prepare data for LSTM model with enhanced features"""
@@ -83,7 +80,20 @@ class DataRetriever:
         return X_train, y_train, X_test, y_test
 
     def fetch_data(self):
-        """Fetch data from Yahoo Finance"""
+        """Fetch data from Yahoo Finance with caching"""
+        # Try to load from cache first
+        cached_data = self.cache_manager.load_date_from_cache(
+            pd.Timestamp(self.start_date),
+            '_price_data',
+            'stocks',
+            self.symbol
+        )
+        
+        if cached_data is not None:
+            print(f"Loading cached price data from {self.start_date}")
+            self.data = cached_data
+            return self.data
+            
         print(f"\nFetching data from {self.start_date} onwards...")
         self.ticker = yf.Ticker(self.symbol)
         
@@ -104,6 +114,15 @@ class DataRetriever:
         if self.data.empty:
             raise ValueError(f"No data available after filtering for dates >= {self.start_date}")
             
+        # Cache the filtered data
+        self.cache_manager.save_date_to_cache(
+            pd.Timestamp(self.start_date),
+            self.data,
+            '_price_data',
+            'stocks',
+            self.symbol
+        )
+        
         return self.data
 
     def calculate_features(self, window=20):

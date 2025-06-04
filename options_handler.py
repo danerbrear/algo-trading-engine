@@ -11,151 +11,288 @@ from typing import Dict, List, Optional, Tuple
 import os
 from dotenv import load_dotenv
 import requests
+from cache_manager import CacheManager
+from api_retry_handler import APIRetryHandler
 
 # Load environment variables from .env file
 load_dotenv()
 
 class OptionsHandler:
-    def __init__(self, symbol: str, api_key: Optional[str] = None, cache_dir: str = 'data_cache', start_date: str = None):
+    def __init__(self, symbol: str, api_key: Optional[str] = None, cache_dir: str = 'data_cache', start_date: str = None, disable_options: bool = False):
         """Initialize the OptionsHandler with a symbol and optional Polygon.io API key"""
         self.symbol = symbol
         self.api_key = api_key or os.getenv('POLYGON_API_KEY')
+        self.disable_options = disable_options
+        
         if not self.api_key:
             raise ValueError("Polygon.io API key is required.")
             
-        self.cache_dir = Path(cache_dir)
-        self.options_cache_dir = self.cache_dir / 'options' / symbol
-        self.options_cache_dir.mkdir(parents=True, exist_ok=True)
+        self.cache_manager = CacheManager(cache_dir)
         self.client = RESTClient(self.api_key)
+        self.retry_handler = APIRetryHandler()
         # Convert start_date to naive datetime for consistent comparison
         self.start_date = pd.Timestamp(start_date).tz_localize(None) if start_date else None
         
-    def _get_cache_path(self, date: datetime, suffix: str = '') -> Path:
-        """Get the cache file path for a given date"""
-        date_str = date.strftime('%Y-%m-%d')
-        return self.options_cache_dir / f"{date_str}{suffix}.pkl"
-
-    def _get_contracts_from_cache(self, current_date: datetime) -> Optional[List]:
-        """Get the list of contracts from cache if available"""
-        cache_path = self._get_cache_path(current_date, '_contracts')
-        if cache_path.exists():
-            print(f"Loading cached contracts list for {current_date.date()}")
-            with open(cache_path, 'rb') as f:
-                return pickle.load(f)
-        return None
-
-    def _save_contracts_to_cache(self, current_date: datetime, contracts: List) -> None:
-        """Save the list of contracts to cache"""
-        cache_path = self._get_cache_path(current_date, '_contracts')
-        with open(cache_path, 'wb') as f:
-            pickle.dump(contracts, f)
-
-    def _get_option_chain_with_cache(self, current_date: datetime) -> Dict:
-        """Get option chain data for a date, using cache if available"""
-        chain_cache_path = self._get_cache_path(current_date)
-        
-        if chain_cache_path.exists():
-            print(f"Loading cached option data for {current_date.date()}")
-            with open(chain_cache_path, 'rb') as f:
-                return pickle.load(f)
+    def _fetch_historical_contract_data(self, contract, current_date: datetime) -> Optional[Dict]:
+        """Fetch historical data for a specific contract with retries"""
+        def fetch_func():
+            print(f"Fetching historical data for {contract.ticker}")
+            try:
+                aggs_response = self.client.get_aggs(
+                    ticker=contract.ticker,
+                    multiplier=1,
+                    timespan="day",
+                    from_=current_date.strftime('%Y-%m-%d'),
+                    to=current_date.strftime('%Y-%m-%d'),
+                    limit=1
+                )
                 
-        print(f"Fetching option data for {current_date.date()}")
-        
-        max_retries = 3
-        retry_delay = 60  # seconds
+                # Safely handle the generator response
+                aggs = []
+                if aggs_response:
+                    try:
+                        aggs = list(aggs_response)
+                    except Exception as e:
+                        print(f"Error converting generator to list for {contract.ticker}: {str(e)}")
+                        return None
+                        
+                if not aggs:
+                    print(f"No aggregate data available for {contract.ticker}")
+                    return None
+                    
+                day_data = aggs[0]
+                return {
+                    'strike': float(contract.strike_price),
+                    'expiration': contract.expiration_date,
+                    'type': 'call' if contract.contract_type.lower() == 'call' else 'put',
+                    'symbol': contract.ticker,
+                    'volume': day_data.volume if hasattr(day_data, 'volume') else 0,
+                    'open_interest': 0,  # Not available in historical data
+                    'implied_volatility': None,  # Not available in historical data
+                    'delta': None,  # Not available in historical data
+                    'gamma': None,  # Not available in historical data
+                    'theta': None,  # Not available in historical data
+                    'vega': None,  # Not available in historical data
+                    'last_price': day_data.close,
+                    'bid': day_data.low,  # Using day low as proxy for bid
+                    'ask': day_data.high,  # Using day high as proxy for ask
+                }
+            except Exception as e:
+                print(f"Error in fetch_func for {contract.ticker}: {str(e)}")
+                return None
+            
+        return self.retry_handler.fetch_with_retry(
+            fetch_func,
+            f"Error fetching historical data for {contract.ticker}"
+        )
+
+    def _fetch_historical_contracts_data(self, contracts: List, current_date: datetime, current_price: float) -> Dict:
+        """Fetch historical data for a list of contracts and organize them into calls and puts"""
         chain_data = {'calls': [], 'puts': []}
         
-        for attempt in range(max_retries):
-            if attempt > 0:  # Wait before any retry attempt
-                print(f"Waiting {retry_delay} seconds before retry {attempt + 1}/{max_retries}")
-                time.sleep(retry_delay)
-                
-            try:
-                # Try to get contracts from cache first
-                contracts = self._get_contracts_from_cache(current_date)
-                if contracts is None:
-                    # Get all available contracts for the date and convert generator to list
-                    contracts = list(self.client.list_options_contracts(
+        print(f"Processing {len(contracts)} contracts from API/cache")
+        
+        # Local filtering as safety net for cached data that might have many contracts
+        # This ensures we don't fetch historical data for hundreds of irrelevant contracts
+        try:
+            # Filter contracts to only those within 10% of current price to reduce API calls
+            price_range = current_price * 0.10  # 10% range for historical data fetching
+            min_strike = current_price - price_range
+            max_strike = current_price + price_range
+            
+            filtered_contracts = []
+            for contract in contracts:
+                if hasattr(contract, 'strike_price'):
+                    strike = float(contract.strike_price)
+                    if min_strike <= strike <= max_strike:
+                        filtered_contracts.append(contract)
+            
+            print(f"Filtered to {len(filtered_contracts)} relevant contracts (strikes ${min_strike:.0f}-${max_strike:.0f}) for historical data fetching")
+            contracts = filtered_contracts
+            
+        except Exception as e:
+            print(f"Error filtering contracts: {e}, using all contracts")
+        
+        for contract in contracts:
+            contract_data = self._fetch_historical_contract_data(contract, current_date)
+            if contract_data:
+                if contract_data['type'] == 'call':
+                    chain_data['calls'].append(contract_data)
+                else:
+                    chain_data['puts'].append(contract_data)
+                    
+        return chain_data
+
+    def _get_contracts_from_cache(self, current_date: datetime, current_price: float) -> Optional[List]:
+        """Get the list of contracts from cache if available, otherwise fetch from API"""
+        try:
+            print(f"Contracts Step 1: Checking cache for contracts on {current_date.date()}")
+            # Try to get from cache first
+            contracts = self.cache_manager.load_date_from_cache(
+                current_date, 
+                '_contracts',
+                'options',
+                self.symbol
+            )
+            
+            if contracts is not None:
+                print(f"Loading cached contracts list for {current_date.date()}")
+                return contracts
+                    
+            print(f"Contracts Step 2: No cached contracts, fetching from API for {current_date.date()}")
+            # If not in cache, fetch from API with retries
+            print(f"Fetching contracts for {current_date.date()}")
+            
+            def fetch_func():
+                try:
+                    print(f"Contracts Step 3: Calling Polygon API for contracts")
+                    
+                    # Calculate strike price range (9% around current price)
+                    price_range = current_price * 0.08  # 8% range for broader coverage
+                    min_strike = current_price - price_range
+                    max_strike = current_price + price_range
+                    
+                    # Calculate expiration date range (focus on options around 30-day target)
+                    min_expiry = current_date + timedelta(days=20)  # Minimum 20 days out (closer to 30-day target)
+                    max_expiry = current_date + timedelta(days=40)  # Maximum 40 days out
+                    
+                    print(f"Filtering contracts: strikes ${min_strike:.0f}-${max_strike:.0f}, expiry {min_expiry.strftime('%Y-%m-%d')} to {max_expiry.strftime('%Y-%m-%d')} (targeting ~30 days)")
+                    
+                    contracts_response = self.client.list_options_contracts(
                         underlying_ticker=self.symbol,
-                        as_of=current_date.strftime('%Y-%m-%d')
-                    ))
-                    # Cache the contracts list if we got any
+                        as_of=current_date.strftime('%Y-%m-%d'),
+                        params={
+                            "strike_price.gte": min_strike,
+                            "strike_price.lte": max_strike,
+                            "expiration_date.gte": min_expiry.strftime('%Y-%m-%d'),
+                            "expiration_date.lte": max_expiry.strftime('%Y-%m-%d')
+                        },
+                        expired=False,
+                        limit=200  # Limit results per page to reduce pagination
+                    )
+                    
+                    print(f"Contracts Step 4: Manually iterating through paginated results with rate limiting")
+                    contracts = []
+                    page_count = 0
+                    max_pages = 2  # Limit to 5 pages to stay under rate limits
+                    
+                    if contracts_response:
+                        try:
+                            for contract in contracts_response:
+                                contracts.append(contract)
+                                
+                                # Check if we've reached a page boundary (every 250 items)
+                                if len(contracts) % 200 == 0:
+                                    page_count += 1
+                                    print(f"Completed page {page_count}, got {len(contracts)} contracts so far")
+                                    
+                                    # Stop if we've reached max pages to avoid rate limits
+                                    if page_count >= max_pages:
+                                        print(f"Reached max pages ({max_pages}), stopping to avoid rate limits")
+                                        break
+                                    
+                                    # Rate limit between pages
+                                    print("Rate limiting: waiting 13 seconds between paginated requests")
+                                    time.sleep(13)
+                                    
+                            print(f"Contracts Step 5: Successfully converted, got {len(contracts)} contracts")
+                        except Exception as e:
+                            print(f"Error iterating through contracts: {str(e)}")
+                            print(f"Error type: {type(e)}")
+                            import traceback
+                            traceback.print_exc()
+                            return []
+                    
                     if contracts:
-                        self._save_contracts_to_cache(current_date, contracts)
+                        print(f"Caching {len(contracts)} contracts for {current_date.date()}")
+                        self.cache_manager.save_date_to_cache(
+                            current_date,
+                            contracts,
+                            '_contracts',
+                            'options',
+                            self.symbol
+                        )
+                    else:
+                        print(f"No contracts available for {current_date.date()}")
+                        
+                    return contracts
+                    
+                except Exception as e:
+                    print(f"Error in fetch_func for contracts: {str(e)}")
+                    print(f"Error type: {type(e)}")
+                    import traceback
+                    traceback.print_exc()
+                    return []
+                
+            return self.retry_handler.fetch_with_retry(
+                fetch_func,
+                f"Error fetching contracts for {current_date.date()}"
+            )
+            
+        except Exception as e:
+            print(f"Error in _get_contracts_from_cache for {current_date}: {str(e)}")
+            print(f"Error type: {type(e)}")
+            import traceback
+            traceback.print_exc()
+            return []
+
+    def _get_option_chain_with_cache(self, current_date: datetime, current_price: float) -> Dict:
+        """Get option chain data for a date, using cache if available"""
+        try:
+            print(f"Step 1: Attempting to load from cache for {current_date.date()}")
+            # Try to get from cache first
+            chain_data = self.cache_manager.load_date_from_cache(
+                current_date,
+                '',  # No suffix for main chain data
+                'options',
+                self.symbol
+            )
+            
+            if chain_data is not None:
+                print(f"Loading cached option data for {current_date.date()}")
+                return chain_data
+                    
+            print(f"Step 2: No cache found, building option chain data for {current_date.date()}")
+            chain_data = {'calls': [], 'puts': []}
+            
+            try:
+                print(f"Step 3: Getting contracts for {current_date.date()}")
+                # Get contracts (will use cache if available)
+                contracts = self._get_contracts_from_cache(current_date, current_price)
                 
                 if not contracts:
                     print(f"No options data available for {current_date.date()}")
                     return chain_data
                 
-                # Process each contract
-                for contract in contracts:
-                    try:
-                        aggs = list(self.client.get_aggs(
-                            ticker=contract.ticker,
-                            multiplier=1,
-                            timespan="day",
-                            from_=current_date.strftime('%Y-%m-%d'),
-                            to=current_date.strftime('%Y-%m-%d'),
-                            limit=1
-                        ))
-                        
-                        if not aggs:
-                            continue  # No data available, skip to next contract
-                            
-                        day_data = aggs[0]
-                        
-                        contract_data = {
-                            'strike': float(contract.strike_price),
-                            'expiration': contract.expiration_date,  # Already in YYYY-MM-DD format
-                            'type': 'call' if contract.contract_type.lower() == 'call' else 'put',
-                            'symbol': contract.ticker,
-                            'volume': day_data.volume if hasattr(day_data, 'volume') else 0,
-                            'open_interest': 0,  # Not available in historical data
-                            'implied_volatility': None,  # Not available in historical data
-                            'delta': None,  # Not available in historical data
-                            'gamma': None,  # Not available in historical data
-                            'theta': None,  # Not available in historical data
-                            'vega': None,  # Not available in historical data
-                            'last_price': day_data.close,
-                            'bid': day_data.low,  # Using day low as proxy for bid
-                            'ask': day_data.high,  # Using day high as proxy for ask
-                        }
-                        
-                        if contract_data['type'] == 'call':
-                            chain_data['calls'].append(contract_data)
-                        else:
-                            chain_data['puts'].append(contract_data)
-                            
-                    except requests.exceptions.HTTPError as e:
-                        if e.response.status_code == 429:  # Rate limit exceeded
-                            print(f"Rate limit exceeded for {contract.ticker}, waiting {retry_delay} seconds")
-                            time.sleep(retry_delay)
-                            continue
-                        print(f"Error fetching historical data for {contract.ticker}: {str(e)}")
-                    except Exception as e:
-                        print(f"Error fetching historical data for {contract.ticker}: {str(e)}")
+                print(f"Step 4: Fetching historical data for {len(contracts)} contracts")
+                # Fetch historical data for all contracts
+                chain_data = self._fetch_historical_contracts_data(contracts, current_date, current_price)
                 
-                # If we got here without a rate limit error, we can break the retry loop
-                break
+                print(f"Step 5: Caching results")
+                # Cache the data if we got any contracts
+                if chain_data['calls'] or chain_data['puts']:
+                    print(f"Caching option chain data for {current_date.date()}")
+                    self.cache_manager.save_date_to_cache(
+                        current_date,
+                        chain_data,
+                        '',  # No suffix for main chain data
+                        'options',
+                        self.symbol
+                    )
                 
-            except requests.exceptions.HTTPError as e:
-                if e.response.status_code == 429:  # Rate limit exceeded
-                    if attempt < max_retries - 1:  # Don't sleep on the last attempt
-                        print(f"Rate limit exceeded for options list")
-                        continue
-                    else:
-                        print(f"Max retries ({max_retries}) exceeded for options list")
-                raise  # Re-raise the exception if we've exhausted our retries
             except Exception as e:
-                print(f"Error processing {current_date}: {str(e)}")
-                if attempt == max_retries - 1:  # Last attempt
-                    return chain_data
-        
-        # Cache the data if we got any contracts
-        if chain_data['calls'] or chain_data['puts']:
-            with open(chain_cache_path, 'wb') as f:
-                pickle.dump(chain_data, f)
-        
+                print(f"Error in steps 3-5 for {current_date}: {str(e)}")
+                print(f"Error type: {type(e)}")
+                import traceback
+                traceback.print_exc()
+                
+        except Exception as e:
+            print(f"Error in step 1-2 (cache loading) for {current_date}: {str(e)}")
+            print(f"Error type: {type(e)}")
+            import traceback
+            traceback.print_exc()
+            chain_data = {'calls': [], 'puts': []}
+            
         return chain_data
         
     def _get_target_expiry(self, current_date: datetime, chain_data: Dict) -> Optional[str]:
@@ -179,6 +316,7 @@ class OptionsHandler:
         
         # Find closest expiry to target date
         closest_expiry = min(expiry_dates, key=lambda x: abs((x - target_date).days))
+        print(f"Closest expiry: {closest_expiry.strftime('%Y-%m-%d')}")
         return closest_expiry.strftime('%Y-%m-%d')
         
     def _get_atm_options(self, current_price: float, chain_data: Dict, expiry: str) -> Tuple[Optional[Dict], Optional[Dict]]:
@@ -209,6 +347,18 @@ class OptionsHandler:
         
     def calculate_option_features(self, data: pd.DataFrame) -> pd.DataFrame:
         """Calculate option-related features with batch processing"""
+        if self.disable_options:
+            print("Options processing disabled - skipping options data")
+            # Add empty columns for options data to maintain DataFrame structure
+            option_columns = [
+                'Call_IV', 'Put_IV', 'Call_Volume', 'Put_Volume', 'Call_OI', 'Put_OI',
+                'Call_Price', 'Put_Price', 'Call_Delta', 'Put_Delta', 'Call_Gamma', 'Put_Gamma',
+                'Call_Theta', 'Put_Theta', 'Call_Vega', 'Put_Vega', 'Option_Volume_Ratio', 'Put_Call_Ratio'
+            ]
+            for col in option_columns:
+                data[col] = None
+            return data
+            
         print("\nProcessing options data...")
         
         for current_date in data.index:
@@ -224,7 +374,8 @@ class OptionsHandler:
                 print(f"\nProcessing {current_date} (Close: {current_price:.2f})")
                 
                 # Get option chain
-                chain_data = self._get_option_chain_with_cache(current_date)
+                chain_data = self._get_option_chain_with_cache(current_date, current_price)
+                print(f"Retrieved {len(chain_data.get('calls', []))} calls and {len(chain_data.get('puts', []))} puts")
                 
                 # Get target expiry
                 target_expiry = self._get_target_expiry(current_date, chain_data)
@@ -237,6 +388,8 @@ class OptionsHandler:
                 if not atm_call or not atm_put:
                     print("Could not get ATM options")
                     continue
+                print(f"ATM call: {atm_call}")
+                print(f"ATM put: {atm_put}")
                     
                 # Calculate features
                 data.loc[current_date, 'Call_IV'] = atm_call['implied_volatility']

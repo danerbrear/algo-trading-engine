@@ -7,7 +7,7 @@ import seaborn as sns
 from config import EPOCHS, BATCH_SIZE, SEQUENCE_LENGTH
 
 class StockPredictor:
-    def __init__(self, symbol='SPY', start_date='2023-06-01', sequence_length=SEQUENCE_LENGTH):
+    def __init__(self, symbol='SPY', start_date='2024-06-01', sequence_length=SEQUENCE_LENGTH):
         self.sequence_length = sequence_length
         self.data_retriever = DataRetriever(symbol=symbol, start_date=start_date)
         self.model = None
