@@ -87,40 +87,105 @@ class OptionsHandler:
         )
 
     def _fetch_historical_contracts_data(self, contracts: List, current_date: datetime, current_price: float) -> Dict:
-        """Fetch historical data for a list of contracts and organize them into calls and puts"""
+        """Fetch historical data for only the most relevant contracts (closest to 30-day expiry and ATM strikes)"""
         chain_data = {'calls': [], 'puts': []}
         
         print(f"Processing {len(contracts)} contracts from API/cache")
         
-        # Local filtering as safety net for cached data that might have many contracts
-        # This ensures we don't fetch historical data for hundreds of irrelevant contracts
-        try:
-            # Filter contracts to only those within 10% of current price to reduce API calls
-            price_range = current_price * 0.10  # 10% range for historical data fetching
-            min_strike = current_price - price_range
-            max_strike = current_price + price_range
-            
-            filtered_contracts = []
-            for contract in contracts:
-                if hasattr(contract, 'strike_price'):
-                    strike = float(contract.strike_price)
-                    if min_strike <= strike <= max_strike:
-                        filtered_contracts.append(contract)
-            
-            print(f"Filtered to {len(filtered_contracts)} relevant contracts (strikes ${min_strike:.0f}-${max_strike:.0f}) for historical data fetching")
-            contracts = filtered_contracts
-            
-        except Exception as e:
-            print(f"Error filtering contracts: {e}, using all contracts")
+        if not contracts:
+            print("No contracts to process")
+            return chain_data
         
-        for contract in contracts:
-            contract_data = self._fetch_historical_contract_data(contract, current_date)
-            if contract_data:
-                if contract_data['type'] == 'call':
-                    chain_data['calls'].append(contract_data)
-                else:
-                    chain_data['puts'].append(contract_data)
-                    
+        try:
+            # Step 1: Find target expiry closest to 30 days
+            target_date = current_date + timedelta(days=30)
+            
+            # Get unique expiration dates from contracts
+            expiry_dates = set()
+            for contract in contracts:
+                if hasattr(contract, 'expiration_date'):
+                    expiry_dates.add(contract.expiration_date)
+            
+            if not expiry_dates:
+                print("No expiration dates found in contracts")
+                return chain_data
+            
+            # Convert to datetime objects and find closest to 30 days
+            expiry_dates = [pd.Timestamp(exp).tz_localize(None) for exp in expiry_dates]
+            target_expiry = min(expiry_dates, key=lambda x: abs((x - target_date).days))
+            target_expiry_str = target_expiry.strftime('%Y-%m-%d')
+            
+            print(f"Target expiry (closest to 30 days): {target_expiry_str}")
+            
+            # Step 2: Filter contracts to only the target expiry
+            target_expiry_contracts = []
+            for contract in contracts:
+                if hasattr(contract, 'expiration_date') and contract.expiration_date == target_expiry_str:
+                    target_expiry_contracts.append(contract)
+            
+            print(f"Contracts with target expiry: {len(target_expiry_contracts)}")
+            
+            if not target_expiry_contracts:
+                print(f"No contracts found for target expiry {target_expiry_str}")
+                return chain_data
+            
+            # Step 3: Separate calls and puts, sorted by proximity to current price
+            calls = [c for c in target_expiry_contracts if hasattr(c, 'contract_type') and c.contract_type.lower() == 'call']
+            puts = [c for c in target_expiry_contracts if hasattr(c, 'contract_type') and c.contract_type.lower() == 'put']
+            
+            # Sort by distance from current price (closest first)
+            calls_sorted = sorted(calls, key=lambda x: abs(float(x.strike_price) - current_price))
+            puts_sorted = sorted(puts, key=lambda x: abs(float(x.strike_price) - current_price))
+            
+            print(f"Found {len(calls_sorted)} calls and {len(puts_sorted)} puts for target expiry")
+            
+            # Step 4: Try to get valid call data with fallback
+            call_data = None
+            if calls_sorted:
+                for i, call_contract in enumerate(calls_sorted):
+                    print(f"Trying Call #{i+1}: strike ${float(call_contract.strike_price):.2f}, symbol {call_contract.ticker}")
+                    call_data = self._fetch_historical_contract_data(call_contract, current_date)
+                    if call_data:
+                        print(f"✓ Successfully got call data for strike ${float(call_contract.strike_price):.2f}")
+                        chain_data['calls'].append(call_data)
+                        break
+                    else:
+                        print(f"✗ No historical data available, trying next closest call...")
+                        if i >= 4:  # Limit to trying 5 closest options
+                            print(f"Tried {i+1} calls, stopping search")
+                            break
+                
+                if not call_data:
+                    print("Could not find any call with historical data")
+            
+            # Step 5: Try to get valid put data with fallback  
+            put_data = None
+            if puts_sorted:
+                for i, put_contract in enumerate(puts_sorted):
+                    print(f"Trying Put #{i+1}: strike ${float(put_contract.strike_price):.2f}, symbol {put_contract.ticker}")
+                    put_data = self._fetch_historical_contract_data(put_contract, current_date)
+                    if put_data:
+                        print(f"✓ Successfully got put data for strike ${float(put_contract.strike_price):.2f}")
+                        chain_data['puts'].append(put_data)
+                        break
+                    else:
+                        print(f"✗ No historical data available, trying next closest put...")
+                        if i >= 4:  # Limit to trying 5 closest options
+                            print(f"Tried {i+1} puts, stopping search")
+                            break
+                
+                if not put_data:
+                    print("Could not find any put with historical data")
+            
+            # Summary
+            successful_contracts = len(chain_data['calls']) + len(chain_data['puts'])
+            print(f"Successfully fetched historical data for {successful_contracts}/2 target contracts")
+                        
+        except Exception as e:
+            print(f"Error in _fetch_historical_contracts_data: {e}")
+            import traceback
+            traceback.print_exc()
+            
         return chain_data
 
     def _get_contracts_from_cache(self, current_date: datetime, current_price: float) -> Optional[List]:
@@ -153,8 +218,8 @@ class OptionsHandler:
                     max_strike = current_price + price_range
                     
                     # Calculate expiration date range (focus on options around 30-day target)
-                    min_expiry = current_date + timedelta(days=20)  # Minimum 20 days out (closer to 30-day target)
-                    max_expiry = current_date + timedelta(days=40)  # Maximum 40 days out
+                    min_expiry = current_date + timedelta(days=24)  # Minimum 24 days out (closer to 30-day target)
+                    max_expiry = current_date + timedelta(days=36)  # Maximum 36 days out
                     
                     print(f"Filtering contracts: strikes ${min_strike:.0f}-${max_strike:.0f}, expiry {min_expiry.strftime('%Y-%m-%d')} to {max_expiry.strftime('%Y-%m-%d')} (targeting ~30 days)")
                     
