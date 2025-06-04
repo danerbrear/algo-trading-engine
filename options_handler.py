@@ -147,8 +147,8 @@ class OptionsHandler:
                 try:
                     print(f"Contracts Step 3: Calling Polygon API for contracts")
                     
-                    # Calculate strike price range (9% around current price)
-                    price_range = current_price * 0.08  # 8% range for broader coverage
+                    # Calculate strike price range (7% around current price)
+                    price_range = current_price * 0.07  # 7% range for broader coverage
                     min_strike = current_price - price_range
                     max_strike = current_price + price_range
                     
