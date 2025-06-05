@@ -492,8 +492,8 @@ class OptionsHandler:
         data['Option_Signal'] = 0
         
         # Calculate returns for ATM options
-        data['ATM_Call_Return'] = data['Call_Price'].pct_change()
-        data['ATM_Put_Return'] = data['Put_Price'].pct_change()
+        data['ATM_Call_Return'] = data['Call_Price'].pct_change(fill_method=None)
+        data['ATM_Put_Return'] = data['Put_Price'].pct_change(fill_method=None)
         
         # Simple signal generation based on volume ratios and price movements
         for i in range(1, len(data)):

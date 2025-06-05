@@ -41,15 +41,9 @@ class LSTMModel:
             LayerNormalization(),
             Dropout(DROPOUT_RATE),
             
-            # Second Bidirectional LSTM layer
-            Bidirectional(LSTM(units=LSTM_UNITS[1], return_sequences=True,
+            # Second Bidirectional LSTM layer (final LSTM layer)
+            Bidirectional(LSTM(units=LSTM_UNITS[1], return_sequences=False,
                              kernel_regularizer=l2(0.01))),
-            LayerNormalization(),
-            Dropout(DROPOUT_RATE),
-            
-            # Third LSTM layer
-            LSTM(units=LSTM_UNITS[1], return_sequences=False,
-                 kernel_regularizer=l2(0.01)),
             LayerNormalization(),
             Dropout(DROPOUT_RATE),
             

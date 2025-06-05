@@ -50,7 +50,7 @@ class DataRetriever:
             'RSI', 'MACD', 'MACD_Hist',
             'Volume_Ratio', 'OBV',
             'ATM_Call_Return', 'ATM_Put_Return',
-            'Call_Put_Ratio', 'Option_Volume_Ratio',
+            'Put_Call_Ratio', 'Option_Volume_Ratio',
             'Market_State'  # Add market state as a feature
         ]
         
