@@ -53,7 +53,13 @@ class OptionsHandler:
                     try:
                         aggs = list(aggs_response)
                     except Exception as e:
-                        print(f"Error converting generator to list for {contract.ticker}: {str(e)}")
+                        error_str = str(e)
+                        print(f"Error converting generator to list for {contract.ticker}: {error_str}")
+                        
+                        # Check for authorization errors that indicate plan limitations
+                        if "NOT_AUTHORIZED" in error_str or "doesn't include this data timeframe" in error_str:
+                            print(f"⚠️ Authorization error for {current_date.date()}: Plan doesn't cover this timeframe")
+                            raise ValueError("SKIP_DATE_UNAUTHORIZED")
                         return None
                         
                 if not aggs:
@@ -77,8 +83,19 @@ class OptionsHandler:
                     'bid': day_data.low,  # Using day low as proxy for bid
                     'ask': day_data.high,  # Using day high as proxy for ask
                 }
+            except ValueError as e:
+                if "SKIP_DATE_UNAUTHORIZED" in str(e):
+                    raise  # Re-raise to be caught by the outer handler
+                print(f"ValueError in fetch_func for {contract.ticker}: {str(e)}")
+                return None
             except Exception as e:
-                print(f"Error in fetch_func for {contract.ticker}: {str(e)}")
+                error_str = str(e)
+                print(f"Error in fetch_func for {contract.ticker}: {error_str}")
+                
+                # Check for authorization errors in general exceptions too
+                if "NOT_AUTHORIZED" in error_str or "doesn't include this data timeframe" in error_str:
+                    print(f"⚠️ Authorization error for {current_date.date()}: Plan doesn't cover this timeframe")
+                    raise ValueError("SKIP_DATE_UNAUTHORIZED")
                 return None
             
         return self.retry_handler.fetch_with_retry(
@@ -142,18 +159,24 @@ class OptionsHandler:
             # Step 4: Try to get valid call data with fallback
             call_data = None
             if calls_sorted:
-                for i, call_contract in enumerate(calls_sorted):
-                    print(f"Trying Call #{i+1}: strike ${float(call_contract.strike_price):.2f}, symbol {call_contract.ticker}")
-                    call_data = self._fetch_historical_contract_data(call_contract, current_date)
-                    if call_data:
-                        print(f"✓ Successfully got call data for strike ${float(call_contract.strike_price):.2f}")
-                        chain_data['calls'].append(call_data)
-                        break
-                    else:
-                        print(f"✗ No historical data available, trying next closest call...")
-                        if i >= 4:  # Limit to trying 5 closest options
-                            print(f"Tried {i+1} calls, stopping search")
+                try:
+                    for i, call_contract in enumerate(calls_sorted):
+                        print(f"Trying Call #{i+1}: strike ${float(call_contract.strike_price):.2f}, symbol {call_contract.ticker}")
+                        call_data = self._fetch_historical_contract_data(call_contract, current_date)
+                        if call_data:
+                            print(f"✓ Successfully got call data for strike ${float(call_contract.strike_price):.2f}")
+                            chain_data['calls'].append(call_data)
                             break
+                        else:
+                            print(f"✗ No historical data available, trying next closest call...")
+                            if i >= 4:  # Limit to trying 5 closest options
+                                print(f"Tried {i+1} calls, stopping search")
+                                break
+                except ValueError as e:
+                    if "SKIP_DATE_UNAUTHORIZED" in str(e):
+                        print(f"🚫 Skipping {current_date.date()} - Plan doesn't include this timeframe")
+                        return chain_data  # Return empty data immediately
+                    raise  # Re-raise other ValueErrors
                 
                 if not call_data:
                     print("Could not find any call with historical data")
@@ -161,18 +184,24 @@ class OptionsHandler:
             # Step 5: Try to get valid put data with fallback  
             put_data = None
             if puts_sorted:
-                for i, put_contract in enumerate(puts_sorted):
-                    print(f"Trying Put #{i+1}: strike ${float(put_contract.strike_price):.2f}, symbol {put_contract.ticker}")
-                    put_data = self._fetch_historical_contract_data(put_contract, current_date)
-                    if put_data:
-                        print(f"✓ Successfully got put data for strike ${float(put_contract.strike_price):.2f}")
-                        chain_data['puts'].append(put_data)
-                        break
-                    else:
-                        print(f"✗ No historical data available, trying next closest put...")
-                        if i >= 4:  # Limit to trying 5 closest options
-                            print(f"Tried {i+1} puts, stopping search")
+                try:
+                    for i, put_contract in enumerate(puts_sorted):
+                        print(f"Trying Put #{i+1}: strike ${float(put_contract.strike_price):.2f}, symbol {put_contract.ticker}")
+                        put_data = self._fetch_historical_contract_data(put_contract, current_date)
+                        if put_data:
+                            print(f"✓ Successfully got put data for strike ${float(put_contract.strike_price):.2f}")
+                            chain_data['puts'].append(put_data)
                             break
+                        else:
+                            print(f"✗ No historical data available, trying next closest put...")
+                            if i >= 4:  # Limit to trying 5 closest options
+                                print(f"Tried {i+1} puts, stopping search")
+                                break
+                except ValueError as e:
+                    if "SKIP_DATE_UNAUTHORIZED" in str(e):
+                        print(f"🚫 Skipping {current_date.date()} - Plan doesn't include this timeframe")
+                        return chain_data  # Return empty data immediately
+                    raise  # Re-raise other ValueErrors
                 
                 if not put_data:
                     print("Could not find any put with historical data")
@@ -191,7 +220,6 @@ class OptionsHandler:
     def _get_contracts_from_cache(self, current_date: datetime, current_price: float) -> Optional[List]:
         """Get the list of contracts from cache if available, otherwise fetch from API"""
         try:
-            print(f"Contracts Step 1: Checking cache for contracts on {current_date.date()}")
             # Try to get from cache first
             contracts = self.cache_manager.load_date_from_cache(
                 current_date, 
@@ -204,14 +232,11 @@ class OptionsHandler:
                 print(f"Loading cached contracts list for {current_date.date()}")
                 return contracts
                     
-            print(f"Contracts Step 2: No cached contracts, fetching from API for {current_date.date()}")
             # If not in cache, fetch from API with retries
             print(f"Fetching contracts for {current_date.date()}")
             
             def fetch_func():
-                try:
-                    print(f"Contracts Step 3: Calling Polygon API for contracts")
-                    
+                try:                    
                     # Calculate strike price range (7% around current price)
                     price_range = current_price * 0.07  # 7% range for broader coverage
                     min_strike = current_price - price_range
@@ -236,7 +261,6 @@ class OptionsHandler:
                         limit=200  # Limit results per page to reduce pagination
                     )
                     
-                    print(f"Contracts Step 4: Manually iterating through paginated results with rate limiting")
                     contracts = []
                     page_count = 0
                     max_pages = 2  # Limit to 5 pages to stay under rate limits
@@ -260,7 +284,6 @@ class OptionsHandler:
                                     print("Rate limiting: waiting 13 seconds between paginated requests")
                                     time.sleep(13)
                                     
-                            print(f"Contracts Step 5: Successfully converted, got {len(contracts)} contracts")
                         except Exception as e:
                             print(f"Error iterating through contracts: {str(e)}")
                             print(f"Error type: {type(e)}")
@@ -453,8 +476,8 @@ class OptionsHandler:
                 if not atm_call or not atm_put:
                     print("Could not get ATM options")
                     continue
-                print(f"ATM call: {atm_call}")
-                print(f"ATM put: {atm_put}")
+                print(f"ATM Call: ${atm_call['strike']:.0f} exp {atm_call['expiration']} @ ${atm_call['last_price']:.2f}")
+                print(f"ATM Put:  ${atm_put['strike']:.0f} exp {atm_put['expiration']} @ ${atm_put['last_price']:.2f}")
                     
                 # Calculate features
                 data.loc[current_date, 'Call_IV'] = atm_call['implied_volatility']
@@ -482,12 +505,20 @@ class OptionsHandler:
                 
         return data 
 
-    def calculate_option_signals(self, data: pd.DataFrame) -> pd.DataFrame:
-        """Calculate trading signals based on options data
-        0: No Position
-        1: Buy Call
-        2: Buy Put
+    def calculate_option_signals(self, data: pd.DataFrame, holding_period: int = 5, min_return_threshold: float = 0.10) -> pd.DataFrame:
+        """Calculate trading signals based on future profitability of options trades
+        
+        Args:
+            holding_period: Number of days to hold the option (default: 5)
+            min_return_threshold: Minimum return required to generate a signal
+        
+        Returns:
+            0: No Position
+            1: Buy Call
+            2: Buy Put
         """
+        print(f"Generating labels based on {holding_period}-day forward returns with {min_return_threshold:.1%} minimum threshold")
+        
         # Initialize the signal column
         data['Option_Signal'] = 0
         
@@ -495,16 +526,52 @@ class OptionsHandler:
         data['ATM_Call_Return'] = data['Call_Price'].pct_change(fill_method=None)
         data['ATM_Put_Return'] = data['Put_Price'].pct_change(fill_method=None)
         
-        # Simple signal generation based on volume ratios and price movements
-        for i in range(1, len(data)):
-            # High call volume relative to puts might indicate bullish sentiment
-            if (data['Call_Volume'].iloc[i] > data['Put_Volume'].iloc[i] * 1.5 and
-                data['Option_Volume_Ratio'].iloc[i] > data['Option_Volume_Ratio'].iloc[i-1]):
-                data.iloc[i, data.columns.get_loc('Option_Signal')] = 1  # Buy Call
+        # Calculate future returns for both calls and puts
+        data['Future_Call_Return'] = data['Call_Price'].shift(-holding_period) / data['Call_Price'] - 1
+        data['Future_Put_Return'] = data['Put_Price'].shift(-holding_period) / data['Put_Price'] - 1
+        data['Future_Stock_Return'] = data['Close'].shift(-holding_period) / data['Close'] - 1
+        
+        # Generate labels based on future profitability
+        call_signals = 0
+        put_signals = 0
+        no_signals = 0
+        
+        for i in range(len(data) - holding_period):  # Exclude last holding_period rows (no future data)
+            call_return = data['Future_Call_Return'].iloc[i]
+            put_return = data['Future_Put_Return'].iloc[i]
+            
+            # Skip if we don't have option price data
+            if pd.isna(call_return) or pd.isna(put_return):
+                continue
                 
-            # High put volume relative to calls might indicate bearish sentiment
-            elif (data['Put_Volume'].iloc[i] > data['Call_Volume'].iloc[i] * 1.5 and
-                  data['Option_Volume_Ratio'].iloc[i] > data['Option_Volume_Ratio'].iloc[i-1]):
+            # Determine the best trade based on returns
+            if call_return > min_return_threshold and call_return > put_return:
+                # Call option would be profitable and better than put
+                data.iloc[i, data.columns.get_loc('Option_Signal')] = 1  # Buy Call
+                call_signals += 1
+            elif put_return > min_return_threshold and put_return > call_return:
+                # Put option would be profitable and better than call
                 data.iloc[i, data.columns.get_loc('Option_Signal')] = 2  # Buy Put
+                put_signals += 1
+            else:
+                # Neither option meets threshold or both are unprofitable
+                data.iloc[i, data.columns.get_loc('Option_Signal')] = 0  # No Position
+                no_signals += 1
+        
+        total_signals = call_signals + put_signals + no_signals
+        if total_signals > 0:
+            print(f"Label distribution:")
+            print(f"  Buy Call (1): {call_signals:4d} ({call_signals/total_signals:.1%})")
+            print(f"  Buy Put (2):  {put_signals:4d} ({put_signals/total_signals:.1%})")
+            print(f"  No Position (0): {no_signals:4d} ({no_signals/total_signals:.1%})")
+            
+            # Add some statistics about the profitability
+            profitable_calls = data[data['Option_Signal'] == 1]['Future_Call_Return']
+            profitable_puts = data[data['Option_Signal'] == 2]['Future_Put_Return']
+            
+            if len(profitable_calls) > 0:
+                print(f"  Avg Call Return: {profitable_calls.mean():.2%} (min: {profitable_calls.min():.2%}, max: {profitable_calls.max():.2%})")
+            if len(profitable_puts) > 0:
+                print(f"  Avg Put Return:  {profitable_puts.mean():.2%} (min: {profitable_puts.min():.2%}, max: {profitable_puts.max():.2%})")
         
         return data 

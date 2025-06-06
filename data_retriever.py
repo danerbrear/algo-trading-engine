@@ -15,34 +15,64 @@ from options_handler import OptionsHandler
 from cache_manager import CacheManager
 
 class DataRetriever:
-    def __init__(self, symbol='SPY', start_date='2010-01-01'):
+    def __init__(self, symbol='SPY', hmm_start_date='2010-01-01', lstm_start_date='2020-01-01'):
+        """Initialize DataRetriever with separate date ranges for HMM and LSTM
+        
+        Args:
+            symbol: Stock symbol to analyze
+            hmm_start_date: Start date for HMM training data (market state classification)
+            lstm_start_date: Start date for LSTM training data (options signal prediction)
+        """
         self.symbol = symbol
-        self.start_date = start_date
+        self.hmm_start_date = hmm_start_date
+        self.lstm_start_date = lstm_start_date
+        self.start_date = lstm_start_date  # Backward compatibility
         self.scaler = StandardScaler()
         self.data = None
+        self.hmm_data = None  # Separate data for HMM training
+        self.lstm_data = None  # Separate data for LSTM training
         self.features = None
         self.ticker = None
         self.state_classifier = MarketStateClassifier()
         self.cache_manager = CacheManager()
-        self.options_handler = OptionsHandler(symbol, start_date=start_date, cache_dir=self.cache_manager.base_dir)
+        self.options_handler = OptionsHandler(symbol, start_date=lstm_start_date, cache_dir=self.cache_manager.base_dir)
+        
+        print(f"🔄 DataRetriever Configuration:")
+        print(f"   📊 HMM training data: {hmm_start_date} onwards (for market state classification)")
+        print(f"   🎯 LSTM training data: {lstm_start_date} onwards (for options signal prediction)")
         
     def prepare_data(self, sequence_length=60):
-        """Prepare data for LSTM model with enhanced features"""
-        # Fetch and calculate features
-        self.fetch_data()
-        self.calculate_features()
+        """Prepare data for LSTM model with enhanced features using separate date ranges"""
+        print(f"\n📈 Phase 1: Preparing HMM training data from {self.hmm_start_date}")
+        # Fetch HMM training data (longer history for market state patterns)
+        self.hmm_data = self.fetch_data_for_period(self.hmm_start_date, 'hmm')
+        self.calculate_features_for_data(self.hmm_data)
         
-        # Calculate option features
-        self.data = self.options_handler.calculate_option_features(self.data)
+        print(f"\n🎯 Phase 2: Training HMM on market data ({len(self.hmm_data)} samples)")
+        # Train HMM on the longer historical data
+        states = self.state_classifier.find_optimal_states(self.hmm_data)
+        print(f"✅ Optimal number of market states found: {states}")
         
-        # Find optimal number of states and label the data
-        states = self.state_classifier.find_optimal_states(self.data)
-        self.data['Market_State'] = self.state_classifier.predict_states(self.data)
-        print(f"Optimal number of market states found: {states}")
+        print(f"\n📊 Phase 3: Preparing LSTM training data from {self.lstm_start_date}")
+        # Fetch LSTM training data (more recent data for options trading)
+        self.lstm_data = self.fetch_data_for_period(self.lstm_start_date, 'lstm')
+        self.calculate_features_for_data(self.lstm_data)
         
-        # Calculate option trading signals
-        self.data = self.options_handler.calculate_option_signals(self.data)
+        # Calculate option features for LSTM data
+        self.lstm_data = self.options_handler.calculate_option_features(self.lstm_data)
         
+        print(f"\n🔮 Phase 4: Applying trained HMM to LSTM data")
+        # Apply the trained HMM to the LSTM data
+        self.lstm_data['Market_State'] = self.state_classifier.predict_states(self.lstm_data)
+        
+        print(f"\n💰 Phase 5: Generating option signals for LSTM data")
+        # Calculate option trading signals for LSTM data
+        self.lstm_data = self.options_handler.calculate_option_signals(self.lstm_data)
+        
+        # Use LSTM data as the main dataset for training
+        self.data = self.lstm_data
+        
+        print(f"\n🚀 Phase 6: Preparing LSTM features ({len(self.lstm_data)} samples)")
         # Prepare feature matrix for LSTM (including all features and market states)
         feature_columns = [
             'Returns', 'Log_Returns', 'Volatility', 'High_Low_Range',
@@ -55,7 +85,7 @@ class DataRetriever:
         ]
         
         # Scale features
-        self.features = self.scaler.fit_transform(self.data[feature_columns])
+        self.features = self.scaler.fit_transform(self.lstm_data[feature_columns])
         
         # Create sequences using numpy operations for better performance
         n_samples = len(self.features) - sequence_length
@@ -67,7 +97,7 @@ class DataRetriever:
         # Fill arrays using vectorized operations
         for i in range(sequence_length, len(self.features)):
             X[i-sequence_length] = self.features[i-sequence_length:i]
-            y[i-sequence_length] = self.data['Option_Signal'].iloc[i]
+            y[i-sequence_length] = self.lstm_data['Option_Signal'].iloc[i]
         
         # Split into train and test sets (80-20 split)
         train_size = int(len(X) * 0.8)
@@ -77,82 +107,93 @@ class DataRetriever:
         X_test = X[train_size:]
         y_test = y[train_size:]
         
+        print(f"✅ Data preparation complete:")
+        print(f"   🏋️ Training samples: {len(X_train)}")
+        print(f"   🧪 Testing samples: {len(X_test)}")
+        print(f"   📊 Features per sample: {len(feature_columns)}")
+        
         return X_train, y_train, X_test, y_test
 
-    def fetch_data(self):
-        """Fetch data from Yahoo Finance with caching"""
+    def fetch_data_for_period(self, start_date: str, data_type: str = 'general'):
+        """Fetch data for a specific period with caching"""
+        cache_suffix = f'_{data_type}_data'
+        
         # Try to load from cache first
         cached_data = self.cache_manager.load_date_from_cache(
-            pd.Timestamp(self.start_date),
-            '_price_data',
+            pd.Timestamp(start_date),
+            cache_suffix,
             'stocks',
             self.symbol
         )
         
         if cached_data is not None:
-            print(f"Loading cached price data from {self.start_date}")
-            self.data = cached_data
-            return self.data
+            print(f"📋 Loading cached {data_type.upper()} data from {start_date} ({len(cached_data)} samples)")
+            return cached_data
             
-        print(f"\nFetching data from {self.start_date} onwards...")
-        self.ticker = yf.Ticker(self.symbol)
+        print(f"🌐 Fetching {data_type.upper()} data from {start_date} onwards...")
+        if self.ticker is None:
+            self.ticker = yf.Ticker(self.symbol)
         
         # Get data and ensure index is timezone-naive
-        self.data = self.ticker.history(start=self.start_date)
-        if self.data.empty:
-            raise ValueError(f"No data retrieved for {self.symbol} from {self.start_date}")
+        data = self.ticker.history(start=start_date)
+        if data.empty:
+            raise ValueError(f"No data retrieved for {self.symbol} from {start_date}")
             
-        self.data.index = self.data.index.tz_localize(None)
-        print(f"Initial data range: {self.data.index[0]} to {self.data.index[-1]}")
+        data.index = data.index.tz_localize(None)
+        print(f"📊 Initial {data_type} data range: {data.index[0]} to {data.index[-1]}")
         
         # Filter data to start from the specified date
-        start_date = pd.Timestamp(self.start_date).tz_localize(None)
-        mask = self.data.index >= start_date
-        self.data = self.data[mask].copy()
-        print(f"Filtered data range: {self.data.index[0]} to {self.data.index[-1]}")
+        start_date_ts = pd.Timestamp(start_date).tz_localize(None)
+        mask = data.index >= start_date_ts
+        data = data[mask].copy()
+        print(f"✂️ Filtered {data_type} data range: {data.index[0]} to {data.index[-1]} ({len(data)} samples)")
         
-        if self.data.empty:
-            raise ValueError(f"No data available after filtering for dates >= {self.start_date}")
+        if data.empty:
+            raise ValueError(f"No data available after filtering for dates >= {start_date}")
             
         # Cache the filtered data
         self.cache_manager.save_date_to_cache(
-            pd.Timestamp(self.start_date),
-            self.data,
-            '_price_data',
+            pd.Timestamp(start_date),
+            data,
+            cache_suffix,
             'stocks',
             self.symbol
         )
         
-        return self.data
+        return data
 
-    def calculate_features(self, window=20):
-        """Calculate technical features"""
+    def calculate_features_for_data(self, data: pd.DataFrame, window=20):
+        """Calculate technical features for a given dataset"""
         # Basic returns and volatility
-        self.data['Returns'] = self.data['Close'].pct_change()
-        self.data['Log_Returns'] = np.log(self.data['Close'] / self.data['Close'].shift(1))
+        data['Returns'] = data['Close'].pct_change()
+        data['Log_Returns'] = np.log(data['Close'] / data['Close'].shift(1))
         
         # Volatility measures
-        self.data['Volatility'] = self.data['Returns'].rolling(window=window).std()
-        self.data['High_Low_Range'] = (self.data['High'] - self.data['Low']) / self.data['Close']
+        data['Volatility'] = data['Returns'].rolling(window=window).std()
+        data['High_Low_Range'] = (data['High'] - data['Low']) / data['Close']
         
         # Trend indicators
-        self.data['SMA20'] = self.data['Close'].rolling(window=window).mean()
-        self.data['SMA50'] = self.data['Close'].rolling(window=50).mean()
-        self.data['Price_to_SMA20'] = self.data['Close'] / self.data['SMA20']
-        self.data['SMA20_to_SMA50'] = self.data['SMA20'] / self.data['SMA50']
+        data['SMA20'] = data['Close'].rolling(window=window).mean()
+        data['SMA50'] = data['Close'].rolling(window=50).mean()
+        data['Price_to_SMA20'] = data['Close'] / data['SMA20']
+        data['SMA20_to_SMA50'] = data['SMA20'] / data['SMA50']
         
         # Momentum indicators
-        self.data['RSI'] = self._calculate_rsi(self.data['Close'], window)
-        self.data['MACD'], self.data['MACD_Signal'] = self._calculate_macd(self.data['Close'])
-        self.data['MACD_Hist'] = self.data['MACD'] - self.data['MACD_Signal']
+        data['RSI'] = self._calculate_rsi(data['Close'], window)
+        data['MACD'], data['MACD_Signal'] = self._calculate_macd(data['Close'])
+        data['MACD_Hist'] = data['MACD'] - data['MACD_Signal']
         
         # Volume features
-        self.data['Volume_SMA'] = self.data['Volume'].rolling(window=window).mean()
-        self.data['Volume_Ratio'] = self.data['Volume'] / self.data['Volume_SMA']
-        self.data['OBV'] = self._calculate_obv(self.data['Close'], self.data['Volume'])
+        data['Volume_SMA'] = data['Volume'].rolling(window=window).mean()
+        data['Volume_Ratio'] = data['Volume'] / data['Volume_SMA']
+        data['OBV'] = self._calculate_obv(data['Close'], data['Volume'])
         
         # Drop NaN values
-        self.data = self.data.dropna()
+        data.dropna(inplace=True)
+
+    def fetch_data(self):
+        """Legacy method for backward compatibility - uses LSTM start date"""
+        return self.fetch_data_for_period(self.lstm_start_date, 'lstm')
 
     def _calculate_rsi(self, prices, window=14):
         """Calculate Relative Strength Index"""

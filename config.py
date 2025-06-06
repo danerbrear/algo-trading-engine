@@ -1,6 +1,6 @@
 # Model Training Parameters
 EPOCHS = 50
-BATCH_SIZE = 32
+BATCH_SIZE = 16
 VALIDATION_SPLIT = 0.2
 SEQUENCE_LENGTH = 60
 

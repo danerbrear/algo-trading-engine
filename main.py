@@ -7,9 +7,21 @@ import seaborn as sns
 from config import EPOCHS, BATCH_SIZE, SEQUENCE_LENGTH
 
 class StockPredictor:
-    def __init__(self, symbol='SPY', start_date='2024-06-01', sequence_length=SEQUENCE_LENGTH):
+    def __init__(self, symbol='SPY', hmm_start_date='2010-01-01', lstm_start_date='2023-06-01', sequence_length=SEQUENCE_LENGTH):
+        """Initialize StockPredictor with separate date ranges for HMM and LSTM
+        
+        Args:
+            symbol: Stock symbol to analyze
+            hmm_start_date: Start date for HMM training (market state classification)
+            lstm_start_date: Start date for LSTM training (options signal prediction)  
+            sequence_length: Length of sequences for LSTM
+        """
         self.sequence_length = sequence_length
-        self.data_retriever = DataRetriever(symbol=symbol, start_date=start_date)
+        self.data_retriever = DataRetriever(
+            symbol=symbol, 
+            hmm_start_date=hmm_start_date, 
+            lstm_start_date=lstm_start_date
+        )
         self.model = None
         self.X_train = None
         self.y_train = None
@@ -144,12 +156,23 @@ class StockPredictor:
         plt.show()
 
 if __name__ == "__main__":
-    # Example usage
-    predictor = StockPredictor()  # Use default start_date='2023-06-01'
+    # Example usage with separate date ranges
+    print("🚀 Starting Options Trading LSTM Model with Separate HMM/LSTM Data")
+    print("=" * 60)
+    
+    predictor = StockPredictor(
+        symbol='SPY',
+        hmm_start_date='2010-01-01',
+        lstm_start_date='2023-06-01'
+    )
+    
     predictor.prepare_data()
     
     # Train and evaluate LSTM model
+    print("\n🏋️ Training LSTM Model...")
     history = predictor.train_model()
+    
+    print("\n📊 Evaluating Model Performance...")
     results = predictor.evaluate_model()
     predictor.plot_results(results)
     
