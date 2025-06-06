@@ -87,6 +87,19 @@ class DataRetriever:
         # Scale features
         self.features = self.scaler.fit_transform(self.lstm_data[feature_columns])
         
+        # Critical: Check for NaN or infinite values that cause training to fail
+        print(f"🔍 Data validation:")
+        print(f"   NaN values in features: {np.isnan(self.features).sum()}")
+        print(f"   Infinite values in features: {np.isinf(self.features).sum()}")
+        print(f"   NaN values in labels: {self.lstm_data['Option_Signal'].isna().sum()}")
+        
+        # Clean the data - remove rows with NaN or infinite values
+        valid_mask = ~(np.isnan(self.features).any(axis=1) | np.isinf(self.features).any(axis=1))
+        self.features = self.features[valid_mask]
+        clean_lstm_data = self.lstm_data[valid_mask].copy()
+        
+        print(f"   📊 Cleaned data: {len(self.features)} samples (removed {(~valid_mask).sum()} invalid samples)")
+        
         # Create sequences using numpy operations for better performance
         n_samples = len(self.features) - sequence_length
         
@@ -97,7 +110,7 @@ class DataRetriever:
         # Fill arrays using vectorized operations
         for i in range(sequence_length, len(self.features)):
             X[i-sequence_length] = self.features[i-sequence_length:i]
-            y[i-sequence_length] = self.lstm_data['Option_Signal'].iloc[i]
+            y[i-sequence_length] = clean_lstm_data['Option_Signal'].iloc[i]
         
         # Split into train and test sets (80-20 split)
         train_size = int(len(X) * 0.8)

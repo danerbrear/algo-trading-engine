@@ -72,8 +72,8 @@ class StockPredictor:
         train_accuracy = np.mean(train_predictions == self.y_train)
         test_accuracy = np.mean(test_predictions == self.y_test)
         
-        # Define class labels
-        class_labels = ['No Position', 'Buy Call', 'Buy Put']
+        # Define class labels for the new 5-class strategy system
+        class_labels = ['Hold', 'Call Debit Spread', 'Put Debit Spread', 'Iron Condor', 'Iron Butterfly']
         
         # Get unique classes in the test set
         unique_classes = np.unique(np.concatenate([self.y_test, test_predictions]))
@@ -134,7 +134,7 @@ class StockPredictor:
         plt.title('Option Trading Signals: Predicted vs Actual')
         plt.xlabel('Time')
         plt.ylabel('Signal')
-        plt.yticks(range(3), results['class_labels'])
+        plt.yticks(range(5), results['class_labels'])
         plt.legend()
         plt.grid(True)
         plt.show()
@@ -143,7 +143,7 @@ class StockPredictor:
         plt.figure(figsize=(15, 8))
         test_probs = results['test_probs']
         
-        for i in range(3):
+        for i in range(5):
             plt.plot(time_points, test_probs[:, i], 
                     label=results['class_labels'][i], alpha=0.7)
         

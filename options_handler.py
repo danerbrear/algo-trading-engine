@@ -505,73 +505,116 @@ class OptionsHandler:
                 
         return data 
 
-    def calculate_option_signals(self, data: pd.DataFrame, holding_period: int = 5, min_return_threshold: float = 0.10) -> pd.DataFrame:
-        """Calculate trading signals based on future profitability of options trades
+    def calculate_option_signals(self, data: pd.DataFrame, holding_period: int = 5, min_return_threshold: float = 0.05) -> pd.DataFrame:
+        """Calculate trading signals based on sophisticated options strategies
+        
+        Strategy Classes:
+        0: Hold - No position
+        1: Call Debit Spread - Buy lower strike call, sell higher strike call (bullish)
+        2: Put Debit Spread - Buy higher strike put, sell lower strike put (bearish) 
+        3: Iron Condor - Sell OTM call spread + sell OTM put spread (neutral, low volatility)
+        4: Iron Butterfly - Sell ATM straddle + buy protective wings (neutral, very low volatility)
         
         Args:
-            holding_period: Number of days to hold the option (default: 5)
-            min_return_threshold: Minimum return required to generate a signal
-        
-        Returns:
-            0: No Position
-            1: Buy Call
-            2: Buy Put
+            holding_period: Number of days to hold the strategy (default: 5)
+            min_return_threshold: Minimum return required to generate a signal (default: 5%)
         """
-        print(f"Generating labels based on {holding_period}-day forward returns with {min_return_threshold:.1%} minimum threshold")
+        print(f"Generating strategy labels based on {holding_period}-day forward returns with {min_return_threshold:.1%} minimum threshold")
         
         # Initialize the signal column
-        data['Option_Signal'] = 0
+        data['Option_Signal'] = 0  # Default to Hold
         
         # Calculate returns for ATM options
         data['ATM_Call_Return'] = data['Call_Price'].pct_change(fill_method=None)
         data['ATM_Put_Return'] = data['Put_Price'].pct_change(fill_method=None)
         
-        # Calculate future returns for both calls and puts
-        data['Future_Call_Return'] = data['Call_Price'].shift(-holding_period) / data['Call_Price'] - 1
-        data['Future_Put_Return'] = data['Put_Price'].shift(-holding_period) / data['Put_Price'] - 1
+        # We'll calculate strategy returns based on simplified models
+        # In practice, you'd need full option chains with multiple strikes
+        
+        # Simplified strategy return calculations using ATM options as proxies
+        # Call Debit Spread: Long call profit - short call loss (improved calculation)
+        data['Future_Call_Debit_Return'] = (data['Call_Price'].shift(-holding_period) / data['Call_Price'] - 1) * 0.75  # Less penalty (was 0.6)
+        
+        # Put Debit Spread: Long put profit - short put loss (improved calculation)  
+        data['Future_Put_Debit_Return'] = (data['Put_Price'].shift(-holding_period) / data['Put_Price'] - 1) * 0.75  # Less penalty (was 0.6)
+        
+        # Iron Condor: Profits when price stays between strikes (balanced conditions)
+        data['Price_Change'] = abs(data['Close'].shift(-holding_period) / data['Close'] - 1)
+        data['Future_Iron_Condor_Return'] = np.where(
+            data['Price_Change'] < 0.03,  # Profits when price moves less than 3%
+            0.12,  # Moderate return when successful
+            -0.50   # Moderate loss when price moves too much
+        )
+        
+        # Iron Butterfly: Profits when price stays very close to current price (more restrictive)
+        data['Future_Iron_Butterfly_Return'] = np.where(
+            data['Price_Change'] < 0.015,  # More restrictive: less than 1.5% (was 2.5%)
+            0.20,  # Good return for tight range
+            -0.60   # Moderate loss when price moves
+        )
+        
+        # Stock return for comparison
         data['Future_Stock_Return'] = data['Close'].shift(-holding_period) / data['Close'] - 1
         
-        # Generate labels based on future profitability
-        call_signals = 0
-        put_signals = 0
-        no_signals = 0
+        # Strategy counters
+        strategy_counts = [0, 0, 0, 0, 0]  # Hold, Call Debit, Put Debit, Iron Condor, Iron Butterfly
         
-        for i in range(len(data) - holding_period):  # Exclude last holding_period rows (no future data)
-            call_return = data['Future_Call_Return'].iloc[i]
-            put_return = data['Future_Put_Return'].iloc[i]
+        # Generate labels based on best performing strategy
+        for i in range(len(data) - holding_period):  # Exclude last holding_period rows
             
-            # Skip if we don't have option price data
-            if pd.isna(call_return) or pd.isna(put_return):
+            # Get future returns for each strategy
+            call_debit_return = data['Future_Call_Debit_Return'].iloc[i]
+            put_debit_return = data['Future_Put_Debit_Return'].iloc[i]
+            iron_condor_return = data['Future_Iron_Condor_Return'].iloc[i]
+            iron_butterfly_return = data['Future_Iron_Butterfly_Return'].iloc[i]
+            
+            # Skip if we don't have option data
+            if pd.isna(call_debit_return) or pd.isna(put_debit_return):
                 continue
-                
-            # Determine the best trade based on returns
-            if call_return > min_return_threshold and call_return > put_return:
-                # Call option would be profitable and better than put
-                data.iloc[i, data.columns.get_loc('Option_Signal')] = 1  # Buy Call
-                call_signals += 1
-            elif put_return > min_return_threshold and put_return > call_return:
-                # Put option would be profitable and better than call
-                data.iloc[i, data.columns.get_loc('Option_Signal')] = 2  # Buy Put
-                put_signals += 1
-            else:
-                # Neither option meets threshold or both are unprofitable
-                data.iloc[i, data.columns.get_loc('Option_Signal')] = 0  # No Position
-                no_signals += 1
+            
+            # Find the best strategy that meets minimum threshold
+            strategy_returns = {
+                1: call_debit_return,      # Call Debit Spread
+                2: put_debit_return,       # Put Debit Spread  
+                3: iron_condor_return,     # Iron Condor
+                4: iron_butterfly_return   # Iron Butterfly
+            }
+            
+            # Find best strategy above threshold
+            best_strategy = 0  # Default to Hold
+            best_return = 0
+            
+            for strategy_id, strategy_return in strategy_returns.items():
+                if strategy_return > min_return_threshold and strategy_return > best_return:
+                    best_strategy = strategy_id
+                    best_return = strategy_return
+            
+            # Assign the best strategy
+            data.iloc[i, data.columns.get_loc('Option_Signal')] = best_strategy
+            strategy_counts[best_strategy] += 1
         
-        total_signals = call_signals + put_signals + no_signals
+        # Display strategy distribution
+        strategy_names = ['Hold', 'Call Debit Spread', 'Put Debit Spread', 'Iron Condor', 'Iron Butterfly']
+        total_signals = sum(strategy_counts)
+        
         if total_signals > 0:
-            print(f"Label distribution:")
-            print(f"  Buy Call (1): {call_signals:4d} ({call_signals/total_signals:.1%})")
-            print(f"  Buy Put (2):  {put_signals:4d} ({put_signals/total_signals:.1%})")
-            print(f"  No Position (0): {no_signals:4d} ({no_signals/total_signals:.1%})")
+            print(f"\nStrategy Distribution:")
+            for i, (name, count) in enumerate(zip(strategy_names, strategy_counts)):
+                print(f"  {i}: {name:18} {count:4d} ({count/total_signals:.1%})")
             
-            # Add some statistics about the profitability
-            profitable_calls = data[data['Option_Signal'] == 1]['Future_Call_Return']
-            profitable_puts = data[data['Option_Signal'] == 2]['Future_Put_Return']
-            
-            if len(profitable_calls) > 0:
-                print(f"  Avg Call Return: {profitable_calls.mean():.2%} (min: {profitable_calls.min():.2%}, max: {profitable_calls.max():.2%})")
-            if len(profitable_puts) > 0:
-                print(f"  Avg Put Return:  {profitable_puts.mean():.2%} (min: {profitable_puts.min():.2%}, max: {profitable_puts.max():.2%})")
+            # Show average returns for each strategy when selected
+            for strategy_id in range(1, 5):
+                strategy_mask = data['Option_Signal'] == strategy_id
+                if strategy_mask.sum() > 0:
+                    if strategy_id == 1:
+                        avg_return = data[strategy_mask]['Future_Call_Debit_Return'].mean()
+                    elif strategy_id == 2:
+                        avg_return = data[strategy_mask]['Future_Put_Debit_Return'].mean()
+                    elif strategy_id == 3:
+                        avg_return = data[strategy_mask]['Future_Iron_Condor_Return'].mean()
+                    else:  # strategy_id == 4
+                        avg_return = data[strategy_mask]['Future_Iron_Butterfly_Return'].mean()
+                    
+                    print(f"  Avg {strategy_names[strategy_id]} Return: {avg_return:.2%}")
         
         return data 

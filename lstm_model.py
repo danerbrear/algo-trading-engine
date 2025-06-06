@@ -26,7 +26,7 @@ class LSTMModel:
     def __init__(self, sequence_length, n_features):
         self.sequence_length = sequence_length
         self.n_features = n_features
-        self.n_classes = 3  # 0: No position, 1: Buy Call, 2: Buy Put
+        self.n_classes = 5  # 0: Hold, 1: Call Debit Spread, 2: Put Debit Spread, 3: Iron Condor, 4: Iron Butterfly
         self.model = self._build_model()
         
     def _build_model(self):
@@ -53,7 +53,7 @@ class LSTMModel:
             LayerNormalization(),
             Dropout(DROPOUT_RATE),
             
-            # Output layer for 3-class classification
+            # Output layer for 5-class classification
             Dense(units=self.n_classes, activation='softmax')
         ])
         
