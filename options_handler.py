@@ -84,18 +84,7 @@ class OptionsHandler:
                     'last_price': day_data.close,
                     'bid': day_data.low,  # Real bid/ask available with Advanced plan ($199/month)
                     'ask': day_data.high,  # Real bid/ask available with Advanced plan ($199/month)
-                    # Additional fields that could be calculated
                     'mid_price': (day_data.low + day_data.high) / 2,
-                    'intrinsic_value': self._calculate_intrinsic_value(
-                        float(contract.strike_price), 
-                        day_data.close, 
-                        contract.contract_type.lower()
-                    ),
-                    'time_value': day_data.close - self._calculate_intrinsic_value(
-                        float(contract.strike_price), 
-                        day_data.close, 
-                        contract.contract_type.lower()
-                    ),
                     'moneyness': day_data.close / float(contract.strike_price),
                 }
             except ValueError as e:
@@ -118,51 +107,41 @@ class OptionsHandler:
             f"Error fetching historical data for {contract.ticker}"
         )
 
-    def _calculate_intrinsic_value(self, strike: float, underlying_price: float, option_type: str) -> float:
-        """Calculate intrinsic value of an option"""
-        if option_type == 'call':
-            return max(underlying_price - strike, 0)
-        else:  # put
-            return max(strike - underlying_price, 0)
-
     def _fetch_historical_contracts_data(self, contracts: List, current_date: datetime, current_price: float) -> Dict:
-        """Fetch historical data for comprehensive multi-strike option chains needed for strategy modeling"""
+        """Fetch historical data for a list of contracts"""
         chain_data = {'calls': [], 'puts': []}
         
-        print(f"Processing {len(contracts)} contracts from API/cache")
-        
         if not contracts:
-            print("No contracts to process")
             return chain_data
-        
-        try:
-            # Step 1: Find target expiry closest to 30 days
-            target_date = current_date + timedelta(days=30)
             
-            # Get unique expiration dates from contracts
+        try:
+            # Get target expiry (closest to 30 days)
+            target_date = current_date + timedelta(days=30)
             expiry_dates = set()
+            
             for contract in contracts:
                 if hasattr(contract, 'expiration_date'):
                     expiry_dates.add(contract.expiration_date)
             
             if not expiry_dates:
-                print("No expiration dates found in contracts")
+                print(f"No expiration dates available for {current_date.date()}")
                 return chain_data
-            
-            # Convert to datetime objects and find closest to 30 days
+                
+            # Convert to datetime objects for comparison
             expiry_dates = [pd.Timestamp(exp).tz_localize(None) for exp in expiry_dates]
+            
+            # Find closest expiry to target date
             target_expiry = min(expiry_dates, key=lambda x: abs((x - target_date).days))
             target_expiry_str = target_expiry.strftime('%Y-%m-%d')
             
-            print(f"Target expiry (closest to 30 days): {target_expiry_str}")
+            print(f"Closest expiry: {target_expiry_str}")
             
-            # Step 2: Filter contracts to only the target expiry
-            target_expiry_contracts = []
-            for contract in contracts:
-                if hasattr(contract, 'expiration_date') and contract.expiration_date == target_expiry_str:
-                    target_expiry_contracts.append(contract)
-            
-            print(f"Contracts with target expiry: {len(target_expiry_contracts)}")
+            # Filter for target expiry
+            target_expiry_contracts = [
+                c for c in contracts 
+                if hasattr(c, 'expiration_date') and 
+                pd.Timestamp(c.expiration_date).tz_localize(None) == target_expiry
+            ]
             
             if not target_expiry_contracts:
                 print(f"No contracts found for target expiry {target_expiry_str}")
@@ -178,92 +157,33 @@ class OptionsHandler:
             
             print(f"Found {len(calls_sorted)} calls and {len(puts_sorted)} puts for target expiry")
             
-            # Step 4: Get comprehensive strike data for strategy modeling
-            # For accurate strategy returns, we need multiple strikes:
-            # - ATM ±0 (for straddles)
-            # - ATM ±$5, ±$10 (for debit spreads)  
-            # - OTM strikes for credit spreads (Iron Condor)
-            
-            target_strikes = [
-                current_price,           # ATM
-                current_price + 5,       # 1 strike OTM call
-                current_price + 10,      # 2 strikes OTM call  
-                current_price - 5,       # 1 strike OTM put
-                current_price - 10,      # 2 strikes OTM put
-            ]
-            
-            # Try to get calls for each target strike
-            for target_strike in target_strikes:
-                if target_strike <= current_price:  # Skip call strikes below current price
-                    continue
-                    
-                # Find closest call to target strike
-                closest_call = min(calls_sorted, key=lambda x: abs(float(x.strike_price) - target_strike), default=None)
-                if closest_call and abs(float(closest_call.strike_price) - target_strike) <= 2.5:  # Within $2.50
-                    try:
-                        call_data = self._fetch_historical_contract_data(closest_call, current_date)
-                        if call_data:
-                            print(f"✓ Got call data: ${float(closest_call.strike_price):.0f} strike @ ${call_data['last_price']:.2f}")
-                            chain_data['calls'].append(call_data)
-                    except ValueError as e:
-                        if "SKIP_DATE_UNAUTHORIZED" in str(e):
-                            print(f"🚫 Skipping {current_date.date()} - Plan doesn't include this timeframe")
-                            return chain_data
-                        raise
-            
-            # Try to get puts for each target strike
-            for target_strike in target_strikes:
-                if target_strike >= current_price:  # Skip put strikes above current price
-                    continue
-                    
-                # Find closest put to target strike
-                closest_put = min(puts_sorted, key=lambda x: abs(float(x.strike_price) - target_strike), default=None)
-                if closest_put and abs(float(closest_put.strike_price) - target_strike) <= 2.5:  # Within $2.50
-                    try:
-                        put_data = self._fetch_historical_contract_data(closest_put, current_date)
-                        if put_data:
-                            print(f"✓ Got put data: ${float(closest_put.strike_price):.0f} strike @ ${put_data['last_price']:.2f}")
-                            chain_data['puts'].append(put_data)
-                    except ValueError as e:
-                        if "SKIP_DATE_UNAUTHORIZED" in str(e):
-                            print(f"🚫 Skipping {current_date.date()} - Plan doesn't include this timeframe")
-                            return chain_data
-                        raise
-            
-            # Also try to get ATM options (both calls and puts at same strike)
-            atm_calls = [c for c in calls_sorted[:3] if abs(float(c.strike_price) - current_price) <= 2.5]
-            atm_puts = [p for p in puts_sorted[:3] if abs(float(p.strike_price) - current_price) <= 2.5]
-            
-            for atm_call in atm_calls:
+            # Process calls
+            for call in calls_sorted[:5]:  # Limit to 5 closest calls
                 try:
-                    call_data = self._fetch_historical_contract_data(atm_call, current_date)
-                    if call_data and not any(c['strike'] == call_data['strike'] for c in chain_data['calls']):
-                        print(f"✓ Got ATM call: ${float(atm_call.strike_price):.0f} strike @ ${call_data['last_price']:.2f}")
+                    call_data = self._fetch_historical_contract_data(call, current_date)
+                    if call_data:
                         chain_data['calls'].append(call_data)
-                        break
                 except ValueError as e:
                     if "SKIP_DATE_UNAUTHORIZED" in str(e):
+                        print(f"🚫 Skipping {current_date.date()} - Plan doesn't include this timeframe")
                         return chain_data
-                    continue
-            
-            for atm_put in atm_puts:
+                    raise
+                    
+            # Process puts
+            for put in puts_sorted[:5]:  # Limit to 5 closest puts
                 try:
-                    put_data = self._fetch_historical_contract_data(atm_put, current_date)
-                    if put_data and not any(p['strike'] == put_data['strike'] for p in chain_data['puts']):
-                        print(f"✓ Got ATM put: ${float(atm_put.strike_price):.0f} strike @ ${put_data['last_price']:.2f}")
+                    put_data = self._fetch_historical_contract_data(put, current_date)
+                    if put_data:
                         chain_data['puts'].append(put_data)
-                        break
                 except ValueError as e:
                     if "SKIP_DATE_UNAUTHORIZED" in str(e):
+                        print(f"🚫 Skipping {current_date.date()} - Plan doesn't include this timeframe")
                         return chain_data
-                    continue
-            
-            # Summary
-            successful_contracts = len(chain_data['calls']) + len(chain_data['puts'])
-            print(f"Successfully fetched comprehensive chain data: {len(chain_data['calls'])} calls, {len(chain_data['puts'])} puts")
-                        
+                    raise
+                    
         except Exception as e:
-            print(f"Error in _fetch_historical_contracts_data: {e}")
+            print(f"Error in _fetch_historical_contracts_data: {str(e)}")
+            print(f"Error type: {type(e)}")
             import traceback
             traceback.print_exc()
             
@@ -379,7 +299,6 @@ class OptionsHandler:
     def _get_option_chain_with_cache(self, current_date: datetime, current_price: float) -> Dict:
         """Get option chain data for a date, using cache if available"""
         try:
-            print(f"Step 1: Attempting to load from cache for {current_date.date()}")
             # Try to get from cache first
             chain_data = self.cache_manager.load_date_from_cache(
                 current_date,
@@ -389,14 +308,11 @@ class OptionsHandler:
             )
             
             if chain_data is not None:
-                print(f"Loading cached option data for {current_date.date()}")
                 return chain_data
                     
-            print(f"Step 2: No cache found, building option chain data for {current_date.date()}")
             chain_data = {'calls': [], 'puts': []}
             
             try:
-                print(f"Step 3: Getting contracts for {current_date.date()}")
                 # Get contracts (will use cache if available)
                 contracts = self._get_contracts_from_cache(current_date, current_price)
                 
@@ -404,11 +320,9 @@ class OptionsHandler:
                     print(f"No options data available for {current_date.date()}")
                     return chain_data
                 
-                print(f"Step 4: Fetching historical data for {len(contracts)} contracts")
                 # Fetch historical data for all contracts
                 chain_data = self._fetch_historical_contracts_data(contracts, current_date, current_price)
                 
-                print(f"Step 5: Caching results")
                 # Cache the data if we got any contracts
                 if chain_data['calls'] or chain_data['puts']:
                     print(f"Caching option chain data for {current_date.date()}")
@@ -421,13 +335,11 @@ class OptionsHandler:
                     )
                 
             except Exception as e:
-                print(f"Error in steps 3-5 for {current_date}: {str(e)}")
                 print(f"Error type: {type(e)}")
                 import traceback
                 traceback.print_exc()
                 
         except Exception as e:
-            print(f"Error in step 1-2 (cache loading) for {current_date}: {str(e)}")
             print(f"Error type: {type(e)}")
             import traceback
             traceback.print_exc()
@@ -573,8 +485,24 @@ class OptionsHandler:
                                          key=lambda x: abs(float(x.strike_price) - target_strike))
                     
                     if abs(float(closest_contract.strike_price) - target_strike) <= 5.0:  # Within $5
-                        # Fetch historical data for this contract
+                        # Try to fetch historical data for this contract
                         option_data = self._fetch_historical_contract_data(closest_contract, current_date)
+                        
+                        # If no data available, try alternative strikes
+                        if not option_data:
+                            print(f"⚠️ No data for {option_type} ${float(closest_contract.strike_price):.0f}, trying alternative strikes...")
+                            
+                            # Sort contracts by distance from target strike
+                            sorted_contracts = sorted(contracts, 
+                                                    key=lambda x: abs(float(x.strike_price) - target_strike))
+                            
+                            # Try up to 3 alternative strikes
+                            for alt_contract in sorted_contracts[1:4]:  # Skip the first one we already tried
+                                print(f"Trying alternative {option_type} ${float(alt_contract.strike_price):.0f}")
+                                option_data = self._fetch_historical_contract_data(alt_contract, current_date)
+                                if option_data:
+                                    print(f"✅ Found data for alternative {option_type} ${float(alt_contract.strike_price):.0f}")
+                                    break
                         
                         if option_data:
                             if strike_name == 'atm':
@@ -583,7 +511,7 @@ class OptionsHandler:
                                 additional_options[strike_name] = option_data
                             print(f"✅ Successfully fetched {option_type} ${float(closest_contract.strike_price):.0f} @ ${option_data['last_price']:.2f}")
                         else:
-                            print(f"❌ No historical data for {option_type} ${float(closest_contract.strike_price):.0f}")
+                            print(f"❌ No historical data available for any {option_type} strikes near ${target_strike:.0f}")
                     else:
                         print(f"⚠️ No suitable {option_type} found near ${target_strike:.0f} (closest: ${float(closest_contract.strike_price):.0f})")
                 else:
@@ -710,9 +638,6 @@ class OptionsHandler:
                     atm_call = option_strikes['atm_call']
                     atm_put = option_strikes['atm_put']
                     
-                    print(f"ATM Call: ${atm_call['strike']:.0f} @ ${atm_call['last_price']:.2f}")
-                    print(f"ATM Put:  ${atm_put['strike']:.0f} @ ${atm_put['last_price']:.2f}")
-                    
                     # Store ATM option features
                     data.loc[current_date, 'Call_IV'] = atm_call['implied_volatility']
                     data.loc[current_date, 'Put_IV'] = atm_put['implied_volatility']
@@ -735,21 +660,34 @@ class OptionsHandler:
                 
                 # Multi-strike options for strategy calculations (now guaranteed by API fetch)
                 if 'call_atm_plus5' in option_strikes:
-                    print(f"Call ATM+5: ${option_strikes['call_atm_plus5']['strike']:.0f} @ ${option_strikes['call_atm_plus5']['last_price']:.2f}")
                     data.loc[current_date, 'Call_ATM_Plus5_Price'] = option_strikes['call_atm_plus5']['last_price']
                 
                 if 'call_atm_plus10' in option_strikes:
-                    print(f"Call ATM+10: ${option_strikes['call_atm_plus10']['strike']:.0f} @ ${option_strikes['call_atm_plus10']['last_price']:.2f}")
                     data.loc[current_date, 'Call_ATM_Plus10_Price'] = option_strikes['call_atm_plus10']['last_price']
                 
                 if 'put_atm_minus5' in option_strikes:
-                    print(f"Put ATM-5: ${option_strikes['put_atm_minus5']['strike']:.0f} @ ${option_strikes['put_atm_minus5']['last_price']:.2f}")
                     data.loc[current_date, 'Put_ATM_Minus5_Price'] = option_strikes['put_atm_minus5']['last_price']
                 
                 if 'put_atm_minus10' in option_strikes:
-                    print(f"Put ATM-10: ${option_strikes['put_atm_minus10']['strike']:.0f} @ ${option_strikes['put_atm_minus10']['last_price']:.2f}")
                     data.loc[current_date, 'Put_ATM_Minus10_Price'] = option_strikes['put_atm_minus10']['last_price']
-                    
+                
+                # Print all strikes in a single line
+                strikes_info = []
+                if 'atm_call' in option_strikes:
+                    strikes_info.append(f"ATM Call: ${option_strikes['atm_call']['strike']:.0f} @ ${option_strikes['atm_call']['last_price']:.2f}")
+                if 'atm_put' in option_strikes:
+                    strikes_info.append(f"ATM Put: ${option_strikes['atm_put']['strike']:.0f} @ ${option_strikes['atm_put']['last_price']:.2f}")
+                if 'call_atm_plus5' in option_strikes:
+                    strikes_info.append(f"Call +5: ${option_strikes['call_atm_plus5']['strike']:.0f} @ ${option_strikes['call_atm_plus5']['last_price']:.2f}")
+                if 'call_atm_plus10' in option_strikes:
+                    strikes_info.append(f"Call +10: ${option_strikes['call_atm_plus10']['strike']:.0f} @ ${option_strikes['call_atm_plus10']['last_price']:.2f}")
+                if 'put_atm_minus5' in option_strikes:
+                    strikes_info.append(f"Put -5: ${option_strikes['put_atm_minus5']['strike']:.0f} @ ${option_strikes['put_atm_minus5']['last_price']:.2f}")
+                if 'put_atm_minus10' in option_strikes:
+                    strikes_info.append(f"Put -10: ${option_strikes['put_atm_minus10']['strike']:.0f} @ ${option_strikes['put_atm_minus10']['last_price']:.2f}")
+                
+                print(" | ".join(strikes_info))
+                
             except Exception as e:
                 print(f"Error processing {current_date}: {str(e)}")
                 continue
