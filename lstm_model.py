@@ -26,7 +26,7 @@ class LSTMModel:
     def __init__(self, sequence_length, n_features):
         self.sequence_length = sequence_length
         self.n_features = n_features
-        self.n_classes = 5  # 0: Hold, 1: Call Debit Spread, 2: Put Debit Spread, 3: Iron Condor, 4: Iron Butterfly
+        self.n_classes = 5  # 0: Hold, 1: Call Debit Spread, 2: Put Debit Spread, 3: Iron Condor, 4: Long Straddle
         self.model = self._build_model()
         
     def _build_model(self):

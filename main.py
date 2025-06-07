@@ -73,7 +73,7 @@ class StockPredictor:
         test_accuracy = np.mean(test_predictions == self.y_test)
         
         # Define class labels for the new 5-class strategy system
-        class_labels = ['Hold', 'Call Debit Spread', 'Put Debit Spread', 'Iron Condor', 'Iron Butterfly']
+        class_labels = ['Hold', 'Call Debit Spread', 'Put Debit Spread', 'Iron Condor', 'Long Straddle']
         
         # Get unique classes in the test set
         unique_classes = np.unique(np.concatenate([self.y_test, test_predictions]))
