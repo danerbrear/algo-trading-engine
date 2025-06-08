@@ -44,37 +44,38 @@ def create_venv():
             print("Packages updated successfully!")
 
 def setup_env_file():
-    """Create or update the .env file with required API keys"""
+    """Create or update the .env file with required API keys and model save path"""
     env_path = Path('.env')
+    default_model_path = 'Trained_Models'
     
     if not env_path.exists():
         print("\nSetting up environment variables...")
         polygon_key = input("Enter your Polygon.io API key: ").strip()
-        
+        model_path = input(f"Enter model save base path (press Enter for default: {default_model_path}): ").strip()
+        if not model_path:
+            model_path = default_model_path
         with open(env_path, 'w') as f:
             f.write(f"POLYGON_API_KEY={polygon_key}\n")
-        
+            f.write(f"MODEL_SAVE_BASE_PATH={model_path}\n")
         print(".env file created successfully!")
     else:
         print("\n.env file already exists")
-        update = input("Would you like to update the API keys? (y/n): ").strip().lower()
-        
+        update = input("Would you like to update the API keys or model path? (y/n): ").strip().lower()
         if update == 'y':
             # Read existing env file
             with open(env_path, 'r') as f:
                 env_vars = dict(line.strip().split('=', 1) for line in f if line.strip() and not line.startswith('#'))
-            
             # Update API keys
             polygon_key = input("Enter your Polygon.io API key (press Enter to keep existing): ").strip()
-            
             if polygon_key:
                 env_vars['POLYGON_API_KEY'] = polygon_key
-            
+            model_path = input(f"Enter model save base path (press Enter to keep existing: {env_vars.get('MODEL_SAVE_BASE_PATH', default_model_path)}): ").strip()
+            if model_path:
+                env_vars['MODEL_SAVE_BASE_PATH'] = model_path
             # Write back to env file
             with open(env_path, 'w') as f:
                 for key, value in env_vars.items():
                     f.write(f"{key}={value}\n")
-            
             print(".env file updated successfully!")
 
 def main():

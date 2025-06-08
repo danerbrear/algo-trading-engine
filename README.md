@@ -129,7 +129,22 @@ handler = OptionsHandler(symbol='SPY', api_key='YOUR_KEY')
 python main.py
 ```
 
-2. For development or testing specific components:
+2. **Saving the Trained Model:**
+
+You can save the trained model after training by using the `-s` or `--save` flag:
+```bash
+python main.py --save
+```
+- The model will be saved in Keras format (`.keras`) to the directory specified by the `MODEL_SAVE_BASE_PATH` variable in your `.env` file (default: `Trained_Models`).
+- The folder structure will be:
+  - `<MODEL_SAVE_BASE_PATH>/<mode>/<timestamp>/model.keras` (timestamped)
+  - `<MODEL_SAVE_BASE_PATH>/<mode>/latest/model.keras` (latest, always overwritten)
+- You can specify a custom mode label for the subfolder using `--mode`:
+```bash
+python main.py --save --mode my_experiment
+```
+
+3. For development or testing specific components:
 ```python
 from options_handler import OptionsHandler
 import pandas as pd

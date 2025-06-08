@@ -5,6 +5,13 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import classification_report, confusion_matrix
 import seaborn as sns
 from config import EPOCHS, BATCH_SIZE, SEQUENCE_LENGTH
+import argparse
+import os
+from datetime import datetime
+from dotenv import load_dotenv
+
+# Load environment variables from .env
+load_dotenv()
 
 class StockPredictor:
     def __init__(self, symbol='SPY', hmm_start_date='2010-01-01', lstm_start_date='2023-06-01', sequence_length=SEQUENCE_LENGTH):
@@ -157,10 +164,29 @@ class StockPredictor:
         plt.tight_layout()
         plt.show()
 
+def save_model(model, mode='lstm_poc'):
+    # Only use the environment variable, default to a generic relative path if not set
+    base_dir = os.environ.get('MODEL_SAVE_BASE_PATH', 'Trained_Models')
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    timestamp_dir = os.path.join(base_dir, mode, timestamp)
+    latest_dir = os.path.join(base_dir, mode, 'latest')
+    os.makedirs(timestamp_dir, exist_ok=True)
+    os.makedirs(latest_dir, exist_ok=True)
+    model_path = os.path.join(timestamp_dir, 'model.keras')
+    latest_path = os.path.join(latest_dir, 'model.keras')
+    model.save(model_path)
+    model.save(latest_path)
+    print(f"✅ Model saved to {model_path} and {latest_path}")
+
 if __name__ == "__main__":
     # Example usage with separate date ranges
     print("🚀 Starting Options Trading LSTM Model with Separate HMM/LSTM Data")
     print("=" * 60)
+    
+    parser = argparse.ArgumentParser(description="Options Trading LSTM Model")
+    parser.add_argument('-s', '--save', action='store_true', help='Save the trained model')
+    parser.add_argument('--mode', type=str, default='lstm_poc', help='Mode label for model saving (e.g., lstm_poc)')
+    args = parser.parse_args()
     
     predictor = StockPredictor(
         symbol='SPY',
@@ -173,6 +199,10 @@ if __name__ == "__main__":
     # Train and evaluate LSTM model
     print("\n🏋️ Training LSTM Model...")
     history = predictor.train_model()
+    
+    # Save the model if requested
+    if args.save:
+        save_model(predictor.model.model, mode=args.mode)
     
     print("\n📊 Evaluating Model Performance...")
     results = predictor.evaluate_model()
