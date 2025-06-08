@@ -13,6 +13,8 @@ from dotenv import load_dotenv
 import requests
 from cache_manager import CacheManager
 from api_retry_handler import APIRetryHandler
+from progress_tracker import ProgressTracker
+from tqdm import tqdm
 
 # Load environment variables from .env file
 load_dotenv()
@@ -598,39 +600,55 @@ class OptionsHandler:
 
     def calculate_option_features(self, data: pd.DataFrame) -> pd.DataFrame:
         """Calculate option-related features with multi-strike data for strategy modeling"""
-        print("\nProcessing options data with comprehensive multi-strike collection...")
+        # Initialize progress tracker first
+        progress = ProgressTracker(
+            start_date=data.index[0],
+            end_date=data.index[-1],
+            desc="Processing options data"
+        )
+        
+        progress.write("\nProcessing options data with comprehensive multi-strike collection...")
         
         for current_date in data.index:
             # Ensure current_date is naive datetime for comparison
             current_date_naive = pd.Timestamp(current_date).tz_localize(None)
             # Skip dates before start_date if specified
             if self.start_date and current_date_naive < self.start_date:
+                progress.update(current_date=current_date_naive)
                 continue
                 
             try:
                 # Get current price
                 current_price = data.loc[current_date, 'Close']
-                print(f"\nProcessing {current_date} (Close: {current_price:.2f})")
                 
                 # Get option chain with multiple strikes
                 chain_data = self._get_option_chain_with_cache(current_date, current_price)
-                print(f"Retrieved {len(chain_data.get('calls', []))} calls and {len(chain_data.get('puts', []))} puts")
+                
+                # Update progress with current status
+                progress.update(
+                    current_date=current_date_naive,
+                    additional_info={
+                        'calls': len(chain_data.get('calls', [])),
+                        'puts': len(chain_data.get('puts', [])),
+                        'api_calls': progress.successful_api_calls
+                    }
+                )
                 
                 if not chain_data['calls'] or not chain_data['puts']:
-                    print("Insufficient option chain data")
+                    progress.write("\nInsufficient option chain data")
                     continue
                 
                 # Get target expiry
                 target_expiry = self._get_target_expiry(current_date, chain_data)
                 if not target_expiry:
-                    print("Could not get target expiry")
+                    progress.write("\nCould not get target expiry")
                     continue
                 
                 # Get comprehensive option strikes for strategy modeling (with API fetch for missing strikes)
                 option_strikes = self._get_strategy_option_strikes(current_price, chain_data, target_expiry, current_date)
                 
                 if not option_strikes:
-                    print("Could not get sufficient option strikes for strategies")
+                    progress.write("\nCould not get sufficient option strikes for strategies")
                     continue
                 
                 # ATM Options (for features and straddle)
@@ -686,11 +704,16 @@ class OptionsHandler:
                 if 'put_atm_minus10' in option_strikes:
                     strikes_info.append(f"Put -10: ${option_strikes['put_atm_minus10']['strike']:.0f} @ ${option_strikes['put_atm_minus10']['last_price']:.2f}")
                 
-                print(" | ".join(strikes_info))
+                progress.write(" | ".join(strikes_info) + "\n")
+                
+                # Increment successful API calls counter
+                progress.update(increment_operations=5)  # 5 API calls per date
                 
             except Exception as e:
-                print(f"Error processing {current_date}: {str(e)}")
-                continue
+                progress.write(f"\nError processing {current_date}: {str(e)}")
+        
+        # Close progress tracker and print final summary
+        progress.close()
                 
         return data
 

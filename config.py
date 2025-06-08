@@ -1,7 +1,7 @@
 # Model Training Parameters
 EPOCHS = 50
-BATCH_SIZE = 12
-VALIDATION_SPLIT = 0.18
+BATCH_SIZE = 16
+VALIDATION_SPLIT = 0.20
 SEQUENCE_LENGTH = 60
 
 # Model Architecture Parameters

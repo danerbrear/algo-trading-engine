@@ -115,6 +115,8 @@ class StockPredictor:
         plt.title('Confusion Matrix of Option Trading Signals')
         plt.xlabel('Predicted Signal')
         plt.ylabel('True Signal')
+        plt.yticks(range(len(results['class_labels'])), results['class_labels'])
+        plt.xticks(range(len(results['class_labels'])), results['class_labels'], rotation=45)
         plt.show()
         
         # Plot signal distribution over time
@@ -134,7 +136,7 @@ class StockPredictor:
         plt.title('Option Trading Signals: Predicted vs Actual')
         plt.xlabel('Time')
         plt.ylabel('Signal')
-        plt.yticks(range(5), results['class_labels'])
+        plt.yticks(range(len(results['class_labels'])), results['class_labels'])
         plt.legend()
         plt.grid(True)
         plt.show()
@@ -143,7 +145,7 @@ class StockPredictor:
         plt.figure(figsize=(15, 8))
         test_probs = results['test_probs']
         
-        for i in range(5):
+        for i in range(len(results['class_labels'])):
             plt.plot(time_points, test_probs[:, i], 
                     label=results['class_labels'][i], alpha=0.7)
         
