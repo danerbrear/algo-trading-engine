@@ -15,13 +15,15 @@ from options_handler import OptionsHandler
 from cache_manager import CacheManager
 
 class DataRetriever:
-    def __init__(self, symbol='SPY', hmm_start_date='2010-01-01', lstm_start_date='2020-01-01'):
+    def __init__(self, symbol='SPY', hmm_start_date='2010-01-01', lstm_start_date='2020-01-01', use_free_tier=False, quiet_mode=True):
         """Initialize DataRetriever with separate date ranges for HMM and LSTM
         
         Args:
             symbol: Stock symbol to analyze
             hmm_start_date: Start date for HMM training data (market state classification)
             lstm_start_date: Start date for LSTM training data (options signal prediction)
+            use_free_tier: Whether to use free tier rate limiting (13 second timeout)
+            quiet_mode: Whether to suppress detailed output for cleaner progress display
         """
         self.symbol = symbol
         self.hmm_start_date = hmm_start_date
@@ -35,7 +37,7 @@ class DataRetriever:
         self.ticker = None
         self.state_classifier = MarketStateClassifier()
         self.cache_manager = CacheManager()
-        self.options_handler = OptionsHandler(symbol, start_date=lstm_start_date, cache_dir=self.cache_manager.base_dir)
+        self.options_handler = OptionsHandler(symbol, start_date=lstm_start_date, cache_dir=self.cache_manager.base_dir, use_free_tier=use_free_tier, quiet_mode=quiet_mode)
         
         print(f"🔄 DataRetriever Configuration:")
         print(f"   📊 HMM training data: {hmm_start_date} onwards (for market state classification)")

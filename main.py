@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class StockPredictor:
-    def __init__(self, symbol='SPY', hmm_start_date='2010-01-01', lstm_start_date='2023-06-01', sequence_length=SEQUENCE_LENGTH):
+    def __init__(self, symbol='SPY', hmm_start_date='2010-01-01', lstm_start_date='2021-06-01', sequence_length=SEQUENCE_LENGTH, use_free_tier=False, quiet_mode=True):
         """Initialize StockPredictor with separate date ranges for HMM and LSTM
         
         Args:
@@ -22,12 +22,16 @@ class StockPredictor:
             hmm_start_date: Start date for HMM training (market state classification)
             lstm_start_date: Start date for LSTM training (options signal prediction)  
             sequence_length: Length of sequences for LSTM
+            use_free_tier: Whether to use free tier rate limiting (13 second timeout)
+            quiet_mode: Whether to suppress detailed output for cleaner progress display
         """
         self.sequence_length = sequence_length
         self.data_retriever = DataRetriever(
             symbol=symbol, 
             hmm_start_date=hmm_start_date, 
-            lstm_start_date=lstm_start_date
+            lstm_start_date=lstm_start_date,
+            use_free_tier=use_free_tier,
+            quiet_mode=quiet_mode
         )
         self.model = None
         self.X_train = None
@@ -186,12 +190,20 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Options Trading LSTM Model")
     parser.add_argument('-s', '--save', action='store_true', help='Save the trained model')
     parser.add_argument('--mode', type=str, default='lstm_poc', help='Mode label for model saving (e.g., lstm_poc)')
+    parser.add_argument('-f', '--free', action='store_true', help='Use free tier rate limiting (13 second timeout between API requests)')
+    parser.add_argument('-q', '--quiet', action='store_true', help='Suppress detailed output during processing for cleaner progress display (default)')
+    parser.add_argument('-v', '--verbose', action='store_true', help='Show detailed output during processing (opposite of --quiet)')
     args = parser.parse_args()
+    
+    # Determine quiet mode: default is True (quiet) unless --verbose is specified
+    quiet_mode = not args.verbose  # If verbose is True, quiet_mode becomes False
     
     predictor = StockPredictor(
         symbol='SPY',
         hmm_start_date='2010-01-01',
-        lstm_start_date='2023-06-01'
+        lstm_start_date='2021-06-01',
+        use_free_tier=args.free,
+        quiet_mode=quiet_mode
     )
     
     predictor.prepare_data()

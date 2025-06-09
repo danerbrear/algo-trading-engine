@@ -6,13 +6,15 @@ from typing import Callable, Any
 class APIRetryHandler:
     """Handles API retries and rate limiting for Polygon.io requests"""
     
-    def __init__(self, rate_limit_delay: int = 13):
+    def __init__(self, rate_limit_delay: int = 13, use_rate_limit: bool = True):
         """Initialize the retry handler
         
         Args:
             rate_limit_delay: Delay in seconds between API calls for rate limiting
+            use_rate_limit: Whether to apply rate limiting delays
         """
         self.rate_limit_delay = rate_limit_delay
+        self.use_rate_limit = use_rate_limit
     
     def fetch_with_retry(self, fetch_func: Callable[[], Any], error_msg: str, max_retries: int = 3, retry_delay: int = 60) -> Any:
         """Generic retry mechanism for API calls that may hit rate limits
@@ -31,7 +33,8 @@ class APIRetryHandler:
         """
         # Rate limiting for free tier: 5 calls per minute = 12 seconds between calls
         # Adding 13 seconds to be safe and stay under the limit
-        time.sleep(self.rate_limit_delay)
+        if self.use_rate_limit:
+            time.sleep(self.rate_limit_delay)
         
         for attempt in range(max_retries):
             if attempt > 0:

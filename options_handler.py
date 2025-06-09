@@ -13,31 +13,34 @@ from dotenv import load_dotenv
 import requests
 from cache_manager import CacheManager
 from api_retry_handler import APIRetryHandler
-from progress_tracker import ProgressTracker
+from progress_tracker import ProgressTracker, set_global_progress_tracker, progress_print, is_quiet_mode
 from tqdm import tqdm
 
 # Load environment variables from .env file
 load_dotenv()
 
 class OptionsHandler:
-    def __init__(self, symbol: str, api_key: Optional[str] = None, cache_dir: str = 'data_cache', start_date: str = None):
+    def __init__(self, symbol: str, api_key: Optional[str] = None, cache_dir: str = 'data_cache', start_date: str = None, use_free_tier: bool = False, quiet_mode: bool = True):
         """Initialize the OptionsHandler with a symbol and optional Polygon.io API key"""
         self.symbol = symbol
         self.api_key = api_key or os.getenv('POLYGON_API_KEY')
+        self.quiet_mode = quiet_mode
         
         if not self.api_key:
             raise ValueError("Polygon.io API key is required.")
             
         self.cache_manager = CacheManager(cache_dir)
         self.client = RESTClient(self.api_key)
-        self.retry_handler = APIRetryHandler()
+        self.retry_handler = APIRetryHandler(use_rate_limit=use_free_tier)
         # Convert start_date to naive datetime for consistent comparison
         self.start_date = pd.Timestamp(start_date).tz_localize(None) if start_date else None
         
     def _fetch_historical_contract_data(self, contract, current_date: datetime) -> Optional[Dict]:
         """Fetch historical data for a specific contract with retries"""
         def fetch_func():
-            print(f"Fetching historical data for {contract.ticker}")
+            # Show detailed messages only when not in quiet mode
+            if not is_quiet_mode():
+                print(f"Fetching historical data for {contract.ticker}")
             try:
                 aggs_response = self.client.get_aggs(
                     ticker=contract.ticker,
@@ -55,16 +58,17 @@ class OptionsHandler:
                         aggs = list(aggs_response)
                     except Exception as e:
                         error_str = str(e)
-                        print(f"Error converting generator to list for {contract.ticker}: {error_str}")
+                        progress_print(f"Error converting generator to list for {contract.ticker}: {error_str}")
                         
                         # Check for authorization errors that indicate plan limitations
                         if "NOT_AUTHORIZED" in error_str or "doesn't include this data timeframe" in error_str:
-                            print(f"⚠️ Authorization error for {current_date.date()}: Plan doesn't cover this timeframe")
+                            progress_print(f"⚠️ Authorization error for {current_date.date()}: Plan doesn't cover this timeframe")
                             raise ValueError("SKIP_DATE_UNAUTHORIZED")
                         return None
                         
                 if not aggs:
-                    print(f"No aggregate data available for {contract.ticker}")
+                    if not is_quiet_mode():
+                        print(f"No aggregate data available for {contract.ticker}")
                     return None
                     
                 day_data = aggs[0]
@@ -207,7 +211,7 @@ class OptionsHandler:
                 return contracts
                     
             # If not in cache, fetch from API with retries
-            print(f"Fetching contracts for {current_date.date()}")
+            progress_print(f"Fetching contracts for {current_date.date()}")
             
             def fetch_func():
                 try:                    
@@ -220,7 +224,7 @@ class OptionsHandler:
                     min_expiry = current_date + timedelta(days=24)  # Minimum 24 days out (closer to 30-day target)
                     max_expiry = current_date + timedelta(days=36)  # Maximum 36 days out
                     
-                    print(f"Filtering contracts: strikes ${min_strike:.0f}-${max_strike:.0f}, expiry {min_expiry.strftime('%Y-%m-%d')} to {max_expiry.strftime('%Y-%m-%d')} (targeting ~30 days)")
+                    progress_print(f"Filtering contracts: strikes ${min_strike:.0f}-${max_strike:.0f}, expiry {min_expiry.strftime('%Y-%m-%d')} to {max_expiry.strftime('%Y-%m-%d')} (targeting ~30 days)")
                     
                     contracts_response = self.client.list_options_contracts(
                         underlying_ticker=self.symbol,
@@ -247,16 +251,17 @@ class OptionsHandler:
                                 # Check if we've reached a page boundary (every 250 items)
                                 if len(contracts) % 200 == 0:
                                     page_count += 1
-                                    print(f"Completed page {page_count}, got {len(contracts)} contracts so far")
+                                    progress_print(f"Completed page {page_count}, got {len(contracts)} contracts so far")
                                     
                                     # Stop if we've reached max pages to avoid rate limits
                                     if page_count >= max_pages:
-                                        print(f"Reached max pages ({max_pages}), stopping to avoid rate limits")
+                                        progress_print(f"Reached max pages ({max_pages}), stopping to avoid rate limits")
                                         break
                                     
                                     # Rate limit between pages
-                                    print("Rate limiting: waiting 13 seconds between paginated requests")
-                                    time.sleep(13)
+                                    if self.retry_handler.use_rate_limit:
+                                        progress_print("Rate limiting: waiting 13 seconds between paginated requests")
+                                        time.sleep(13)
                                     
                         except Exception as e:
                             print(f"Error iterating through contracts: {str(e)}")
@@ -459,7 +464,7 @@ class OptionsHandler:
         
         # Fetch missing strikes from Polygon API and update cache
         if missing_strikes:
-            print(f"🔄 Fetching {len(missing_strikes)} missing option strikes from Polygon API...")
+            progress_print(f"🔄 Fetching {len(missing_strikes)} missing option strikes from Polygon API...")
             additional_options = self._fetch_missing_strikes(missing_strikes, expiry, current_date, current_price)
             
             # Add fetched options to our results
@@ -476,7 +481,7 @@ class OptionsHandler:
         
         for strike_name, target_strike, option_type in missing_strikes:
             try:
-                print(f"🌐 Fetching {option_type} strike ${target_strike:.0f} for {strike_name}")
+                progress_print(f"🌐 Fetching {option_type} strike ${target_strike:.0f} for {strike_name}")
                 
                 # Find contracts close to target strike
                 contracts = self._fetch_contracts_for_strike(target_strike, expiry, option_type, current_date, current_price)
@@ -492,7 +497,7 @@ class OptionsHandler:
                         
                         # If no data available, try alternative strikes
                         if not option_data:
-                            print(f"⚠️ No data for {option_type} ${float(closest_contract.strike_price):.0f}, trying alternative strikes...")
+                            progress_print(f"⚠️ No data for {option_type} ${float(closest_contract.strike_price):.0f}, trying alternative strikes...")
                             
                             # Sort contracts by distance from target strike
                             sorted_contracts = sorted(contracts, 
@@ -500,10 +505,10 @@ class OptionsHandler:
                             
                             # Try up to 3 alternative strikes
                             for alt_contract in sorted_contracts[1:4]:  # Skip the first one we already tried
-                                print(f"Trying alternative {option_type} ${float(alt_contract.strike_price):.0f}")
+                                progress_print(f"Trying alternative {option_type} ${float(alt_contract.strike_price):.0f}")
                                 option_data = self._fetch_historical_contract_data(alt_contract, current_date)
                                 if option_data:
-                                    print(f"✅ Found data for alternative {option_type} ${float(alt_contract.strike_price):.0f}")
+                                    progress_print(f"✅ Found data for alternative {option_type} ${float(alt_contract.strike_price):.0f}")
                                     break
                         
                         if option_data:
@@ -511,16 +516,16 @@ class OptionsHandler:
                                 additional_options[f'atm_{option_type}'] = option_data
                             else:
                                 additional_options[strike_name] = option_data
-                            print(f"✅ Successfully fetched {option_type} ${float(closest_contract.strike_price):.0f} @ ${option_data['last_price']:.2f}")
+                            progress_print(f"✅ Successfully fetched {option_type} ${float(closest_contract.strike_price):.0f} @ ${option_data['last_price']:.2f}")
                         else:
-                            print(f"❌ No historical data available for any {option_type} strikes near ${target_strike:.0f}")
+                            progress_print(f"❌ No historical data available for any {option_type} strikes near ${target_strike:.0f}")
                     else:
-                        print(f"⚠️ No suitable {option_type} found near ${target_strike:.0f} (closest: ${float(closest_contract.strike_price):.0f})")
+                        progress_print(f"⚠️ No suitable {option_type} found near ${target_strike:.0f} (closest: ${float(closest_contract.strike_price):.0f})")
                 else:
-                    print(f"❌ No contracts found for {option_type} ${target_strike:.0f}")
+                    progress_print(f"❌ No contracts found for {option_type} ${target_strike:.0f}")
                     
             except Exception as e:
-                print(f"❌ Error fetching {option_type} ${target_strike:.0f}: {str(e)}")
+                progress_print(f"❌ Error fetching {option_type} ${target_strike:.0f}: {str(e)}")
                 continue
         
         return additional_options
@@ -600,14 +605,20 @@ class OptionsHandler:
 
     def calculate_option_features(self, data: pd.DataFrame) -> pd.DataFrame:
         """Calculate option-related features with multi-strike data for strategy modeling"""
-        # Initialize progress tracker first
+        # Initialize progress tracker with user-specified quiet mode
         progress = ProgressTracker(
             start_date=data.index[0],
             end_date=data.index[-1],
-            desc="Processing options data"
+            desc="Processing options data",
+            quiet_mode=self.quiet_mode
         )
         
-        progress.write("\nProcessing options data with comprehensive multi-strike collection...")
+        # Set as global progress tracker so other methods can use it
+        set_global_progress_tracker(progress)
+        
+        print("\n🔄 Processing options data with comprehensive multi-strike collection...")
+        if self.quiet_mode:
+            print("⚠️  Detailed logging suppressed for cleaner progress display. Check final summary for results.\n")
         
         for current_date in data.index:
             # Ensure current_date is naive datetime for comparison
@@ -624,7 +635,7 @@ class OptionsHandler:
                 # Get option chain with multiple strikes
                 chain_data = self._get_option_chain_with_cache(current_date, current_price)
                 
-                # Update progress with current status
+                # Update progress with current status (before processing to show early)
                 progress.update(
                     current_date=current_date_naive,
                     additional_info={
@@ -635,20 +646,21 @@ class OptionsHandler:
                 )
                 
                 if not chain_data['calls'] or not chain_data['puts']:
-                    progress.write("\nInsufficient option chain data")
+                    # Just continue silently in quiet mode, show brief message in postfix
+                    progress.update(summary_info="No options data")
                     continue
                 
                 # Get target expiry
                 target_expiry = self._get_target_expiry(current_date, chain_data)
                 if not target_expiry:
-                    progress.write("\nCould not get target expiry")
+                    progress.update(summary_info="No target expiry")
                     continue
                 
                 # Get comprehensive option strikes for strategy modeling (with API fetch for missing strikes)
                 option_strikes = self._get_strategy_option_strikes(current_price, chain_data, target_expiry, current_date)
                 
                 if not option_strikes:
-                    progress.write("\nCould not get sufficient option strikes for strategies")
+                    progress.update(summary_info="No option strikes")
                     continue
                 
                 # ATM Options (for features and straddle)
@@ -689,31 +701,28 @@ class OptionsHandler:
                 if 'put_atm_minus10' in option_strikes:
                     data.loc[current_date, 'Put_ATM_Minus10_Price'] = option_strikes['put_atm_minus10']['last_price']
                 
-                # Print all strikes in a single line
-                strikes_info = []
-                if 'atm_call' in option_strikes:
-                    strikes_info.append(f"ATM Call: ${option_strikes['atm_call']['strike']:.0f} @ ${option_strikes['atm_call']['last_price']:.2f}")
-                if 'atm_put' in option_strikes:
-                    strikes_info.append(f"ATM Put: ${option_strikes['atm_put']['strike']:.0f} @ ${option_strikes['atm_put']['last_price']:.2f}")
-                if 'call_atm_plus5' in option_strikes:
-                    strikes_info.append(f"Call +5: ${option_strikes['call_atm_plus5']['strike']:.0f} @ ${option_strikes['call_atm_plus5']['last_price']:.2f}")
-                if 'call_atm_plus10' in option_strikes:
-                    strikes_info.append(f"Call +10: ${option_strikes['call_atm_plus10']['strike']:.0f} @ ${option_strikes['call_atm_plus10']['last_price']:.2f}")
-                if 'put_atm_minus5' in option_strikes:
-                    strikes_info.append(f"Put -5: ${option_strikes['put_atm_minus5']['strike']:.0f} @ ${option_strikes['put_atm_minus5']['last_price']:.2f}")
-                if 'put_atm_minus10' in option_strikes:
-                    strikes_info.append(f"Put -10: ${option_strikes['put_atm_minus10']['strike']:.0f} @ ${option_strikes['put_atm_minus10']['last_price']:.2f}")
+                # Create compact summary for progress bar postfix
+                strike_summary = ""
+                if 'atm_call' in option_strikes and 'atm_put' in option_strikes:
+                    call_price = option_strikes['atm_call']['last_price']
+                    put_price = option_strikes['atm_put']['last_price']
+                    strike = option_strikes['atm_call']['strike']
+                    strike_summary = f"ATM ${strike:.0f}: C${call_price:.2f}/P${put_price:.2f}"
                 
-                progress.write(" | ".join(strikes_info) + "\n")
-                
-                # Increment successful API calls counter
-                progress.update(increment_operations=5)  # 5 API calls per date
+                # Final update with strike summary and API call count
+                progress.update(
+                    increment_operations=5,  # 5 API calls per date
+                    summary_info=strike_summary
+                )
                 
             except Exception as e:
                 progress.write(f"\nError processing {current_date}: {str(e)}")
         
         # Close progress tracker and print final summary
         progress.close()
+        
+        # Clear the global progress tracker
+        set_global_progress_tracker(None)
                 
         return data
 

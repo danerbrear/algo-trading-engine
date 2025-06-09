@@ -129,7 +129,30 @@ handler = OptionsHandler(symbol='SPY', api_key='YOUR_KEY')
 python main.py
 ```
 
-2. **Saving the Trained Model:**
+2. **Free Tier Rate Limiting:**
+
+If you're using a free Polygon.io API account, use the `-f` or `--free` flag to enable 13-second delays between API requests to stay within rate limits:
+```bash
+python main.py --free
+```
+This prevents hitting the free tier limit of 5 API calls per minute. Without this flag, the system will make requests without delays (suitable for paid API tiers).
+
+3. **Output Verbosity Control:**
+
+By default, the system runs in quiet mode with a clean progress bar. Use the `-v` or `--verbose` flag to show detailed logging:
+```bash
+# Default: clean progress bar (quiet mode)
+python main.py
+
+# Detailed logging for debugging
+python main.py --verbose
+
+# Explicitly enable quiet mode (same as default)
+python main.py --quiet
+```
+In quiet mode (default), detailed API call messages are suppressed and only a clean progress bar with essential information is displayed. Use `--verbose` for full logging when debugging.
+
+4. **Saving the Trained Model:**
 
 You can save the trained model after training by using the `-s` or `--save` flag:
 ```bash
@@ -144,7 +167,31 @@ python main.py --save
 python main.py --save --mode my_experiment
 ```
 
-3. For development or testing specific components:
+- You can combine flags. For example, to use free tier rate limiting, quiet mode, and save the model:
+```bash
+python main.py --free --quiet --save
+```
+
+5. **Common Usage Examples:**
+
+```bash
+# Basic usage (clean progress bar by default)
+python main.py
+
+# Detailed logging for debugging
+python main.py --verbose
+
+# Free tier with clean progress (default)
+python main.py --free
+
+# Production run with all options
+python main.py --free --save --mode production
+
+# Debug mode with full logging
+python main.py --verbose --free --save
+```
+
+6. For development or testing specific components:
 ```python
 from options_handler import OptionsHandler
 import pandas as pd
@@ -214,7 +261,7 @@ To optimize API usage and performance:
 
 2. Options Data Dependency
    - Requires Polygon.io API access
-   - API rate limits apply (consider paid tier for production)
+   - API rate limits apply: use `--free` flag for free tier (5 calls/minute) or upgrade to paid tier for faster processing
    - Some historical dates may have incomplete data
 
 3. Computational Requirements
