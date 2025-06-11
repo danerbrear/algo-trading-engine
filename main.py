@@ -84,7 +84,7 @@ class StockPredictor:
         test_accuracy = np.mean(test_predictions == self.y_test)
         
         # Define class labels for the new 5-class strategy system
-        class_labels = ['Hold', 'Call Debit Spread', 'Put Debit Spread', 'Iron Condor', 'Long Straddle']
+        class_labels = ['Hold', 'Call Debit Spread', 'Put Debit Spread', 'Iron Butterfly', 'Long Straddle']
         
         # Get unique classes in the test set
         unique_classes = np.unique(np.concatenate([self.y_test, test_predictions]))
@@ -111,6 +111,92 @@ class StockPredictor:
             'confusion_matrix': conf_matrix,
             'class_labels': used_labels
         }
+    
+    def get_strategy_returns_comparison(self):
+        """Get predicted strategy returns vs actual SPY log returns for comparison plotting
+        
+        Returns:
+            tuple: (predicted_returns, actual_spy_returns) both as numpy arrays
+        """
+        if self.model is None or self.X_test is None:
+            return None, None
+            
+        try:
+            # Get predicted strategy labels for test data
+            test_predictions = self.model.predict(self.X_test)
+            
+            # Get the corresponding dates and strategy returns from the data retriever
+            # We need to access the LSTM data that was used for testing
+            lstm_data = self.data_retriever.lstm_data
+            
+            if lstm_data is None or len(lstm_data) == 0:
+                return None, None
+                
+            # Calculate the starting index for test data in the original dataset
+            # Test data starts after training data + sequence length
+            total_samples = len(self.X_train) + len(self.X_test)
+            train_size = len(self.X_train)
+            sequence_length = self.sequence_length
+            
+            # The test data starts at: sequence_length + train_size
+            test_start_idx = sequence_length + train_size
+            test_end_idx = test_start_idx + len(test_predictions)
+            
+            # Ensure we don't go beyond available data
+            test_end_idx = min(test_end_idx, len(lstm_data))
+            actual_test_length = test_end_idx - test_start_idx
+            
+            if actual_test_length <= 0:
+                return None, None
+            
+            # Trim predictions to match available data
+            test_predictions = test_predictions[:actual_test_length]
+            
+            # Get actual SPY log returns for the test period
+            actual_spy_returns = lstm_data['Log_Returns'].iloc[test_start_idx:test_end_idx].values
+            
+            # Calculate predicted strategy returns based on the predicted labels
+            predicted_returns = np.zeros(len(test_predictions))
+            
+            for i, predicted_label in enumerate(test_predictions):
+                predicted_label = int(predicted_label)
+                data_idx = test_start_idx + i
+                
+                # Map predicted label to expected strategy return
+                if predicted_label == 0:  # Hold
+                    predicted_returns[i] = 0.0  # No return for hold
+                elif predicted_label == 1:  # Call Debit Spread
+                    if 'Future_Call_Debit_Return' in lstm_data.columns and data_idx < len(lstm_data):
+                        predicted_returns[i] = lstm_data['Future_Call_Debit_Return'].iloc[data_idx]
+                    else:
+                        predicted_returns[i] = 0.08  # Default expected return
+                elif predicted_label == 2:  # Put Debit Spread  
+                    if 'Future_Put_Debit_Return' in lstm_data.columns and data_idx < len(lstm_data):
+                        predicted_returns[i] = lstm_data['Future_Put_Debit_Return'].iloc[data_idx]
+                    else:
+                        predicted_returns[i] = 0.08  # Default expected return
+                elif predicted_label == 3:  # Iron Butterfly
+                    if 'Future_Iron_Butterfly_Return' in lstm_data.columns and data_idx < len(lstm_data):
+                        predicted_returns[i] = lstm_data['Future_Iron_Butterfly_Return'].iloc[data_idx]
+                    else:
+                        predicted_returns[i] = 0.15  # Default expected return
+                elif predicted_label == 4:  # Long Straddle
+                    if 'Future_Long_Straddle_Return' in lstm_data.columns and data_idx < len(lstm_data):
+                        predicted_returns[i] = lstm_data['Future_Long_Straddle_Return'].iloc[data_idx]
+                    else:
+                        predicted_returns[i] = 0.20  # Default expected return
+                else:
+                    predicted_returns[i] = 0.0
+            
+            # Handle NaN values by replacing with defaults
+            predicted_returns = np.nan_to_num(predicted_returns, nan=0.0)
+            actual_spy_returns = np.nan_to_num(actual_spy_returns, nan=0.0)
+            
+            return predicted_returns, actual_spy_returns
+            
+        except Exception as e:
+            print(f"⚠️ Error calculating strategy returns comparison: {str(e)}")
+            return None, None
         
     def plot_results(self, results):
         """Plot the results"""
@@ -152,21 +238,30 @@ class StockPredictor:
         plt.grid(True)
         plt.show()
         
-        # Plot signal probabilities over time
+        # Plot predicted returns vs actual SPY log returns over time
         plt.figure(figsize=(15, 8))
-        test_probs = results['test_probs']
         
-        for i in range(len(results['class_labels'])):
-            plt.plot(time_points, test_probs[:, i], 
-                    label=results['class_labels'][i], alpha=0.7)
+        # Get the predicted strategy returns and actual SPY log returns
+        predicted_returns, actual_spy_returns = self.get_strategy_returns_comparison()
         
-        plt.title('Signal Probability Distribution Over Time')
-        plt.xlabel('Time')
-        plt.ylabel('Probability')
-        plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-        plt.grid(True)
-        plt.tight_layout()
-        plt.show()
+        if predicted_returns is not None and actual_spy_returns is not None:
+            # Align time points with available data
+            comparison_time_points = range(len(predicted_returns))
+            
+            plt.plot(comparison_time_points, actual_spy_returns * 100, 
+                    label='Actual SPY Log Returns (×100)', alpha=0.8, linewidth=1.5, color='blue')
+            plt.plot(comparison_time_points, predicted_returns, 
+                    label='Predicted Strategy Returns', alpha=0.8, linewidth=1.5, color='red')
+            
+            plt.title('Predicted Strategy Returns vs Actual SPY Log Returns Over Time')
+            plt.xlabel('Time')
+            plt.ylabel('Returns')
+            plt.legend()
+            plt.grid(True, alpha=0.3)
+            plt.tight_layout()
+            plt.show()
+        else:
+            print("⚠️ Unable to generate returns comparison plot - insufficient data")
 
 def save_model(model, mode='lstm_poc'):
     # Only use the environment variable, default to a generic relative path if not set

@@ -38,6 +38,7 @@ class MarketStateClassifier:
     def find_optimal_states(self, data):
         """Find optimal number of states using HMM with multiple criteria"""
         # Prepare features for HMM - using key market indicators
+        # Note: Price_to_SMA20 used in HMM but excluded from LSTM to avoid correlation
         feature_matrix = np.column_stack([
             data['Returns'],
             data['Volatility'],
@@ -141,6 +142,7 @@ class MarketStateClassifier:
                 print(f"Average Return: {chars['avg_return']:.4%}")
                 print(f"Volatility: {chars['volatility']:.4f}")
                 print(f"Price/SMA20 Ratio: {chars['price_sma20']:.4f}")
+                print(f"SMA20/SMA50 Ratio: {chars['sma_trend']:.4f}")
                 print(f"Volume Ratio: {chars['volume_ratio']:.2f}")
         
         return self.n_states
@@ -150,6 +152,7 @@ class MarketStateClassifier:
         if self.hmm_model is None:
             raise ValueError("Model not fitted. Call find_optimal_states first.")
             
+        # Note: Price_to_SMA20 used in HMM but excluded from LSTM to avoid correlation
         feature_matrix = np.column_stack([
             data['Returns'],
             data['Volatility'],
@@ -171,6 +174,7 @@ class MarketStateClassifier:
                 'avg_return': state_data['Returns'].mean(),
                 'volatility': state_data['Volatility'].mean(),
                 'price_sma20': state_data['Price_to_SMA20'].mean(),
+                'sma_trend': state_data['SMA20_to_SMA50'].mean(),
                 'volume_ratio': state_data['Volume_Ratio'].mean()
             }
         return state_chars

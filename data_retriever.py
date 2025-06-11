@@ -77,16 +77,36 @@ class DataRetriever:
         print(f"\n🚀 Phase 6: Preparing LSTM features ({len(self.lstm_data)} samples)")
         # Prepare feature matrix for LSTM (including all features and market states)
         feature_columns = [
-            'Returns', 'Log_Returns', 'Volatility', 'High_Low_Range',
-            'Price_to_SMA20', 'SMA20_to_SMA50',
-            'RSI', 'MACD', 'MACD_Hist',
+            'Log_Returns', 'Volatility', 'High_Low_Range',  # Removed Returns (perfect correlation with Log_Returns)
+            'SMA20_to_SMA50',  # Removed Price_to_SMA20 (correlated with MACD_Hist)
+            'RSI', 'MACD_Hist',  # Removed MACD (correlated with RSI)
             'Volume_Ratio', 'OBV',
-            'ATM_Call_Return', 'ATM_Put_Return',
+            # Removed ATM_Call_Return, ATM_Put_Return (high missing values, noisy)
             'Put_Call_Ratio', 'Option_Volume_Ratio',
             'Market_State'  # Add market state as a feature
         ]
         
-        # Scale features
+        # Store original features for reference
+        self.original_features = feature_columns.copy()
+        
+        # Analyze feature correlations before scaling
+        correlation_pairs = self.analyze_feature_correlations(self.lstm_data, feature_columns, threshold=0.8)
+        
+        # Generate detailed feature reduction recommendations
+        feature_recommendations = self.generate_feature_reduction_recommendations(correlation_pairs, feature_columns)
+        
+        # Store recommendations for potential future use
+        self.feature_recommendations = feature_recommendations
+        
+        # Ask user if they want to apply feature reduction
+        print(f"\n🤔 Would you like to use the recommended reduced feature set?")
+        print(f"   Current features: {len(feature_columns)}")
+        if feature_recommendations['features_to_remove']:
+            print(f"   Recommended features: {len(feature_recommendations['recommended_features'])}")
+            print(f"   Potential reduction: {feature_recommendations['reduction_percentage']:.1f}%")
+            print(f"   Note: You can modify this by editing the feature_columns list in prepare_data()")
+        
+        # Scale features (using original feature set for now - user can modify based on recommendations)
         self.features = self.scaler.fit_transform(self.lstm_data[feature_columns])
         
         # Critical: Check for NaN or infinite values that cause training to fail
@@ -190,13 +210,14 @@ class DataRetriever:
         # Trend indicators
         data['SMA20'] = data['Close'].rolling(window=window).mean()
         data['SMA50'] = data['Close'].rolling(window=50).mean()
-        data['Price_to_SMA20'] = data['Close'] / data['SMA20']
+        data['Price_to_SMA20'] = data['Close'] / data['SMA20']  # Keep for HMM, exclude from LSTM
         data['SMA20_to_SMA50'] = data['SMA20'] / data['SMA50']
         
         # Momentum indicators
         data['RSI'] = self._calculate_rsi(data['Close'], window)
-        data['MACD'], data['MACD_Signal'] = self._calculate_macd(data['Close'])
-        data['MACD_Hist'] = data['MACD'] - data['MACD_Signal']
+        # Calculate MACD components for MACD_Hist (removed standalone MACD feature)
+        macd_line, macd_signal = self._calculate_macd(data['Close'])
+        data['MACD_Hist'] = macd_line - macd_signal
         
         # Volume features
         data['Volume_SMA'] = data['Volume'].rolling(window=window).mean()
@@ -241,6 +262,166 @@ class DataRetriever:
                 obv.iloc[i] = obv.iloc[i-1]
         
         return obv
+
+    def analyze_feature_correlations(self, data, feature_columns, threshold=0.8):
+        """Analyze correlations between features to identify redundant features
+        
+        Args:
+            data: DataFrame containing the features
+            feature_columns: List of feature column names to analyze
+            threshold: Correlation threshold above which features are considered highly correlated
+            
+        Returns:
+            List of dictionaries containing highly correlated feature pairs
+        """
+        print(f"\n🔍 Analyzing feature correlations (threshold: {threshold})")
+        
+        # Calculate correlation matrix for the specified features
+        feature_data = data[feature_columns].copy()
+        correlation_matrix = feature_data.corr()
+        
+        # Find highly correlated pairs
+        high_corr_pairs = []
+        
+        for i in range(len(correlation_matrix.columns)):
+            for j in range(i+1, len(correlation_matrix.columns)):
+                corr = correlation_matrix.iloc[i, j]
+                if abs(corr) > threshold:
+                    high_corr_pairs.append({
+                        'feature1': correlation_matrix.columns[i],
+                        'feature2': correlation_matrix.columns[j],
+                        'correlation': corr
+                    })
+        
+        # Display results
+        if high_corr_pairs:
+            print(f"⚠️  Found {len(high_corr_pairs)} highly correlated feature pairs:")
+            print("   Feature 1              Feature 2              Correlation")
+            print("   " + "="*60)
+            
+            for pair in sorted(high_corr_pairs, key=lambda x: abs(x['correlation']), reverse=True):
+                print(f"   {pair['feature1']:<20} {pair['feature2']:<20} {pair['correlation']:>8.3f}")
+                
+            print("\n💡 Recommendations:")
+            processed_features = set()
+            for pair in high_corr_pairs:
+                feat1, feat2 = pair['feature1'], pair['feature2']
+                if feat1 not in processed_features and feat2 not in processed_features:
+                    print(f"   • Consider removing one of: {feat1} or {feat2}")
+                    processed_features.add(feat1)
+                    processed_features.add(feat2)
+        else:
+            print(f"✅ No highly correlated features found (threshold: {threshold})")
+        
+        # Additional analysis: Feature statistics
+        print(f"\n📊 Feature Statistics:")
+        print("   Feature                Mean        Std       Min       Max     NaN%")
+        print("   " + "="*70)
+        
+        for feature in feature_columns:
+            if feature in feature_data.columns:
+                series = feature_data[feature]
+                nan_pct = (series.isna().sum() / len(series)) * 100
+                print(f"   {feature:<20} {series.mean():>8.3f} {series.std():>8.3f} "
+                      f"{series.min():>8.3f} {series.max():>8.3f} {nan_pct:>6.1f}%")
+        
+        return high_corr_pairs
+
+    def generate_feature_reduction_recommendations(self, correlation_pairs, feature_columns):
+        """Generate specific recommendations for feature reduction based on correlation analysis
+        
+        Args:
+            correlation_pairs: List of highly correlated feature pairs
+            feature_columns: List of all feature columns
+            
+        Returns:
+            Dictionary with recommendations for feature reduction
+        """
+        print(f"\n🎯 Feature Reduction Recommendations:")
+        
+        if not correlation_pairs:
+            print("✅ No highly correlated features detected. Current feature set appears optimal.")
+            return {'recommended_features': feature_columns, 'features_to_remove': []}
+        
+        # Analyze specific redundant pairs and provide targeted recommendations
+        features_to_remove = []
+        recommendations = []
+        
+        for pair in correlation_pairs:
+            feat1, feat2 = pair['feature1'], pair['feature2']
+            corr = pair['correlation']
+            
+            # Specific recommendations based on feature types
+            if feat1 == 'Returns' and feat2 == 'Log_Returns':
+                features_to_remove.append('Returns')
+                recommendations.append(f"• Remove 'Returns' - Log_Returns is statistically superior for modeling (r={corr:.3f})")
+                
+            elif feat1 == 'Volume_Ratio' and feat2 == 'OBV':
+                features_to_remove.append('OBV')
+                recommendations.append(f"• Remove 'OBV' - Volume_Ratio is more normalized and stable (r={corr:.3f})")
+                
+            elif feat1 == 'MACD' and feat2 == 'MACD_Hist':
+                features_to_remove.append('MACD')
+                recommendations.append(f"• Remove 'MACD' - MACD_Hist contains the same signal information (r={corr:.3f})")
+                
+            elif feat1 == 'ATM_Call_Return' and feat2 == 'ATM_Put_Return':
+                features_to_remove.append('ATM_Put_Return')
+                recommendations.append(f"• Remove 'ATM_Put_Return' - Highly correlated with ATM_Call_Return (r={corr:.3f})")
+                
+            elif 'Price_to_SMA20' in [feat1, feat2] and 'SMA20_to_SMA50' in [feat1, feat2]:
+                features_to_remove.append('SMA20_to_SMA50')
+                recommendations.append(f"• Consider removing 'SMA20_to_SMA50' - Price_to_SMA20 is more direct trend signal (r={corr:.3f})")
+                
+            else:
+                # Generic recommendation for other pairs
+                recommendations.append(f"• High correlation between '{feat1}' and '{feat2}' (r={corr:.3f}) - consider removing one")
+        
+        # Remove duplicates
+        features_to_remove = list(set(features_to_remove))
+        recommended_features = [f for f in feature_columns if f not in features_to_remove]
+        
+        # Display recommendations
+        if recommendations:
+            for rec in recommendations:
+                print(f"   {rec}")
+            
+            print(f"\n📋 Proposed Feature Set ({len(recommended_features)} features):")
+            for i, feature in enumerate(recommended_features, 1):
+                print(f"   {i:2d}. {feature}")
+            
+            print(f"\n❌ Suggested Features to Remove ({len(features_to_remove)} features):")
+            for feature in features_to_remove:
+                print(f"   • {feature}")
+                
+            reduction_pct = (len(features_to_remove) / len(feature_columns)) * 100
+            print(f"\n📊 Feature Reduction: {len(feature_columns)} → {len(recommended_features)} features ({reduction_pct:.1f}% reduction)")
+        
+        return {
+            'recommended_features': recommended_features,
+            'features_to_remove': features_to_remove,
+            'reduction_percentage': (len(features_to_remove) / len(feature_columns)) * 100
+        }
+
+    def apply_feature_reduction(self, use_reduced_features=False):
+        """Apply feature reduction based on correlation analysis recommendations
+        
+        Args:
+            use_reduced_features: Whether to use the reduced feature set
+            
+        Returns:
+            List of features to use for model training
+        """
+        if not hasattr(self, 'feature_recommendations'):
+            print("⚠️ Feature recommendations not available. Run prepare_data() first.")
+            return None
+            
+        if use_reduced_features and self.feature_recommendations['features_to_remove']:
+            recommended_features = self.feature_recommendations['recommended_features']
+            print(f"\n✅ Applying feature reduction: Using {len(recommended_features)} features")
+            return recommended_features
+        else:
+            print(f"\n📋 Using original feature set: {len(self.original_features)} features")
+            return self.original_features
 
     def get_state_description(self, state_id):
         """Generate description for each state based on its characteristics"""
