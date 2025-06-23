@@ -263,7 +263,8 @@ class StockPredictor:
         else:
             print("⚠️ Unable to generate returns comparison plot - insufficient data")
 
-def save_model(model, mode='lstm_poc'):
+def save_model(model, hmm_model=None, mode='lstm_poc'):
+    """Save both LSTM and HMM models to timestamped and latest folders"""
     # Only use the environment variable, default to a generic relative path if not set
     base_dir = os.environ.get('MODEL_SAVE_BASE_PATH', 'Trained_Models')
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -271,11 +272,75 @@ def save_model(model, mode='lstm_poc'):
     latest_dir = os.path.join(base_dir, mode, 'latest')
     os.makedirs(timestamp_dir, exist_ok=True)
     os.makedirs(latest_dir, exist_ok=True)
+    
+    # Save LSTM model
     model_path = os.path.join(timestamp_dir, 'model.keras')
     latest_path = os.path.join(latest_dir, 'model.keras')
     model.save(model_path)
     model.save(latest_path)
-    print(f"✅ Model saved to {model_path} and {latest_path}")
+    print(f"✅ LSTM model saved to {model_path} and {latest_path}")
+    
+    # Save HMM model if provided
+    if hmm_model is not None:
+        import pickle
+        
+        # Save HMM model and scaler
+        hmm_data = {
+            'hmm_model': hmm_model.hmm_model,
+            'scaler': hmm_model.scaler,
+            'n_states': hmm_model.n_states,
+            'max_states': hmm_model.max_states
+        }
+        
+        # Save to timestamped folder
+        hmm_path = os.path.join(timestamp_dir, 'hmm_model.pkl')
+        with open(hmm_path, 'wb') as f:
+            pickle.dump(hmm_data, f)
+        
+        # Save to latest folder
+        hmm_latest_path = os.path.join(latest_dir, 'hmm_model.pkl')
+        with open(hmm_latest_path, 'wb') as f:
+            pickle.dump(hmm_data, f)
+        
+        print(f"✅ HMM model saved to {hmm_path} and {hmm_latest_path}")
+        
+        # Save HMM model information
+        info_content = f"""HMM Model Information
+====================
+Number of States: {hmm_model.n_states}
+Max States: {hmm_model.max_states}
+Model Type: GaussianHMM
+Covariance Type: {hmm_model.hmm_model.covariance_type}
+Transition Matrix Shape: {hmm_model.hmm_model.transmat_.shape}
+Emission Parameters Shape: {hmm_model.hmm_model.means_.shape}
+Scaler Type: StandardScaler
+Features: Returns, Volatility, Price_to_SMA20, SMA20_to_SMA50, Volume_Ratio
+
+State Characteristics:
+"""
+        
+        # Add state characteristics if available
+        if hasattr(hmm_model, 'hmm_model') and hmm_model.hmm_model is not None:
+            try:
+                # Get state characteristics (this would need data, so we'll add a note)
+                info_content += """
+Note: State characteristics require training data to calculate.
+Use the get_state_description() method with your data to see state details.
+"""
+            except:
+                pass
+        
+        # Save info to timestamped folder
+        info_path = os.path.join(timestamp_dir, 'hmm_model_info.txt')
+        with open(info_path, 'w') as f:
+            f.write(info_content)
+        
+        # Save info to latest folder
+        info_latest_path = os.path.join(latest_dir, 'hmm_model_info.txt')
+        with open(info_latest_path, 'w') as f:
+            f.write(info_content)
+        
+        print(f"✅ HMM model info saved to {info_path} and {info_latest_path}")
 
 if __name__ == "__main__":
     # Example usage with separate date ranges
@@ -309,7 +374,7 @@ if __name__ == "__main__":
     
     # Save the model if requested
     if args.save:
-        save_model(predictor.model.model, mode=args.mode)
+        save_model(predictor.model.model, hmm_model=predictor.data_retriever.state_classifier, mode=args.mode)
     
     print("\n📊 Evaluating Model Performance...")
     results = predictor.evaluate_model()
