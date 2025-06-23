@@ -23,14 +23,14 @@ if physical_devices:
         print("GPU memory growth setting failed. Using default configuration.")
 
 class LSTMModel:
-    def __init__(self, sequence_length, n_features=5, n_states=None):
+    def __init__(self, sequence_length, n_features):
         self.sequence_length = sequence_length
         self.n_features = n_features
-        self.n_states = n_states if n_states is not None else 3
+        self.n_classes = 5  # 0: Hold, 1: Call Debit Spread, 2: Put Debit Spread, 3: Iron Butterfly, 4: Long Straddle
         self.model = self._build_model()
         
     def _build_model(self):
-        """Build a simplified LSTM model architecture"""
+        """Build an enhanced LSTM model for options trading signals"""
         model = Sequential([
             # Input layer
             Input(shape=(self.sequence_length, self.n_features)),
@@ -41,23 +41,23 @@ class LSTMModel:
             LayerNormalization(),
             Dropout(DROPOUT_RATE),
             
-            # Second LSTM layer
-            LSTM(units=LSTM_UNITS[1], return_sequences=False,
-                 kernel_regularizer=l2(0.01)),
+            # Second Bidirectional LSTM layer (final LSTM layer)
+            Bidirectional(LSTM(units=LSTM_UNITS[1], return_sequences=False,
+                             kernel_regularizer=l2(0.01))),
             LayerNormalization(),
             Dropout(DROPOUT_RATE),
             
-            # Dense layer
+            # Dense layers
             Dense(units=DENSE_UNITS[0], activation='relu',
                  kernel_regularizer=l2(0.01)),
             LayerNormalization(),
             Dropout(DROPOUT_RATE),
             
-            # Output layer
-            Dense(units=self.n_states, activation='softmax')
+            # Output layer for 5-class classification
+            Dense(units=self.n_classes, activation='softmax')
         ])
         
-        # Use fixed learning rate
+        # Use fixed learning rate with Adam optimizer
         optimizer = Adam(learning_rate=LEARNING_RATE)
         
         model.compile(
@@ -69,7 +69,7 @@ class LSTMModel:
         return model
     
     def train(self, X_train, y_train, epochs=EPOCHS, batch_size=BATCH_SIZE, validation_split=VALIDATION_SPLIT):
-        """Train the LSTM model with early stopping"""
+        """Train the LSTM model with early stopping and class weights"""
         # Early stopping with restoration of best weights
         early_stopping = EarlyStopping(
             monitor='val_accuracy',
@@ -78,7 +78,7 @@ class LSTMModel:
             min_delta=EARLY_STOPPING_MIN_DELTA
         )
         
-        # Class weights to handle imbalance
+        # Calculate class weights to handle imbalance
         unique, counts = np.unique(y_train, return_counts=True)
         total = np.sum(counts)
         class_weights = {c: total / (len(counts) * count) for c, count in zip(unique, counts)}
@@ -101,7 +101,7 @@ class LSTMModel:
         return np.argmax(pred_probs, axis=1)
     
     def predict_proba(self, X):
-        """Get probability distributions for each state"""
+        """Get probability distributions for each class"""
         return self.model.predict(X, batch_size=128)
     
     def evaluate(self, X_test, y_test):

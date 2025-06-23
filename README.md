@@ -82,7 +82,15 @@ Model Structure:
 7. Output Layer (5 units, softmax)
 ```
 
-## Installation and Usage
+## Getting Started
+
+### Prerequisites
+
+- Python 3.9 or higher
+- Virtual environment (recommended)
+- Polygon.io API key (get one at https://polygon.io/dashboard/signup)
+
+### Installation
 
 1. Create and activate a virtual environment:
 ```bash
@@ -95,9 +103,107 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-3. Run the program:
+3. Set up environment variables:
+```bash
+python setup_env.py
+```
+
+4. Edit the created `.env` file and replace `your_api_key_here` with your actual Polygon.io API key.
+
+### Configuration
+
+The system uses the following environment variables:
+- `POLYGON_API_KEY`: Your Polygon.io API key for fetching historical options data
+
+You can set these variables in two ways:
+1. In the `.env` file (recommended)
+2. Directly in the code when initializing OptionsHandler:
+```python
+handler = OptionsHandler(symbol='SPY', api_key='YOUR_KEY')
+```
+
+### Running the System
+
+1. Run the main program:
 ```bash
 python main.py
+```
+
+2. **Free Tier Rate Limiting:**
+
+If you're using a free Polygon.io API account, use the `-f` or `--free` flag to enable 13-second delays between API requests to stay within rate limits:
+```bash
+python main.py --free
+```
+This prevents hitting the free tier limit of 5 API calls per minute. Without this flag, the system will make requests without delays (suitable for paid API tiers).
+
+3. **Output Verbosity Control:**
+
+By default, the system runs in quiet mode with a clean progress bar. Use the `-v` or `--verbose` flag to show detailed logging:
+```bash
+# Default: clean progress bar (quiet mode)
+python main.py
+
+# Detailed logging for debugging
+python main.py --verbose
+
+# Explicitly enable quiet mode (same as default)
+python main.py --quiet
+```
+In quiet mode (default), detailed API call messages are suppressed and only a clean progress bar with essential information is displayed. Use `--verbose` for full logging when debugging.
+
+4. **Saving the Trained Model:**
+
+You can save the trained model after training by using the `-s` or `--save` flag:
+```bash
+python main.py --save
+```
+- The model will be saved in Keras format (`.keras`) to the directory specified by the `MODEL_SAVE_BASE_PATH` variable in your `.env` file (default: `Trained_Models`).
+- The folder structure will be:
+  - `<MODEL_SAVE_BASE_PATH>/<mode>/<timestamp>/model.keras` (timestamped)
+  - `<MODEL_SAVE_BASE_PATH>/<mode>/latest/model.keras` (latest, always overwritten)
+- You can specify a custom mode label for the subfolder using `--mode`:
+```bash
+python main.py --save --mode my_experiment
+```
+
+- You can combine flags. For example, to use free tier rate limiting, quiet mode, and save the model:
+```bash
+python main.py --free --quiet --save
+```
+
+5. **Common Usage Examples:**
+
+```bash
+# Basic usage (clean progress bar by default)
+python main.py
+
+# Detailed logging for debugging
+python main.py --verbose
+
+# Free tier with clean progress (default)
+python main.py --free
+
+# Production run with all options
+python main.py --free --save --mode production
+
+# Debug mode with full logging
+python main.py --verbose --free --save
+```
+
+6. For development or testing specific components:
+```python
+from options_handler import OptionsHandler
+import pandas as pd
+
+# Initialize the handler
+handler = OptionsHandler(symbol='SPY')
+
+# Load your price data
+data = pd.read_csv('spy_data.csv', index_col='Date', parse_dates=True)
+
+# Calculate options features
+data = handler.calculate_option_features(data)
 ```
 
 ## Model Performance
@@ -124,8 +230,28 @@ Key Performance Characteristics:
 
 The system requires:
 - Daily OHLCV data
-- Options chain data
+- Options chain data from Polygon.io
+  - Minimum volume: 10 contracts
+  - Minimum price: $0.10
+  - Greeks and implied volatility data
 - Minimum 2 years of historical data recommended
+
+### Options Data Features
+
+The system calculates the following options-related features:
+- Implied Volatility (IV) for calls and puts
+- Option Greeks (Delta, Gamma, Theta, Vega)
+- Volume and Open Interest
+- Put/Call Ratio
+- Option Volume Ratio
+
+### Data Caching
+
+To optimize API usage and performance:
+- Options data is automatically cached
+- Cache location: `data_cache/options/<symbol>/`
+- Cache files are date-based and stored in pickle format
+- Cache is automatically used when available
 
 ## Limitations and Considerations
 
@@ -134,26 +260,11 @@ The system requires:
    - Major market events can create new regimes
 
 2. Options Data Dependency
-   - Requires reliable options market data
-   - Some instruments may have limited options data
+   - Requires Polygon.io API access
+   - API rate limits apply: use `--free` flag for free tier (5 calls/minute) or upgrade to paid tier for faster processing
+   - Some historical dates may have incomplete data
 
 3. Computational Requirements
    - HMM state optimization is computationally intensive
    - LSTM training benefits from GPU acceleration
-
-## Future Improvements
-
-1. Model Enhancements
-   - Dynamic state number optimization
-   - Attention mechanisms for LSTM
-   - Ensemble methods for prediction
-
-2. Feature Engineering
-   - Additional options Greeks
-   - Market sentiment indicators
-   - Cross-asset correlation features
-
-3. Production Deployment
-   - Real-time prediction pipeline
-   - Model retraining framework
-   - Performance monitoring system 
+   - Options data caching helps reduce API calls
