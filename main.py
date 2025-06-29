@@ -83,8 +83,8 @@ class StockPredictor:
         train_accuracy = np.mean(train_predictions == self.y_train)
         test_accuracy = np.mean(test_predictions == self.y_test)
         
-        # Define class labels for the new 5-class strategy system
-        class_labels = ['Hold', 'Call Debit Spread', 'Put Debit Spread', 'Iron Butterfly', 'Long Straddle']
+        # Define class labels for the 3-class strategy system
+        class_labels = ['Hold', 'Call Credit Spread', 'Put Credit Spread']
         
         # Get unique classes in the test set
         unique_classes = np.unique(np.concatenate([self.y_test, test_predictions]))
@@ -165,26 +165,16 @@ class StockPredictor:
                 # Map predicted label to expected strategy return
                 if predicted_label == 0:  # Hold
                     predicted_returns[i] = 0.0  # No return for hold
-                elif predicted_label == 1:  # Call Debit Spread
-                    if 'Future_Call_Debit_Return' in lstm_data.columns and data_idx < len(lstm_data):
-                        predicted_returns[i] = lstm_data['Future_Call_Debit_Return'].iloc[data_idx]
+                elif predicted_label == 1:  # Call Credit Spread
+                    if 'Future_Call_Credit_Return' in lstm_data.columns and data_idx < len(lstm_data):
+                        predicted_returns[i] = lstm_data['Future_Call_Credit_Return'].iloc[data_idx]
                     else:
                         predicted_returns[i] = 0.08  # Default expected return
-                elif predicted_label == 2:  # Put Debit Spread  
-                    if 'Future_Put_Debit_Return' in lstm_data.columns and data_idx < len(lstm_data):
-                        predicted_returns[i] = lstm_data['Future_Put_Debit_Return'].iloc[data_idx]
+                elif predicted_label == 2:  # Put Credit Spread  
+                    if 'Future_Put_Credit_Return' in lstm_data.columns and data_idx < len(lstm_data):
+                        predicted_returns[i] = lstm_data['Future_Put_Credit_Return'].iloc[data_idx]
                     else:
                         predicted_returns[i] = 0.08  # Default expected return
-                elif predicted_label == 3:  # Iron Butterfly
-                    if 'Future_Iron_Butterfly_Return' in lstm_data.columns and data_idx < len(lstm_data):
-                        predicted_returns[i] = lstm_data['Future_Iron_Butterfly_Return'].iloc[data_idx]
-                    else:
-                        predicted_returns[i] = 0.15  # Default expected return
-                elif predicted_label == 4:  # Long Straddle
-                    if 'Future_Long_Straddle_Return' in lstm_data.columns and data_idx < len(lstm_data):
-                        predicted_returns[i] = lstm_data['Future_Long_Straddle_Return'].iloc[data_idx]
-                    else:
-                        predicted_returns[i] = 0.20  # Default expected return
                 else:
                     predicted_returns[i] = 0.0
             
@@ -238,7 +228,7 @@ class StockPredictor:
         plt.grid(True)
         plt.show()
         
-        # Plot predicted returns vs actual SPY log returns over time
+        # Plot accumulated predicted returns vs actual SPY log returns over time
         plt.figure(figsize=(15, 8))
         
         # Get the predicted strategy returns and actual SPY log returns
@@ -248,14 +238,18 @@ class StockPredictor:
             # Align time points with available data
             comparison_time_points = range(len(predicted_returns))
             
-            plt.plot(comparison_time_points, actual_spy_returns * 100, 
-                    label='Actual SPY Log Returns (×100)', alpha=0.8, linewidth=1.5, color='blue')
-            plt.plot(comparison_time_points, predicted_returns, 
-                    label='Predicted Strategy Returns', alpha=0.8, linewidth=1.5, color='red')
+            # Calculate accumulated returns
+            accumulated_predicted_returns = np.cumsum(predicted_returns)
+            accumulated_spy_returns = np.cumsum(actual_spy_returns)
             
-            plt.title('Predicted Strategy Returns vs Actual SPY Log Returns Over Time')
+            plt.plot(comparison_time_points, accumulated_spy_returns * 100, 
+                    label='Accumulated SPY Log Returns (×100)', alpha=0.8, linewidth=1.5, color='blue')
+            plt.plot(comparison_time_points, accumulated_predicted_returns, 
+                    label='Accumulated Strategy Returns', alpha=0.8, linewidth=1.5, color='red')
+            
+            plt.title('Accumulated Strategy Returns vs Accumulated SPY Log Returns Over Time')
             plt.xlabel('Time')
-            plt.ylabel('Returns')
+            plt.ylabel('Accumulated Returns')
             plt.legend()
             plt.grid(True, alpha=0.3)
             plt.tight_layout()
