@@ -1,11 +1,11 @@
-Prediction Results for SPY - 2025-06-27
+Prediction Results for SPY - 2025-06-30
 ==================================================
-Price: $614.91
+Price: $616.10
 Market State: 0
-Predicted Strategy: Hold
-Confidence: 38.18%
+Predicted Strategy: Put Credit Spread
+Confidence: 35.76%
 
 All Probabilities:
-  Hold: 38.18%
-  Call Credit Spread: 35.56%
-  Put Credit Spread: 26.26%
+  Hold: 30.80%
+  Call Credit Spread: 33.44%
+  Put Credit Spread: 35.76%

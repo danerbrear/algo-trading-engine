@@ -310,6 +310,47 @@ class TodayPredictor:
             print(f"⚠️  Error getting ATM options: {e}")
             return None, None
     
+    def check_current_data_availability(self, data):
+        """Check if we have stock and option data for the current date"""
+        print("🔍 Checking data availability for current date...")
+        
+        # Check stock data for current date
+        today = datetime.now().date()
+        latest_stock_date = data.index[-1].date()
+        
+        if latest_stock_date < today:
+            print(f"⚠️  WARNING: Stock data is not current!")
+            print(f"   Latest stock data: {latest_stock_date}")
+            print(f"   Current date: {today}")
+            print(f"   Data is {(today - latest_stock_date).days} days old")
+        else:
+            print(f"✅ Stock data is current (latest: {latest_stock_date})")
+        
+        # Check option data availability
+        try:
+            ticker = yf.Ticker(self.symbol)
+            option_chain = ticker.option_chain()
+            
+            if option_chain and hasattr(option_chain, 'calls') and hasattr(option_chain, 'puts'):
+                # Check if we have options for today
+                calls = option_chain.calls
+                puts = option_chain.puts
+                
+                if not calls.empty and not puts.empty:
+                    print(f"✅ Option chain data available")
+                    print(f"   Calls: {len(calls)} contracts")
+                    print(f"   Puts: {len(puts)} contracts")
+                else:
+                    print(f"⚠️  WARNING: Option chain data is incomplete!")
+                    print(f"   Calls available: {len(calls) if not calls.empty else 0}")
+                    print(f"   Puts available: {len(puts) if not puts.empty else 0}")
+            else:
+                print(f"⚠️  WARNING: No option chain data available!")
+        except Exception as e:
+            print(f"⚠️  WARNING: Could not fetch option chain data: {e}")
+        
+        print("=" * 50)
+    
     def predict_market_state(self, data):
         """Predict market state using HMM model"""
         print("🔮 Predicting market state...")
@@ -377,6 +418,9 @@ class TodayPredictor:
         
         # Fetch recent data
         data = self.fetch_recent_data(days=90)
+        
+        # Check data availability for current date
+        self.check_current_data_availability(data)
         
         # Calculate features
         data = self.calculate_features(data)
