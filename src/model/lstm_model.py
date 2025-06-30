@@ -7,7 +7,7 @@ from keras.metrics import SparseCategoricalAccuracy
 from keras.callbacks import EarlyStopping
 from keras.regularizers import l2
 import numpy as np
-from config import (
+from .config import (
     EPOCHS, BATCH_SIZE, VALIDATION_SPLIT, LSTM_UNITS, 
     DENSE_UNITS, DROPOUT_RATE, LEARNING_RATE,
     EARLY_STOPPING_PATIENCE, EARLY_STOPPING_MIN_DELTA

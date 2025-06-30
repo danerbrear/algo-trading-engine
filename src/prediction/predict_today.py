@@ -12,9 +12,17 @@ import numpy as np
 import pandas as pd
 import keras
 import yfinance as yf
-from market_state_classifier import MarketStateClassifier
-from lstm_model import LSTMModel
-from cache_manager import CacheManager
+import sys
+import os
+
+# Add the src directory to Python path for direct execution
+current_dir = os.path.dirname(os.path.abspath(__file__))
+src_dir = os.path.join(current_dir, '..')
+sys.path.insert(0, src_dir)
+
+from model.market_state_classifier import MarketStateClassifier
+from model.lstm_model import LSTMModel
+from common.cache.cache_manager import CacheManager
 
 class TodayPredictor:
     """Predictor class for making daily options trading predictions using pretrained HMM and LSTM models."""

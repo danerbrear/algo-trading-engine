@@ -48,26 +48,26 @@ The LSTM model predicts optimal options trading strategies from three classes:
 
 ### Core Components
 
-- **`main.py`** - Main training and evaluation script
-- **`data_retriever.py`** - Market data fetching and feature engineering
-- **`options_handler.py`** - Options data processing and strategy calculations
-- **`market_state_classifier.py`** - HMM model for market state classification
-- **`lstm_model.py`** - LSTM model for strategy prediction
-- **`config.py`** - Configuration settings
-- **`cache_manager.py`** - Data caching utilities
-- **`api_retry_handler.py`** - API request retry logic
+- **`src/model/main.py`** - Main training and evaluation script
+- **`src/model/data_retriever.py`** - Market data fetching and feature engineering
+- **`src/model/options_handler.py`** - Options data processing and strategy calculations
+- **`src/model/market_state_classifier.py`** - HMM model for market state classification
+- **`src/model/lstm_model.py`** - LSTM model for strategy prediction
+- **`src/model/config.py`** - Configuration settings
+- **`src/common/cache/cache_manager.py`** - Data caching utilities
+- **`src/model/api_retry_handler.py`** - API request retry logic
 - **`progress_tracker.py`** - Training progress tracking
 
 ### New Files
 
-- **`predict_today.py`** - Script for making predictions on today's market data
+- **`src/prediction/predict_today.py`** - Script for making predictions on today's market data
   - Loads pretrained HMM and LSTM models
   - Fetches recent market data (prioritizes cached data)
   - Calculates features and makes predictions
   - Provides specific option recommendations
   - Saves results to `predictions/` directory
 
-- **`examine_cache.py`** - Utility script for examining cached data files
+- **`src/common/cache/examine_cache.py`** - Utility script for examining cached data files
   - Inspects pickle files in the cache directory
   - Shows data structure, date ranges, and statistics
   - Useful for debugging and data validation
@@ -177,14 +177,15 @@ handler = OptionsHandler(symbol='SPY', api_key='YOUR_KEY')
 
 1. Run the main training program:
 ```bash
-python main.py
+# From the project root directory
+python -m src.model.main
 ```
 
 2. **Free Tier Rate Limiting:**
 
 If you're using a free Polygon.io API account, use the `-f` or `--free` flag to enable 13-second delays between API requests to stay within rate limits:
 ```bash
-python main.py --free
+python -m src.model.main --free
 ```
 This prevents hitting the free tier limit of 5 API calls per minute. Without this flag, the system will make requests without delays (suitable for paid API tiers).
 
@@ -193,13 +194,13 @@ This prevents hitting the free tier limit of 5 API calls per minute. Without thi
 By default, the system runs in quiet mode with a clean progress bar. Use the `-v` or `--verbose` flag to show detailed logging:
 ```bash
 # Default: clean progress bar (quiet mode)
-python main.py
+python -m src.model.main
 
 # Detailed logging for debugging
-python main.py --verbose
+python -m src.model.main --verbose
 
 # Explicitly enable quiet mode (same as default)
-python main.py --quiet
+python -m src.model.main --quiet
 ```
 In quiet mode (default), detailed API call messages are suppressed and only a clean progress bar with essential information is displayed. Use `--verbose` for full logging when debugging.
 
@@ -207,7 +208,7 @@ In quiet mode (default), detailed API call messages are suppressed and only a cl
 
 You can save the trained model after training by using the `-s` or `--save` flag:
 ```bash
-python main.py --save
+python -m src.model.main --save
 ```
 - The model will be saved in Keras format (`.keras`) to the directory specified by the `MODEL_SAVE_BASE_PATH` variable in your `.env` file (default: `Trained_Models`).
 - The folder structure will be:
@@ -215,46 +216,59 @@ python main.py --save
   - `<MODEL_SAVE_BASE_PATH>/<mode>/latest/model.keras` (latest, always overwritten)
 - You can specify a custom mode label for the subfolder using `--mode`:
 ```bash
-python main.py --save --mode my_experiment
+python -m src.model.main --save --mode my_experiment
 ```
 
 - You can combine flags. For example, to use free tier rate limiting, quiet mode, and save the model:
 ```bash
-python main.py --free --quiet --save
+python -m src.model.main --free --quiet --save
 ```
 
 5. **Common Usage Examples:**
 
 ```bash
 # Basic usage (clean progress bar by default)
-python main.py
+python -m src.model.main
 
 # Detailed logging for debugging
-python main.py --verbose
+python -m src.model.main --verbose
 
 # Free tier with clean progress (default)
-python main.py --free
+python -m src.model.main --free
 
 # Production run with all options
-python main.py --free --save --mode production
+python -m src.model.main --free --save --mode production
 
 # Debug mode with full logging
-python main.py --verbose --free --save
+python -m src.model.main --verbose --free --save
 ```
 
 #### Making Predictions
 
-After training and saving models, you can make predictions for today's market:
+After training and saving models, you can make predictions for today's market. The script can be run in multiple ways:
 
+**Option 1: Run as a module (recommended)**
 ```bash
-# Basic prediction using default settings
+# From the project root directory
+python -m src.prediction.predict_today
+
+# With custom symbol
+python -m src.prediction.predict_today --symbol QQQ
+```
+
+**Option 2: Run directly**
+```bash
+# From the project root directory
+python src/prediction/predict_today.py
+
+# With custom symbol
+python src/prediction/predict_today.py --symbol QQQ
+```
+
+**Option 3: Run from the prediction directory**
+```bash
+cd src/prediction
 python predict_today.py
-
-# Predict for a different symbol
-python predict_today.py --symbol QQQ
-
-# Use a specific model directory
-python predict_today.py --model-dir /path/to/models
 ```
 
 The prediction script will:
@@ -265,16 +279,21 @@ The prediction script will:
 - Provide specific option recommendations
 - Save results to `predictions/` directory
 
+**Note:** The script automatically handles import paths for both module execution (`-m` flag) and direct execution.
+
 #### Examining Cached Data
 
 To inspect cached data files:
 
 ```bash
-# Examine a specific cached file
-python examine_cache.py
+# From the project root directory
+python -m src.common.cache.examine_cache
+
+# Or run directly
+python src/common/cache/examine_cache.py
 
 # Modify the script to examine different files
-# Edit examine_cache.py and change the file path
+# Edit src/common/cache/examine_cache.py and change the file path
 ```
 
 ### Development and Testing
@@ -366,18 +385,28 @@ To optimize API usage and performance:
 
 ```
 lstm_poc/
-├── main.py                    # Main training script
-├── predict_today.py           # Daily prediction script
-├── examine_cache.py           # Cache inspection utility
-├── setup_env.py              # Environment setup
-├── data_retriever.py         # Data fetching and processing
-├── options_handler.py        # Options data handling
-├── market_state_classifier.py # HMM model
-├── lstm_model.py             # LSTM model
-├── config.py                 # Configuration
-├── cache_manager.py          # Caching utilities
-├── api_retry_handler.py      # API retry logic
+├── src/                      # Source code directory
+│   ├── __init__.py           # Makes src a Python package
+│   ├── model/                # Model-related modules
+│   │   ├── __init__.py       # Makes model a package
+│   │   ├── main.py           # Main training script
+│   │   ├── data_retriever.py # Data fetching and processing
+│   │   ├── options_handler.py # Options data handling
+│   │   ├── market_state_classifier.py # HMM model
+│   │   ├── lstm_model.py     # LSTM model
+│   │   ├── config.py         # Configuration
+│   │   └── api_retry_handler.py # API retry logic
+│   ├── prediction/           # Prediction modules
+│   │   ├── __init__.py       # Makes prediction a package
+│   │   └── predict_today.py  # Daily prediction script
+│   └── common/               # Common utilities
+│       ├── __init__.py       # Makes common a package
+│       └── cache/            # Caching utilities
+│           ├── __init__.py   # Makes cache a package
+│           ├── cache_manager.py # Caching utilities
+│           └── examine_cache.py # Cache inspection utility
 ├── progress_tracker.py       # Progress tracking
+├── setup_env.py              # Environment setup
 ├── requirements.txt          # Dependencies
 ├── README.md                 # This file
 ├── .env                      # Environment variables (created by setup)

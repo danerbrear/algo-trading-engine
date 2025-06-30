@@ -11,9 +11,13 @@ from typing import Dict, List, Optional, Tuple
 import os
 from dotenv import load_dotenv
 import requests
-from cache_manager import CacheManager
-from api_retry_handler import APIRetryHandler
-from progress_tracker import ProgressTracker, set_global_progress_tracker, progress_print, is_quiet_mode
+from ..common.cache.cache_manager import CacheManager
+from .api_retry_handler import APIRetryHandler
+import sys
+import os
+# Add the project root to the path to import progress_tracker
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+from src.model.progress_tracker import ProgressTracker, set_global_progress_tracker, progress_print, is_quiet_mode
 from tqdm import tqdm
 
 # Load environment variables from .env file

@@ -1,10 +1,10 @@
-from data_retriever import DataRetriever
-from lstm_model import LSTMModel
+from .data_retriever import DataRetriever
+from .lstm_model import LSTMModel
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.metrics import classification_report, confusion_matrix
 import seaborn as sns
-from config import EPOCHS, BATCH_SIZE, SEQUENCE_LENGTH
+from .config import EPOCHS, BATCH_SIZE, SEQUENCE_LENGTH
 import argparse
 import os
 from datetime import datetime
