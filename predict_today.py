@@ -4,28 +4,33 @@ Script to make predictions for today's option chain using pretrained HMM and LST
 """
 
 import os
-import numpy as np
-import pandas as pd
-import tensorflow as tf
 import pickle
-import yfinance as yf
 from datetime import datetime, timedelta
 from sklearn.preprocessing import StandardScaler
+import argparse
+import numpy as np
+import pandas as pd
+import keras
+import yfinance as yf
 from market_state_classifier import MarketStateClassifier
 from lstm_model import LSTMModel
-import argparse
 from cache_manager import CacheManager
 
 class TodayPredictor:
-    def __init__(self, symbol='SPY', model_dir='/Users/danebrear/Coding-Projects/Algo_Trading/Trained_Models/lstm_poc/latest'):
+    """Predictor class for making daily options trading predictions using pretrained HMM and LSTM models."""
+    
+    def __init__(self, symbol='SPY'):
         """Initialize the predictor with pretrained models
         
         Args:
             symbol: Stock symbol to analyze
-            model_dir: Directory containing saved models
         """
         self.symbol = symbol
-        self.model_dir = model_dir
+        
+        # Load model directory from environment variable
+        model_save_base_path = os.getenv('MODEL_SAVE_BASE_PATH', 'Trained_Models')
+        self.model_dir = os.path.join(model_save_base_path, 'lstm_poc', 'latest')
+            
         self.lstm_model = None
         self.hmm_model = None
         self.lstm_scaler = None
@@ -45,7 +50,7 @@ class TodayPredictor:
             raise FileNotFoundError(f"LSTM model not found at {lstm_path}")
         
         self.lstm_model = LSTMModel(sequence_length=self.sequence_length, n_features=self.n_features)
-        self.lstm_model.model = tf.keras.models.load_model(lstm_path)
+        self.lstm_model.model = keras.models.load_model(lstm_path)
         print(f"✅ LSTM model loaded from {lstm_path}")
         
         # Load LSTM scaler
@@ -88,73 +93,57 @@ class TodayPredictor:
         
         print(f"📊 Fetching {fetch_days} days of {self.symbol} data (need {self.sequence_length} for LSTM + buffer)...")
         
-        # Calculate start date
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=fetch_days)
-        
-        # First try to load from cache
+        # Load from cache
         cache_manager = CacheManager()
         
         # Look for cached data files in data_cache/stocks/SPY
         cache_dir = cache_manager.get_cache_dir('stocks', self.symbol)
-        if cache_dir.exists():
-            print(f"🔍 Looking for cached data in {cache_dir}")
-            
-            # Get all cached files and sort by date (newest first)
-            cached_files = []
-            for file_path in cache_dir.glob('*.pkl'):
-                try:
-                    # Try to extract date from filename (format: YYYY-MM-DD_suffix.pkl)
-                    filename = file_path.stem
-                    if '_' in filename:
-                        date_str = filename.split('_')[0]
-                        file_date = datetime.strptime(date_str, '%Y-%m-%d')
-                        cached_files.append((file_date, file_path))
-                except:
-                    continue
-            
-            if cached_files:
-                # Sort by date (newest first)
-                cached_files.sort(key=lambda x: x[0], reverse=True)
-                
-                # Try to find data that covers our required range
-                for file_date, file_path in cached_files:
-                    try:
-                        cached_data = cache_manager.load_from_cache(file_path.name, 'stocks', self.symbol)
-                        if cached_data is not None and not cached_data.empty:
-                            print(f"📁 Found cached file: {file_path.name} (contains data from {file_date.date()})")
-                            print(f"   Cached data range: {cached_data.index[0].date()} to {cached_data.index[-1].date()}")
-                            
-                            # Check if cached data covers our required range
-                            if cached_data.index[0] <= start_date and cached_data.index[-1] >= end_date:
-                                # Filter to our required range
-                                mask = (cached_data.index >= start_date) & (cached_data.index <= end_date)
-                                filtered_data = cached_data[mask].copy()
-                                
-                                if len(filtered_data) >= fetch_days * 0.8:  # Allow some tolerance
-                                    print(f"✅ Loaded {len(filtered_data)} days from cache: {file_path.name}")
-                                    print(f"   Data range: {filtered_data.index[0].date()} to {filtered_data.index[-1].date()}")
-                                    return filtered_data
-                                else:
-                                    print(f"   ⚠️  Cached data doesn't have enough samples for {fetch_days} days")
-                            else:
-                                print(f"   ⚠️  Cached data doesn't cover required range ({start_date.date()} to {end_date.date()})")
-                    except Exception as e:
-                        print(f"⚠️  Error loading cached file {file_path}: {e}")
-                        continue
+        if not cache_dir.exists():
+            raise ValueError(f"No cache directory found for {self.symbol}")
         
-        # Fall back to yfinance if no suitable cached data found
-        print(f"🌐 No suitable cached data found, fetching from yfinance...")
-        print(f"   Requesting data from {start_date.date()} to {end_date.date()}")
+        print(f"🔍 Looking for cached data in {cache_dir}")
         
-        ticker = yf.Ticker(self.symbol)
-        data = ticker.history(start=start_date, end=end_date)
+        # Get all cached files and sort by date (newest first)
+        cached_files = []
+        for file_path in cache_dir.glob('*.pkl'):
+            try:
+                # Try to extract date from filename (format: YYYY-MM-DD_suffix.pkl)
+                filename = file_path.stem
+                if '_' in filename:
+                    date_str = filename.split('_')[0]
+                    file_date = datetime.strptime(date_str, '%Y-%m-%d')
+                    cached_files.append((file_date, file_path))
+            except ValueError:
+                continue
         
-        if data.empty:
-            raise ValueError(f"No data retrieved for {self.symbol}")
+        if not cached_files:
+            raise ValueError(f"No cached files found for {self.symbol}")
         
-        print(f"✅ Fetched {len(data)} days of data from {data.index[0].date()} to {data.index[-1].date()}")
-        return data
+        # Sort by date (newest first) and use the first available file
+        cached_files.sort(key=lambda x: x[0], reverse=True)
+        file_date, file_path = cached_files[0]
+        
+        print(f"📁 Using cached file: {file_path.name} (contains data from {file_date.date()})")
+        
+        # Load the cached data
+        cached_data = cache_manager.load_from_cache(file_path.name, 'stocks', self.symbol)
+        if cached_data is None or cached_data.empty:
+            raise ValueError(f"Failed to load data from {file_path.name}")
+        
+        print(f"   Cached data range: {cached_data.index[0].date()} to {cached_data.index[-1].date()}")
+        
+        # Get the most recent fetch_days from the cached data
+        if len(cached_data) >= fetch_days:
+            # Take the last fetch_days from the data
+            filtered_data = cached_data.tail(fetch_days).copy()
+        else:
+            # Use all available data if we don't have enough
+            filtered_data = cached_data.copy()
+            print(f"   ⚠️  Only {len(filtered_data)} days available, using all cached data")
+        
+        print(f"✅ Loaded {len(filtered_data)} days from cache: {file_path.name}")
+        print(f"   Data range: {filtered_data.index[0].date()} to {filtered_data.index[-1].date()}")
+        return filtered_data
     
     def calculate_features(self, data, window=20):
         """Calculate technical features for prediction
@@ -190,9 +179,11 @@ class TodayPredictor:
         data['Volume_Ratio'] = data['Volume'] / data['Volume_SMA']
         data['OBV'] = self.calculate_obv(data['Close'], data['Volume'])
         
-        # Options features (placeholders - you'll need to fetch real options data)
-        data['Put_Call_Ratio'] = 1.0  # Placeholder
-        data['Option_Volume_Ratio'] = 0.1  # Placeholder
+        # Options features - fetch real options data for today
+        current_price = data['Close'].iloc[-1]  # Use most recent price
+        options_features = self.fetch_today_options_data(current_price)
+        data['Put_Call_Ratio'] = options_features['Put_Call_Ratio']
+        data['Option_Volume_Ratio'] = options_features['Option_Volume_Ratio']
         
         # Market state (will be calculated by HMM)
         data['Market_State'] = 0  # Placeholder
@@ -234,6 +225,90 @@ class TodayPredictor:
                 obv.iloc[i] = obv.iloc[i-1]
         
         return obv
+    
+    def fetch_today_options_data(self, current_price):
+        """Fetch today's option chain data to calculate real options features
+        
+        Args:
+            current_price: Current stock price
+            
+        Returns:
+            Dict with Put_Call_Ratio and Option_Volume_Ratio
+        """
+        try:
+            print("📊 Fetching today's option chain data...")
+            
+            # Fetch option chain for today using yfinance
+            ticker = yf.Ticker(self.symbol)
+            option_chain = ticker.option_chain()
+            
+            if not option_chain or not hasattr(option_chain, 'calls') or not hasattr(option_chain, 'puts'):
+                print("⚠️  No option chain data available for today")
+                return {'Put_Call_Ratio': 1.0, 'Option_Volume_Ratio': 0.1}
+            
+            # Get ATM options
+            atm_call, atm_put = self.get_atm_options(option_chain, current_price)
+            
+            if atm_call is not None and atm_put is not None:
+                # Calculate real options features
+                call_volume = atm_call.get('volume', 0) or 0
+                put_volume = atm_put.get('volume', 0) or 0
+                
+                put_call_ratio = put_volume / call_volume if call_volume > 0 else 1.0
+                option_volume_ratio = (call_volume + put_volume) / 1000000  # Normalize by 1M
+                
+                print(f"✅ Real options features calculated:")
+                print(f"   Put/Call Ratio: {put_call_ratio:.3f}")
+                print(f"   Option Volume Ratio: {option_volume_ratio:.3f}")
+                
+                return {
+                    'Put_Call_Ratio': put_call_ratio,
+                    'Option_Volume_Ratio': option_volume_ratio
+                }
+            else:
+                print("⚠️  Could not get ATM options data")
+                return {'Put_Call_Ratio': 1.0, 'Option_Volume_Ratio': 0.1}
+                
+        except Exception as e:
+            print(f"⚠️  Error fetching options data: {e}")
+            print("   Using placeholder values...")
+            return {'Put_Call_Ratio': 1.0, 'Option_Volume_Ratio': 0.1}
+    
+    def get_atm_options(self, option_chain, current_price):
+        """Get ATM call and put options from the option chain"""
+        try:
+            # Find ATM call and put options (closest to current price)
+            calls = option_chain.calls
+            puts = option_chain.puts
+            
+            # Find the closest strike to current price
+            atm_strike = round(current_price)
+            
+            # Get options at ATM strike
+            atm_calls = calls[calls['strike'] == atm_strike]
+            atm_puts = puts[puts['strike'] == atm_strike]
+            
+            # If no exact match, find closest
+            if atm_calls.empty:
+                closest_call_idx = (calls['strike'] - current_price).abs().idxmin()
+                atm_calls = calls.loc[[closest_call_idx]]
+            
+            if atm_puts.empty:
+                closest_put_idx = (puts['strike'] - current_price).abs().idxmin()
+                atm_puts = puts.loc[[closest_put_idx]]
+            
+            if not atm_calls.empty and not atm_puts.empty:
+                # Get the first ATM call and put options
+                atm_call = atm_calls.iloc[0]
+                atm_put = atm_puts.iloc[0]
+                
+                return atm_call, atm_put
+            else:
+                return None, None
+                
+        except Exception as e:
+            print(f"⚠️  Error getting ATM options: {e}")
+            return None, None
     
     def predict_market_state(self, data):
         """Predict market state using HMM model"""
@@ -418,13 +493,11 @@ class TodayPredictor:
 def main():
     parser = argparse.ArgumentParser(description="Make option predictions for today")
     parser.add_argument('--symbol', type=str, default='SPY', help='Stock symbol to analyze')
-    parser.add_argument('--model-dir', type=str, default='/Users/danebrear/Coding-Projects/Algo_Trading/Trained_Models/lstm_poc/latest', 
-                       help='Directory containing saved models')
     args = parser.parse_args()
     
     try:
         # Create predictor
-        predictor = TodayPredictor(symbol=args.symbol, model_dir=args.model_dir)
+        predictor = TodayPredictor(symbol=args.symbol)
         
         # Make prediction
         result = predictor.make_prediction()

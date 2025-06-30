@@ -81,7 +81,6 @@ class DataRetriever:
             'SMA20_to_SMA50',  # Removed Price_to_SMA20 (correlated with MACD_Hist)
             'RSI', 'MACD_Hist',  # Removed MACD (correlated with RSI)
             'Volume_Ratio', 'OBV',
-            # Removed ATM_Call_Return, ATM_Put_Return (high missing values, noisy)
             'Put_Call_Ratio', 'Option_Volume_Ratio',
             'Market_State'  # Add market state as a feature
         ]
