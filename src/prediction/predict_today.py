@@ -47,7 +47,7 @@ class TodayPredictor:
         self.hmm_model = None
         self.lstm_scaler = None
         self.sequence_length = 60
-        self.n_features = 11
+        self.n_features = 9  # Updated to match the saved model (9 features)
         
         # Load models
         self.load_models()
@@ -314,8 +314,9 @@ class TodayPredictor:
         print("🧠 Preparing LSTM features...")
         
         # Define feature columns (same as in training)
+        # Note: Using 9 features to match the saved model architecture
         feature_columns = [
-            'Log_Returns', 'Volatility', 'High_Low_Range',
+            'High_Low_Range',
             'SMA20_to_SMA50', 'RSI', 'MACD_Hist',
             'Volume_Ratio', 'OBV', 'Put_Call_Ratio', 
             'Option_Volume_Ratio', 'Market_State'

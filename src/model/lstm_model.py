@@ -88,16 +88,22 @@ class LSTMModel:
         
         # Prepare feature matrix for LSTM (including all features and market states)
         self.feature_columns = [
-            'Log_Returns', 'Volatility', 'High_Low_Range',  # Removed Returns (perfect correlation with Log_Returns)
-            'SMA20_to_SMA50',  # Removed Price_to_SMA20 (correlated with MACD_Hist)
-            'RSI', 'MACD_Hist',  # Removed MACD (correlated with RSI)
+            'High_Low_Range',
+            'SMA20_to_SMA50',
+            'RSI', 'MACD_Hist',
             'Volume_Ratio', 'OBV',
             'Put_Call_Ratio', 'Option_Volume_Ratio',
-            'Market_State'  # Add market state as a feature
+            'Market_State'
         ]
         
         # Store original features for reference
         self.original_features = self.feature_columns.copy()
+        
+        # Update n_features to match the actual number of features
+        self.n_features = len(self.feature_columns)
+        
+        # Rebuild the model with the correct number of features
+        self.model = self._build_model()
         
         # Analyze feature correlations before scaling
         correlation_pairs = self.analyze_feature_correlations(data_retriever.lstm_data, self.feature_columns, threshold=0.8)
@@ -245,11 +251,7 @@ class LSTMModel:
             corr = pair['correlation']
             
             # Specific recommendations based on feature types
-            if feat1 == 'Returns' and feat2 == 'Log_Returns':
-                features_to_remove.append('Returns')
-                recommendations.append(f"• Remove 'Returns' - Log_Returns is statistically superior for modeling (r={corr:.3f})")
-                
-            elif feat1 == 'Volume_Ratio' and feat2 == 'OBV':
+            if feat1 == 'Volume_Ratio' and feat2 == 'OBV':
                 features_to_remove.append('OBV')
                 recommendations.append(f"• Remove 'OBV' - Volume_Ratio is more normalized and stable (r={corr:.3f})")
                 
