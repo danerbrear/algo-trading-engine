@@ -10,9 +10,16 @@ import os
 import json
 import pickle
 from pathlib import Path
-from .market_state_classifier import MarketStateClassifier
-from .options_handler import OptionsHandler
-from ..common.cache.cache_manager import CacheManager
+import sys
+import os
+# Add the src directory to the path for imports
+current_dir = os.path.dirname(os.path.abspath(__file__))
+src_dir = os.path.join(current_dir, '..')
+sys.path.insert(0, src_dir)
+
+from model.market_state_classifier import MarketStateClassifier
+from model.options_handler import OptionsHandler
+from common.cache.cache_manager import CacheManager
 
 class DataRetriever:
     def __init__(self, symbol='SPY', hmm_start_date='2010-01-01', lstm_start_date='2020-01-01', use_free_tier=False, quiet_mode=True):
@@ -109,10 +116,10 @@ class DataRetriever:
         mask = data.index >= start_date_ts
         data = data[mask].copy()
         print(f"✂️ Filtered {data_type} data range: {data.index[0]} to {data.index[-1]} ({len(data)} samples)")
-        
+
         if data.empty:
             raise ValueError(f"No data available after filtering for dates >= {start_date}")
-            
+
         # Cache the filtered data
         self.cache_manager.save_date_to_cache(
             pd.Timestamp(start_date),

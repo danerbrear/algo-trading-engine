@@ -1,4 +1,4 @@
-from .data_retriever import DataRetriever
+from ..common.data_retriever import DataRetriever
 from .lstm_model import LSTMModel
 import numpy as np
 import matplotlib.pyplot as plt
@@ -42,24 +42,27 @@ class StockPredictor:
         
     def prepare_data(self):
         """Prepare the data for training"""
-        # Fetch and prepare the data
-        self.data_retriever.fetch_data()
+        # Fetch and prepare the data for LSTM
+        self.data_retriever.prepare_data_for_lstm()
+        
+        # Initialize LSTM model with data preparation capabilities
+        n_features = 11  # Number of features used by LSTM
+        self.lstm_model = LSTMModel(
+            sequence_length=self.sequence_length,
+            n_features=n_features
+        )
+        
+        # Prepare LSTM-specific data
         self.X_train, self.y_train, self.X_test, self.y_test = \
-            self.data_retriever.prepare_data(sequence_length=self.sequence_length)
+            self.lstm_model.prepare_data(self.data_retriever, sequence_length=self.sequence_length)
             
     def train_model(self, epochs=EPOCHS, batch_size=BATCH_SIZE):
         """Train the LSTM model"""
         if self.X_train is None:
             raise ValueError("Data not prepared. Call prepare_data() first.")
             
-        # Initialize and train the model
-        n_features = self.X_train.shape[2]
-        
-        self.model = LSTMModel(
-            sequence_length=self.sequence_length,
-            n_features=n_features
-        )
-        history = self.model.train(
+        # Train the model using the prepared LSTM model instance
+        history = self.lstm_model.train(
             self.X_train, self.y_train,
             epochs=epochs,
             batch_size=batch_size
@@ -68,16 +71,16 @@ class StockPredictor:
         
     def evaluate_model(self):
         """Evaluate the model and make predictions"""
-        if self.model is None:
+        if self.lstm_model is None:
             raise ValueError("Model not trained. Call train_model() first.")
             
         # Make predictions
-        train_predictions = self.model.predict(self.X_train)
-        test_predictions = self.model.predict(self.X_test)
+        train_predictions = self.lstm_model.predict(self.X_train)
+        test_predictions = self.lstm_model.predict(self.X_test)
         
         # Get prediction probabilities
-        train_probs = self.model.predict_proba(self.X_train)
-        test_probs = self.model.predict_proba(self.X_test)
+        train_probs = self.lstm_model.predict_proba(self.X_train)
+        test_probs = self.lstm_model.predict_proba(self.X_test)
         
         # Calculate metrics
         train_accuracy = np.mean(train_predictions == self.y_train)
@@ -118,12 +121,12 @@ class StockPredictor:
         Returns:
             tuple: (predicted_returns, actual_spy_returns) both as numpy arrays
         """
-        if self.model is None or self.X_test is None:
+        if self.lstm_model is None or self.X_test is None:
             return None, None
             
         try:
             # Get predicted strategy labels for test data
-            test_predictions = self.model.predict(self.X_test)
+            test_predictions = self.lstm_model.predict(self.X_test)
             
             # Get the corresponding dates and strategy returns from the data retriever
             # We need to access the LSTM data that was used for testing
@@ -368,7 +371,7 @@ if __name__ == "__main__":
     
     # Save the model if requested
     if args.save:
-        save_model(predictor.model.model, hmm_model=predictor.data_retriever.state_classifier, mode=args.mode)
+        save_model(predictor.lstm_model.model, hmm_model=predictor.data_retriever.state_classifier, mode=args.mode)
     
     print("\n📊 Evaluating Model Performance...")
     results = predictor.evaluate_model()

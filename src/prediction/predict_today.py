@@ -23,6 +23,7 @@ sys.path.insert(0, src_dir)
 from model.market_state_classifier import MarketStateClassifier
 from model.lstm_model import LSTMModel
 from common.cache.cache_manager import CacheManager
+from common.data_retriever import DataRetriever
 
 class TodayPredictor:
     """Predictor class for making daily options trading predictions using pretrained HMM and LSTM models."""
@@ -34,6 +35,9 @@ class TodayPredictor:
             symbol: Stock symbol to analyze
         """
         self.symbol = symbol
+        
+        # Initialize DataRetriever for data fetching and feature calculation
+        self.data_retriever = DataRetriever(symbol=symbol, quiet_mode=True)
         
         # Load model directory from environment variable
         model_save_base_path = os.getenv('MODEL_SAVE_BASE_PATH', 'Trained_Models')
@@ -87,7 +91,7 @@ class TodayPredictor:
         print(f"   Number of states: {self.hmm_model.n_states}")
         
     def fetch_recent_data(self, days=90):
-        """Fetch recent market data for prediction
+        """Fetch recent market data for prediction using DataRetriever
         
         Args:
             days: Number of days of historical data to fetch
@@ -95,66 +99,34 @@ class TodayPredictor:
         Returns:
             DataFrame with OHLCV data
         """
-        # Increase the fetch period to ensure we have enough data after feature calculation
-        # We need at least sequence_length + some buffer for feature calculation
-        fetch_days = max(days, self.sequence_length + 50)  # Add 50 days buffer for feature calculation
+        # Calculate start date based on days needed
+        end_date = datetime.now().date()
+        start_date = end_date - timedelta(days=days)
         
-        print(f"📊 Fetching {fetch_days} days of {self.symbol} data (need {self.sequence_length} for LSTM + buffer)...")
+        print(f"📊 Fetching {days} days of {self.symbol} data using DataRetriever...")
         
-        # Load from cache
-        cache_manager = CacheManager()
+        # Use DataRetriever to fetch data with caching
+        data = self.data_retriever.fetch_data_for_period(
+            start_date.strftime('%Y-%m-%d'),
+            'prediction'
+        )
         
-        # Look for cached data files in data_cache/stocks/SPY
-        cache_dir = cache_manager.get_cache_dir('stocks', self.symbol)
-        if not cache_dir.exists():
-            raise ValueError(f"No cache directory found for {self.symbol}")
+        # Ensure we have enough data for LSTM sequence
+        if len(data) < self.sequence_length + 10:
+            print(f"⚠️  Warning: Only {len(data)} days available, need at least {self.sequence_length + 10}")
+            # Try to fetch more data
+            extended_start_date = end_date - timedelta(days=days * 2)
+            data = self.data_retriever.fetch_data_for_period(
+                extended_start_date.strftime('%Y-%m-%d'), 
+                'prediction'
+            )
         
-        print(f"🔍 Looking for cached data in {cache_dir}")
-        
-        # Get all cached files and sort by date (newest first)
-        cached_files = []
-        for file_path in cache_dir.glob('*.pkl'):
-            try:
-                # Try to extract date from filename (format: YYYY-MM-DD_suffix.pkl)
-                filename = file_path.stem
-                if '_' in filename:
-                    date_str = filename.split('_')[0]
-                    file_date = datetime.strptime(date_str, '%Y-%m-%d')
-                    cached_files.append((file_date, file_path))
-            except ValueError:
-                continue
-        
-        if not cached_files:
-            raise ValueError(f"No cached files found for {self.symbol}")
-        
-        # Sort by date (newest first) and use the first available file
-        cached_files.sort(key=lambda x: x[0], reverse=True)
-        file_date, file_path = cached_files[0]
-        
-        print(f"📁 Using cached file: {file_path.name} (contains data from {file_date.date()})")
-        
-        # Load the cached data
-        cached_data = cache_manager.load_from_cache(file_path.name, 'stocks', self.symbol)
-        if cached_data is None or cached_data.empty:
-            raise ValueError(f"Failed to load data from {file_path.name}")
-        
-        print(f"   Cached data range: {cached_data.index[0].date()} to {cached_data.index[-1].date()}")
-        
-        # Get the most recent fetch_days from the cached data
-        if len(cached_data) >= fetch_days:
-            # Take the last fetch_days from the data
-            filtered_data = cached_data.tail(fetch_days).copy()
-        else:
-            # Use all available data if we don't have enough
-            filtered_data = cached_data.copy()
-            print(f"   ⚠️  Only {len(filtered_data)} days available, using all cached data")
-        
-        print(f"✅ Loaded {len(filtered_data)} days from cache: {file_path.name}")
-        print(f"   Data range: {filtered_data.index[0].date()} to {filtered_data.index[-1].date()}")
-        return filtered_data
+        print(f"✅ Loaded {len(data)} days from DataRetriever")
+        print(f"   Data range: {data.index[0].date()} to {data.index[-1].date()}")
+        return data
     
     def calculate_features(self, data, window=20):
-        """Calculate technical features for prediction
+        """Calculate technical features for prediction using DataRetriever
         
         Args:
             data: DataFrame with OHLCV data
@@ -163,31 +135,12 @@ class TodayPredictor:
         Returns:
             DataFrame with calculated features
         """
-        print("🔧 Calculating technical features...")
+        print("🔧 Calculating technical features using DataRetriever...")
         
-        # Basic returns and volatility
-        data['Returns'] = data['Close'].pct_change()
-        data['Log_Returns'] = np.log(data['Close'] / data['Close'].shift(1))
-        data['Volatility'] = data['Returns'].rolling(window=window).std()
-        data['High_Low_Range'] = (data['High'] - data['Low']) / data['Close']
+        # Use DataRetriever to calculate technical features
+        self.data_retriever.calculate_features_for_data(data, window)
         
-        # Trend indicators
-        data['SMA20'] = data['Close'].rolling(window=window).mean()
-        data['SMA50'] = data['Close'].rolling(window=50).mean()
-        data['Price_to_SMA20'] = data['Close'] / data['SMA20']
-        data['SMA20_to_SMA50'] = data['SMA20'] / data['SMA50']
-        
-        # Momentum indicators
-        data['RSI'] = self.calculate_rsi(data['Close'], window=14)
-        macd_line, macd_signal = self.calculate_macd(data['Close'])
-        data['MACD_Hist'] = macd_line - macd_signal
-        
-        # Volume features
-        data['Volume_SMA'] = data['Volume'].rolling(window=window).mean()
-        data['Volume_Ratio'] = data['Volume'] / data['Volume_SMA']
-        data['OBV'] = self.calculate_obv(data['Close'], data['Volume'])
-        
-        # Options features - fetch real options data for today
+        # Add options features - fetch real options data for today
         current_price = data['Close'].iloc[-1]  # Use most recent price
         options_features = self.fetch_today_options_data(current_price)
         data['Put_Call_Ratio'] = options_features['Put_Call_Ratio']
@@ -202,37 +155,7 @@ class TodayPredictor:
         print(f"✅ Calculated features for {len(data)} samples")
         return data
     
-    def calculate_rsi(self, prices, window=14):
-        """Calculate Relative Strength Index"""
-        delta = prices.diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=window).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=window).mean()
-        rs = gain / loss
-        return 100 - (100 / (1 + rs))
-    
-    def calculate_macd(self, prices, fast=12, slow=26, signal=9):
-        """Calculate MACD and Signal line"""
-        exp1 = prices.ewm(span=fast, adjust=False).mean()
-        exp2 = prices.ewm(span=slow, adjust=False).mean()
-        macd = exp1 - exp2
-        signal_line = macd.ewm(span=signal, adjust=False).mean()
-        return macd, signal_line
-    
-    def calculate_obv(self, prices, volume):
-        """Calculate On-Balance Volume"""
-        price_change = prices.diff()
-        obv = pd.Series(index=prices.index, dtype=float)
-        obv.iloc[0] = volume.iloc[0]
-        
-        for i in range(1, len(prices)):
-            if price_change.iloc[i] > 0:
-                obv.iloc[i] = obv.iloc[i-1] + volume.iloc[i]
-            elif price_change.iloc[i] < 0:
-                obv.iloc[i] = obv.iloc[i-1] - volume.iloc[i]
-            else:
-                obv.iloc[i] = obv.iloc[i-1]
-        
-        return obv
+
     
     def fetch_today_options_data(self, current_price):
         """Fetch today's option chain data to calculate real options features

@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Tuple
 import os
 from dotenv import load_dotenv
 import requests
-from ..common.cache.cache_manager import CacheManager
+from common.cache.cache_manager import CacheManager
 from .api_retry_handler import APIRetryHandler
 import sys
 import os
@@ -730,7 +730,7 @@ class OptionsHandler:
                 
         return data
 
-    def calculate_option_signals(self, data: pd.DataFrame, holding_period: int = 5, min_return_threshold: float = 0.08) -> pd.DataFrame:
+    def calculate_option_signals(self, data: pd.DataFrame, holding_period: int = 15, min_return_threshold: float = 0.08) -> pd.DataFrame:
         """Calculate trading signals based on options strategies using real multi-strike data
         
         Strategy Classes:
