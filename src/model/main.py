@@ -1,9 +1,8 @@
 from ..common.data_retriever import DataRetriever
 from .lstm_model import LSTMModel
 import numpy as np
-import matplotlib.pyplot as plt
 from sklearn.metrics import classification_report, confusion_matrix
-import seaborn as sns
+from .plots import create_plotter
 from .config import EPOCHS, BATCH_SIZE, SEQUENCE_LENGTH
 import argparse
 import os
@@ -191,74 +190,23 @@ class StockPredictor:
             print(f"⚠️ Error calculating strategy returns comparison: {str(e)}")
             return None, None
 
-    def plot_results(self, results):
-        """Plot the results"""
-        # Plot confusion matrix
-        plt.figure(figsize=(10, 8))
-        sns.heatmap(
-            results['confusion_matrix'], 
-            annot=True, 
-            fmt='d',
-            xticklabels=results['class_labels'],
-            yticklabels=results['class_labels']
+    def plot_results(self, results, history=None):
+        """Plot the results using the new plotting module"""
+        # Create plotter instance
+        plotter = create_plotter(self.data_retriever.symbol)
+        
+        # Get predicted strategy returns and actual returns for comparison
+        predicted_returns, actual_returns = self.get_strategy_returns_comparison()
+        
+        # Plot all results
+        plotter.plot_all_results(
+            results=results,
+            test_actual=self.y_test,
+            test_pred=results['test_predictions'],
+            predicted_returns=predicted_returns,
+            actual_returns=actual_returns,
+            history=history
         )
-        plt.title(f'Confusion Matrix of Option Trading Signals - {self.data_retriever.symbol}')
-        plt.xlabel('Predicted Signal')
-        plt.ylabel('True Signal')
-        plt.yticks(range(len(results['class_labels'])), results['class_labels'])
-        plt.xticks(range(len(results['class_labels'])), results['class_labels'], rotation=45)
-        plt.show()
-
-        # Plot signal distribution over time
-        plt.figure(figsize=(15, 6))
-        
-        # Get actual signals for test data
-        test_actual = self.y_test
-        test_pred = results['test_predictions']
-        
-        # Create time points
-        time_points = range(len(test_actual))
-        
-        # Plot actual vs predicted signals
-        plt.plot(time_points, test_actual, label='Actual Signal', alpha=0.6)
-        plt.plot(time_points, test_pred, label='Predicted Signal', alpha=0.6)
-        
-        plt.title(f'Option Trading Signals: Predicted vs Actual - {self.data_retriever.symbol}')
-        plt.xlabel('Time')
-        plt.ylabel('Signal')
-        plt.yticks(range(len(results['class_labels'])), results['class_labels'])
-        plt.legend()
-        plt.grid(True)
-        plt.show()
-        
-        # Plot accumulated predicted returns vs actual SPY log returns over time
-        plt.figure(figsize=(15, 8))
-        
-        # Get the predicted strategy returns and actual SPY log returns
-        predicted_returns, actual_spy_returns = self.get_strategy_returns_comparison()
-        
-        if predicted_returns is not None and actual_spy_returns is not None:
-            # Align time points with available data
-            comparison_time_points = range(len(predicted_returns))
-            
-            # Calculate accumulated returns
-            accumulated_predicted_returns = np.cumsum(predicted_returns)
-            accumulated_spy_returns = np.cumsum(actual_spy_returns)
-            
-            plt.plot(comparison_time_points, accumulated_spy_returns * 100, 
-                    label=f'Accumulated {self.data_retriever.symbol} Log Returns (×100)', alpha=0.8, linewidth=1.5, color='blue')
-            plt.plot(comparison_time_points, accumulated_predicted_returns, 
-                    label='Accumulated Strategy Returns', alpha=0.8, linewidth=1.5, color='red')
-            
-            plt.title(f'Accumulated Strategy Returns vs Accumulated {self.data_retriever.symbol} Log Returns Over Time')
-            plt.xlabel('Time')
-            plt.ylabel('Accumulated Returns')
-            plt.legend()
-            plt.grid(True, alpha=0.3)
-            plt.tight_layout()
-            plt.show()
-        else:
-            print("⚠️ Unable to generate returns comparison plot - insufficient data")
 
 def save_model(lstm_model_obj, hmm_model=None, mode='lstm_poc', symbol='SPY'):
     """Save both LSTM and HMM models to timestamped and latest folders"""
@@ -395,7 +343,7 @@ if __name__ == "__main__":
     
     print("\n📊 Evaluating Model Performance...")
     results = predictor.evaluate_model()
-    predictor.plot_results(results)
+    predictor.plot_results(results, history=history)
     
     print("\nClassification Report:")
     print(results['classification_report'])

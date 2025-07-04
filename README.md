@@ -49,14 +49,15 @@ The LSTM model predicts optimal options trading strategies from three classes:
 ### Core Components
 
 - **`src/model/main.py`** - Main training and evaluation script
-- **`src/model/data_retriever.py`** - Market data fetching and feature engineering
+- **`src/model/lstm_model.py`** - LSTM model for strategy prediction
+- **`src/model/plots.py`** - Plotting utilities and visualization
+- **`src/model/config.py`** - Configuration settings
 - **`src/model/options_handler.py`** - Options data processing and strategy calculations
 - **`src/model/market_state_classifier.py`** - HMM model for market state classification
-- **`src/model/lstm_model.py`** - LSTM model for strategy prediction
-- **`src/model/config.py`** - Configuration settings
-- **`src/common/cache/cache_manager.py`** - Data caching utilities
 - **`src/model/api_retry_handler.py`** - API request retry logic
-- **`progress_tracker.py`** - Training progress tracking
+- **`src/model/progress_tracker.py`** - Training progress tracking
+- **`src/common/data_retriever.py`** - Market data fetching and feature engineering
+- **`src/common/cache/cache_manager.py`** - Data caching utilities
 
 ### New Files
 
@@ -111,6 +112,18 @@ Additional Features for LSTM Training:
 - Options market indicators
 - Momentum indicators (RSI, MACD)
 - Advanced volume metrics (OBV)
+
+### Plotting and Visualization (`plots.py`)
+
+The plotting module provides comprehensive visualization capabilities:
+- **Confusion Matrix**: Shows model prediction accuracy across strategy classes
+- **Signal Distribution**: Displays actual vs predicted signals over time
+- **Returns Comparison**: Compares accumulated strategy returns vs market returns
+- **Training History**: Shows loss and accuracy curves during training
+- **Feature Importance**: Visualizes feature contributions (when available)
+- **Market States**: Plots market state transitions over time
+
+All plots are automatically generated during model evaluation and can be customized by symbol.
 
 ### LSTM Model Architecture (`lstm_model.py`)
 

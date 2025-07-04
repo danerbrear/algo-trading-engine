@@ -4,30 +4,36 @@ Script to make predictions for today's option chain using pretrained HMM and LST
 """
 
 import os
+import sys
+import argparse
 import pickle
 from datetime import datetime, timedelta
 from sklearn.preprocessing import StandardScaler
-import argparse
 import numpy as np
-import pandas as pd
 import keras
 import yfinance as yf
-import sys
-import os
 
 # Add the src directory to Python path for direct execution
 current_dir = os.path.dirname(os.path.abspath(__file__))
 src_dir = os.path.join(current_dir, '..')
 sys.path.insert(0, src_dir)
 
-from model.market_state_classifier import MarketStateClassifier
-from model.lstm_model import LSTMModel
-from common.cache.cache_manager import CacheManager
-from common.data_retriever import DataRetriever
+# Import with try/except to handle both direct execution and module execution
+try:
+    from model.market_state_classifier import MarketStateClassifier
+    from model.lstm_model import LSTMModel
+    from common.cache.cache_manager import CacheManager
+    from common.data_retriever import DataRetriever
+except ImportError:
+    # Fallback for module execution
+    from src.model.market_state_classifier import MarketStateClassifier
+    from src.model.lstm_model import LSTMModel
+    from src.common.cache.cache_manager import CacheManager
+    from src.common.data_retriever import DataRetriever
 
 class TodayPredictor:
     """Predictor class for making daily options trading predictions using pretrained HMM and LSTM models."""
-    
+
     def __init__(self, symbol='SPY'):
         """Initialize the predictor with pretrained models
         
@@ -35,32 +41,32 @@ class TodayPredictor:
             symbol: Stock symbol to analyze
         """
         self.symbol = symbol
-        
+
         # Initialize DataRetriever for data fetching and feature calculation
         self.data_retriever = DataRetriever(symbol=symbol, quiet_mode=True)
-        
+
         # Load model directory from environment variable
         model_save_base_path = os.getenv('MODEL_SAVE_BASE_PATH', 'Trained_Models')
         self.model_dir = os.path.join(model_save_base_path, 'lstm_poc', symbol, 'latest')
-            
+
         self.lstm_model = None
         self.hmm_model = None
         self.lstm_scaler = None
         self.sequence_length = 60
         self.n_features = 9  # Updated to match the saved model (9 features)
-        
+
         # Load models
         self.load_models()
-        
+
     def load_models(self):
         """Load pretrained HMM and LSTM models"""
         print(f"🔄 Loading models from {self.model_dir}...")
-        
+
         # Load LSTM model
         lstm_path = os.path.join(self.model_dir, 'model.keras')
         if not os.path.exists(lstm_path):
             raise FileNotFoundError(f"LSTM model not found at {lstm_path}")
-        
+
         self.lstm_model = LSTMModel(sequence_length=self.sequence_length, n_features=self.n_features)
         self.lstm_model.model = keras.models.load_model(lstm_path)
         print(f"✅ LSTM model loaded from {lstm_path}")
