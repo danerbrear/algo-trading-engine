@@ -179,6 +179,9 @@ handler = OptionsHandler(symbol='SPY', api_key='YOUR_KEY')
 ```bash
 # From the project root directory
 python -m src.model.main
+
+# Train on a specific symbol
+python -m src.model.main --symbol QQQ
 ```
 
 2. **Free Tier Rate Limiting:**
@@ -186,6 +189,9 @@ python -m src.model.main
 If you're using a free Polygon.io API account, use the `-f` or `--free` flag to enable 13-second delays between API requests to stay within rate limits:
 ```bash
 python -m src.model.main --free
+
+# Train on specific symbol with free tier
+python -m src.model.main --symbol QQQ --free
 ```
 This prevents hitting the free tier limit of 5 API calls per minute. Without this flag, the system will make requests without delays (suitable for paid API tiers).
 
@@ -195,6 +201,9 @@ By default, the system runs in quiet mode with a clean progress bar. Use the `-v
 ```bash
 # Default: clean progress bar (quiet mode)
 python -m src.model.main
+
+# Train on specific symbol with verbose output
+python -m src.model.main --symbol QQQ --verbose
 
 # Detailed logging for debugging
 python -m src.model.main --verbose
@@ -209,19 +218,30 @@ In quiet mode (default), detailed API call messages are suppressed and only a cl
 You can save the trained model after training by using the `-s` or `--save` flag:
 ```bash
 python -m src.model.main --save
+
+# Train and save model for specific symbol
+python -m src.model.main --symbol QQQ --save
 ```
 - The model will be saved in Keras format (`.keras`) to the directory specified by the `MODEL_SAVE_BASE_PATH` variable in your `.env` file (default: `Trained_Models`).
 - The folder structure will be:
-  - `<MODEL_SAVE_BASE_PATH>/<mode>/<timestamp>/model.keras` (timestamped)
-  - `<MODEL_SAVE_BASE_PATH>/<mode>/latest/model.keras` (latest, always overwritten)
+  - `<MODEL_SAVE_BASE_PATH>/<mode>/<symbol>/<timestamp>/model.keras` (timestamped)
+  - `<MODEL_SAVE_BASE_PATH>/<mode>/<symbol>/latest/model.keras` (latest, always overwritten)
+  - `<MODEL_SAVE_BASE_PATH>/<mode>/<symbol>/<timestamp>/lstm_scaler.pkl` (LSTM feature scaler)
+  - `<MODEL_SAVE_BASE_PATH>/<mode>/<symbol>/latest/lstm_scaler.pkl` (LSTM feature scaler)
 - You can specify a custom mode label for the subfolder using `--mode`:
 ```bash
 python -m src.model.main --save --mode my_experiment
+
+# Train specific symbol with custom mode
+python -m src.model.main --symbol QQQ --save --mode my_experiment
 ```
 
 - You can combine flags. For example, to use free tier rate limiting, quiet mode, and save the model:
 ```bash
 python -m src.model.main --free --quiet --save
+
+# Train specific symbol with all options
+python -m src.model.main --symbol QQQ --free --quiet --save
 ```
 
 5. **Common Usage Examples:**
@@ -230,18 +250,41 @@ python -m src.model.main --free --quiet --save
 # Basic usage (clean progress bar by default)
 python -m src.model.main
 
+# Train on specific symbol
+python -m src.model.main --symbol QQQ
+
 # Detailed logging for debugging
 python -m src.model.main --verbose
+
+# Train on specific symbol with verbose output
+python -m src.model.main --symbol QQQ --verbose
 
 # Free tier with clean progress (default)
 python -m src.model.main --free
 
+# Train on specific symbol with free tier
+python -m src.model.main --symbol QQQ --free
+
 # Production run with all options
 python -m src.model.main --free --save --mode production
+
+# Production run for specific symbol
+python -m src.model.main --symbol QQQ --free --save --mode production
 
 # Debug mode with full logging
 python -m src.model.main --verbose --free --save
 ```
+
+#### Command-Line Options
+
+The training script supports several command-line options:
+
+- `--symbol SYMBOL`: Stock symbol to train the model on (default: SPY)
+- `-s, --save`: Save the trained model after training
+- `--mode MODE`: Mode label for model saving (e.g., lstm_poc, production)
+- `-f, --free`: Use free tier rate limiting (13 second timeout between API requests)
+- `-q, --quiet`: Suppress detailed output during processing (default)
+- `-v, --verbose`: Show detailed output during processing (opposite of --quiet)
 
 #### Making Predictions
 

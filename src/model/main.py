@@ -116,10 +116,10 @@ class StockPredictor:
         }
 
     def get_strategy_returns_comparison(self):
-        """Get predicted strategy returns vs actual SPY log returns for comparison plotting
+        """Get predicted strategy returns vs actual stock log returns for comparison plotting
         
         Returns:
-            tuple: (predicted_returns, actual_spy_returns) both as numpy arrays
+            tuple: (predicted_returns, actual_stock_returns) both as numpy arrays
         """
         if self.lstm_model is None or self.X_test is None:
             return None, None
@@ -202,7 +202,7 @@ class StockPredictor:
             xticklabels=results['class_labels'],
             yticklabels=results['class_labels']
         )
-        plt.title('Confusion Matrix of Option Trading Signals')
+        plt.title(f'Confusion Matrix of Option Trading Signals - {self.data_retriever.symbol}')
         plt.xlabel('Predicted Signal')
         plt.ylabel('True Signal')
         plt.yticks(range(len(results['class_labels'])), results['class_labels'])
@@ -223,7 +223,7 @@ class StockPredictor:
         plt.plot(time_points, test_actual, label='Actual Signal', alpha=0.6)
         plt.plot(time_points, test_pred, label='Predicted Signal', alpha=0.6)
         
-        plt.title('Option Trading Signals: Predicted vs Actual')
+        plt.title(f'Option Trading Signals: Predicted vs Actual - {self.data_retriever.symbol}')
         plt.xlabel('Time')
         plt.ylabel('Signal')
         plt.yticks(range(len(results['class_labels'])), results['class_labels'])
@@ -246,11 +246,11 @@ class StockPredictor:
             accumulated_spy_returns = np.cumsum(actual_spy_returns)
             
             plt.plot(comparison_time_points, accumulated_spy_returns * 100, 
-                    label='Accumulated SPY Log Returns (×100)', alpha=0.8, linewidth=1.5, color='blue')
+                    label=f'Accumulated {self.data_retriever.symbol} Log Returns (×100)', alpha=0.8, linewidth=1.5, color='blue')
             plt.plot(comparison_time_points, accumulated_predicted_returns, 
                     label='Accumulated Strategy Returns', alpha=0.8, linewidth=1.5, color='red')
             
-            plt.title('Accumulated Strategy Returns vs Accumulated SPY Log Returns Over Time')
+            plt.title(f'Accumulated Strategy Returns vs Accumulated {self.data_retriever.symbol} Log Returns Over Time')
             plt.xlabel('Time')
             plt.ylabel('Accumulated Returns')
             plt.legend()
@@ -260,22 +260,39 @@ class StockPredictor:
         else:
             print("⚠️ Unable to generate returns comparison plot - insufficient data")
 
-def save_model(model, hmm_model=None, mode='lstm_poc'):
+def save_model(lstm_model_obj, hmm_model=None, mode='lstm_poc', symbol='SPY'):
     """Save both LSTM and HMM models to timestamped and latest folders"""
+    import pickle
+    
     # Only use the environment variable, default to a generic relative path if not set
     base_dir = os.environ.get('MODEL_SAVE_BASE_PATH', 'Trained_Models')
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    timestamp_dir = os.path.join(base_dir, mode, timestamp)
-    latest_dir = os.path.join(base_dir, mode, 'latest')
+    # Include symbol in the path for different symbols
+    timestamp_dir = os.path.join(base_dir, mode, symbol, timestamp)
+    latest_dir = os.path.join(base_dir, mode, symbol, 'latest')
     os.makedirs(timestamp_dir, exist_ok=True)
     os.makedirs(latest_dir, exist_ok=True)
     
     # Save LSTM model
     model_path = os.path.join(timestamp_dir, 'model.keras')
     latest_path = os.path.join(latest_dir, 'model.keras')
-    model.save(model_path)
-    model.save(latest_path)
+    lstm_model_obj.model.save(model_path)
+    lstm_model_obj.model.save(latest_path)
     print(f"✅ LSTM model saved to {model_path} and {latest_path}")
+    
+    # Save LSTM scaler
+    if hasattr(lstm_model_obj, 'scaler') and lstm_model_obj.scaler is not None:
+        scaler_path = os.path.join(timestamp_dir, 'lstm_scaler.pkl')
+        scaler_latest_path = os.path.join(latest_dir, 'lstm_scaler.pkl')
+        
+        with open(scaler_path, 'wb') as f:
+            pickle.dump(lstm_model_obj.scaler, f)
+        with open(scaler_latest_path, 'wb') as f:
+            pickle.dump(lstm_model_obj.scaler, f)
+        
+        print(f"✅ LSTM scaler saved to {scaler_path} and {scaler_latest_path}")
+    else:
+        print("⚠️  LSTM scaler not available for saving")
     
     # Save HMM model if provided
     if hmm_model is not None:
@@ -345,6 +362,7 @@ if __name__ == "__main__":
     print("=" * 60)
     
     parser = argparse.ArgumentParser(description="Options Trading LSTM Model")
+    parser.add_argument('--symbol', type=str, default='SPY', help='Stock symbol to train the model on (default: SPY)')
     parser.add_argument('-s', '--save', action='store_true', help='Save the trained model')
     parser.add_argument('--mode', type=str, default='lstm_poc', help='Mode label for model saving (e.g., lstm_poc)')
     parser.add_argument('-f', '--free', action='store_true', help='Use free tier rate limiting (13 second timeout between API requests)')
@@ -355,8 +373,10 @@ if __name__ == "__main__":
     # Determine quiet mode: default is True (quiet) unless --verbose is specified
     quiet_mode = not args.verbose  # If verbose is True, quiet_mode becomes False
     
+    print(f"🎯 Training model for symbol: {args.symbol}")
+    
     predictor = StockPredictor(
-        symbol='SPY',
+        symbol=args.symbol,
         hmm_start_date='2010-01-01',
         lstm_start_date='2021-06-01',
         use_free_tier=args.free,
@@ -371,7 +391,7 @@ if __name__ == "__main__":
     
     # Save the model if requested
     if args.save:
-        save_model(predictor.lstm_model.model, hmm_model=predictor.data_retriever.state_classifier, mode=args.mode)
+        save_model(predictor.lstm_model, hmm_model=predictor.data_retriever.state_classifier, mode=args.mode, symbol=args.symbol)
     
     print("\n📊 Evaluating Model Performance...")
     results = predictor.evaluate_model()

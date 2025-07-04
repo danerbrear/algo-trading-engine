@@ -41,7 +41,7 @@ class TodayPredictor:
         
         # Load model directory from environment variable
         model_save_base_path = os.getenv('MODEL_SAVE_BASE_PATH', 'Trained_Models')
-        self.model_dir = os.path.join(model_save_base_path, 'lstm_poc', 'latest')
+        self.model_dir = os.path.join(model_save_base_path, 'lstm_poc', symbol, 'latest')
             
         self.lstm_model = None
         self.hmm_model = None
