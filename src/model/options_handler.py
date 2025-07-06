@@ -11,9 +11,13 @@ from typing import Dict, List, Optional, Tuple
 import os
 from dotenv import load_dotenv
 import requests
-from cache_manager import CacheManager
-from api_retry_handler import APIRetryHandler
-from progress_tracker import ProgressTracker, set_global_progress_tracker, progress_print, is_quiet_mode
+from common.cache.cache_manager import CacheManager
+from .api_retry_handler import APIRetryHandler
+import sys
+import os
+# Add the project root to the path to import progress_tracker
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+from src.model.progress_tracker import ProgressTracker, set_global_progress_tracker, progress_print, is_quiet_mode
 from tqdm import tqdm
 
 # Load environment variables from .env file
@@ -726,28 +730,24 @@ class OptionsHandler:
                 
         return data
 
-    def calculate_option_signals(self, data: pd.DataFrame, holding_period: int = 5, min_return_threshold: float = 0.10) -> pd.DataFrame:
-        """Calculate trading signals based on sophisticated options strategies using real multi-strike data
+    def calculate_option_signals(self, data: pd.DataFrame, holding_period: int = 15, min_return_threshold: float = 0.08) -> pd.DataFrame:
+        """Calculate trading signals based on options strategies using real multi-strike data
         
-        Enhanced Strategy Classes:
+        Strategy Classes:
         0: Hold - No position (when no strategy meets criteria)
-        1: Call Debit Spread - Moderately bullish (buy ATM call + sell ATM+5 call)
-        2: Put Debit Spread - Moderately bearish (buy ATM put + sell ATM-5 put) 
-        3: Iron Butterfly - Range-bound, high premium (sell ATM call + sell ATM put + buy ATM±10)
-        4: Long Straddle - High volatility breakout (buy ATM call + buy ATM put)
+        1: Call Credit Spread - Moderately bearish (sell ATM call + buy ATM+5 call)
+        2: Put Credit Spread - Moderately bullish (sell ATM put + buy ATM-5 put) 
         
         Args:
             holding_period: Number of days to hold the strategy (default: 5)
-            min_return_threshold: Minimum return required to generate a signal (default: 10%)
+            min_return_threshold: Minimum return required to generate a signal (default: 8%)
         """
-        print(f"Generating realistic strategy labels using complete multi-strike data with {holding_period}-day holding period and {min_return_threshold:.1%} minimum threshold")
+        print(f"Generating strategy labels using multi-strike data with {holding_period}-day holding period and {min_return_threshold:.1%} minimum threshold")
         
         # Initialize the signal column
         data['Option_Signal'] = 0  # Default to Hold
         
-        # Removed ATM_Call_Return and ATM_Put_Return calculations (features removed due to noise and missing values)
-        
-        # Multi-strike returns for realistic strategy calculations (now guaranteed)
+        # Multi-strike returns for realistic strategy calculations
         data['Call_Plus5_Return'] = data['Call_ATM_Plus5_Price'].pct_change(fill_method=None)
         data['Put_Minus5_Return'] = data['Put_ATM_Minus5_Price'].pct_change(fill_method=None)
         
@@ -755,97 +755,50 @@ class OptionsHandler:
         stock_return = data['Close'].shift(-holding_period) / data['Close'] - 1
         data['Future_Stock_Return'] = stock_return
         
-        # REALISTIC Strategy Return Calculations using actual multi-strike data
+        # Strategy Return Calculations using actual multi-strike data
         
-        # 1. Call Debit Spread: Buy ATM Call + Sell ATM+5 Call
+        # 1. Call Credit Spread: Sell ATM Call + Buy ATM+5 Call
         atm_call_future = data['Call_Price'].shift(-holding_period) / data['Call_Price'] - 1
         plus5_call_future = data['Call_ATM_Plus5_Price'].shift(-holding_period) / data['Call_ATM_Plus5_Price'] - 1
         
-        # Real spread P&L: Long leg profit - Short leg loss
-        data['Future_Call_Debit_Return'] = atm_call_future - plus5_call_future
-        print("✅ Using REAL Call Debit Spread calculation (ATM Call - ATM+5 Call)")
+        # Credit spread P&L: Short leg profit - Long leg loss (reversed from debit spread)
+        data['Future_Call_Credit_Return'] = -atm_call_future + plus5_call_future
+        print("✅ Using REAL Call Credit Spread calculation (Sell ATM Call + Buy ATM+5 Call)")
         
-        # 2. Put Debit Spread: Buy ATM Put + Sell ATM-5 Put
+        # 2. Put Credit Spread: Sell ATM Put + Buy ATM-5 Put
         atm_put_future = data['Put_Price'].shift(-holding_period) / data['Put_Price'] - 1
         minus5_put_future = data['Put_ATM_Minus5_Price'].shift(-holding_period) / data['Put_ATM_Minus5_Price'] - 1
         
-        # Real spread P&L: Long leg profit - Short leg loss
-        data['Future_Put_Debit_Return'] = atm_put_future - minus5_put_future
-        print("✅ Using REAL Put Debit Spread calculation (ATM Put - ATM-5 Put)")
-        
-        # 3. Iron Butterfly: Sell ATM Call + Sell ATM Put + Buy ATM±10 protection
-        # This is simpler and more profitable than Iron Condor since both short strikes are ATM
-        atm_call_short = -atm_call_future  # Short ATM call (negative of long position)
-        atm_put_short = -atm_put_future    # Short ATM put (negative of long position)
-        
-        # Protection legs - approximate using existing data or calculate based on strikes
-        data['Price_Change'] = abs(stock_return)
-        data['Volatility_Percentile'] = data['Volatility'].rolling(window=60).rank(pct=True)
-        
-        # Calculate realistic Iron Butterfly returns
-        iron_butterfly_returns = []
-        
-        for i in range(len(data)):
-            current_price = data['Close'].iloc[i] if i < len(data) else None
-            if current_price is None:
-                iron_butterfly_returns.append(0.08)  # Default return
-                continue
-                
-            future_price = data['Close'].iloc[min(i + holding_period, len(data) - 1)]
-            
-            # Iron Butterfly strikes: Sell ATM Call + ATM Put, Buy ATM±10 protection
-            atm_strike = current_price
-            long_call_strike = current_price + 10  # Buy call protection
-            long_put_strike = current_price - 10   # Buy put protection
-            
-            # Calculate Iron Butterfly P&L
-            iron_butterfly_return = self._calculate_iron_butterfly_pnl(
-                current_price, future_price,
-                atm_strike, long_call_strike, long_put_strike,
-                data.iloc[i]
-            )
-            
-            iron_butterfly_returns.append(iron_butterfly_return)
-        
-        data['Future_Iron_Butterfly_Return'] = iron_butterfly_returns
-        print("✅ Using realistic Iron Butterfly P&L calculation (sell ATM straddle + buy protection)")
-        
-        # 4. Long Straddle: Buy ATM Call + Buy ATM Put (Always realistic with ATM data)
-        # Real straddle P&L: Both legs combined
-        data['Future_Long_Straddle_Return'] = atm_call_future + atm_put_future
-        print("✅ Using REAL Long Straddle calculation (ATM Call + ATM Put)")
+        # Credit spread P&L: Short leg profit - Long leg loss (reversed from debit spread)
+        data['Future_Put_Credit_Return'] = -atm_put_future + minus5_put_future
+        print("✅ Using REAL Put Credit Spread calculation (Sell ATM Put + Buy ATM-5 Put)")
         
         # Strategy counters
-        strategy_counts = [0, 0, 0, 0, 0]  # Hold, Call Debit, Put Debit, Iron Butterfly, Long Straddle
-        strategy_names = ['Hold', 'Call Debit Spread', 'Put Debit Spread', 'Iron Butterfly', 'Long Straddle']
+        strategy_counts = [0, 0, 0]  # Hold, Call Credit, Put Credit
+        strategy_names = ['Hold', 'Call Credit Spread', 'Put Credit Spread']
         
         # Generate labels based on best performing strategy with market context
         valid_strategies = 0
         for i in range(len(data) - holding_period):  # Exclude last holding_period rows
             
             # Get future returns for each strategy
-            call_debit_return = data['Future_Call_Debit_Return'].iloc[i]
-            put_debit_return = data['Future_Put_Debit_Return'].iloc[i]
-            iron_butterfly_return = data['Future_Iron_Butterfly_Return'].iloc[i]
-            long_straddle_return = data['Future_Long_Straddle_Return'].iloc[i]
+            call_credit_return = data['Future_Call_Credit_Return'].iloc[i]
+            put_credit_return = data['Future_Put_Credit_Return'].iloc[i]
             
             # Skip if we don't have complete option data
-            if (pd.isna(call_debit_return) or pd.isna(put_debit_return) or 
-                pd.isna(long_straddle_return)):
+            if (pd.isna(call_credit_return) or pd.isna(put_credit_return)):
                 continue
             
             valid_strategies += 1
             
             # Market regime factors for strategy selection
-            current_vol_percentile = data['Volatility_Percentile'].iloc[i] if not pd.isna(data['Volatility_Percentile'].iloc[i]) else 0.5
             recent_trend = data['SMA20_to_SMA50'].iloc[i] if not pd.isna(data['SMA20_to_SMA50'].iloc[i]) else 1.0
             
             # Find the best strategy that meets minimum threshold
+            # Credit spreads work better in sideways/trending markets with less strict requirements
             strategy_returns = {
-                1: call_debit_return if recent_trend > 1.005 else call_debit_return * 0.7,      # Favor in uptrends
-                2: put_debit_return if recent_trend < 0.995 else put_debit_return * 0.7,       # Favor in downtrends  
-                3: iron_butterfly_return if current_vol_percentile < 0.7 else iron_butterfly_return * 0.8,  # Favor in lower vol (but more lenient)
-                4: long_straddle_return if current_vol_percentile > 0.3 else long_straddle_return * 0.6   # More lenient vol threshold
+                1: call_credit_return if recent_trend < 0.998 else call_credit_return * 0.8,      # Favor in downtrends/neutral
+                2: put_credit_return if recent_trend > 1.002 else put_credit_return * 0.8,       # Favor in uptrends/neutral
             }
             
             # Find best strategy above threshold
@@ -861,32 +814,28 @@ class OptionsHandler:
             data.iloc[i, data.columns.get_loc('Option_Signal')] = best_strategy
             strategy_counts[best_strategy] += 1
         
-        # Display enhanced strategy distribution
+        # Display strategy distribution
         total_signals = sum(strategy_counts)
         
         if total_signals > 0:
-            print(f"\nComplete Multi-Strike Strategy Distribution ({valid_strategies} valid samples):")
+            print(f"\nStrategy Distribution ({valid_strategies} valid samples):")
             for i, (name, count) in enumerate(zip(strategy_names, strategy_counts)):
                 print(f"  {i}: {name:18} {count:4d} ({count/total_signals:.1%})")
             
             # Show average returns for each strategy when selected
-            for strategy_id in range(1, 5):
+            for strategy_id in range(1, 3):
                 strategy_mask = data['Option_Signal'] == strategy_id
                 if strategy_mask.sum() > 0:
                     if strategy_id == 1:
-                        avg_return = data[strategy_mask]['Future_Call_Debit_Return'].mean()
-                    elif strategy_id == 2:
-                        avg_return = data[strategy_mask]['Future_Put_Debit_Return'].mean()
-                    elif strategy_id == 3:
-                        avg_return = data[strategy_mask]['Future_Iron_Butterfly_Return'].mean()
-                    else:  # strategy_id == 4
-                        avg_return = data[strategy_mask]['Future_Long_Straddle_Return'].mean()
+                        avg_return = data[strategy_mask]['Future_Call_Credit_Return'].mean()
+                    else:  # strategy_id == 2
+                        avg_return = data[strategy_mask]['Future_Put_Credit_Return'].mean()
                     
                     print(f"  Avg {strategy_names[strategy_id]} Return: {avg_return:.2%}")
         else:
             print("⚠️ No valid strategy signals generated - check multi-strike data availability")
         
-        return data 
+        return data
 
     def _calculate_iron_butterfly_pnl(self, entry_price, exit_price, atm_strike, long_call_strike, long_put_strike, market_data):
         """Calculate realistic Iron Butterfly P&L based on actual strikes and option pricing

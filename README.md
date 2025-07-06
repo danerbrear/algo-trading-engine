@@ -1,46 +1,96 @@
 # Market Regime Classification System
 
-This project implements a sophisticated market regime classification system using a combination of Hidden Markov Models (HMM) and Long Short-Term Memory (LSTM) networks. The system identifies distinct market states and predicts regime transitions using both price action and options market data.
+This project implements a sophisticated market regime classification system using a combination of Hidden Markov Models (HMM) and Long Short-Term Memory (LSTM) networks. The system identifies distinct market states and predicts optimal options trading strategies using both price action and options market data.
 
 ## Overview
 
 The system operates in two main stages:
 1. Market State Identification using HMM
-2. State Prediction using LSTM
+2. Options Strategy Prediction using LSTM
 
 ### Market States
 
-The HMM identifies 5 distinct market regimes based on core market features:
+The HMM identifies distinct market regimes based on core market features. The system can identify multiple market states (typically 3-5 states) with characteristics such as:
 
-1. Low Volatility Uptrend (22.30%)
-   - Average Return: +0.0905%
-   - Low Volatility: 0.0044
-   - Price above MA (1.0103)
-   - Normal Volume (1.01)
+- **Low Volatility Uptrend**: Low volatility with steady price increases
+- **Momentum Uptrend**: Medium volatility with strong upward momentum  
+- **Consolidation**: Low volatility with sideways price movement
+- **High Volatility Downtrend**: High volatility with declining prices
+- **High Volatility Rally**: Very high volatility with sharp price increases
 
-2. Momentum Uptrend (21.87%)
-   - Average Return: +0.0941%
-   - Medium Volatility: 0.0073
-   - Strong Price above MA (1.0119)
-   - Slightly Below Average Volume (0.98)
+Each state has distinct characteristics in terms of:
+- Average returns
+- Volatility levels
+- Price relative to moving averages
+- Volume patterns
 
-3. Consolidation (20.78%)
-   - Average Return: +0.0915%
-   - Medium Volatility: 0.0076
-   - Price near MA (1.0050)
-   - Low Volume (0.94)
+### Options Trading Strategies
 
-4. High Volatility Downtrend (29.94%)
-   - Average Return: -0.0598%
-   - High Volatility: 0.0133
-   - Price below MA (0.9949)
-   - High Volume (1.09)
+The LSTM model predicts optimal options trading strategies from three classes:
 
-5. High Volatility Rally (5.11%)
-   - Average Return: +0.2340%
-   - Very High Volatility: 0.0274
-   - Price near MA (1.0037)
-   - Low Volume (0.93)
+1. **Hold** - No options position recommended
+   - Market conditions suggest holding cash
+   - Wait for better opportunities or reduce position sizes
+
+2. **Call Credit Spread** - Bearish/Neutral strategy
+   - Structure: Sell ATM Call + Buy ATM+5 Call
+   - Direction: Profit when stock goes down or stays flat
+   - Max Profit: Premium received
+   - Max Loss: $5 - Premium received
+
+3. **Put Credit Spread** - Bullish/Neutral strategy
+   - Structure: Sell ATM Put + Buy ATM-5 Put
+   - Direction: Profit when stock goes up or stays flat
+   - Max Profit: Premium received
+   - Max Loss: $5 - Premium received
+
+## Project Files
+
+### Core Components
+
+- **`src/model/main.py`** - Main training and evaluation script
+- **`src/model/lstm_model.py`** - LSTM model for strategy prediction
+- **`src/model/plots.py`** - Plotting utilities and visualization
+- **`src/model/config.py`** - Configuration settings
+- **`src/model/options_handler.py`** - Options data processing and strategy calculations
+- **`src/model/market_state_classifier.py`** - HMM model for market state classification
+- **`src/model/api_retry_handler.py`** - API request retry logic
+- **`src/model/progress_tracker.py`** - Training progress tracking
+- **`src/common/data_retriever.py`** - Market data fetching and feature engineering
+- **`src/common/cache/cache_manager.py`** - Data caching utilities
+
+### New Files
+
+- **`src/prediction/predict_today.py`** - Script for making predictions on today's market data
+  - Loads pretrained HMM and LSTM models
+  - Fetches recent market data (prioritizes cached data)
+  - Calculates features and makes predictions
+  - Provides specific option recommendations
+  - Saves results to `predictions/` directory
+
+- **`src/common/cache/examine_cache.py`** - Utility script for examining cached data files
+  - Inspects pickle files in the cache directory
+  - Shows data structure, date ranges, and statistics
+  - Useful for debugging and data validation
+
+- **`setup_env.py`** - Environment setup script
+  - Creates `.env` file with required API keys
+  - Sets up configuration directories
+
+### Data and Output Directories
+
+- **`data_cache/`** - Cached market and options data
+  - `data_cache/stocks/` - Stock price data
+  - `data_cache/options/` - Options chain data
+  - `data_cache/treasury/` - Treasury yield data
+
+- **`predictions/`** - Prediction output files
+  - Daily prediction results saved as timestamped text files
+  - Format: `prediction_SPY_YYYYMMDD.txt`
+
+- **`Trained_Models/`** - Saved model files (when using --save flag)
+  - Timestamped and latest model versions
+  - Includes both LSTM and HMM models
 
 ## Technical Architecture
 
@@ -63,13 +113,25 @@ Additional Features for LSTM Training:
 - Momentum indicators (RSI, MACD)
 - Advanced volume metrics (OBV)
 
+### Plotting and Visualization (`plots.py`)
+
+The plotting module provides comprehensive visualization capabilities:
+- **Confusion Matrix**: Shows model prediction accuracy across strategy classes
+- **Signal Distribution**: Displays actual vs predicted signals over time
+- **Returns Comparison**: Compares accumulated strategy returns vs market returns
+- **Training History**: Shows loss and accuracy curves during training
+- **Feature Importance**: Visualizes feature contributions (when available)
+- **Market States**: Plots market state transitions over time
+
+All plots are automatically generated during model evaluation and can be customized by symbol.
+
 ### LSTM Model Architecture (`lstm_model.py`)
 
 The model uses a sophisticated architecture:
 - Bidirectional LSTM layers for sequence learning
 - Layer normalization for training stability
 - Dropout and L2 regularization for preventing overfitting
-- Class weights to handle regime imbalance
+- Class weights to handle strategy imbalance
 
 Model Structure:
 ```
@@ -79,7 +141,7 @@ Model Structure:
 4. LSTM (32 units) + LayerNorm + Dropout(0.3)
 5. Dense (64 units) + LayerNorm + Dropout(0.3)
 6. Dense (32 units) + LayerNorm + Dropout(0.2)
-7. Output Layer (5 units, softmax)
+7. Output Layer (3 units, softmax) - Hold, Call Credit Spread, Put Credit Spread
 ```
 
 ## Getting Started
@@ -124,16 +186,25 @@ handler = OptionsHandler(symbol='SPY', api_key='YOUR_KEY')
 
 ### Running the System
 
-1. Run the main program:
+#### Training and Evaluation
+
+1. Run the main training program:
 ```bash
-python main.py
+# From the project root directory
+python -m src.model.main
+
+# Train on a specific symbol
+python -m src.model.main --symbol QQQ
 ```
 
 2. **Free Tier Rate Limiting:**
 
 If you're using a free Polygon.io API account, use the `-f` or `--free` flag to enable 13-second delays between API requests to stay within rate limits:
 ```bash
-python main.py --free
+python -m src.model.main --free
+
+# Train on specific symbol with free tier
+python -m src.model.main --symbol QQQ --free
 ```
 This prevents hitting the free tier limit of 5 API calls per minute. Without this flag, the system will make requests without delays (suitable for paid API tiers).
 
@@ -142,13 +213,16 @@ This prevents hitting the free tier limit of 5 API calls per minute. Without thi
 By default, the system runs in quiet mode with a clean progress bar. Use the `-v` or `--verbose` flag to show detailed logging:
 ```bash
 # Default: clean progress bar (quiet mode)
-python main.py
+python -m src.model.main
+
+# Train on specific symbol with verbose output
+python -m src.model.main --symbol QQQ --verbose
 
 # Detailed logging for debugging
-python main.py --verbose
+python -m src.model.main --verbose
 
 # Explicitly enable quiet mode (same as default)
-python main.py --quiet
+python -m src.model.main --quiet
 ```
 In quiet mode (default), detailed API call messages are suppressed and only a clean progress bar with essential information is displayed. Use `--verbose` for full logging when debugging.
 
@@ -156,42 +230,131 @@ In quiet mode (default), detailed API call messages are suppressed and only a cl
 
 You can save the trained model after training by using the `-s` or `--save` flag:
 ```bash
-python main.py --save
+python -m src.model.main --save
+
+# Train and save model for specific symbol
+python -m src.model.main --symbol QQQ --save
 ```
 - The model will be saved in Keras format (`.keras`) to the directory specified by the `MODEL_SAVE_BASE_PATH` variable in your `.env` file (default: `Trained_Models`).
 - The folder structure will be:
-  - `<MODEL_SAVE_BASE_PATH>/<mode>/<timestamp>/model.keras` (timestamped)
-  - `<MODEL_SAVE_BASE_PATH>/<mode>/latest/model.keras` (latest, always overwritten)
+  - `<MODEL_SAVE_BASE_PATH>/<mode>/<symbol>/<timestamp>/model.keras` (timestamped)
+  - `<MODEL_SAVE_BASE_PATH>/<mode>/<symbol>/latest/model.keras` (latest, always overwritten)
+  - `<MODEL_SAVE_BASE_PATH>/<mode>/<symbol>/<timestamp>/lstm_scaler.pkl` (LSTM feature scaler)
+  - `<MODEL_SAVE_BASE_PATH>/<mode>/<symbol>/latest/lstm_scaler.pkl` (LSTM feature scaler)
 - You can specify a custom mode label for the subfolder using `--mode`:
 ```bash
-python main.py --save --mode my_experiment
+python -m src.model.main --save --mode my_experiment
+
+# Train specific symbol with custom mode
+python -m src.model.main --symbol QQQ --save --mode my_experiment
 ```
 
 - You can combine flags. For example, to use free tier rate limiting, quiet mode, and save the model:
 ```bash
-python main.py --free --quiet --save
+python -m src.model.main --free --quiet --save
+
+# Train specific symbol with all options
+python -m src.model.main --symbol QQQ --free --quiet --save
 ```
 
 5. **Common Usage Examples:**
 
 ```bash
 # Basic usage (clean progress bar by default)
-python main.py
+python -m src.model.main
+
+# Train on specific symbol
+python -m src.model.main --symbol QQQ
 
 # Detailed logging for debugging
-python main.py --verbose
+python -m src.model.main --verbose
+
+# Train on specific symbol with verbose output
+python -m src.model.main --symbol QQQ --verbose
 
 # Free tier with clean progress (default)
-python main.py --free
+python -m src.model.main --free
+
+# Train on specific symbol with free tier
+python -m src.model.main --symbol QQQ --free
 
 # Production run with all options
-python main.py --free --save --mode production
+python -m src.model.main --free --save --mode production
+
+# Production run for specific symbol
+python -m src.model.main --symbol QQQ --free --save --mode production
 
 # Debug mode with full logging
-python main.py --verbose --free --save
+python -m src.model.main --verbose --free --save
 ```
 
-6. For development or testing specific components:
+#### Command-Line Options
+
+The training script supports several command-line options:
+
+- `--symbol SYMBOL`: Stock symbol to train the model on (default: SPY)
+- `-s, --save`: Save the trained model after training
+- `--mode MODE`: Mode label for model saving (e.g., lstm_poc, production)
+- `-f, --free`: Use free tier rate limiting (13 second timeout between API requests)
+- `-q, --quiet`: Suppress detailed output during processing (default)
+- `-v, --verbose`: Show detailed output during processing (opposite of --quiet)
+
+#### Making Predictions
+
+After training and saving models, you can make predictions for today's market. The script can be run in multiple ways:
+
+**Option 1: Run as a module (recommended)**
+```bash
+# From the project root directory
+python -m src.prediction.predict_today
+
+# With custom symbol
+python -m src.prediction.predict_today --symbol QQQ
+```
+
+**Option 2: Run directly**
+```bash
+# From the project root directory
+python src/prediction/predict_today.py
+
+# With custom symbol
+python src/prediction/predict_today.py --symbol QQQ
+```
+
+**Option 3: Run from the prediction directory**
+```bash
+cd src/prediction
+python predict_today.py
+```
+
+The prediction script will:
+- Load pretrained HMM and LSTM models
+- Fetch recent market data (prioritizes cached data)
+- Calculate technical features
+- Predict market state and optimal strategy
+- Provide specific option recommendations
+- Save results to `predictions/` directory
+
+**Note:** The script automatically handles import paths for both module execution (`-m` flag) and direct execution.
+
+#### Examining Cached Data
+
+To inspect cached data files:
+
+```bash
+# From the project root directory
+python -m src.common.cache.examine_cache
+
+# Or run directly
+python src/common/cache/examine_cache.py
+
+# Modify the script to examine different files
+# Edit src/common/cache/examine_cache.py and change the file path
+```
+
+### Development and Testing
+
+For development or testing specific components:
 ```python
 from options_handler import OptionsHandler
 import pandas as pd
@@ -211,20 +374,18 @@ data = handler.calculate_option_features(data)
 The system achieves:
 - HMM State Classification: Clear separation of market regimes with distinct characteristics
 - LSTM Prediction Performance:
-  - Training Accuracy: 92%
-  - Testing/Validation Accuracy: 73%
-  - Strong performance in identifying specific regimes:
-    - Bullish Low Vol States: 82% precision, 83% recall (State 1)
-    - Consolidation States: 90% precision, 67% recall (State 2)
-    - Volatile Downtrends: 62% precision, 69% recall (State 3)
-    - High Vol Rally: 62% precision, 100% recall (State 4)
+  - Training Accuracy: ~90%
+  - Testing/Validation Accuracy: ~70-75%
+  - Strong performance in identifying specific strategies:
+    - Hold strategy: High precision for conservative periods
+    - Call Credit Spread: Good performance during bearish/neutral markets
+    - Put Credit Spread: Strong performance during bullish/neutral markets
 
 Key Performance Characteristics:
 - Handles class imbalance through weighted training
 - Prevents overfitting using multiple regularization techniques
 - Captures both short and long-term market dynamics
-- Macro-average F1 score: 0.67
-- Weighted-average F1 score: 0.74
+- Provides actionable options trading recommendations
 
 ## Data Requirements
 
@@ -252,6 +413,7 @@ To optimize API usage and performance:
 - Cache location: `data_cache/options/<symbol>/`
 - Cache files are date-based and stored in pickle format
 - Cache is automatically used when available
+- Stock data is also cached in `data_cache/stocks/<symbol>/`
 
 ## Limitations and Considerations
 
@@ -268,3 +430,46 @@ To optimize API usage and performance:
    - HMM state optimization is computationally intensive
    - LSTM training benefits from GPU acceleration
    - Options data caching helps reduce API calls
+
+4. Trading Risk
+   - This system is for educational and research purposes
+   - Always do your own research and consider your risk tolerance
+   - Options trading involves substantial risk of loss
+   - Past performance does not guarantee future results
+
+## File Structure
+
+```
+lstm_poc/
+├── src/                      # Source code directory
+│   ├── __init__.py           # Makes src a Python package
+│   ├── model/                # Model-related modules
+│   │   ├── __init__.py       # Makes model a package
+│   │   ├── main.py           # Main training script
+│   │   ├── data_retriever.py # Data fetching and processing
+│   │   ├── options_handler.py # Options data handling
+│   │   ├── market_state_classifier.py # HMM model
+│   │   ├── lstm_model.py     # LSTM model
+│   │   ├── config.py         # Configuration
+│   │   └── api_retry_handler.py # API retry logic
+│   ├── prediction/           # Prediction modules
+│   │   ├── __init__.py       # Makes prediction a package
+│   │   └── predict_today.py  # Daily prediction script
+│   └── common/               # Common utilities
+│       ├── __init__.py       # Makes common a package
+│       └── cache/            # Caching utilities
+│           ├── __init__.py   # Makes cache a package
+│           ├── cache_manager.py # Caching utilities
+│           └── examine_cache.py # Cache inspection utility
+├── progress_tracker.py       # Progress tracking
+├── setup_env.py              # Environment setup
+├── requirements.txt          # Dependencies
+├── README.md                 # This file
+├── .env                      # Environment variables (created by setup)
+├── data_cache/               # Cached data
+│   ├── stocks/               # Stock price data
+│   ├── options/              # Options data
+│   └── treasury/             # Treasury data
+├── predictions/              # Prediction outputs
+└── Trained_Models/           # Saved models (when using --save)
+```
