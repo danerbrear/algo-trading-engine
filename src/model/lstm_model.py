@@ -95,7 +95,8 @@ class LSTMModel:
             'Put_Call_Ratio', 'Option_Volume_Ratio',
             'Market_State',
             'Days_Until_Next_CPI', 'Days_Since_Last_CPI',
-            'Days_Until_Next_CC', 'Days_Since_Last_CC'
+            'Days_Until_Next_CC', 'Days_Since_Last_CC',
+            'Days_Until_Next_FFR', 'Days_Since_Last_FFR'
         ]
         
         # Store original features for reference

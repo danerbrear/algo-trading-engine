@@ -13,10 +13,10 @@ class CalendarFeatureProcessor:
         
         Args:
             calendar_data_path: Path to the calendar CSV file (if None, will try to find files automatically)
-            event_types: List of economic event types to process (e.g., ["Core CPI", "CB Consumer Confidence"])
+            event_types: List of economic event types to process (e.g., ["Core CPI", "CB Consumer Confidence", "Fed Funds Rate"])
         """
         if event_types is None:
-            event_types = ["Core CPI", "CB Consumer Confidence"]
+            event_types = ["Core CPI", "CB Consumer Confidence", "Fed Funds Rate"]
         
         self.event_types = event_types
         self.events_data = {}  # Dictionary to store events for each type
@@ -78,6 +78,8 @@ class CalendarFeatureProcessor:
             event_filter = 'Core CPI m/m'
         elif event_type == "CB Consumer Confidence":
             event_filter = 'CB Consumer Confidence'
+        elif event_type == "Fed Funds Rate":
+            event_filter = 'Federal Funds Rate'
         else:
             event_filter = event_type
         
@@ -136,6 +138,8 @@ class CalendarFeatureProcessor:
                 feature_prefix = "CPI"
             elif event_type == "CB Consumer Confidence":
                 feature_prefix = "CC"
+            elif event_type == "Fed Funds Rate":
+                feature_prefix = "FFR"
             else:
                 feature_prefix = event_type.replace(" ", "_")
             
@@ -370,6 +374,14 @@ class CalendarFeatureProcessor:
         """
         return self.get_event_summary("Core CPI")
     
+    def get_ffr_event_summary(self):
+        """Get summary statistics of Fed Funds Rate events
+        
+        Returns:
+            Dictionary with Fed Funds Rate event statistics
+        """
+        return self.get_event_summary("Fed Funds Rate")
+    
     def plot_features(self, data, feature_prefix=None, event_type=None, save_path=None):
         """Create a plot showing the calendar features over time
         
@@ -388,6 +400,8 @@ class CalendarFeatureProcessor:
                 feature_prefix = "CPI"
             elif event_type == "CB Consumer Confidence":
                 feature_prefix = "CC"
+            elif event_type == "Fed Funds Rate":
+                feature_prefix = "FFR"
             else:
                 feature_prefix = event_type.replace(" ", "_")
         
@@ -476,6 +490,19 @@ def add_cc_features_to_data(data, calendar_data_path=None):
     """
     processor = CalendarFeatureProcessor(calendar_data_path, event_types=["CB Consumer Confidence"])
     return processor.calculate_features(data, feature_prefix="CC", event_type="CB Consumer Confidence")
+
+def add_ffr_features_to_data(data, calendar_data_path=None):
+    """Convenience function to add Fed Funds Rate features to a dataset
+    
+    Args:
+        data: DataFrame with 'Date' column
+        calendar_data_path: Optional path to calendar data file
+        
+    Returns:
+        DataFrame with Fed Funds Rate features added
+    """
+    processor = CalendarFeatureProcessor(calendar_data_path, event_types=["Fed Funds Rate"])
+    return processor.calculate_features(data, feature_prefix="FFR", event_type="Fed Funds Rate")
 
 def add_all_calendar_features_to_data(data, calendar_data_path=None):
     """Convenience function to add all calendar features to a dataset

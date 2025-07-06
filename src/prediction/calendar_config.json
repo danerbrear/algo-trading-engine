@@ -13,6 +13,13 @@
     "typical_interval_days": 30,
     "source": "Conference Board"
   },
+  "Fed Funds Rate": {
+    "last_event": "2025-06-18",
+    "next_event": "2025-07-30",
+    "description": "Federal Reserve Federal Funds Rate decision",
+    "typical_interval_days": 42,
+    "source": "Federal Reserve"
+  },
   "last_updated": "2025-07-06",
   "update_frequency": "monthly",
   "notes": "Update these dates when new economic calendar data becomes available. Dates should be in YYYY-MM-DD format."

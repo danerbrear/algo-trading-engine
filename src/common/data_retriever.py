@@ -58,7 +58,7 @@ class DataRetriever:
         self.cache_manager = CacheManager()
         self.options_handler = OptionsHandler(symbol, start_date=lstm_start_date, cache_dir=self.cache_manager.base_dir, use_free_tier=use_free_tier, quiet_mode=quiet_mode)
         self.calendar_processor = None  # Initialize lazily when needed
-        
+
         print(f"🔄 DataRetriever Configuration:")
         print(f"   📊 HMM training data: {hmm_start_date} onwards (for market state classification)")
         print(f"   🎯 LSTM training data: {lstm_start_date} onwards (for options signal prediction)")
@@ -69,7 +69,7 @@ class DataRetriever:
         # Fetch HMM training data (longer history for market state patterns)
         self.hmm_data = self.fetch_data_for_period(self.hmm_start_date, 'hmm')
         self.calculate_features_for_data(self.hmm_data)
-        
+
         print(f"\n🎯 Phase 2: Training HMM on market data ({len(self.hmm_data)} samples)")
         # Train HMM on the longer historical data
         states = self.state_classifier.find_optimal_states(self.hmm_data)
@@ -122,11 +122,11 @@ class DataRetriever:
         if self.ticker is None:
             self.ticker = yf.Ticker(self.symbol)
         
-        # Get data and ensure index is timezone-naive
-        data = self.ticker.history(start=start_date)
+        # Always fetch full history and filter manually (yfinance bug workaround)
+        data = self.ticker.history(period='max')
         if data.empty:
             raise ValueError(f"No data retrieved for {self.symbol} from {start_date}")
-            
+        
         data.index = data.index.tz_localize(None)
         print(f"📊 Initial {data_type} data range: {data.index[0]} to {data.index[-1]}")
         

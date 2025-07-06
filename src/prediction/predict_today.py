@@ -55,7 +55,7 @@ class TodayPredictor:
         self.hmm_model = None
         self.lstm_scaler = None
         self.sequence_length = 60
-        self.n_features = 13  # Updated to match the saved model (13 features including CPI and CC)
+        self.n_features = 15  # Updated to match the saved model (15 features including CPI, CC, and FFR)
 
         # Load models
         self.load_models()
@@ -334,7 +334,8 @@ class TodayPredictor:
         
         # Add calendar features if not already present
         if ('Days_Until_Next_CPI' not in data.columns or 'Days_Since_Last_CPI' not in data.columns or
-            'Days_Until_Next_CC' not in data.columns or 'Days_Since_Last_CC' not in data.columns):
+            'Days_Until_Next_CC' not in data.columns or 'Days_Since_Last_CC' not in data.columns or
+            'Days_Until_Next_FFR' not in data.columns or 'Days_Since_Last_FFR' not in data.columns):
             print("📅 Adding economic calendar features...")
             
             # Use calendar config for prediction (no fallback to historical processor)
@@ -350,14 +351,15 @@ class TodayPredictor:
             print("✅ Calendar features added using configuration file")
         
         # Define feature columns (same as in training)
-        # Note: Using 13 features to match the saved model architecture (9 + 2 CPI features + 2 CC features)
+        # Note: Using 15 features to match the saved model architecture (9 + 2 CPI features + 2 CC features + 2 FFR features)
         feature_columns = [
             'High_Low_Range',
             'SMA20_to_SMA50', 'RSI', 'MACD_Hist',
             'Volume_Ratio', 'OBV', 'Put_Call_Ratio', 
             'Option_Volume_Ratio', 'Market_State',
             'Days_Until_Next_CPI', 'Days_Since_Last_CPI',
-            'Days_Until_Next_CC', 'Days_Since_Last_CC'
+            'Days_Until_Next_CC', 'Days_Since_Last_CC',
+            'Days_Until_Next_FFR', 'Days_Since_Last_FFR'
         ]
         
         # Scale features

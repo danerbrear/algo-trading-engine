@@ -139,6 +139,8 @@ class CalendarConfigManager:
                     prefix = "CPI"
                 elif event_type == "CB Consumer Confidence":
                     prefix = "CC"
+                elif event_type == "Fed Funds Rate":
+                    prefix = "FFR"
                 else:
                     prefix = event_type.replace(" ", "_")
                 
@@ -154,6 +156,9 @@ class CalendarConfigManager:
                 elif event_type == "CB Consumer Confidence":
                     features["Days_Since_Last_CC"] = 365
                     features["Days_Until_Next_CC"] = 365
+                elif event_type == "Fed Funds Rate":
+                    features["Days_Since_Last_FFR"] = 365
+                    features["Days_Until_Next_FFR"] = 365
         
         return features
     

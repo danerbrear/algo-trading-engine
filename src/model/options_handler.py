@@ -169,7 +169,7 @@ class OptionsHandler:
             calls_sorted = sorted(calls, key=lambda x: abs(float(x.strike_price) - current_price))
             puts_sorted = sorted(puts, key=lambda x: abs(float(x.strike_price) - current_price))
             
-            print(f"Found {len(calls_sorted)} calls and {len(puts_sorted)} puts for target expiry")
+            progress_print(f"Found {len(calls_sorted)} calls and {len(puts_sorted)} puts for target expiry")
             
             # Process calls
             for call in calls_sorted[:5]:  # Limit to 5 closest calls
