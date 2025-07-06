@@ -22,7 +22,6 @@ sys.path.insert(0, src_dir)
 try:
     from model.market_state_classifier import MarketStateClassifier
     from model.lstm_model import LSTMModel
-    from model.calendar_features import CalendarFeatureProcessor
     from common.cache.cache_manager import CacheManager
     from common.data_retriever import DataRetriever
     from prediction.calendar_config_manager import CalendarConfigManager
@@ -30,7 +29,6 @@ except ImportError:
     # Fallback for module execution
     from src.model.market_state_classifier import MarketStateClassifier
     from src.model.lstm_model import LSTMModel
-    from src.model.calendar_features import CalendarFeatureProcessor
     from src.common.cache.cache_manager import CacheManager
     from src.common.data_retriever import DataRetriever
     from src.prediction.calendar_config_manager import CalendarConfigManager
@@ -323,36 +321,33 @@ class TodayPredictor:
         """Prepare features for LSTM prediction"""
         print("🧠 Preparing LSTM features...")
         
-        # Validate calendar configuration first
+        # Load and validate calendar configuration - REQUIRED for prediction
         try:
             calendar_config = CalendarConfigManager()
             calendar_config.print_validation_report()
         except Exception as e:
-            print(f"⚠️  Warning: Could not validate calendar configuration: {e}")
+            print(f"❌ ERROR: Could not load calendar configuration: {e}")
+            print(f"   Calendar configuration is required for prediction.")
+            print(f"   Please ensure calendar_config.json exists and is valid.")
+            print(f"   Run 'python update_calendar_config.py --show' to check current config.")
+            sys.exit(1)
         
         # Add calendar features if not already present
         if ('Days_Until_Next_CPI' not in data.columns or 'Days_Since_Last_CPI' not in data.columns or
             'Days_Until_Next_CC' not in data.columns or 'Days_Since_Last_CC' not in data.columns):
             print("📅 Adding economic calendar features...")
             
-            # Try to use calendar config first, fallback to calendar processor
-            try:
-                calendar_config = CalendarConfigManager()
-                today = datetime.now()
-                
-                # Calculate calendar features for today
-                calendar_features = calendar_config.get_calendar_features_for_date(today)
-                
-                # Add calendar features to the most recent data point
-                for feature_name, feature_value in calendar_features.items():
-                    data[feature_name] = feature_value
-                
-                print("✅ Calendar features added using configuration file")
-                
-            except Exception as e:
-                print(f"⚠️  Warning: Could not use calendar config, falling back to calendar processor: {e}")
-                calendar_processor = CalendarFeatureProcessor()
-                data = calendar_processor.calculate_all_features(data)
+            # Use calendar config for prediction (no fallback to historical processor)
+            today = datetime.now()
+            
+            # Calculate calendar features for today
+            calendar_features = calendar_config.get_calendar_features_for_date(today)
+            
+            # Add calendar features to all data points (they're the same for all rows)
+            for feature_name, feature_value in calendar_features.items():
+                data[feature_name] = feature_value
+            
+            print("✅ Calendar features added using configuration file")
         
         # Define feature columns (same as in training)
         # Note: Using 13 features to match the saved model architecture (9 + 2 CPI features + 2 CC features)
