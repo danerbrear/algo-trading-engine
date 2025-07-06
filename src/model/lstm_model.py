@@ -89,8 +89,11 @@ class LSTMModel:
         # Prepare feature matrix for LSTM (including all features and market states)
         self.feature_columns = [
             'High_Low_Range',
-            'SMA20_to_SMA50',
-            'RSI', 'MACD_Hist',
+            'SMA20_to_SMA50', 'SMA20_to_SMA50_Lag1', 'SMA20_to_SMA50_Lag5', 
+            'SMA20_to_SMA50_MA5', 'SMA20_to_SMA50_MA10', 'SMA20_to_SMA50_Std5', 'SMA20_to_SMA50_Momentum',
+            'RSI', 'RSI_Lag1', 'RSI_Lag5', 'RSI_MA5', 'RSI_MA10', 'RSI_Std5', 'RSI_Momentum', 
+            'RSI_Overbought', 'RSI_Oversold',
+            'MACD_Hist',
             'Volume_Ratio', 'OBV',
             'Put_Call_Ratio', 'Option_Volume_Ratio',
             'Market_State',

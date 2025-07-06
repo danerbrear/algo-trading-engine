@@ -179,7 +179,7 @@ class OptionsHandler:
                         chain_data['calls'].append(call_data)
                 except ValueError as e:
                     if "SKIP_DATE_UNAUTHORIZED" in str(e):
-                        print(f"🚫 Skipping {current_date.date()} - Plan doesn't include this timeframe")
+                        progress_print(f"🚫 Skipping {current_date.date()} - Plan doesn't include this timeframe")
                         return chain_data
                     raise
                     
@@ -191,7 +191,7 @@ class OptionsHandler:
                         chain_data['puts'].append(put_data)
                 except ValueError as e:
                     if "SKIP_DATE_UNAUTHORIZED" in str(e):
-                        print(f"🚫 Skipping {current_date.date()} - Plan doesn't include this timeframe")
+                        progress_print(f"🚫 Skipping {current_date.date()} - Plan doesn't include this timeframe")
                         return chain_data
                     raise
                     
@@ -215,7 +215,7 @@ class OptionsHandler:
             )
             
             if contracts is not None:
-                print(f"Loading cached contracts list for {current_date.date()}")
+                progress_print(f"Loading cached contracts list for {current_date.date()}")
                 return contracts
                     
             # If not in cache, fetch from API with retries

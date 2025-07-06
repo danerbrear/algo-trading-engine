@@ -55,7 +55,7 @@ class TodayPredictor:
         self.hmm_model = None
         self.lstm_scaler = None
         self.sequence_length = 60
-        self.n_features = 15  # Updated to match the saved model (15 features including CPI, CC, and FFR)
+        self.n_features = 29  # Updated to match the saved model (29 features including time series features)
 
         # Load models
         self.load_models()
@@ -351,10 +351,14 @@ class TodayPredictor:
             print("✅ Calendar features added using configuration file")
         
         # Define feature columns (same as in training)
-        # Note: Using 15 features to match the saved model architecture (9 + 2 CPI features + 2 CC features + 2 FFR features)
+        # Note: Using 29 features to match the saved model architecture (including time series features)
         feature_columns = [
             'High_Low_Range',
-            'SMA20_to_SMA50', 'RSI', 'MACD_Hist',
+            'SMA20_to_SMA50', 'SMA20_to_SMA50_Lag1', 'SMA20_to_SMA50_Lag5', 
+            'SMA20_to_SMA50_MA5', 'SMA20_to_SMA50_MA10', 'SMA20_to_SMA50_Std5', 'SMA20_to_SMA50_Momentum',
+            'RSI', 'RSI_Lag1', 'RSI_Lag5', 'RSI_MA5', 'RSI_MA10', 'RSI_Std5', 'RSI_Momentum', 
+            'RSI_Overbought', 'RSI_Oversold',
+            'MACD_Hist',
             'Volume_Ratio', 'OBV', 'Put_Call_Ratio', 
             'Option_Volume_Ratio', 'Market_State',
             'Days_Until_Next_CPI', 'Days_Since_Last_CPI',

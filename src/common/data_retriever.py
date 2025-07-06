@@ -183,6 +183,24 @@ class DataRetriever:
         macd_line, macd_signal = self._calculate_macd(data['Close'])
         data['MACD_Hist'] = macd_line - macd_signal
         
+        # Time series features for SMA20_to_SMA50
+        data['SMA20_to_SMA50_Lag1'] = data['SMA20_to_SMA50'].shift(1)
+        data['SMA20_to_SMA50_Lag5'] = data['SMA20_to_SMA50'].shift(5)
+        data['SMA20_to_SMA50_MA5'] = data['SMA20_to_SMA50'].rolling(window=5, min_periods=1).mean()
+        data['SMA20_to_SMA50_MA10'] = data['SMA20_to_SMA50'].rolling(window=10, min_periods=1).mean()
+        data['SMA20_to_SMA50_Std5'] = data['SMA20_to_SMA50'].rolling(window=5, min_periods=1).std()
+        data['SMA20_to_SMA50_Momentum'] = data['SMA20_to_SMA50'] - data['SMA20_to_SMA50'].shift(5)
+        
+        # Time series features for RSI
+        data['RSI_Lag1'] = data['RSI'].shift(1)
+        data['RSI_Lag5'] = data['RSI'].shift(5)
+        data['RSI_MA5'] = data['RSI'].rolling(window=5, min_periods=1).mean()
+        data['RSI_MA10'] = data['RSI'].rolling(window=10, min_periods=1).mean()
+        data['RSI_Std5'] = data['RSI'].rolling(window=5, min_periods=1).std()
+        data['RSI_Momentum'] = data['RSI'] - data['RSI'].shift(5)
+        data['RSI_Overbought'] = (data['RSI'] > 70).astype(int)
+        data['RSI_Oversold'] = (data['RSI'] < 30).astype(int)
+        
         # Volume features
         data['Volume_SMA'] = data['Volume'].rolling(window=window, min_periods=1).mean()
         data['Volume_Ratio'] = data['Volume'] / data['Volume_SMA']
