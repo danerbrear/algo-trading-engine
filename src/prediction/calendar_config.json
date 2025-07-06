@@ -1,0 +1,19 @@
+{
+  "Core CPI": {
+    "last_event": "2025-06-11",
+    "next_event": "2025-07-09",
+    "description": "Core Consumer Price Index (CPI) monthly release",
+    "typical_interval_days": 30,
+    "source": "Bureau of Labor Statistics"
+  },
+  "CB Consumer Confidence": {
+    "last_event": "2025-06-24",
+    "next_event": "2025-07-29",
+    "description": "Conference Board Consumer Confidence Index",
+    "typical_interval_days": 30,
+    "source": "Conference Board"
+  },
+  "last_updated": "2025-07-06",
+  "update_frequency": "monthly",
+  "notes": "Update these dates when new economic calendar data becomes available. Dates should be in YYYY-MM-DD format."
+}

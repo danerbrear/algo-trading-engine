@@ -93,7 +93,9 @@ class LSTMModel:
             'RSI', 'MACD_Hist',
             'Volume_Ratio', 'OBV',
             'Put_Call_Ratio', 'Option_Volume_Ratio',
-            'Market_State'
+            'Market_State',
+            'Days_Until_Next_CPI', 'Days_Since_Last_CPI',
+            'Days_Until_Next_CC', 'Days_Since_Last_CC'
         ]
         
         # Store original features for reference

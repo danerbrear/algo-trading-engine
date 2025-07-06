@@ -20,15 +20,25 @@ def create_venv():
         print("Creating virtual environment...")
         subprocess.run([sys.executable, '-m', 'venv', 'venv'], check=True)
         
-        # Get the pip path in the virtual environment
+        # Get the python and pip paths in the virtual environment
         if os.name == 'nt':  # Windows
-            pip_path = venv_path / 'Scripts' / 'pip'
+            python_path = venv_path / 'Scripts' / 'python.exe'
+            pip_path = venv_path / 'Scripts' / 'pip.exe'
         else:  # Unix/MacOS
+            python_path = venv_path / 'bin' / 'python'
             pip_path = venv_path / 'bin' / 'pip'
             
         # Install required packages
         print("Installing required packages...")
-        subprocess.run([str(pip_path), 'install', '-U', 'pip'], check=True)
+        
+        # Upgrade pip using the python module approach (works on both platforms)
+        try:
+            subprocess.run([str(python_path), '-m', 'pip', 'install', '--upgrade', 'pip'], check=True)
+        except subprocess.CalledProcessError as e:
+            print(f"Warning: Could not upgrade pip: {e}")
+            print("Continuing with existing pip version...")
+        
+        # Install requirements
         subprocess.run([str(pip_path), 'install', '-r', 'requirements.txt'], check=True)
         print("All required packages installed successfully!")
     else:
@@ -36,11 +46,22 @@ def create_venv():
         update = input("Would you like to update packages? (y/n): ").strip().lower()
         if update == 'y':
             if os.name == 'nt':  # Windows
-                pip_path = venv_path / 'Scripts' / 'pip'
+                python_path = venv_path / 'Scripts' / 'python.exe'
+                pip_path = venv_path / 'Scripts' / 'pip.exe'
             else:  # Unix/MacOS
+                python_path = venv_path / 'bin' / 'python'
                 pip_path = venv_path / 'bin' / 'pip'
+            
             print("Updating packages...")
-            subprocess.run([str(pip_path), 'install', '-U', '-r', 'requirements.txt'], check=True)
+            
+            # Upgrade pip first
+            try:
+                subprocess.run([str(python_path), '-m', 'pip', 'install', '--upgrade', 'pip'], check=True)
+            except subprocess.CalledProcessError as e:
+                print(f"Warning: Could not upgrade pip: {e}")
+            
+            # Update requirements
+            subprocess.run([str(pip_path), 'install', '--upgrade', '-r', 'requirements.txt'], check=True)
             print("Packages updated successfully!")
 
 def setup_env_file():

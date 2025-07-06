@@ -19,6 +19,7 @@ sys.path.insert(0, src_dir)
 
 from model.market_state_classifier import MarketStateClassifier
 from model.options_handler import OptionsHandler
+from model.calendar_features import CalendarFeatureProcessor
 from common.cache.cache_manager import CacheManager
 
 class DataRetriever:
@@ -45,6 +46,7 @@ class DataRetriever:
         self.state_classifier = MarketStateClassifier()
         self.cache_manager = CacheManager()
         self.options_handler = OptionsHandler(symbol, start_date=lstm_start_date, cache_dir=self.cache_manager.base_dir, use_free_tier=use_free_tier, quiet_mode=quiet_mode)
+        self.calendar_processor = CalendarFeatureProcessor()
         
         print(f"🔄 DataRetriever Configuration:")
         print(f"   📊 HMM training data: {hmm_start_date} onwards (for market state classification)")
@@ -77,6 +79,10 @@ class DataRetriever:
         print(f"\n💰 Phase 5: Generating option signals for LSTM data")
         # Calculate option trading signals for LSTM data
         self.lstm_data = self.options_handler.calculate_option_signals(self.lstm_data)
+        
+        print(f"\n📅 Phase 6: Adding economic calendar features")
+        # Add all calendar features at once (CPI and CC)
+        self.lstm_data = self.calendar_processor.calculate_all_features(self.lstm_data)
         
         # Use LSTM data as the main dataset for training
         self.data = self.lstm_data

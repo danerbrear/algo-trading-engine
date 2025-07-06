@@ -48,7 +48,7 @@ class StockPredictor:
         # Note: n_features will be determined dynamically in prepare_data()
         self.lstm_model = LSTMModel(
             sequence_length=self.sequence_length,
-            n_features=9  # Updated to match new feature count
+            n_features=13  # Updated to match new feature count (9 + 2 CPI features + 2 CC features)
         )
 
         # Prepare LSTM-specific data
