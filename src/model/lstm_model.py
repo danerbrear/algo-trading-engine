@@ -184,8 +184,8 @@ class LSTMModel:
         # Find highly correlated pairs
         high_corr_pairs = []
         
-        for i in range(len(correlation_matrix.columns)):
-            for j in range(i+1, len(correlation_matrix.columns)):
+        for i, col1 in enumerate(correlation_matrix.columns):
+            for j, col2 in enumerate(correlation_matrix.columns[i+1:], i+1):
                 corr = correlation_matrix.iloc[i, j]
                 if abs(corr) > threshold:
                     high_corr_pairs.append({

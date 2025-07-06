@@ -17,12 +17,23 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 src_dir = os.path.join(current_dir, '..')
 sys.path.insert(0, src_dir)
 
-from model.market_state_classifier import MarketStateClassifier
-from model.options_handler import OptionsHandler
-from model.calendar_features import CalendarFeatureProcessor
-from common.cache.cache_manager import CacheManager
+# Add try/except for linter compatibility
+try:
+    from model.market_state_classifier import MarketStateClassifier
+    from model.options_handler import OptionsHandler
+    from model.calendar_features import CalendarFeatureProcessor
+    from common.cache.cache_manager import CacheManager
+except ImportError:
+    # Fallback for direct script execution
+    sys.path.insert(0, os.path.join(src_dir, '..'))
+    from src.model.market_state_classifier import MarketStateClassifier
+    from src.model.options_handler import OptionsHandler
+    from src.model.calendar_features import CalendarFeatureProcessor
+    from src.common.cache.cache_manager import CacheManager
 
 class DataRetriever:
+    """Handles data retrieval, feature calculation, and preparation for LSTM and HMM models."""
+    
     def __init__(self, symbol='SPY', hmm_start_date='2010-01-01', lstm_start_date='2020-01-01', use_free_tier=False, quiet_mode=True):
         """Initialize DataRetriever with separate date ranges for HMM and LSTM
         

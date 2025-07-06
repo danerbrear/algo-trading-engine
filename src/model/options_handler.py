@@ -11,7 +11,11 @@ from typing import Dict, List, Optional, Tuple
 import os
 from dotenv import load_dotenv
 import requests
-from common.cache.cache_manager import CacheManager
+try:
+    from common.cache.cache_manager import CacheManager
+except ImportError:
+    # Fallback for direct script execution
+    from src.common.cache.cache_manager import CacheManager
 from .api_retry_handler import APIRetryHandler
 import sys
 import os
@@ -144,7 +148,7 @@ class OptionsHandler:
             target_expiry = min(expiry_dates, key=lambda x: abs((x - target_date).days))
             target_expiry_str = target_expiry.strftime('%Y-%m-%d')
             
-            print(f"Closest expiry: {target_expiry_str}")
+            progress_print(f"Closest expiry: {target_expiry_str}")
             
             # Filter for target expiry
             target_expiry_contracts = [
@@ -379,7 +383,7 @@ class OptionsHandler:
         
         # Find closest expiry to target date
         closest_expiry = min(expiry_dates, key=lambda x: abs((x - target_date).days))
-        print(f"Closest expiry: {closest_expiry.strftime('%Y-%m-%d')}")
+        progress_print(f"Closest expiry: {closest_expiry.strftime('%Y-%m-%d')}")
         return closest_expiry.strftime('%Y-%m-%d')
         
     def _get_atm_options(self, current_price: float, chain_data: Dict, expiry: str) -> Tuple[Optional[Dict], Optional[Dict]]:
@@ -546,7 +550,7 @@ class OptionsHandler:
                 # Parse expiration date
                 expiry_date = pd.Timestamp(expiry)
                 
-                print(f"Searching for {option_type} options: strikes ${min_strike:.0f}-${max_strike:.0f}, expiry {expiry}")
+                progress_print(f"Searching for {option_type} options: strikes ${min_strike:.0f}-${max_strike:.0f}, expiry {expiry}")
                 
                 contracts_response = self.client.list_options_contracts(
                     underlying_ticker=self.symbol,
@@ -568,7 +572,7 @@ class OptionsHandler:
                         if len(contracts) >= 10:  # Limit to avoid too many results
                             break
                 
-                print(f"Found {len(contracts)} contracts for {option_type} ${target_strike:.0f}")
+                progress_print(f"Found {len(contracts)} contracts for {option_type} ${target_strike:.0f}")
                 return contracts
                 
             except Exception as e:

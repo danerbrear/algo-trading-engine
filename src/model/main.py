@@ -13,6 +13,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class StockPredictor:
+    """Main class for training and evaluating LSTM-based options trading models."""
+    
     def __init__(self, symbol='SPY', hmm_start_date='2010-01-01', lstm_start_date='2021-06-01', sequence_length=SEQUENCE_LENGTH, use_free_tier=False, quiet_mode=True):
         """Initialize StockPredictor with separate date ranges for HMM and LSTM
         
