@@ -74,32 +74,32 @@ class DataRetriever:
         # Train HMM on the longer historical data
         states = self.state_classifier.find_optimal_states(self.hmm_data)
         print(f"✅ Optimal number of market states found: {states}")
-        
+
         print(f"\n📊 Phase 3: Preparing LSTM training data from {self.lstm_start_date}")
         # Fetch LSTM training data (more recent data for options trading)
         self.lstm_data = self.fetch_data_for_period(self.lstm_start_date, 'lstm')
         self.calculate_features_for_data(self.lstm_data)
-        
+
         # Calculate option features for LSTM data
         self.lstm_data = self.options_handler.calculate_option_features(self.lstm_data)
-        
+
         print(f"\n🔮 Phase 4: Applying trained HMM to LSTM data")
         # Apply the trained HMM to the LSTM data
         self.lstm_data['Market_State'] = self.state_classifier.predict_states(self.lstm_data)
-        
+
         print(f"\n💰 Phase 5: Generating option signals for LSTM data")
         # Calculate option trading signals for LSTM data
         self.lstm_data = self.options_handler.calculate_option_signals(self.lstm_data)
-        
+
         print(f"\n📅 Phase 6: Adding economic calendar features")
         # Add all calendar features at once (CPI and CC)
         if self.calendar_processor is None:
             self.calendar_processor = CalendarFeatureProcessor()
         self.lstm_data = self.calendar_processor.calculate_all_features(self.lstm_data)
-        
+
         # Use LSTM data as the main dataset for training
         self.data = self.lstm_data
-        
+
         return self.lstm_data
 
     def fetch_data_for_period(self, start_date: str, data_type: str = 'general'):
@@ -268,5 +268,4 @@ class DataRetriever:
                 obv.iloc[i] = obv.iloc[i-1]
         
         return obv
-
  

@@ -40,7 +40,7 @@ class StockPredictor:
         self.X_test = None
         self.y_test = None
         self.analyzer = None
-        
+
     def prepare_data(self):
         """Prepare the data for training"""
         # Fetch and prepare the data for LSTM
@@ -56,7 +56,7 @@ class StockPredictor:
         # Prepare LSTM-specific data
         self.X_train, self.y_train, self.X_test, self.y_test = \
             self.lstm_model.prepare_data(self.data_retriever, sequence_length=self.sequence_length)
-            
+    
     def train_model(self, epochs=EPOCHS, batch_size=BATCH_SIZE):
         """Train the LSTM model"""
         if self.X_train is None:

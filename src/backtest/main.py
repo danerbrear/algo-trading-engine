@@ -1,6 +1,7 @@
 import pandas as pd
 from datetime import datetime
 from .models import Strategy, CreditSpreadStrategy, Position
+from src.common.data_retriever import DataRetriever
 
 class BacktestEngine:
     """
@@ -8,14 +9,11 @@ class BacktestEngine:
     """
 
     def __init__(self, data: pd.DataFrame, strategy: Strategy, initial_capital: float = 100000,
-                 model = None, scaler = None,
                  start_date: datetime = datetime.now(),
                  end_date: datetime = datetime.now()):
         self.data = data
         self.strategy = strategy
         self.capital = initial_capital
-        self.model = model
-        self.scaler = scaler
         self.start_date = start_date
         self.end_date = end_date
         self.positions = []
@@ -38,6 +36,8 @@ class BacktestEngine:
             # Convert to tuple for immutability
             positions_tuple = tuple(self.positions)
             self.strategy.on_new_date(positions_tuple, self._add_position, self._remove_position)
+        
+        print(f"Final capital: {self.capital}")
 
     def _determine_return(self):
         """
@@ -68,13 +68,17 @@ class BacktestEngine:
         self.positions.remove(position)
 
 if __name__ == "__main__":
+    start_date = datetime(2023, 7, 1)
+    end_date = datetime(2025, 7, 1)
+
+    data_retriever = DataRetriever(symbol='SPY', hmm_start_date='2010-01-01', lstm_start_date='2021-06-01', use_free_tier=False, quiet_mode=True)
+    data = data_retriever.prepare_data_for_lstm()
+
     backtester = BacktestEngine(
-        data=None, 
+        data=data, 
         strategy=CreditSpreadStrategy(),
         initial_capital=10000,
-        model=None,
-        scaler=None,
-        start_date=datetime.now(),
-        end_date=datetime.now()
+        start_date=start_date,
+        end_date=end_date
     )
     backtester.run()

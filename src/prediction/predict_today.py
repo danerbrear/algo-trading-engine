@@ -25,6 +25,7 @@ try:
     from common.cache.cache_manager import CacheManager
     from common.data_retriever import DataRetriever
     from prediction.calendar_config_manager import CalendarConfigManager
+    from prediction.models import Predictor
 except ImportError:
     # Fallback for module execution
     from src.model.market_state_classifier import MarketStateClassifier
@@ -32,8 +33,9 @@ except ImportError:
     from src.common.cache.cache_manager import CacheManager
     from src.common.data_retriever import DataRetriever
     from src.prediction.calendar_config_manager import CalendarConfigManager
+    from src.prediction.models import Predictor
 
-class TodayPredictor:
+class TodayPredictor(Predictor):
     """Predictor class for making daily options trading predictions using pretrained HMM and LSTM models."""
 
     def __init__(self, symbol='SPY'):
@@ -162,8 +164,6 @@ class TodayPredictor:
         
         print(f"✅ Calculated features for {len(data)} samples")
         return data
-    
-
     
     def fetch_today_options_data(self, current_price):
         """Fetch today's option chain data to calculate real options features
