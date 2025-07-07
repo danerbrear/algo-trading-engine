@@ -34,6 +34,15 @@ class MarketStateClassifier:
         self.hmm_model = None
         self.n_states = None
         self.scaler = StandardScaler()
+        self.is_trained = False
+        
+    def train_hmm_model(self, data):
+        """Train the HMM model and find optimal number of states"""
+        print(f"\n🎯 Training HMM model on market data ({len(data)} samples)")
+        optimal_states = self.find_optimal_states(data)
+        self.is_trained = True
+        print(f"✅ HMM model trained with {optimal_states} optimal states")
+        return optimal_states
         
     def find_optimal_states(self, data):
         """Find optimal number of states using HMM with multiple criteria"""
@@ -149,8 +158,8 @@ class MarketStateClassifier:
     
     def predict_states(self, data):
         """Predict market states for given data"""
-        if self.hmm_model is None:
-            raise ValueError("Model not fitted. Call find_optimal_states first.")
+        if self.hmm_model is None or not self.is_trained:
+            raise ValueError("Model not trained. Call train_hmm_model first.")
             
         # Note: Price_to_SMA20 used in HMM but excluded from LSTM to avoid correlation
         feature_matrix = np.column_stack([

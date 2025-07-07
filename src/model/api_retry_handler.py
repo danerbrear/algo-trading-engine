@@ -53,5 +53,4 @@ class APIRetryHandler:
                 print(f"HTTP error occurred: {str(e)}")
                 raise
             except Exception as e:
-                print(f"Unexpected error: {str(e)}")
-                raise 
+                raise e

@@ -96,6 +96,7 @@ class TodayPredictor(Predictor):
         self.hmm_model.hmm_model = hmm_data['hmm_model']
         self.hmm_model.scaler = hmm_data['scaler']
         self.hmm_model.n_states = hmm_data['n_states']
+        self.hmm_model.is_trained = True
         
         print(f"✅ HMM model loaded from {hmm_path}")
         print(f"   Number of states: {self.hmm_model.n_states}")
@@ -293,21 +294,9 @@ class TodayPredictor(Predictor):
     def predict_market_state(self, data):
         """Predict market state using HMM model"""
         print("🔮 Predicting market state...")
-        
-        # Prepare HMM features
-        feature_matrix = np.column_stack([
-            data['Returns'],
-            data['Volatility'],
-            data['Price_to_SMA20'],
-            data['SMA20_to_SMA50'],
-            data['Volume_Ratio']
-        ])
-        
-        # Scale features
-        scaled_features = self.hmm_model.scaler.transform(feature_matrix)
-        
-        # Predict states
-        market_states = self.hmm_model.hmm_model.predict(scaled_features)
+                
+        # Use the predict_states method for consistency
+        market_states = self.hmm_model.predict_states(data)
         
         # Update market states in data
         data['Market_State'] = market_states
@@ -393,7 +382,7 @@ class TodayPredictor(Predictor):
         print("=" * 60)
         
         # Fetch recent data
-        data = self.fetch_recent_data(days=90)
+        data = self.fetch_recent_data(days=120)
         
         # Check data availability for current date
         self.check_current_data_availability(data)
@@ -403,19 +392,7 @@ class TodayPredictor(Predictor):
         
         # Check if we have enough data after feature calculation
         if len(data) < self.sequence_length:
-            print(f"⚠️  Warning: Only {len(data)} samples available after feature calculation")
-            print(f"   Need at least {self.sequence_length} samples for LSTM prediction")
-            print(f"   This might indicate insufficient historical data or data quality issues")
-            
-            # Try to fetch more data if we don't have enough
-            if len(data) < self.sequence_length:
-                print(f"🔄 Attempting to fetch more data...")
-                # Fetch more data (double the original request)
-                data = self.fetch_recent_data(days=180)
-                data = self.calculate_features(data)
-                
-                if len(data) < self.sequence_length:
-                    raise ValueError(f"Insufficient data: {len(data)} samples available, need {self.sequence_length} for LSTM prediction")
+            raise ValueError(f"Insufficient data: {len(data)} samples available, need {self.sequence_length} for LSTM prediction")
         
         print(f"✅ Have {len(data)} samples available for prediction")
         

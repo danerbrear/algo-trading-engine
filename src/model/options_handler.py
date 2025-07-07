@@ -104,15 +104,15 @@ class OptionsHandler:
             except ValueError as e:
                 if "SKIP_DATE_UNAUTHORIZED" in str(e):
                     raise  # Re-raise to be caught by the outer handler
-                print(f"ValueError in fetch_func for {contract.ticker}: {str(e)}")
+                progress_print(f"ValueError in fetch_func for {contract.ticker}: {str(e)}")
                 return None
             except Exception as e:
                 error_str = str(e)
-                print(f"Error in fetch_func for {contract.ticker}: {error_str}")
+                progress_print(f"Error in fetch_func for {contract.ticker}: {error_str}")
                 
                 # Check for authorization errors in general exceptions too
                 if "NOT_AUTHORIZED" in error_str or "doesn't include this data timeframe" in error_str:
-                    print(f"⚠️ Authorization error for {current_date.date()}: Plan doesn't cover this timeframe")
+                    progress_print(f"⚠️ Authorization error for {current_date.date()}: Plan doesn't cover this timeframe")
                     raise ValueError("SKIP_DATE_UNAUTHORIZED")
                 return None
             

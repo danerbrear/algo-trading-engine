@@ -40,11 +40,23 @@ class StockPredictor:
         self.X_test = None
         self.y_test = None
         self.analyzer = None
+        self.state_classifier = None  # Will be set during prepare_data()
 
     def prepare_data(self):
         """Prepare the data for training"""
-        # Fetch and prepare the data for LSTM
-        self.data_retriever.prepare_data_for_lstm()
+        # First prepare HMM training data and train the HMM model
+        print(f"\n📈 Phase 1: Preparing HMM training data from {self.data_retriever.hmm_start_date}")
+        hmm_data = self.data_retriever.fetch_data_for_period(self.data_retriever.hmm_start_date, 'hmm')
+        self.data_retriever.calculate_features_for_data(hmm_data)
+        
+        print(f"\n🎯 Phase 2: Training HMM on market data ({len(hmm_data)} samples)")
+        from model.market_state_classifier import MarketStateClassifier
+        self.state_classifier = MarketStateClassifier()
+        states = self.state_classifier.train_hmm_model(hmm_data)
+        print(f"✅ HMM model trained with {states} optimal states")
+        
+        # Then fetch and prepare the data for LSTM
+        self.data_retriever.prepare_data_for_lstm(state_classifier=self.state_classifier)
 
         # Initialize LSTM model with data preparation capabilities
         # Note: n_features will be determined dynamically in prepare_data()
@@ -341,7 +353,7 @@ if __name__ == "__main__":
     
     # Save the model if requested
     if args.save:
-        save_model(predictor.lstm_model, hmm_model=predictor.data_retriever.state_classifier, mode=args.mode, symbol=args.symbol)
+        save_model(predictor.lstm_model, hmm_model=predictor.state_classifier, mode=args.mode, symbol=args.symbol)
     
     print("\n📊 Evaluating Model Performance...")
     results = predictor.evaluate_model()

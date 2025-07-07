@@ -54,7 +54,6 @@ class DataRetriever:
         self.lstm_data = None  # Separate data for LSTM training
         self.features = None
         self.ticker = None
-        self.state_classifier = MarketStateClassifier()
         self.cache_manager = CacheManager()
         self.options_handler = OptionsHandler(symbol, start_date=lstm_start_date, cache_dir=self.cache_manager.base_dir, use_free_tier=use_free_tier, quiet_mode=quiet_mode)
         self.calendar_processor = None  # Initialize lazily when needed
@@ -62,20 +61,15 @@ class DataRetriever:
         print(f"🔄 DataRetriever Configuration:")
         print(f"   📊 HMM training data: {hmm_start_date} onwards (for market state classification)")
         print(f"   🎯 LSTM training data: {lstm_start_date} onwards (for options signal prediction)")
+
+    def prepare_data_for_lstm(self, sequence_length=60, state_classifier=None):
+        """Prepare data for LSTM model with enhanced features using separate date ranges
         
-    def prepare_data_for_lstm(self, sequence_length=60):
-        """Prepare data for LSTM model with enhanced features using separate date ranges"""
-        print(f"\n📈 Phase 1: Preparing HMM training data from {self.hmm_start_date}")
-        # Fetch HMM training data (longer history for market state patterns)
-        self.hmm_data = self.fetch_data_for_period(self.hmm_start_date, 'hmm')
-        self.calculate_features_for_data(self.hmm_data)
-
-        print(f"\n🎯 Phase 2: Training HMM on market data ({len(self.hmm_data)} samples)")
-        # Train HMM on the longer historical data
-        states = self.state_classifier.find_optimal_states(self.hmm_data)
-        print(f"✅ Optimal number of market states found: {states}")
-
-        print(f"\n📊 Phase 3: Preparing LSTM training data from {self.lstm_start_date}")
+        Args:
+            sequence_length: Length of sequences for LSTM
+            state_classifier: Trained MarketStateClassifier instance for market state prediction
+        """
+        print(f"\n📊 Phase 1: Preparing LSTM training data from {self.lstm_start_date}")
         # Fetch LSTM training data (more recent data for options trading)
         self.lstm_data = self.fetch_data_for_period(self.lstm_start_date, 'lstm')
         self.calculate_features_for_data(self.lstm_data)
@@ -83,15 +77,19 @@ class DataRetriever:
         # Calculate option features for LSTM data
         self.lstm_data = self.options_handler.calculate_option_features(self.lstm_data)
 
-        print(f"\n🔮 Phase 4: Applying trained HMM to LSTM data")
+        print(f"\n🔮 Phase 2: Applying trained HMM to LSTM data")
         # Apply the trained HMM to the LSTM data
-        self.lstm_data['Market_State'] = self.state_classifier.predict_states(self.lstm_data)
+        if state_classifier is not None:
+            self.lstm_data['Market_State'] = state_classifier.predict_states(self.lstm_data)
+        else:
+            print("⚠️  No state classifier provided, skipping market state prediction")
+            self.lstm_data['Market_State'] = 0  # Default state
 
-        print(f"\n💰 Phase 5: Generating option signals for LSTM data")
+        print(f"\n💰 Phase 3: Generating option signals for LSTM data")
         # Calculate option trading signals for LSTM data
         self.lstm_data = self.options_handler.calculate_option_signals(self.lstm_data)
 
-        print(f"\n📅 Phase 6: Adding economic calendar features")
+        print(f"\n📅 Phase 4: Adding economic calendar features")
         # Add all calendar features at once (CPI and CC)
         if self.calendar_processor is None:
             self.calendar_processor = CalendarFeatureProcessor()
