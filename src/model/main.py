@@ -40,7 +40,7 @@ class StockPredictor:
         self.X_test = None
         self.y_test = None
         self.analyzer = None
-
+        
     def prepare_data(self):
         """Prepare the data for training"""
         # Fetch and prepare the data for LSTM
@@ -56,12 +56,12 @@ class StockPredictor:
         # Prepare LSTM-specific data
         self.X_train, self.y_train, self.X_test, self.y_test = \
             self.lstm_model.prepare_data(self.data_retriever, sequence_length=self.sequence_length)
-
+            
     def train_model(self, epochs=EPOCHS, batch_size=BATCH_SIZE):
         """Train the LSTM model"""
         if self.X_train is None:
             raise ValueError("Data not prepared. Call prepare_data() first.")
-
+            
         # Train the model using the prepared LSTM model instance
         history = self.lstm_model.train(
             self.X_train, self.y_train,
@@ -69,41 +69,41 @@ class StockPredictor:
             batch_size=batch_size
         )
         return history
-
+        
     def evaluate_model(self):
         """Evaluate the model and make predictions"""
         if self.lstm_model is None:
             raise ValueError("Model not trained. Call train_model() first.")
-
+            
         # Make predictions
         train_predictions = self.lstm_model.predict(self.X_train)
         test_predictions = self.lstm_model.predict(self.X_test)
-
+        
         # Get prediction probabilities
         train_probs = self.lstm_model.predict_proba(self.X_train)
         test_probs = self.lstm_model.predict_proba(self.X_test)
-
+        
         # Calculate metrics
         train_accuracy = np.mean(train_predictions == self.y_train)
         test_accuracy = np.mean(test_predictions == self.y_test)
-
+        
         # Define class labels for the 3-class strategy system
         class_labels = ['Hold', 'Call Credit Spread', 'Put Credit Spread']
-
+        
         # Get unique classes in the test set
         unique_classes = np.unique(np.concatenate([self.y_test, test_predictions]))
         used_labels = [class_labels[int(i)] for i in unique_classes]
-
+        
         # Generate classification report
         test_report = classification_report(
             self.y_test, 
             test_predictions,
             target_names=used_labels
         )
-
+        
         # Generate confusion matrix
         conf_matrix = confusion_matrix(self.y_test, test_predictions)
-
+            
         return {
             'train_predictions': train_predictions,
             'test_predictions': test_predictions,
@@ -115,7 +115,7 @@ class StockPredictor:
             'confusion_matrix': conf_matrix,
             'class_labels': used_labels
         }
-
+    
     def get_strategy_returns_comparison(self):
         """Get predicted strategy returns vs actual stock log returns for comparison plotting
         
@@ -124,48 +124,48 @@ class StockPredictor:
         """
         if self.lstm_model is None or self.X_test is None:
             return None, None
-
+            
         try:
             # Get predicted strategy labels for test data
             test_predictions = self.lstm_model.predict(self.X_test)
-
+            
             # Get the corresponding dates and strategy returns from the data retriever
             # We need to access the LSTM data that was used for testing
             lstm_data = self.data_retriever.lstm_data
-
+            
             if lstm_data is None or len(lstm_data) == 0:
                 return None, None
-
+                
             # Calculate the starting index for test data in the original dataset
             # Test data starts after training data + sequence length
             total_samples = len(self.X_train) + len(self.X_test)
             train_size = len(self.X_train)
             sequence_length = self.sequence_length
-
+            
             # The test data starts at: sequence_length + train_size
             test_start_idx = sequence_length + train_size
             test_end_idx = test_start_idx + len(test_predictions)
-
+            
             # Ensure we don't go beyond available data
             test_end_idx = min(test_end_idx, len(lstm_data))
             actual_test_length = test_end_idx - test_start_idx
-
+            
             if actual_test_length <= 0:
                 return None, None
-
+            
             # Trim predictions to match available data
             test_predictions = test_predictions[:actual_test_length]
-
+            
             # Get actual SPY log returns for the test period
             actual_spy_returns = lstm_data['Log_Returns'].iloc[test_start_idx:test_end_idx].values
-
+            
             # Calculate predicted strategy returns based on the predicted labels
             predicted_returns = np.zeros(len(test_predictions))
-
+            
             for i, predicted_label in enumerate(test_predictions):
                 predicted_label = int(predicted_label)
                 data_idx = test_start_idx + i
-
+                
                 # Map predicted label to expected strategy return
                 if predicted_label == 0:  # Hold
                     predicted_returns[i] = 0.0  # No return for hold
@@ -185,13 +185,13 @@ class StockPredictor:
             # Handle NaN values by replacing with defaults
             predicted_returns = np.nan_to_num(predicted_returns, nan=0.0)
             actual_spy_returns = np.nan_to_num(actual_spy_returns, nan=0.0)
-
+            
             return predicted_returns, actual_spy_returns
-
+            
         except Exception as e:
             print(f"⚠️ Error calculating strategy returns comparison: {str(e)}")
             return None, None
-
+        
     def plot_results(self, results, history=None):
         """Plot the results using the new plotting module"""
         # Create plotter instance
