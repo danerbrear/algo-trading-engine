@@ -288,10 +288,10 @@ class OptionsHandler:
                             self.symbol
                         )
                     else:
-                        print(f"No contracts available for {current_date.date()}")
-                        
+                        progress_print(f"No contracts available for {current_date.date()}")
+
                     return contracts
-                    
+
                 except Exception as e:
                     print(f"Error in fetch_func for contracts: {str(e)}")
                     print(f"Error type: {type(e)}")
@@ -332,7 +332,7 @@ class OptionsHandler:
                 contracts = self._get_contracts_from_cache(current_date, current_price)
                 
                 if not contracts:
-                    print(f"No options data available for {current_date.date()}")
+                    progress_print(f"No options data available for {current_date.date()}")
                     return chain_data
                 
                 # Fetch historical data for all contracts

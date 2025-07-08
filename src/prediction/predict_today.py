@@ -24,6 +24,7 @@ try:
     from model.lstm_model import LSTMModel
     from common.cache.cache_manager import CacheManager
     from common.data_retriever import DataRetriever
+    from common.functions import load_hmm_model, load_lstm_model
     from prediction.calendar_config_manager import CalendarConfigManager
     from prediction.models import Predictor
 except ImportError:
@@ -32,6 +33,7 @@ except ImportError:
     from src.model.lstm_model import LSTMModel
     from src.common.cache.cache_manager import CacheManager
     from src.common.data_retriever import DataRetriever
+    from src.common.functions import load_hmm_model, load_lstm_model
     from src.prediction.calendar_config_manager import CalendarConfigManager
     from src.prediction.models import Predictor
 
@@ -66,40 +68,11 @@ class TodayPredictor(Predictor):
         """Load pretrained HMM and LSTM models"""
         print(f"🔄 Loading models from {self.model_dir}...")
 
-        # Load LSTM model
-        lstm_path = os.path.join(self.model_dir, 'model.keras')
-        if not os.path.exists(lstm_path):
-            raise FileNotFoundError(f"LSTM model not found at {lstm_path}")
-
-        self.lstm_model = LSTMModel(sequence_length=self.sequence_length, n_features=self.n_features)
-        self.lstm_model.model = keras.models.load_model(lstm_path)
-        print(f"✅ LSTM model loaded from {lstm_path}")
+        # Load LSTM model and scaler using common function
+        self.lstm_model, self.lstm_scaler = load_lstm_model(self.model_dir, return_lstm_instance=True)
         
-        # Load LSTM scaler
-        scaler_path = os.path.join(self.model_dir, 'lstm_scaler.pkl')
-        if os.path.exists(scaler_path):
-            with open(scaler_path, 'rb') as f:
-                self.lstm_scaler = pickle.load(f)
-            print(f"✅ LSTM scaler loaded from {scaler_path}")
-        else:
-            print(f"⚠️  LSTM scaler not found at {scaler_path}")
-        
-        # Load HMM model
-        hmm_path = os.path.join(self.model_dir, 'hmm_model.pkl')
-        if not os.path.exists(hmm_path):
-            raise FileNotFoundError(f"HMM model not found at {hmm_path}")
-        
-        with open(hmm_path, 'rb') as f:
-            hmm_data = pickle.load(f)
-        
-        self.hmm_model = MarketStateClassifier(max_states=hmm_data['max_states'])
-        self.hmm_model.hmm_model = hmm_data['hmm_model']
-        self.hmm_model.scaler = hmm_data['scaler']
-        self.hmm_model.n_states = hmm_data['n_states']
-        self.hmm_model.is_trained = True
-        
-        print(f"✅ HMM model loaded from {hmm_path}")
-        print(f"   Number of states: {self.hmm_model.n_states}")
+        # Load HMM model using common function
+        self.hmm_model = load_hmm_model(self.model_dir)
         
     def fetch_recent_data(self, days=90):
         """Fetch recent market data for prediction using DataRetriever
