@@ -3,7 +3,7 @@ import pandas as pd
 from datetime import datetime
 from .models import Strategy, CreditSpreadStrategy, Position
 from src.common.data_retriever import DataRetriever
-from src.common.functions import load_hmm_model
+from src.common.functions import load_hmm_model, load_lstm_model
 
 class BacktestEngine:
     """
@@ -20,6 +20,8 @@ class BacktestEngine:
         self.end_date = end_date
         self.positions = []
 
+        self.strategy.set_data(self.data)
+
     def run(self) -> bool:
         """
         Run the backtest.
@@ -32,7 +34,7 @@ class BacktestEngine:
 
         # Generate date range (business days only)
         date_range = pd.bdate_range(start=self.start_date, end=self.end_date)
-        
+
         # For each date in the range, simulate the strategy
         for date in date_range:
             # Convert to tuple for immutability
@@ -40,7 +42,7 @@ class BacktestEngine:
             self.strategy.on_new_date(date, positions_tuple, self._add_position, self._remove_position)
 
         self._end()
-        
+
         print(f"Final capital: {self.capital}")
         return True
 
@@ -152,15 +154,17 @@ if __name__ == "__main__":
     model_save_base_path = os.getenv('MODEL_SAVE_BASE_PATH', 'Trained_Models')
     model_dir = os.path.join(model_save_base_path, 'lstm_poc', 'SPY', 'latest')
 
-    # Load HMM model using the common function
     hmm_model = load_hmm_model(model_dir)
+    lstm_model, scaler = load_lstm_model(model_dir, return_lstm_instance=True)
 
     # Then prepare the data for LSTM
     data = data_retriever.prepare_data_for_lstm(state_classifier=hmm_model)
 
+    strategy = CreditSpreadStrategy(lstm_model=lstm_model)
+
     backtester = BacktestEngine(
         data=data, 
-        strategy=CreditSpreadStrategy(),
+        strategy=strategy,
         initial_capital=10000,
         start_date=start_date,
         end_date=end_date

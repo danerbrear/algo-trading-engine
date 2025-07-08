@@ -1,5 +1,6 @@
 from typing import Callable
 from datetime import datetime
+import pandas as pd
 
 class Strategy:
     """
@@ -9,6 +10,7 @@ class Strategy:
     def __init__(self, profit_target: float = None, stop_loss: float = None):
         self.profit_target = profit_target
         self.stop_loss = stop_loss
+        self.data = None
 
     def set_profit_target(self, profit_target: float):
         """
@@ -21,7 +23,13 @@ class Strategy:
         Set the stop loss for the strategy.
         """
         self.stop_loss = stop_loss
-    
+
+    def set_data(self, data: pd.DataFrame):
+        """
+        Set the data for the strategy.
+        """
+        self.data = data
+
     def on_new_date(self, date: datetime, positions: tuple['Position', ...], add_position: Callable[['Position'], None], remove_position: Callable[['Position'], None]):
         """
         On new date, execute strategy.
@@ -59,8 +67,9 @@ class CreditSpreadStrategy(Strategy):
 
     holding_period = 10
 
-    def __init__(self):
+    def __init__(self, lstm_model):
         super().__init__(stop_loss=0.6)
+        self.lstm_model = lstm_model
 
     def on_new_date(self, date: datetime, positions: tuple['Position', ...], add_position: Callable[['Position'], None], remove_position: Callable[['Position'], None]):
         """
@@ -80,6 +89,12 @@ class CreditSpreadStrategy(Strategy):
                 elif position.get_days_to_expiration(date) < self.holding_period:
                     print(f"Position {position.ticker} expired or near expiration")
                     remove_position(position)
+    
+    def _make_prediction(self, date: datetime):
+        """
+        Make a prediction for a given date.
+        """
+        pass
 
 class Position:
     """
