@@ -224,7 +224,7 @@ class BacktestEngine:
         self.positions.remove(position)
         
         # Log the position closure
-        print(f"   Position closed: {position.symbol} {position.option_type} {position.strike_price}")
+        print(f"   Position closed: {position.__str__()}")
         print(f"     Entry: ${position.entry_price:.2f} | Exit: ${exit_price:.2f}")
         print(f"     Return: ${position_return:+.2f} | Capital: ${self.capital:.2f}")
 

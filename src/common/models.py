@@ -169,9 +169,43 @@ class OptionChain:
             calls=[Option.from_dict(opt) for opt in data.get('calls', [])],
             puts=[Option.from_dict(opt) for opt in data.get('puts', [])],
         )
+    
+    def get_option_data_for_option(self, option: Option) -> Option:
+        """
+        Find the current option data for a given option by matching strike and expiration.
+        
+        Args:
+            option: The option to find current data for
+            
+        Returns:
+            Option: Current option data if found, None otherwise
+        """
+        # Determine which list to search based on option type
+        options_list = self.calls if option.is_call else self.puts
+        
+        # Find the matching option by strike and expiration
+        for current_option in options_list:
+            if (current_option.strike == option.strike and 
+                current_option.expiration == option.expiration):
+                return current_option
+        
+        return None
 
     def __str__(self) -> str:
-        return f"OptionChain(calls={self.total_calls}, puts={self.total_puts})"
+        """Return a descriptive string listing all options in the chain."""
+        result = f"OptionChain({self.total_calls} calls, {self.total_puts} puts)"
+        
+        if self.calls:
+            result += "\n  Calls:"
+            for call in self.calls:
+                result += f"\n    {call}"
+        
+        if self.puts:
+            result += "\n  Puts:"
+            for put in self.puts:
+                result += f"\n    {put}"
+        
+        return result
 
     def __repr__(self) -> str:
         return f"OptionChain(calls={self.total_calls}, puts={self.total_puts})"

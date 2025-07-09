@@ -2,7 +2,7 @@ from typing import Callable, Dict
 from datetime import datetime
 import pandas as pd
 from enum import Enum
-from src.common.models import OptionChain
+from src.common.models import OptionChain, Option
 
 class OptionType(Enum):
     """
@@ -69,20 +69,39 @@ class Strategy:
         """
         pass
 
+class StrategyType(Enum):
+    """
+    Enum for strategy types.
+    """
+    CALL_CREDIT_SPREAD = "call_credit_spread"
+    PUT_CREDIT_SPREAD = "put_credit_spread"
+    LONG_STOCK = "long_stock"
+    LONG_CALL = "long_call"
+    SHORT_CALL = "short_call"
+    LONG_PUT = "long_put"
+    SHORT_PUT = "short_put"
+
 class Position:
     """
     Position is a class that represents a position in a stock.
+    
+    Args:
+        spread_options (list[Option]): List of Option objects that make up the spread (e.g., [atm_option, otm_option])
     """
 
-    def __init__(self, symbol: str, quantity: int, expiration_date: datetime, option_type: str, strike_price: float, entry_date: datetime, entry_price: float, exit_price: float = None):
+    def __init__(self, symbol: str, quantity: int, expiration_date: datetime, strategy_type: StrategyType, strike_price: float, entry_date: datetime, entry_price: float, exit_price: float = None, spread_options: list[Option] = None):
         self.symbol = symbol
         self.expiration_date = expiration_date
         self.quantity = quantity
-        self.option_type = option_type
+        self.strategy_type = strategy_type
         self.strike_price = strike_price
         self.entry_date = entry_date
         self.entry_price = entry_price
         self.exit_price = exit_price
+        self.spread_options: list[Option] = spread_options if spread_options is not None else []
+        # Runtime type check
+        if self.spread_options and not all(isinstance(opt, Option) for opt in self.spread_options):
+            raise TypeError("All elements of spread_options must be of type Option")
     
     def profit_target_hit(self, profit_target: float, exit_price: float) -> bool:
         """
@@ -115,16 +134,61 @@ class Position:
         """
         Get the percentage return for a position.
         """
+        if exit_price is None:
+            return None
         return ((exit_price * self.quantity * 100) - (self.entry_price * self.quantity * 100)) / (self.entry_price * self.quantity * 100)
     
+    def calculate_exit_price(self, current_option_chain: OptionChain) -> float:
+        """
+        Calculate the current exit price for a credit spread position based on current market prices.
+        
+        Args:
+            current_date: Current date
+            option_chain: Current option chain data for the date
+            
+        Returns:
+            float: Current net credit/debit for the spread, or None if unable to calculate
+        """
+
+        print(f"Calculating exit price with current option chain: {current_option_chain.__str__()}")
+
+        if not self.spread_options or len(self.spread_options) != 2:
+            return None
+            
+        atm_option, otm_option = self.spread_options
+        
+        if current_option_chain is None:
+            return None
+        
+        # Find current prices for our specific options
+        current_atm_option = current_option_chain.get_option_data_for_option(atm_option)
+        current_otm_option = current_option_chain.get_option_data_for_option(otm_option)
+        
+        if current_atm_option is None or current_otm_option is None:
+            # TODO: Use DataRetriever to fetch the option data from the API and add it to the current_option_chain and the options cache file for this date
+            return None
+
+        current_atm_price = current_atm_option.last_price
+        current_otm_price = current_otm_option.last_price
+            
+        # Calculate current net credit/debit based on strategy type
+        if self.strategy_type == StrategyType.CALL_CREDIT_SPREAD:
+            # For call credit spread: sell ATM call, buy OTM call
+            current_net_credit = current_atm_price - current_otm_price
+            return current_net_credit
+        elif self.strategy_type == StrategyType.PUT_CREDIT_SPREAD:
+            # For put credit spread: sell ATM put, buy OTM put
+            current_net_credit = current_atm_price - current_otm_price
+            return current_net_credit
+        else:
+            # Not a credit spread strategy
+            return None
+
     def __str__(self) -> str:
-        """
-        String representation of the position.
-        """
         if self.exit_price is not None:
             return_pct = self._get_return(self.exit_price) * 100
             return_dollars = self.get_return_dollars(self.exit_price)
-            return f"{self.symbol} {self.option_type} {self.strike_price} @ {self.entry_price:.2f} -> {self.exit_price:.2f} ({return_pct:+.2f}%, ${return_dollars:+.2f})"
+            return f"{self.symbol} {self.strike_price} @ {self.entry_price:.2f} -> {self.exit_price:.2f} ({return_pct:+.2f}%, ${return_dollars:+.2f})"
         else:
-            return f"{self.symbol} {self.option_type} {self.strike_price} @ {self.entry_price:.2f} (Open, expires {self.expiration_date.strftime('%Y-%m-%d')})"
+            return f"{self.symbol} {self.strike_price} @ {self.entry_price:.2f} (Open, expires {self.expiration_date.strftime('%Y-%m-%d')})"
     
