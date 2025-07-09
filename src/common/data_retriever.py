@@ -57,6 +57,7 @@ class DataRetriever:
         self.cache_manager = CacheManager()
         self.options_handler = OptionsHandler(symbol, start_date=lstm_start_date, cache_dir=self.cache_manager.base_dir, use_free_tier=use_free_tier, quiet_mode=quiet_mode)
         self.calendar_processor = None  # Initialize lazily when needed
+        self.options_data = {}  # Store OptionChain DTOs for each date
 
         print(f"🔄 DataRetriever Configuration:")
         print(f"   📊 HMM training data: {hmm_start_date} onwards (for market state classification)")
@@ -68,6 +69,11 @@ class DataRetriever:
         Args:
             sequence_length: Length of sequences for LSTM
             state_classifier: Trained MarketStateClassifier instance for market state prediction
+            
+        Returns:
+            Tuple[pd.DataFrame, Dict[str, OptionChain]]: 
+                - lstm_data: DataFrame with calculated features for LSTM training
+                - options_data: Dictionary mapping date strings to OptionChain DTOs
         """
         print(f"\n📊 Phase 1: Preparing LSTM training data from {self.lstm_start_date}")
         # Fetch LSTM training data (more recent data for options trading)
@@ -75,7 +81,7 @@ class DataRetriever:
         self.calculate_features_for_data(self.lstm_data)
 
         # Calculate option features for LSTM data
-        self.lstm_data = self.options_handler.calculate_option_features(self.lstm_data)
+        self.lstm_data, self.options_data = self.options_handler.calculate_option_features(self.lstm_data)
 
         print(f"\n🔮 Phase 2: Applying trained HMM to LSTM data")
         # Apply the trained HMM to the LSTM data
@@ -98,7 +104,7 @@ class DataRetriever:
         # Use LSTM data as the main dataset for training
         self.data = self.lstm_data
 
-        return self.lstm_data
+        return self.lstm_data, self.options_data
 
     def fetch_data_for_period(self, start_date: str, data_type: str = 'general'):
         """Fetch data for a specific period with caching"""
@@ -227,7 +233,8 @@ class DataRetriever:
     def prepare_data(self, sequence_length=60):
         """Legacy method for backward compatibility - delegates to prepare_data_for_lstm"""
         print("⚠️  prepare_data() is deprecated. Use prepare_data_for_lstm() instead.")
-        return self.prepare_data_for_lstm(sequence_length)
+        lstm_data, options_data = self.prepare_data_for_lstm(sequence_length)
+        return lstm_data  # Return only lstm_data for backward compatibility
 
     def _calculate_rsi(self, prices, window=14):
         """Calculate Relative Strength Index"""

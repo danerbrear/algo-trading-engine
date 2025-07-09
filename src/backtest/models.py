@@ -1,7 +1,8 @@
-from typing import Callable
+from typing import Callable, Dict
 from datetime import datetime
 import pandas as pd
 from enum import Enum
+from src.common.models import OptionChain
 
 class OptionType(Enum):
     """
@@ -19,6 +20,7 @@ class Strategy:
         self.profit_target = profit_target
         self.stop_loss = stop_loss
         self.data = None
+        self.options_data = None
 
     def set_profit_target(self, profit_target: float):
         """
@@ -32,11 +34,12 @@ class Strategy:
         """
         self.stop_loss = stop_loss
 
-    def set_data(self, data: pd.DataFrame):
+    def set_data(self, data: pd.DataFrame, options_data: Dict[str, OptionChain]):
         """
         Set the data for the strategy.
         """
         self.data = data
+        self.options_data = options_data
 
     def on_new_date(self, date: datetime, positions: tuple['Position', ...], add_position: Callable[['Position'], None], remove_position: Callable[['Position'], None]):
         """

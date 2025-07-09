@@ -23,6 +23,7 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 from src.model.progress_tracker import ProgressTracker, set_global_progress_tracker, progress_print, is_quiet_mode
 from tqdm import tqdm
+from ..common.models import OptionChain, Option, OptionType
 
 # Load environment variables from .env file
 load_dotenv()
@@ -611,8 +612,14 @@ class OptionsHandler:
         except Exception as e:
             print(f"⚠️ Warning: Could not update cache: {str(e)}")
 
-    def calculate_option_features(self, data: pd.DataFrame) -> pd.DataFrame:
-        """Calculate option-related features with multi-strike data for strategy modeling"""
+    def calculate_option_features(self, data: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, OptionChain]]:
+        """Calculate option-related features with multi-strike data for strategy modeling
+        
+        Returns:
+            Tuple[pd.DataFrame, Dict[str, OptionChain]]: 
+                - lstm_data: DataFrame with calculated option features
+                - options_data: Dictionary mapping date strings to OptionChain DTOs
+        """
         # Initialize progress tracker with user-specified quiet mode
         progress = ProgressTracker(
             start_date=data.index[0],
@@ -623,6 +630,9 @@ class OptionsHandler:
         
         # Set as global progress tracker so other methods can use it
         set_global_progress_tracker(progress)
+        
+        # Dictionary to store OptionChain DTOs for each date
+        options_data = {}
         
         print("\n🔄 Processing options data with comprehensive multi-strike collection...")
         if self.quiet_mode:
@@ -652,6 +662,18 @@ class OptionsHandler:
                         'api_calls': progress.successful_api_calls
                     }
                 )
+                
+                # Convert to OptionChain DTO and store
+                if chain_data.get('calls') or chain_data.get('puts'):
+                    option_chain = OptionChain.from_dict(chain_data)
+                    option_chain.underlying_symbol = self.symbol
+                    option_chain.current_price = current_price
+                    option_chain.date = current_date.strftime('%Y-%m-%d')
+                    option_chain.source = 'options_handler'
+                    
+                    # Store in options_data dictionary
+                    date_key = current_date.strftime('%Y-%m-%d')
+                    options_data[date_key] = option_chain
                 
                 if not chain_data['calls'] or not chain_data['puts']:
                     # Just continue silently in quiet mode, show brief message in postfix
@@ -731,8 +753,11 @@ class OptionsHandler:
         
         # Clear the global progress tracker
         set_global_progress_tracker(None)
+        
+        print(f"✅ Processed {len(options_data)} days of option chain data")
+        print(f"   Option chains available for: {list(options_data.keys())[:5]}{'...' if len(options_data) > 5 else ''}")
                 
-        return data
+        return data, options_data
 
     def calculate_option_signals(self, data: pd.DataFrame, holding_period: int = 15, min_return_threshold: float = 0.08) -> pd.DataFrame:
         """Calculate trading signals based on options strategies using real multi-strike data

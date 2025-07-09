@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 
 from src.backtest.models import Position, Strategy, OptionType
+from src.common.models import Option, OptionChain
 
 
 class CreditSpreadStrategy(Strategy):
@@ -19,7 +20,7 @@ class CreditSpreadStrategy(Strategy):
         super().__init__(stop_loss=0.6)
         self.lstm_model = lstm_model
         self.lstm_scaler = lstm_scaler
-        self.symbol = 'SPY'  # Default symbol, can be overridden
+        self.symbol = 'SPY'  # Default symbol
 
         self.error_count = 0
 
@@ -34,53 +35,35 @@ class CreditSpreadStrategy(Strategy):
             prediction = self._make_prediction(date)
             if prediction is not None:
                 if prediction['strategy'] == 1:
-                    stock_price = self.data.loc[date]['Close']
-                    # Call Credit Spread - sell ATM call, buy OTM call
-                    expiration_date = (date + pd.Timedelta(days=30)).to_pydatetime()  # 30 days to expiration
-                    atm_strike = round(stock_price)  # ATM strike
-                    # Estimate option premium (rough approximation for ATM call)
-                    option_premium = max(0.5, stock_price * 0.02)  # At least $0.50, or 2% of stock price
-                    position = Position(
-                        symbol=self.symbol, 
-                        quantity=1, 
-                        expiration_date=expiration_date,
-                        option_type=OptionType.CALL.value,
-                        strike_price=atm_strike,
-                        entry_date=date, 
-                        entry_price=option_premium
-                    )
-                    print(f"Adding position: {position.__str__()}")
-                    add_position(position)
+                    # Call Credit Spread using real options data
+                    position = self._create_call_credit_spread_from_chain(date)
+                    if position:
+                        print(f"Adding position: {position.__str__()}")
+                        add_position(position)
                 elif prediction['strategy'] == 2:
-                    stock_price = self.data.loc[date]['Close']
-                    # Put Credit Spread - sell ATM put, buy OTM put
-                    expiration_date = (date + pd.Timedelta(days=30)).to_pydatetime()  # 30 days to expiration
-                    atm_strike = round(stock_price)  # ATM strike
-                    # Estimate option premium (rough approximation for ATM put)
-                    option_premium = max(0.5, stock_price * 0.02)  # At least $0.50, or 2% of stock price
-                    position = Position(
-                        symbol=self.symbol, 
-                        quantity=1, 
-                        expiration_date=expiration_date,
-                        option_type=OptionType.PUT.value,
-                        strike_price=atm_strike,
-                        entry_date=date, 
-                        entry_price=option_premium
-                    )
-                    print(f"Adding position: {position.__str__()}")
-                    add_position(position)
+                    # Put Credit Spread using real options data
+                    position = self._create_put_credit_spread_from_chain(date)
+                    if position:
+                        print(f"Adding position: {position.__str__()}")
+                        add_position(position)
             else:
                 self.error_count += 1
             
         else:
             for position in positions:
+                # Calculate proper exit price for credit spread
+                exit_price = self._calculate_credit_spread_exit_price(position, date)
+                if exit_price is None:
+                    # Fallback to stock price if we can't calculate spread exit price
+                    exit_price = self.data.loc[date]['Close']
+                
                 # Determine if we should close a position
-                if (self._profit_target_hit(position, self.data.loc[date]['Close']) or self._stop_loss_hit(position, self.data.loc[date]['Close'])):
+                if (self._profit_target_hit(position, exit_price) or self._stop_loss_hit(position, exit_price)):
                     print(f"Profit target or stop loss hit for {position.__str__()}")
-                    remove_position(position, self.data.loc[date]['Close'])
+                    remove_position(position, exit_price)
                 elif position.get_days_to_expiration(date) < self.holding_period:
                     print(f"Position {position.__str__()} expired or near expiration")
-                    remove_position(position, self.data.loc[date]['Close'])
+                    remove_position(position, exit_price)
 
     def on_end(self, positions: tuple['Position', ...]):
         """
@@ -223,3 +206,193 @@ class CreditSpreadStrategy(Strategy):
         except Exception as e:
             print(f"Error making LSTM prediction: {e}")
             raise ValueError(f"Error making LSTM prediction: {e}")
+
+    def _create_call_credit_spread_from_chain(self, date: datetime) -> Position:
+        """Create a call credit spread using the options chain data"""
+        if not self.options_data:
+            print("⚠️  No options data available")
+            return None
+            
+        date_key = date.strftime('%Y-%m-%d')
+        if date_key not in self.options_data:
+            print(f"⚠️  No options data for {date_key}")
+            return None
+            
+        option_chain = self.options_data[date_key]
+        current_price = self.data.loc[date]['Close']
+        
+        # Find ATM call option
+        atm_call = self._find_atm_option(option_chain.calls, current_price)
+        if not atm_call:
+            print(f"⚠️  No ATM call option found for price ${current_price:.2f}")
+            return None
+            
+        # Find OTM call option (higher strike)
+        otm_call = self._find_otm_call(option_chain.calls, current_price, atm_call.strike)
+        if not otm_call:
+            print(f"⚠️  No OTM call option found for call credit spread")
+            return None
+            
+        # Calculate net credit (sell ATM, buy OTM)
+        net_credit = atm_call.last_price - otm_call.last_price
+        
+        if net_credit <= 0:
+            print(f"⚠️  Invalid net credit for call spread: ${net_credit:.2f}")
+            return None
+            
+        print(f"📊 Call Credit Spread:")
+        print(f"   Sell ATM Call: ${atm_call.strike:.0f} @ ${atm_call.last_price:.2f}")
+        print(f"   Buy OTM Call: ${otm_call.strike:.0f} @ ${otm_call.last_price:.2f}")
+        print(f"   Net Credit: ${net_credit:.2f}")
+        
+        # Create position using the ATM call as the primary option
+        position = Position(
+            symbol=self.symbol,
+            quantity=1,
+            expiration_date=datetime.strptime(atm_call.expiration, '%Y-%m-%d'),
+            option_type=OptionType.CALL.value,
+            strike_price=atm_call.strike,
+            entry_date=date,
+            entry_price=net_credit  # Use net credit as entry price
+        )
+        
+        return position
+
+    def _create_put_credit_spread_from_chain(self, date: datetime) -> Position:
+        """Create a put credit spread using the options chain data"""
+        if not self.options_data:
+            print("⚠️  No options data available")
+            return None
+            
+        date_key = date.strftime('%Y-%m-%d')
+        if date_key not in self.options_data:
+            print(f"⚠️  No options data for {date_key}")
+            return None
+            
+        option_chain = self.options_data[date_key]
+        current_price = self.data.loc[date]['Close']
+        
+        # Find ATM put option
+        atm_put = self._find_atm_option(option_chain.puts, current_price)
+        if not atm_put:
+            print(f"⚠️  No ATM put option found for price ${current_price:.2f}")
+            return None
+            
+        # Find OTM put option (lower strike)
+        otm_put = self._find_otm_put(option_chain.puts, current_price, atm_put.strike)
+        if not otm_put:
+            print(f"⚠️  No OTM put option found for put credit spread")
+            return None
+            
+        # Calculate net credit (sell ATM, buy OTM)
+        net_credit = atm_put.last_price - otm_put.last_price
+        
+        if net_credit <= 0:
+            print(f"⚠️  Invalid net credit for put spread: ${net_credit:.2f}")
+            return None
+            
+        print(f"📊 Put Credit Spread:")
+        print(f"   Sell ATM Put: ${atm_put.strike:.0f} @ ${atm_put.last_price:.2f}")
+        print(f"   Buy OTM Put: ${otm_put.strike:.0f} @ ${otm_put.last_price:.2f}")
+        print(f"   Net Credit: ${net_credit:.2f}")
+        
+        # Create position using the ATM put as the primary option
+        position = Position(
+            symbol=self.symbol,
+            quantity=1,
+            expiration_date=datetime.strptime(atm_put.expiration, '%Y-%m-%d'),
+            option_type=OptionType.PUT.value,
+            strike_price=atm_put.strike,
+            entry_date=date,
+            entry_price=net_credit  # Use net credit as entry price
+        )
+        
+        return position
+
+    def _find_atm_option(self, options: list, current_price: float):
+        """Find the ATM option closest to the current price"""
+        if not options:
+            return None
+            
+        # Find option closest to current price
+        atm_option = min(options, key=lambda opt: abs(opt.strike - current_price))
+        
+        # Check if it's reasonably close to ATM (within 5% of current price)
+        if abs(atm_option.strike - current_price) / current_price <= 0.05:
+            return atm_option
+            
+        return None
+
+    def _find_otm_call(self, calls: list, current_price: float, atm_strike: float):
+        """Find an OTM call option (higher strike than ATM)"""
+        # Find calls with higher strikes than ATM
+        otm_calls = [call for call in calls if call.strike > atm_strike]
+        
+        if not otm_calls:
+            return None
+            
+        # Return the closest OTM call (lowest strike above ATM)
+        return min(otm_calls, key=lambda opt: opt.strike)
+
+    def _find_otm_put(self, puts: list, current_price: float, atm_strike: float):
+        """Find an OTM put option (lower strike than ATM)"""
+        # Find puts with lower strikes than ATM
+        otm_puts = [put for put in puts if put.strike < atm_strike]
+        
+        if not otm_puts:
+            return None
+            
+        # Return the closest OTM put (highest strike below ATM)
+        return max(otm_puts, key=lambda opt: opt.strike)
+
+    def _calculate_credit_spread_exit_price(self, position: Position, date: datetime) -> float:
+        """
+        Calculate the current exit price for a credit spread position based on current market prices.
+        
+        Args:
+            position: The credit spread position
+            date: Current date
+            
+        Returns:
+            float: Current net credit/debit for the spread, or None if unable to calculate
+        """
+        if not self.options_data:
+            return None
+            
+        date_key = date.strftime('%Y-%m-%d')
+        if date_key not in self.options_data:
+            return None
+            
+        option_chain = self.options_data[date_key]
+        current_price = self.data.loc[date]['Close']
+        
+        # Find the current ATM option closest to the position's strike
+        if position.option_type == OptionType.CALL.value:
+            # For call credit spread, find ATM call and OTM call
+            atm_call = self._find_atm_option(option_chain.calls, current_price)
+            if not atm_call or abs(atm_call.strike - position.strike_price) > 5:  # Allow some tolerance
+                return None
+                
+            otm_call = self._find_otm_call(option_chain.calls, current_price, atm_call.strike)
+            if not otm_call:
+                return None
+                
+            # Calculate current net credit/debit (sell ATM, buy OTM)
+            current_net_credit = atm_call.last_price - otm_call.last_price
+            return current_net_credit
+            
+        elif position.option_type == OptionType.PUT.value:
+            # For put credit spread, find ATM put and OTM put
+            atm_put = self._find_atm_option(option_chain.puts, current_price)
+            if not atm_put or abs(atm_put.strike - position.strike_price) > 5:  # Allow some tolerance
+                return None
+                
+            otm_put = self._find_otm_put(option_chain.puts, current_price, atm_put.strike)
+            if not otm_put:
+                return None
+                
+            # Calculate current net credit/debit (sell ATM, buy OTM)
+            current_net_credit = atm_put.last_price - otm_put.last_price
+            return current_net_credit
+            
+        return None

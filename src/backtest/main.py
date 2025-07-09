@@ -23,8 +23,6 @@ class BacktestEngine:
         self.end_date = end_date
         self.positions = []
 
-        self.strategy.set_data(self.data)
-
     def run(self) -> bool:
         """
         Run the backtest.
@@ -248,10 +246,13 @@ if __name__ == "__main__":
         lstm_model, scaler = load_lstm_model(model_dir, return_lstm_instance=True)
 
         # Then prepare the data for LSTM
-        data = data_retriever.prepare_data_for_lstm(state_classifier=hmm_model)
+        data, options_data = data_retriever.prepare_data_for_lstm(state_classifier=hmm_model)
 
-        strategy = CreditSpreadStrategy(lstm_model=lstm_model, lstm_scaler=scaler)
-        strategy.set_data(data)
+        strategy = CreditSpreadStrategy(
+            lstm_model=lstm_model, 
+            lstm_scaler=scaler
+        )
+        strategy.set_data(data, options_data)
 
         backtester = BacktestEngine(
             data=data, 
