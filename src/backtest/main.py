@@ -1,7 +1,9 @@
 import os
 import pandas as pd
 from datetime import datetime
-from .models import Strategy, CreditSpreadStrategy, Position
+
+from src.strategies.credit_spread_minimal import CreditSpreadStrategy
+from .models import Strategy, Position
 from src.common.data_retriever import DataRetriever
 from src.common.functions import load_hmm_model, load_lstm_model
 
@@ -39,7 +41,12 @@ class BacktestEngine:
         for date in date_range:
             # Convert to tuple for immutability
             positions_tuple = tuple(self.positions)
-            self.strategy.on_new_date(date, positions_tuple, self._add_position, self._remove_position)
+
+            try:
+                self.strategy.on_new_date(date, positions_tuple, self._add_position, self._remove_position)
+            except Exception as e:
+                print(f"Error in on_new_date: {e}")
+                return False
 
         self._end()
 
@@ -131,21 +138,21 @@ class BacktestEngine:
         Add a position to the positions list.
         """
 
-        if self.capital < position.entry_price * position.quantity:
+        if self.capital < position.entry_price * position.quantity * 100:
             raise ValueError("Not enough capital to add position")
         
-        self.capital -= position.entry_price * position.quantity
+        self.capital -= position.entry_price * position.quantity * 100
         self.positions.append(position)
 
-    def _remove_position(self, position: Position):
+    def _remove_position(self, position: Position, exit_price: float):
         """
         Remove a position from the positions list.
         """
-        self.capital += position.get_return_dollars()
+        self.capital += position.get_return_dollars(exit_price)
         self.positions.remove(position)
 
 if __name__ == "__main__":
-    start_date = datetime(2023, 7, 1)
+    start_date = datetime(2024, 7, 1)
     end_date = datetime(2025, 7, 1)
 
     data_retriever = DataRetriever(symbol='SPY', hmm_start_date=start_date, lstm_start_date=start_date, use_free_tier=False, quiet_mode=True)
@@ -160,7 +167,8 @@ if __name__ == "__main__":
     # Then prepare the data for LSTM
     data = data_retriever.prepare_data_for_lstm(state_classifier=hmm_model)
 
-    strategy = CreditSpreadStrategy(lstm_model=lstm_model)
+    strategy = CreditSpreadStrategy(lstm_model=lstm_model, lstm_scaler=scaler)
+    strategy.set_data(data)
 
     backtester = BacktestEngine(
         data=data, 

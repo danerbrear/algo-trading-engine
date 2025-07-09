@@ -152,14 +152,14 @@ class DataRetriever:
         """Calculate technical features for a given dataset"""
         # Check if we have enough data for proper feature calculation
         min_required_samples = max(window, 50) + 10  # Need enough for rolling windows plus buffer
-        
+
         if len(data) < min_required_samples:
             raise ValueError(
                 f"Insufficient data for feature calculation: {len(data)} samples available, "
                 f"need at least {min_required_samples} samples. "
                 f"This ensures proper calculation of technical indicators like SMA50, RSI, and MACD."
             )
-        
+
         # Standard feature calculation for adequate datasets
         # Basic returns and volatility
         data['Returns'] = data['Close'].pct_change()

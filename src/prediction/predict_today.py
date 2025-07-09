@@ -267,7 +267,7 @@ class TodayPredictor(Predictor):
     def predict_market_state(self, data):
         """Predict market state using HMM model"""
         print("🔮 Predicting market state...")
-                
+        
         # Use the predict_states method for consistency
         market_states = self.hmm_model.predict_states(data)
         
@@ -364,8 +364,8 @@ class TodayPredictor(Predictor):
         data = self.calculate_features(data)
         
         # Check if we have enough data after feature calculation
-        if len(data) < self.sequence_length:
-            raise ValueError(f"Insufficient data: {len(data)} samples available, need {self.sequence_length} for LSTM prediction")
+                if len(data) < self.sequence_length:
+                    raise ValueError(f"Insufficient data: {len(data)} samples available, need {self.sequence_length} for LSTM prediction")
         
         print(f"✅ Have {len(data)} samples available for prediction")
         
