@@ -2,6 +2,7 @@ import os
 import pandas as pd
 from datetime import datetime
 
+from src.model.options_handler import OptionsHandler
 from src.strategies.credit_spread_minimal import CreditSpreadStrategy
 from .models import Strategy, Position
 from src.common.data_retriever import DataRetriever
@@ -235,11 +236,13 @@ if __name__ == "__main__":
 
     print("🧪 Testing backtest with fixed date handling...")
     
-    data_retriever = DataRetriever(symbol='SPY', hmm_start_date=start_date, lstm_start_date=start_date, use_free_tier=False, quiet_mode=True)
+    data_retriever = DataRetriever(symbol='SPY', hmm_start_date=start_date, lstm_start_date=start_date, use_free_tier=True, quiet_mode=True)
 
     # Load model directory from environment variable
     model_save_base_path = os.getenv('MODEL_SAVE_BASE_PATH', 'Trained_Models')
     model_dir = os.path.join(model_save_base_path, 'lstm_poc', 'SPY', 'latest')
+
+    options_handler = data_retriever.options_handler
 
     try:
         hmm_model = load_hmm_model(model_dir)
@@ -250,7 +253,8 @@ if __name__ == "__main__":
 
         strategy = CreditSpreadStrategy(
             lstm_model=lstm_model, 
-            lstm_scaler=scaler
+            lstm_scaler=scaler,
+            options_handler=options_handler
         )
         strategy.set_data(data, options_data)
 

@@ -3,8 +3,9 @@ from typing import Callable
 import numpy as np
 import pandas as pd
 
-from src.backtest.models import Position, Strategy, OptionType, StrategyType
-from src.common.models import Option, OptionChain
+from src.backtest.models import Position, Strategy, StrategyType
+from src.common.models import Option, OptionChain, OptionType
+from src.model.options_handler import OptionsHandler
 
 
 class CreditSpreadStrategy(Strategy):
@@ -16,11 +17,11 @@ class CreditSpreadStrategy(Strategy):
 
     holding_period = 10
 
-    def __init__(self, lstm_model, lstm_scaler):
+    def __init__(self, lstm_model, lstm_scaler, options_handler: OptionsHandler = None):
         super().__init__(stop_loss=0.6)
         self.lstm_model = lstm_model
         self.lstm_scaler = lstm_scaler
-        self.symbol = 'SPY'  # Default symbol
+        self.options_handler = options_handler
 
         self.error_count = 0
 
@@ -54,15 +55,33 @@ class CreditSpreadStrategy(Strategy):
                 # Calculate exit price for the position
                 date_key = date.strftime('%Y-%m-%d')
                 if date_key in self.options_data:
-                    exit_price = position.calculate_exit_price(self.options_data[date_key])
+                    option_chain = self.options_data[date_key]
+                    exit_price = position.calculate_exit_price(option_chain)
                 else:
                     exit_price = None
-                
+
+                if exit_price is None:
+                    for option in position.spread_options:
+                        contract = self.options_handler.get_specific_option_contract(option.strike, option.expiration, option.option_type.value, date)
+                        new_option = Option.from_dict(contract)
+                        print(f"New option: {new_option.__str__()}")
+                        if (new_option.option_type == OptionType.CALL):
+                            option_chain.calls.append(new_option)
+                        elif (new_option.option_type == OptionType.PUT):
+                            option_chain.puts.append(new_option)
+                        else:
+                            print(f"Error: Invalid option type: {new_option.option_type}")
+                            self.error_count += 1
+                    exit_price = position.calculate_exit_price(option_chain)
+
                 if exit_price is None:
                     print(f"Error calculating exit price for {position.__str__()}")
                     self.error_count += 1
                     continue
-                
+                else:
+                    exit_price = round(max(exit_price, 0), 2)
+                    print(f"Exit price: {exit_price} for {position.__str__()}")
+
                 # Determine if we should close a position
                 if (self._profit_target_hit(position, exit_price) or self._stop_loss_hit(position, exit_price)):
                     print(f"Profit target or stop loss hit for {position.__str__()}")
@@ -253,7 +272,7 @@ class CreditSpreadStrategy(Strategy):
         
         # Create position using the ATM call as the primary option
         position = Position(
-            symbol=self.symbol,
+            symbol=self.options_handler.symbol,
             quantity=1,
             expiration_date=datetime.strptime(atm_call.expiration, '%Y-%m-%d'),
             strategy_type=StrategyType.CALL_CREDIT_SPREAD,
@@ -302,10 +321,10 @@ class CreditSpreadStrategy(Strategy):
         print(f"   Sell ATM Put: ${atm_put.strike:.0f} @ ${atm_put.last_price:.2f}")
         print(f"   Buy OTM Put: ${otm_put.strike:.0f} @ ${otm_put.last_price:.2f}")
         print(f"   Net Credit: ${net_credit:.2f}")
-        
+
         # Create position using the ATM put as the primary option
         position = Position(
-            symbol=self.symbol,
+            symbol=self.options_handler.symbol,
             quantity=1,
             expiration_date=datetime.strptime(atm_put.expiration, '%Y-%m-%d'),
             strategy_type=StrategyType.PUT_CREDIT_SPREAD,
@@ -314,7 +333,7 @@ class CreditSpreadStrategy(Strategy):
             entry_price=net_credit,  # Use net credit as entry price
             spread_options=[atm_put, otm_put]  # Store the specific spread options
         )
-        
+
         return position
 
     def _find_atm_option(self, options: list, current_price: float):
@@ -334,7 +353,7 @@ class CreditSpreadStrategy(Strategy):
     def _find_otm_call(self, calls: list, current_price: float, atm_strike: float):
         """Find an OTM call option (higher strike than ATM)"""
         # Find calls with higher strikes than ATM
-        otm_calls = [call for call in calls if call.strike > atm_strike]
+        otm_calls = [call for call in calls if call.strike > atm_strike + 10]
         
         if not otm_calls:
             return None
@@ -345,12 +364,10 @@ class CreditSpreadStrategy(Strategy):
     def _find_otm_put(self, puts: list, current_price: float, atm_strike: float):
         """Find an OTM put option (lower strike than ATM)"""
         # Find puts with lower strikes than ATM
-        otm_puts = [put for put in puts if put.strike < atm_strike]
+        otm_puts = [put for put in puts if put.strike < atm_strike - 10]
         
         if not otm_puts:
             return None
             
         # Return the closest OTM put (highest strike below ATM)
         return max(otm_puts, key=lambda opt: opt.strike)
-
-

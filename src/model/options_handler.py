@@ -122,6 +122,125 @@ class OptionsHandler:
             f"Error fetching historical data for {contract.ticker}"
         )
 
+    def get_specific_option_contract(self, target_strike: float, expiry: str, option_type: str, current_date: datetime) -> Optional[Dict]:
+        """
+        Get a specific option contract for a given date, expiration, and strike price.
+        First checks cache, then fetches from API if not available.
+        
+        Args:
+            target_strike: The strike price of the option
+            expiry: The expiration date (YYYY-MM-DD format)
+            option_type: The option type ('call' or 'put')
+            current_date: The date for which to get the option data
+            
+        Returns:
+            Optional[Dict]: Option contract data if found, None otherwise
+        """
+        print(f"Getting specific option contract for {target_strike} {expiry} {option_type} as of {current_date}")
+        # Ensure current_date is naive datetime
+        current_date_naive = pd.Timestamp(current_date).tz_localize(None)
+
+        # First, try to get from cache
+        cached_chain_data = self.cache_manager.load_date_from_cache(
+            current_date_naive,
+            '',  # No suffix for main chain data
+            'options',
+            self.symbol
+        )
+
+        if cached_chain_data:
+            # Look for the specific option in cached data
+            options_list = cached_chain_data.get('calls' if option_type.lower() == 'call' else 'puts', [])
+            
+            for option_data in options_list:
+                if (abs(option_data.get('strike', 0) - target_strike) < 0.01 and 
+                    option_data.get('expiration') == expiry and
+                    option_data.get('type', '').lower() == option_type.lower()):
+                    
+                    progress_print(f"✅ Found {option_type} ${target_strike:.0f} exp {expiry} in cache")
+                    return option_data
+
+        # If not in cache, fetch from API
+        progress_print(f"🔍 Fetching {option_type} ${target_strike:.0f} exp {expiry} from API")
+
+        try:
+            # Fetch contracts for this specific option
+            contracts = self._fetch_contracts_for_strike(
+                target_strike=target_strike,
+                expiry=expiry,
+                option_type=option_type,
+                current_date=current_date_naive
+            )
+
+            if contracts:
+                # Find the closest contract to our target strike
+                closest_contract = min(contracts, 
+                                     key=lambda x: abs(float(x.strike_price) - target_strike))
+                
+                # Check if the closest contract is within acceptable range (within $5)
+                if abs(float(closest_contract.strike_price) - target_strike) == 0.0:
+                    # Fetch historical data for this contract
+                    option_data = self._fetch_historical_contract_data(closest_contract, current_date_naive)
+                    
+                    if option_data:
+                        # Update cache with the new option data
+                        self._update_cache_with_specific_option(option_data, current_date_naive)
+                        
+                        progress_print(f"✅ Successfully fetched {option_type} ${float(closest_contract.strike_price):.0f} @ ${option_data['last_price']:.2f}")
+                        return option_data
+                    else:
+                        progress_print(f"❌ No historical data available for {option_type} ${float(closest_contract.strike_price):.0f}")
+                else:
+                    progress_print(f"⚠️ No suitable {option_type} found near ${target_strike:.0f} (closest: ${float(closest_contract.strike_price):.0f})")
+            else:
+                progress_print(f"❌ No contracts found for {option_type} ${target_strike:.0f}")
+                
+        except Exception as e:
+            progress_print(f"❌ Error fetching {option_type} ${target_strike:.0f}: {str(e)}")
+        
+        return None
+
+    def _update_cache_with_specific_option(self, option_data: Dict, current_date: datetime):
+        """
+        Update the cache with a specific option contract.
+        
+        Args:
+            option_data: The option data to add to cache
+            current_date: The date for the cache entry
+        """
+        try:
+            # Load existing cache data
+            existing_cache = self.cache_manager.load_date_from_cache(
+                current_date,
+                '',  # No suffix for main chain data
+                'options',
+                self.symbol
+            )
+            
+            if existing_cache is None:
+                # Create new cache entry
+                existing_cache = {'calls': [], 'puts': []}
+            
+            # Add the new option data to the appropriate list
+            if option_data['type'].lower() == 'call':
+                existing_cache['calls'].append(option_data)
+            else:
+                existing_cache['puts'].append(option_data)
+            
+            # Save updated cache
+            self.cache_manager.save_date_to_cache(
+                current_date,
+                existing_cache,
+                '',  # No suffix for main chain data
+                'options',
+                self.symbol
+            )
+            
+            progress_print(f"💾 Updated cache with {option_data['type']} ${option_data['strike']:.0f}")
+            
+        except Exception as e:
+            progress_print(f"⚠️ Warning: Could not update cache: {str(e)}")
+
     def _fetch_historical_contracts_data(self, contracts: List, current_date: datetime, current_price: float) -> Dict:
         """Fetch historical data for a list of contracts"""
         chain_data = {'calls': [], 'puts': []}
@@ -412,7 +531,7 @@ class OptionsHandler:
             return None, None
             
         return atm_call, atm_put
-        
+            
     def _get_strategy_option_strikes(self, current_price: float, chain_data: Dict, expiry: str, current_date: datetime) -> Dict:
         """Get multiple option strikes needed for realistic strategy calculations
         If strikes are missing, fetch them from Polygon API and update cache"""
@@ -474,7 +593,7 @@ class OptionsHandler:
         # Fetch missing strikes from Polygon API and update cache
         if missing_strikes:
             progress_print(f"🔄 Fetching {len(missing_strikes)} missing option strikes from Polygon API...")
-            additional_options = self._fetch_missing_strikes(missing_strikes, expiry, current_date, current_price)
+            additional_options = self._fetch_missing_strikes(missing_strikes, expiry, current_date)
             
             # Add fetched options to our results
             option_strikes.update(additional_options)
@@ -484,7 +603,7 @@ class OptionsHandler:
         
         return option_strikes
 
-    def _fetch_missing_strikes(self, missing_strikes: List, expiry: str, current_date: datetime, current_price: float) -> Dict:
+    def _fetch_missing_strikes(self, missing_strikes: List, expiry: str, current_date: datetime) -> Dict:
         """Fetch specific missing option strikes from Polygon API"""
         additional_options = {}
         
@@ -493,7 +612,7 @@ class OptionsHandler:
                 progress_print(f"🌐 Fetching {option_type} strike ${target_strike:.0f} for {strike_name}")
                 
                 # Find contracts close to target strike
-                contracts = self._fetch_contracts_for_strike(target_strike, expiry, option_type, current_date, current_price)
+                contracts = self._fetch_contracts_for_strike(target_strike, expiry, option_type, current_date)
                 
                 if contracts:
                     # Get the closest contract to our target strike
@@ -539,38 +658,32 @@ class OptionsHandler:
         
         return additional_options
 
-    def _fetch_contracts_for_strike(self, target_strike: float, expiry: str, option_type: str, current_date: datetime, current_price: float) -> List:
+    def _fetch_contracts_for_strike(self, target_strike: float, expiry: str, option_type: str, current_date: datetime) -> List:
         """Fetch option contracts for a specific strike and expiration"""
         def fetch_func():
             try:
-                # Calculate strike range around target
-                strike_range = 2.5  # $2.50 range around target
-                min_strike = target_strike - strike_range
-                max_strike = target_strike + strike_range
-                
                 # Parse expiration date
                 expiry_date = pd.Timestamp(expiry)
                 
-                progress_print(f"Searching for {option_type} options: strikes ${min_strike:.0f}-${max_strike:.0f}, expiry {expiry}")
+                progress_print(f"Searching for {option_type} options: strike ${target_strike}, expiry {expiry}")
                 
                 contracts_response = self.client.list_options_contracts(
                     underlying_ticker=self.symbol,
                     as_of=current_date.strftime('%Y-%m-%d'),
                     params={
                         "contract_type": option_type,
-                        "strike_price.gte": min_strike,
-                        "strike_price.lte": max_strike,
+                        "strike_price": target_strike,
                         "expiration_date": expiry
                     },
                     expired=False,
                     limit=50
                 )
-                
+
                 contracts = []
                 if contracts_response:
                     for contract in contracts_response:
                         contracts.append(contract)
-                        if len(contracts) >= 10:  # Limit to avoid too many results
+                        if len(contracts) >= 14:  # Limit to avoid too many results
                             break
                 
                 progress_print(f"Found {len(contracts)} contracts for {option_type} ${target_strike:.0f}")

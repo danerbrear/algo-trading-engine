@@ -3,6 +3,8 @@ from datetime import datetime
 import pandas as pd
 from enum import Enum
 from src.common.models import OptionChain, Option
+import os
+from src.model.options_handler import OptionsHandler
 
 class OptionType(Enum):
     """
@@ -143,29 +145,28 @@ class Position:
         Calculate the current exit price for a credit spread position based on current market prices.
         
         Args:
-            current_date: Current date
-            option_chain: Current option chain data for the date
+            current_option_chain: Current option chain data for the date
+            current_date: Current date for API fetching if needed
+            current_price: Current stock price for API fetching if needed
             
         Returns:
-            float: Current net credit/debit for the spread, or None if unable to calculate
+            float: Current net credit/debit for the spread, or None if option contract data is not available
         """
-
-        print(f"Calculating exit price with current option chain: {current_option_chain.__str__()}")
-
+        
         if not self.spread_options or len(self.spread_options) != 2:
-            return None
+            raise ValueError("Spread options are not set")
             
         atm_option, otm_option = self.spread_options
-        
+
         if current_option_chain is None:
-            return None
-        
+            raise ValueError("Current option chain is None")
+
         # Find current prices for our specific options
         current_atm_option = current_option_chain.get_option_data_for_option(atm_option)
         current_otm_option = current_option_chain.get_option_data_for_option(otm_option)
         
         if current_atm_option is None or current_otm_option is None:
-            # TODO: Use DataRetriever to fetch the option data from the API and add it to the current_option_chain and the options cache file for this date
+            print(f"No current option data found for {atm_option.__str__()} or {otm_option.__str__()}")
             return None
 
         current_atm_price = current_atm_option.last_price
@@ -181,8 +182,7 @@ class Position:
             current_net_credit = current_atm_price - current_otm_price
             return current_net_credit
         else:
-            # Not a credit spread strategy
-            return None
+            raise ValueError(f"Invalid strategy type: {self.strategy_type}")
 
     def __str__(self) -> str:
         if self.exit_price is not None:

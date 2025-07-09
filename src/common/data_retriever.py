@@ -59,10 +59,6 @@ class DataRetriever:
         self.calendar_processor = None  # Initialize lazily when needed
         self.options_data = {}  # Store OptionChain DTOs for each date
 
-        print(f"🔄 DataRetriever Configuration:")
-        print(f"   📊 HMM training data: {hmm_start_date} onwards (for market state classification)")
-        print(f"   🎯 LSTM training data: {lstm_start_date} onwards (for options signal prediction)")
-
     def prepare_data_for_lstm(self, sequence_length=60, state_classifier=None):
         """Prepare data for LSTM model with enhanced features using separate date ranges
         
