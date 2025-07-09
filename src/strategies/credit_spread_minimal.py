@@ -109,16 +109,35 @@ class CreditSpreadStrategy(Strategy):
         
         # Ensure the date is a pandas Timestamp and matches the index type
         date_key = pd.Timestamp(date)
-        if date_key not in self.data.index:
+        
+        # First try exact match
+        if date_key in self.data.index:
+            date_idx = self.data.index.get_loc(date_key)
+        else:
             # Try to normalize both index and date (remove time component)
             date_key = pd.Timestamp(date).normalize()
             index_normalized = self.data.index.normalize()
-            if date_key not in index_normalized:
-                print(f"Date {date} not found in data index. Available date range: {self.data.index.min()} to {self.data.index.max()}")
+            
+            if date_key in index_normalized:
+                date_idx = index_normalized.get_loc(date_key)
+            else:
+                # Provide detailed error information
+                print(f"❌ Date {date} not found in data index.")
+                print(f"   Available date range: {self.data.index.min()} to {self.data.index.max()}")
+                print(f"   Total data points: {len(self.data)}")
+                print(f"   Normalized date: {date_key}")
+                print(f"   First 5 available dates: {list(self.data.index[:5])}")
+                print(f"   Last 5 available dates: {list(self.data.index[-5:])}")
+                
+                # Check if it's a weekend or holiday
+                if date_key.weekday() >= 5:  # Saturday = 5, Sunday = 6
+                    print(f"   Note: {date_key.date()} is a weekend (market closed)")
+                else:
+                    print(f"   Note: {date_key.date()} might be a market holiday or missing data")
+                
                 return None
-            date_idx = index_normalized.get_loc(date_key)
-        else:
-            date_idx = self.data.index.get_loc(date_key)
+
+        print(f"Date index: {date_idx}") # TODO: Remove this
         
         # Check if we have enough data for the sequence
         sequence_length = self.lstm_model.sequence_length

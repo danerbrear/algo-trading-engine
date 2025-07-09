@@ -81,11 +81,11 @@ class Position:
         self.entry_price = entry_price
         self.exit_price = exit_price
     
-    def profit_target_hit(self, profit_target: float) -> bool:
+    def profit_target_hit(self, profit_target: float, exit_price: float) -> bool:
         """
         Check if the profit target has been hit for a position.
         """
-        return self._get_return() >= profit_target
+        return self._get_return(exit_price) >= profit_target
     
     def stop_loss_hit(self, stop_loss: float, exit_price: float) -> bool:
         """

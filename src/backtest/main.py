@@ -18,6 +18,7 @@ class BacktestEngine:
         self.data = data
         self.strategy = strategy
         self.capital = initial_capital
+        self.initial_capital = initial_capital  # Store initial capital for reporting
         self.start_date = start_date
         self.end_date = end_date
         self.positions = []
@@ -34,8 +35,12 @@ class BacktestEngine:
             print("❌ Backtest aborted due to invalid data")
             return False
 
-        # Generate date range (business days only)
-        date_range = pd.bdate_range(start=self.start_date, end=self.end_date)
+        # Use only dates that exist in the data (not pd.bdate_range which includes holidays)
+        # Filter data to the specified date range and use the actual dates
+        date_range = self.data.index
+        
+        print(f"📅 Running backtest on {len(date_range)} trading days")
+        print(f"   Date range: {date_range[0].date()} to {date_range[-1].date()}")
 
         # For each date in the range, simulate the strategy
         for date in date_range:
@@ -50,16 +55,55 @@ class BacktestEngine:
 
         self._end()
 
-        print(f"Final capital: {self.capital}")
+        # Calculate final performance metrics
+        initial_capital = self.initial_capital  # Use the initial capital from the constructor
+        final_return = self.capital - initial_capital
+        final_return_pct = (final_return / initial_capital) * 100
+        
+        print(f"\n📊 Backtest Results Summary:")
+        print(f"   Initial Capital: ${initial_capital:,.2f}")
+        print(f"   Final Capital: ${self.capital:,.2f}")
+        print(f"   Total Return: ${final_return:+,.2f} ({final_return_pct:+.2f}%)")
+        print(f"   Trading Days: {len(date_range)}")
+        
         return True
 
     def _end(self):
         """
-        On end, execute strategy.
+        On end, execute strategy and close any remaining positions.
         """
+        print(f"\n🏁 Closing backtest - {len(self.positions)} positions remaining")
+        
+        # Get the last available price from the data
+        last_date = self.data.index[-1]
+        last_price = self.data.loc[last_date, 'Close']
+        
+        print(f"   Last trading date: {last_date.date()}")
+        print(f"   Last closing price: ${last_price:.2f}")
+        
+        # Execute strategy's on_end method
         self.strategy.on_end(self.positions)
-        for position in self.positions:
-            self._remove_position(position) 
+        
+        # Close all remaining positions with the last available price
+        total_pnl = 0
+        for position in self.positions[:]:  # Create a copy to avoid modification during iteration
+            try:
+                # Calculate the return for this position
+                position_return = position.get_return_dollars(last_price)
+                total_pnl += position_return
+                
+                print(f"   Closing position: {position}")
+                print(f"     Exit price: ${last_price:.2f}")
+                print(f"     Return: ${position_return:+.2f}")
+                
+                # Remove the position and update capital
+                self._remove_position(position, last_price)
+                
+            except Exception as e:
+                print(f"   Error closing position {position}: {e}")
+        
+        print(f"   Total P&L from closing positions: ${total_pnl:+.2f}")
+        print(f"   Final capital: ${self.capital:.2f}")
 
     def _validate_data(self, data: pd.DataFrame) -> bool:
         """
@@ -119,8 +163,18 @@ class BacktestEngine:
         filtered_data = data[mask].copy()
         
         if len(filtered_data) == 0:
-            print(f"❌ Error: No data available for the specified date range: {start_date} to {end_date}. "
-                  f"Available data range: {data.index.min()} to {data.index.max()}")
+            print(f"❌ Error: No data available for the specified date range: {start_date} to {end_date}. ")
+            print(f"   Available data range: {data.index.min()} to {data.index.max()}")
+            print(f"   Requested start date: {start_date}")
+            print(f"   Requested end date: {end_date}")
+            print(f"   Total available data points: {len(data)}")
+            
+            # Check if the issue is with the date range
+            if start_date > data.index.max():
+                print(f"   ⚠️  Start date {start_date} is after the latest available data {data.index.max()}")
+            if end_date < data.index.min():
+                print(f"   ⚠️  End date {end_date} is before the earliest available data {data.index.min()}")
+            
             return False
         
         # Update the data attribute
@@ -129,7 +183,13 @@ class BacktestEngine:
         print(f"✅ Data validation complete:")
         print(f"   Final data shape: {self.data.shape}")
         print(f"   Date range: {self.data.index.min()} to {self.data.index.max()}")
-        print(f"   Business days: {len(self.data)}")
+        print(f"   Trading days: {len(self.data)}")
+        
+        # Check for gaps in the data (missing trading days)
+        expected_business_days = len(pd.bdate_range(start=self.data.index.min(), end=self.data.index.max()))
+        actual_trading_days = len(self.data)
+        if actual_trading_days < expected_business_days * 0.9:  # Allow for some holidays
+            print(f"⚠️  Warning: Data may have gaps. Expected ~{expected_business_days} business days, got {actual_trading_days}")
         
         return True
 
@@ -146,35 +206,68 @@ class BacktestEngine:
 
     def _remove_position(self, position: Position, exit_price: float):
         """
-        Remove a position from the positions list.
+        Remove a position from the positions list and update capital.
+        
+        Args:
+            position: Position to remove
+            exit_price: Price at which the position is being closed
         """
-        self.capital += position.get_return_dollars(exit_price)
+        if position not in self.positions:
+            print(f"⚠️  Warning: Position {position} not found in positions list")
+            return
+            
+        # Calculate the return for this position
+        position_return = position.get_return_dollars(exit_price)
+        
+        # Update capital
+        self.capital += position_return
+        
+        # Remove the position
         self.positions.remove(position)
+        
+        # Log the position closure
+        print(f"   Position closed: {position.symbol} {position.option_type} {position.strike_price}")
+        print(f"     Entry: ${position.entry_price:.2f} | Exit: ${exit_price:.2f}")
+        print(f"     Return: ${position_return:+.2f} | Capital: ${self.capital:.2f}")
 
 if __name__ == "__main__":
-    start_date = datetime(2024, 7, 1)
-    end_date = datetime(2025, 7, 1)
+    # Test with a smaller date range to verify the fix
+    start_date = datetime(2024, 1, 1)
+    end_date = datetime(2024, 12, 31)
 
+    print("🧪 Testing backtest with fixed date handling...")
+    
     data_retriever = DataRetriever(symbol='SPY', hmm_start_date=start_date, lstm_start_date=start_date, use_free_tier=False, quiet_mode=True)
 
     # Load model directory from environment variable
     model_save_base_path = os.getenv('MODEL_SAVE_BASE_PATH', 'Trained_Models')
     model_dir = os.path.join(model_save_base_path, 'lstm_poc', 'SPY', 'latest')
 
-    hmm_model = load_hmm_model(model_dir)
-    lstm_model, scaler = load_lstm_model(model_dir, return_lstm_instance=True)
+    try:
+        hmm_model = load_hmm_model(model_dir)
+        lstm_model, scaler = load_lstm_model(model_dir, return_lstm_instance=True)
 
-    # Then prepare the data for LSTM
-    data = data_retriever.prepare_data_for_lstm(state_classifier=hmm_model)
+        # Then prepare the data for LSTM
+        data = data_retriever.prepare_data_for_lstm(state_classifier=hmm_model)
 
-    strategy = CreditSpreadStrategy(lstm_model=lstm_model, lstm_scaler=scaler)
-    strategy.set_data(data)
+        strategy = CreditSpreadStrategy(lstm_model=lstm_model, lstm_scaler=scaler)
+        strategy.set_data(data)
 
-    backtester = BacktestEngine(
-        data=data, 
-        strategy=strategy,
-        initial_capital=10000,
-        start_date=start_date,
-        end_date=end_date
-    )
-    backtester.run()
+        backtester = BacktestEngine(
+            data=data, 
+            strategy=strategy,
+            initial_capital=10000,
+            start_date=start_date,
+            end_date=end_date
+        )
+        
+        success = backtester.run()
+        if success:
+            print("✅ Backtest completed successfully!")
+        else:
+            print("❌ Backtest failed!")
+            
+    except Exception as e:
+        print(f"❌ Error during backtest: {e}")
+        import traceback
+        traceback.print_exc()
