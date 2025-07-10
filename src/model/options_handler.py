@@ -278,7 +278,7 @@ class OptionsHandler:
             ]
             
             if not target_expiry_contracts:
-                print(f"No contracts found for target expiry {target_expiry_str}")
+                progress_print(f"No contracts found for target expiry {target_expiry_str}")
                 return chain_data
             
             # Step 3: Separate calls and puts, sorted by proximity to current price

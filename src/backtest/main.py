@@ -79,9 +79,9 @@ class BacktestEngine:
         
         print(f"   Last trading date: {last_date.date()}")
         print(f"   Last closing price: ${last_price:.2f}")
-        
+
         # Execute strategy's on_end method
-        self.strategy.on_end(self.positions)
+        self.strategy.on_end(self.positions, self._remove_position)
         
         # Close all remaining positions with the last available price
         total_pnl = 0
@@ -235,7 +235,7 @@ if __name__ == "__main__":
     end_date = datetime(2024, 7, 31)
 
     print("🧪 Testing backtest with fixed date handling...")
-    
+
     data_retriever = DataRetriever(symbol='SPY', hmm_start_date=start_date, lstm_start_date=start_date, use_free_tier=True, quiet_mode=True)
 
     # Load model directory from environment variable

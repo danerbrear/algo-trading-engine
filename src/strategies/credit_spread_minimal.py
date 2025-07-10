@@ -69,6 +69,11 @@ class CreditSpreadStrategy(Strategy):
                 if exit_price is None:
                     for option in position.spread_options:
                         contract = self.options_handler.get_specific_option_contract(option.strike, option.expiration, option.option_type.value, date)
+                        if contract is None:
+                            print(f"Error: No contract found for {option.strike} {option.expiration} {option.option_type.value}")
+                            self.error_count += 1
+                            continue
+                        
                         new_option = Option.from_dict(contract)
                         if (new_option.option_type == OptionType.CALL):
                             option_chain.calls.append(new_option)
@@ -97,10 +102,11 @@ class CreditSpreadStrategy(Strategy):
                     print(f"    Exit price: {exit_price} for {position.__str__()}")
                     remove_position(position, exit_price)
 
-    def on_end(self, positions: tuple['Position', ...]):
+    def on_end(self, positions: tuple['Position', ...], remove_position: Callable[['Position'], None]):
         """
         On end, execute strategy.
         """
+        super().on_end(positions, remove_position)
         print(f"Total error count: {self.error_count}")
     
     def _make_prediction(self, date: datetime):
@@ -260,7 +266,7 @@ class CreditSpreadStrategy(Strategy):
             return None
             
         # Find OTM call option (higher strike)
-        otm_call = self._find_otm_call(option_chain.calls, current_price, atm_call.strike)
+        otm_call = self._find_otm_call(option_chain.calls, atm_call.strike, date, atm_call.expiration)
         if not otm_call:
             print(f"⚠️  No OTM call option found for call credit spread")
             return None
@@ -304,9 +310,6 @@ class CreditSpreadStrategy(Strategy):
             
         option_chain = self.options_data[date_key]
         current_price = self.data.loc[date]['Close']
-
-        # Use first option in existing option chain data to dictate expiration
-        expiration = option_chain.puts[0].expiration if option_chain.puts else None
         
         # Find ATM put option
         atm_put = self._find_atm_option(option_chain.puts, current_price)
@@ -315,7 +318,7 @@ class CreditSpreadStrategy(Strategy):
             return None
             
         # Find OTM put option (lower strike)
-        otm_put = self._find_otm_put(option_chain.puts, atm_put.strike, date, expiration)
+        otm_put = self._find_otm_put(option_chain.puts, atm_put.strike, date, atm_put.expiration)
         if not otm_put:
             print(f"⚠️  No OTM put option found for put credit spread")
             return None
@@ -360,27 +363,34 @@ class CreditSpreadStrategy(Strategy):
             
         return None
 
-    def _find_otm_call(self, calls: list, current_price: float, atm_strike: float):
+    def _find_otm_call(self, calls: list, atm_strike: float, current_date: datetime, expiration: str):
         """Find an OTM call option (higher strike than ATM)"""
+        strike = atm_strike + 10
+
         # Find calls with higher strikes than ATM
-        otm_calls = [call for call in calls if call.strike > atm_strike + 10]
+        otm_calls = [call for call in calls if call.strike > strike]
         
         if not otm_calls:
-            return None
+            contract = self.options_handler.get_specific_option_contract(strike, expiration, OptionType.CALL.value, current_date)
+            if contract is None:
+                return None
+            otm_calls = [Option.from_dict(contract)]
             
         # Return the closest OTM call (lowest strike above ATM)
         return min(otm_calls, key=lambda opt: opt.strike)
 
     def _find_otm_put(self, puts: list, atm_strike: float, current_date: datetime, expiration: str):
         """Find an OTM put option (lower strike than ATM)"""
-        strike = atm_strike + 10
+        strike = atm_strike - 10
 
         # Find puts with lower strikes than ATM
         otm_puts = [put for put in puts if put.strike < strike]
         
         if not otm_puts:
             contract = self.options_handler.get_specific_option_contract(strike, expiration, OptionType.PUT.value, current_date)
-            otm_puts = [contract]
+            if contract is None:
+                return None
+            otm_puts = [Option.from_dict(contract)]
             
         # Return the closest OTM put (highest strike below ATM)
         return max(otm_puts, key=lambda opt: opt.strike)

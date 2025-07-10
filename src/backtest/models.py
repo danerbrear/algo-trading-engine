@@ -47,9 +47,10 @@ class Strategy:
         """
         On new date, execute strategy.
         """
-        print("\nOpen positions:")
-        for position in positions:
-            print(f"  {position.__str__()}")
+        if len(positions) > 0:
+            print("\nOpen positions:")
+            for position in positions:
+                print(f"  {position.__str__()}")
 
     def _profit_target_hit(self, position: 'Position', exit_price: float) -> bool:
         """
@@ -67,7 +68,7 @@ class Strategy:
             return False
         return position.stop_loss_hit(self.stop_loss, exit_price)
     
-    def on_end(self, positions: tuple['Position', ...]):
+    def on_end(self, positions: tuple['Position', ...], remove_position: Callable[['Position'], None]):
         """
         On end, execute strategy.
         """
