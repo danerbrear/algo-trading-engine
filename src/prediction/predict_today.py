@@ -364,8 +364,8 @@ class TodayPredictor(Predictor):
         data = self.calculate_features(data)
         
         # Check if we have enough data after feature calculation
-                if len(data) < self.sequence_length:
-                    raise ValueError(f"Insufficient data: {len(data)} samples available, need {self.sequence_length} for LSTM prediction")
+        if len(data) < self.sequence_length:
+            raise ValueError(f"Insufficient data: {len(data)} samples available, need {self.sequence_length} for LSTM prediction")
         
         print(f"✅ Have {len(data)} samples available for prediction")
         

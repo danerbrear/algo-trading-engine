@@ -145,29 +145,29 @@ class BacktestEngine:
         
         # Filter data to the specified date range
         print(f"   Data index range: {data.index.min()} to {data.index.max()}")
-        
+
         # Convert start_date and end_date to datetime if they're not already
         if isinstance(self.start_date, datetime):
             start_date = self.start_date
         else:
             start_date = pd.to_datetime(self.start_date)
-            
+
         if isinstance(self.end_date, datetime):
             end_date = self.end_date
         else:
             end_date = pd.to_datetime(self.end_date)
-        
+
         # Filter data to the specified date range
         mask = (data.index >= start_date) & (data.index <= end_date)
         filtered_data = data[mask].copy()
-        
+
         if len(filtered_data) == 0:
             print(f"❌ Error: No data available for the specified date range: {start_date} to {end_date}. ")
             print(f"   Available data range: {data.index.min()} to {data.index.max()}")
             print(f"   Requested start date: {start_date}")
             print(f"   Requested end date: {end_date}")
             print(f"   Total available data points: {len(data)}")
-            
+
             # Check if the issue is with the date range
             if start_date > data.index.max():
                 print(f"   ⚠️  Start date {start_date} is after the latest available data {data.index.max()}")
@@ -232,7 +232,7 @@ class BacktestEngine:
 if __name__ == "__main__":
     # Test with a smaller date range to verify the fix
     start_date = datetime(2024, 1, 1)
-    end_date = datetime(2024, 12, 31)
+    end_date = datetime(2024, 7, 31)
 
     print("🧪 Testing backtest with fixed date handling...")
     

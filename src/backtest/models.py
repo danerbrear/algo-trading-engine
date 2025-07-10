@@ -47,7 +47,9 @@ class Strategy:
         """
         On new date, execute strategy.
         """
-        pass
+        print("\nOpen positions:")
+        for position in positions:
+            print(f"  {position.__str__()}")
 
     def _profit_target_hit(self, position: 'Position', exit_price: float) -> bool:
         """
@@ -171,7 +173,7 @@ class Position:
 
         current_atm_price = current_atm_option.last_price
         current_otm_price = current_otm_option.last_price
-            
+
         # Calculate current net credit/debit based on strategy type
         if self.strategy_type == StrategyType.CALL_CREDIT_SPREAD:
             # For call credit spread: sell ATM call, buy OTM call
