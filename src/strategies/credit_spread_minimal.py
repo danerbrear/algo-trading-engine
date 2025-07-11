@@ -1,10 +1,9 @@
 from datetime import datetime
 from typing import Callable
-import numpy as np
 import pandas as pd
 
 from src.backtest.models import Position, Strategy, StrategyType
-from src.common.models import Option, OptionChain, OptionType
+from src.common.models import Option, OptionType
 from src.model.options_handler import OptionsHandler
 
 
@@ -25,9 +24,12 @@ class CreditSpreadStrategy(Strategy):
 
         self.error_count = 0
 
-    def on_new_date(self, date: datetime, positions: tuple['Position', ...], add_position: Callable[['Position'], None], remove_position: Callable[['Position'], None]):
+    def on_new_date(self, date: datetime, positions: tuple['Position', ...],
+                    add_position: Callable[['Position'], None], 
+                    remove_position: Callable[['Position'], None]):
         """
-        On new date, determine if a new position should be opened. We should not open a position if we already have one.
+        On new date, determine if a new position should be opened. 
+        We should not open a position if we already have one.
         """
         super().on_new_date(date, positions, add_position, remove_position)
 
@@ -194,19 +196,19 @@ class CreditSpreadStrategy(Strategy):
                 'Days_Until_Next_CC', 'Days_Since_Last_CC',
                 'Days_Until_Next_FFR', 'Days_Since_Last_FFR'
             ]
-        
+
         # Extract the sequence of features for the prediction
         start_idx = date_idx - sequence_length + 1
         end_idx = date_idx + 1
-        
+
         # Get the feature data for the sequence
         sequence_data = self.data.iloc[start_idx:end_idx][feature_columns].copy()
-        
+
         # Check if all required features are available in the sequence data
         missing_features = [col for col in feature_columns if col not in sequence_data.columns]
         if missing_features:
             raise ValueError(f"Missing required features for LSTM prediction: {missing_features}. Available columns: {list(sequence_data.columns)}")
-        
+
         # Check for missing values
         if sequence_data.isnull().any().any():
             print(f"Warning: Missing values in feature data for prediction at {date}")
