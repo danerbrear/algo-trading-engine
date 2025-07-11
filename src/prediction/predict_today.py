@@ -6,11 +6,8 @@ Script to make predictions for today's option chain using pretrained HMM and LST
 import os
 import sys
 import argparse
-import pickle
 from datetime import datetime, timedelta
 from sklearn.preprocessing import StandardScaler
-import numpy as np
-import keras
 import yfinance as yf
 
 # Add the src directory to Python path for direct execution
@@ -20,18 +17,12 @@ sys.path.insert(0, src_dir)
 
 # Import with try/except to handle both direct execution and module execution
 try:
-    from model.market_state_classifier import MarketStateClassifier
-    from model.lstm_model import LSTMModel
-    from common.cache.cache_manager import CacheManager
     from common.data_retriever import DataRetriever
     from common.functions import load_hmm_model, load_lstm_model
     from prediction.calendar_config_manager import CalendarConfigManager
     from prediction.models import Predictor
 except ImportError:
     # Fallback for module execution
-    from src.model.market_state_classifier import MarketStateClassifier
-    from src.model.lstm_model import LSTMModel
-    from src.common.cache.cache_manager import CacheManager
     from src.common.data_retriever import DataRetriever
     from src.common.functions import load_hmm_model, load_lstm_model
     from src.prediction.calendar_config_manager import CalendarConfigManager

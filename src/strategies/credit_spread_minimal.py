@@ -3,7 +3,7 @@ from typing import Callable
 import pandas as pd
 
 from src.backtest.models import Position, Strategy, StrategyType
-from src.common.models import Option, OptionType
+from src.common.models import Option, OptionType, OptionChain
 from src.model.options_handler import OptionsHandler
 
 
@@ -40,7 +40,7 @@ class CreditSpreadStrategy(Strategy):
             if prediction is not None:
                 if prediction['strategy'] == 1:
                     # Call Credit Spread using real options data
-                    position = self._create_call_credit_spread_from_chain(date)
+                    position = self._create_call_credit_spread_from_chain(date, StrategyType.CALL_CREDIT_SPREAD, prediction)
                     if position:
                         print(f"Adding position: {position.__str__()}")
                         current_price = self.data.loc[date]['Close']
@@ -48,7 +48,7 @@ class CreditSpreadStrategy(Strategy):
                         add_position(position)
                 elif prediction['strategy'] == 2:
                     # Put Credit Spread using real options data
-                    position = self._create_put_credit_spread_from_chain(date)
+                    position = self._create_put_credit_spread_from_chain(date, StrategyType.PUT_CREDIT_SPREAD, prediction)
                     if position:
                         print(f"Adding position: {position.__str__()}")
                         current_price = self.data.loc[date]['Close']
@@ -101,7 +101,7 @@ class CreditSpreadStrategy(Strategy):
                     print(f"Profit target or stop loss hit for {position.__str__()}")
                     print(f"    Exit price: {exit_price} for {position.__str__()}")
                     remove_position(position, exit_price)
-                elif position.get_days_held(date) < self.holding_period:
+                elif position.get_days_held(date) >= self.holding_period:
                     print(f"Position {position.__str__()} past holding period")
                     print(f"    Exit price: {exit_price} for {position.__str__()}")
                     remove_position(position, exit_price)
@@ -126,6 +126,188 @@ class CreditSpreadStrategy(Strategy):
             except Exception as e:
                 print(f"   Error closing position {position}: {e}")
         print(f"Total error count: {self.error_count}")
+
+    def _find_best_spread(self, current_price: float, strategy_type: StrategyType, confidence: float, 
+                          date: datetime, min_days: int = 20, max_days: int = 40):
+        """Find the best spread (expiry and width) minimizing risk/reward and maximizing probability of profit"""
+        candidates = []
+        total_evaluated = 0
+        total_rejected = 0
+        
+        print(f"   🔍 Evaluating spreads for {strategy_type.value} strategy...")
+        
+        # Get available expirations from options handler
+        if not self.options_handler:
+            print("   ⚠️  No options handler available")
+            return None
+            
+        # Get the option chain for the current date to extract available expirations
+        try:
+            chain_data = self.options_handler._get_option_chain_with_cache(date, current_price)
+            if not chain_data or (not chain_data.get('calls') and not chain_data.get('puts')):
+                print("   ⚠️  No option chain data available")
+                return None
+                
+            # Extract unique expiration dates from the chain data
+            expirations = set()
+            for option_type in ['calls', 'puts']:
+                for option in chain_data.get(option_type, []):
+                    if 'expiration' in option:
+                        expirations.add(option['expiration'])
+                        
+            if not expirations:
+                print("   ⚠️  No expiration dates found in option chain")
+                return None
+                
+            print(f"   📅 Available expirations: {len(expirations)} total")
+            
+        except Exception as e:
+            print(f"   ⚠️  Error getting option chain: {e}")
+            return None
+        
+        for expiry_str in expirations:
+            expiry_date = datetime.strptime(expiry_str, '%Y-%m-%d').date()
+            days_to_expiry = (expiry_date - date.date()).days
+            if not (min_days <= days_to_expiry <= max_days):
+                continue
+                
+            print(f"   📊 Evaluating {expiry_str} ({days_to_expiry} days)...")
+            
+            # Filter options for this expiration
+            calls = [opt for opt in chain_data.get('calls', []) if opt.get('expiration') == expiry_str]
+            puts = [opt for opt in chain_data.get('puts', []) if opt.get('expiration') == expiry_str]
+            
+            for width in [5, 7, 8, 10, 12, 15, 25]:
+                total_evaluated += 1
+                
+                if strategy_type == StrategyType.CALL_CREDIT_SPREAD:
+                    atm_strike = round(current_price)
+                    otm_strike = atm_strike + width
+                    
+                    # Find ATM and OTM call options
+                    atm_call = self._find_option_by_strike(calls, atm_strike)
+                    otm_call = self._find_option_by_strike(calls, otm_strike)
+                    
+                    if not atm_call or not otm_call:
+                        total_rejected += 1
+                        continue
+                        
+                    credit = atm_call['last_price'] - otm_call['last_price']
+                    max_risk = width - credit
+                    direction = 'bearish'
+                else:  # PUT_CREDIT_SPREAD
+                    atm_strike = round(current_price)
+                    otm_strike = atm_strike - width
+                    
+                    # Find ATM and OTM put options
+                    atm_put = self._find_option_by_strike(puts, atm_strike)
+                    otm_put = self._find_option_by_strike(puts, otm_strike)
+                    
+                    if not atm_put or not otm_put:
+                        total_rejected += 1
+                        continue
+                        
+                    credit = atm_put['last_price'] - otm_put['last_price']
+                    max_risk = width - credit
+                    direction = 'bullish'
+                    
+                if max_risk <= 0 or credit <= 0:
+                    total_rejected += 1
+                    continue
+                    
+                risk_reward = credit / max_risk
+                prob_profit = self._estimate_probability_of_profit(confidence, direction, width, atm_strike, otm_strike, current_price, days_to_expiry)
+                
+                # Calculate minimum required risk/reward ratio
+                min_risk_reward = (1 - prob_profit) / prob_profit if prob_profit > 0 else float('inf')
+                
+                # Only include spreads that meet the minimum risk/reward requirement
+                if risk_reward >= min_risk_reward:
+                    candidates.append({
+                        'expiry': expiry_date,
+                        'width': width,
+                        'atm_strike': atm_strike,
+                        'otm_strike': otm_strike,
+                        'atm_option': atm_call if strategy_type == StrategyType.CALL_CREDIT_SPREAD else atm_put,
+                        'otm_option': otm_call if strategy_type == StrategyType.CALL_CREDIT_SPREAD else otm_put,
+                        'credit': credit,
+                        'max_risk': max_risk,
+                        'risk_reward': risk_reward,
+                        'prob_profit': prob_profit,
+                        'min_risk_reward': min_risk_reward,
+                        'days': days_to_expiry
+                    })
+                    print(f"      ✅ {width}pt spread: R/R={risk_reward:.2f}, Prob={prob_profit:.1%}, Min={min_risk_reward:.2f}")
+                else:
+                    total_rejected += 1
+                    print(f"      ❌ {width}pt spread: R/R={risk_reward:.2f} < Min={min_risk_reward:.2f} (Prob={prob_profit:.1%})")
+        
+        print(f"   📈 Evaluation Summary:")
+        print(f"      • Total spreads evaluated: {total_evaluated}")
+        print(f"      • Spreads rejected: {total_rejected}")
+        print(f"      • Spreads meeting criteria: {len(candidates)}")
+        
+        # Sort by risk/reward ascending (minimize), then probability of profit descending (maximize)
+        if candidates:
+            candidates.sort(key=lambda x: (x['risk_reward'], -x['prob_profit']))
+            best = candidates[0]
+            print(f"   🏆 Best spread selected:")
+            print(f"      • {best['width']}pt spread expiring {best['expiry'].strftime('%Y-%m-%d')}")
+            print(f"      • Risk/Reward: 1:{best['risk_reward']:.2f}, Probability: {best['prob_profit']:.1%}")
+            return best
+        else:
+            print(f"   ❌ No spreads meet the minimum criteria")
+            return None
+
+    def _find_option_by_strike(self, options: list, strike: float):
+        """Find an option by strike price"""
+        for option in options:
+            if option.get('strike') == strike:
+                return option
+        return None
+
+    def _estimate_probability_of_profit(self, confidence: float, direction: str, width: int = None, 
+                                       atm_strike: float = None, otm_strike: float = None, 
+                                       current_price: float = None, days_to_expiry: int = None) -> float:
+        """Estimate probability of profit based on spread characteristics and model confidence"""
+        base_prob = confidence
+        
+        # Base adjustment from model confidence
+        if confidence > 0.6:
+            base_prob += 0.1
+        elif confidence < 0.4:
+            base_prob -= 0.1
+        
+        # Adjust based on spread width (wider spreads = higher probability)
+        if width is not None:
+            width_bonus = min(0.15, (width - 3) * 0.02)  # +2% per point width, max 15%
+            base_prob += width_bonus
+        
+        # Adjust based on distance from current price (more OTM = higher probability)
+        if atm_strike is not None and otm_strike is not None and current_price is not None:
+            if direction == 'bullish':  # Put credit spread
+                # For put spreads, we want the stock to stay above the short put
+                distance_otm = (current_price - atm_strike) / current_price
+                distance_bonus = min(0.10, distance_otm * 100)  # +1% per 1% OTM, max 10%
+                base_prob += distance_bonus
+            else:  # Call credit spread
+                # For call spreads, we want the stock to stay below the short call
+                distance_otm = (atm_strike - current_price) / current_price
+                distance_bonus = min(0.10, distance_otm * 100)  # +1% per 1% OTM, max 10%
+                base_prob += distance_bonus
+        
+        # Adjust based on days to expiration (shorter = higher probability)
+        if days_to_expiry is not None:
+            if days_to_expiry <= 30:
+                time_bonus = 0.05  # +5% for short-term
+            elif days_to_expiry <= 45:
+                time_bonus = 0.02  # +2% for medium-term
+            else:
+                time_bonus = -0.02  # -2% for long-term
+            base_prob += time_bonus
+        
+        # Ensure probability is within reasonable bounds
+        return max(0.35, min(0.85, base_prob))
     
     def _make_prediction(self, date: datetime):
         """
@@ -263,7 +445,7 @@ class CreditSpreadStrategy(Strategy):
             print(f"Error making LSTM prediction: {e}")
             raise ValueError(f"Error making LSTM prediction: {e}")
 
-    def _create_call_credit_spread_from_chain(self, date: datetime) -> Position:
+    def _create_call_credit_spread_from_chain(self, date: datetime, strategy_type: StrategyType, prediction: dict) -> Position:
         """Create a call credit spread using the options chain data"""
         if not self.options_data:
             print("⚠️  No options data available")
@@ -274,48 +456,43 @@ class CreditSpreadStrategy(Strategy):
             print(f"⚠️  No options data for {date_key}")
             return None
             
-        option_chain = self.options_data[date_key]
         current_price = self.data.loc[date]['Close']
         
-        # Find ATM call option
-        atm_call = self._find_atm_option(option_chain.calls, current_price)
-        if not atm_call:
-            print(f"⚠️  No ATM call option found for price ${current_price:.2f}")
-            return None
-            
-        # Find OTM call option (higher strike)
-        otm_call = self._find_otm_call(option_chain.calls, atm_call.strike, date, atm_call.expiration)
-        if not otm_call:
-            print(f"⚠️  No OTM call option found for call credit spread")
-            return None
-            
-        # Calculate net credit (sell ATM, buy OTM)
-        net_credit = atm_call.last_price - otm_call.last_price
+        confidence = prediction['confidence'] if prediction else 0.5
         
-        if net_credit <= 0:
-            print(f"⚠️  Invalid net credit for call spread: ${net_credit:.2f}")
+        # Find best spread using the new method
+        best_spread = self._find_best_spread(current_price, StrategyType.CALL_CREDIT_SPREAD, confidence, date)
+        
+        if not best_spread:
+            print("⚠️  No suitable call credit spread found")
             return None
             
-        print(f"📊 Call Credit Spread:")
-        print(f"   Sell ATM Call: ${atm_call.strike:.0f} @ ${atm_call.last_price:.2f}")
-        print(f"   Buy OTM Call: ${otm_call.strike:.0f} @ ${otm_call.last_price:.2f}")
-        print(f"   Net Credit: ${net_credit:.2f}")
+        # Convert dictionary options to Option objects
+        atm_option = Option.from_dict(best_spread['atm_option'])
+        otm_option = Option.from_dict(best_spread['otm_option'])
         
-        # Create position using the ATM call as the primary option
+        # Create position using the best spread
         position = Position(
             symbol=self.options_handler.symbol,
             quantity=1,
-            expiration_date=datetime.strptime(atm_call.expiration, '%Y-%m-%d'),
+            expiration_date=datetime.strptime(atm_option.expiration, '%Y-%m-%d'),
             strategy_type=StrategyType.CALL_CREDIT_SPREAD,
-            strike_price=atm_call.strike,
+            strike_price=best_spread['atm_strike'],
             entry_date=date,
-            entry_price=net_credit,  # Use net credit as entry price
-            spread_options=[atm_call, otm_call]  # Store the specific spread options
+            entry_price=best_spread['credit'],  # Use net credit as entry price
+            spread_options=[atm_option, otm_option]  # Store the specific spread options
         )
+        
+        print(f"📊 Call Credit Spread:")
+        print(f"   Sell ATM Call: ${best_spread['atm_strike']:.0f} @ ${atm_option.last_price:.2f}")
+        print(f"   Buy OTM Call: ${best_spread['otm_strike']:.0f} @ ${otm_option.last_price:.2f}")
+        print(f"   Net Credit: ${best_spread['credit']:.2f}")
+        print(f"   Risk/Reward: 1:{best_spread['risk_reward']:.2f}")
+        print(f"   Probability: {best_spread['prob_profit']:.1%}")
         
         return position
 
-    def _create_put_credit_spread_from_chain(self, date: datetime) -> Position:
+    def _create_put_credit_spread_from_chain(self, date: datetime, strategy_type: StrategyType, prediction: dict) -> Position:
         """Create a put credit spread using the options chain data"""
         if not self.options_data:
             print("⚠️  No options data available")
@@ -326,45 +503,40 @@ class CreditSpreadStrategy(Strategy):
             print(f"⚠️  No options data for {date_key}")
             return None
             
-        option_chain = self.options_data[date_key]
         current_price = self.data.loc[date]['Close']
         
-        # Find ATM put option
-        atm_put = self._find_atm_option(option_chain.puts, current_price)
-        if not atm_put:
-            print(f"⚠️  No ATM put option found for price ${current_price:.2f}")
-            return None
-            
-        # Find OTM put option (lower strike)
-        otm_put = self._find_otm_put(option_chain.puts, atm_put.strike, date, atm_put.expiration)
-        if not otm_put:
-            print(f"⚠️  No OTM put option found for put credit spread")
-            return None
-
-        # Calculate net credit (sell ATM, buy OTM)
-        net_credit = atm_put.last_price - otm_put.last_price
+        confidence = prediction['confidence'] if prediction else 0.5
         
-        if net_credit <= 0:
-            print(f"⚠️  Invalid net credit for put spread: ${net_credit:.2f}")
+        # Find best spread using the new method
+        best_spread = self._find_best_spread(current_price, StrategyType.PUT_CREDIT_SPREAD, confidence, date)
+        
+        if not best_spread:
+            print("⚠️  No suitable put credit spread found")
             return None
             
-        print(f"📊 Put Credit Spread:")
-        print(f"   Sell ATM Put: ${atm_put.strike:.0f} @ ${atm_put.last_price:.2f}")
-        print(f"   Buy OTM Put: ${otm_put.strike:.0f} @ ${otm_put.last_price:.2f}")
-        print(f"   Net Credit: ${net_credit:.2f}")
-
-        # Create position using the ATM put as the primary option
+        # Convert dictionary options to Option objects
+        atm_option = Option.from_dict(best_spread['atm_option'])
+        otm_option = Option.from_dict(best_spread['otm_option'])
+        
+        # Create position using the best spread
         position = Position(
             symbol=self.options_handler.symbol,
             quantity=1,
-            expiration_date=datetime.strptime(atm_put.expiration, '%Y-%m-%d'),
+            expiration_date=datetime.strptime(atm_option.expiration, '%Y-%m-%d'),
             strategy_type=StrategyType.PUT_CREDIT_SPREAD,
-            strike_price=atm_put.strike,
+            strike_price=best_spread['atm_strike'],
             entry_date=date,
-            entry_price=net_credit,  # Use net credit as entry price
-            spread_options=[atm_put, otm_put]  # Store the specific spread options
+            entry_price=best_spread['credit'],  # Use net credit as entry price
+            spread_options=[atm_option, otm_option]  # Store the specific spread options
         )
-
+        
+        print(f"📊 Put Credit Spread:")
+        print(f"   Sell ATM Put: ${best_spread['atm_strike']:.0f} @ ${atm_option.last_price:.2f}")
+        print(f"   Buy OTM Put: ${best_spread['otm_strike']:.0f} @ ${otm_option.last_price:.2f}")
+        print(f"   Net Credit: ${best_spread['credit']:.2f}")
+        print(f"   Risk/Reward: 1:{best_spread['risk_reward']:.2f}")
+        print(f"   Probability: {best_spread['prob_profit']:.1%}")
+        
         return position
 
     def _find_atm_option(self, options: list, current_price: float):

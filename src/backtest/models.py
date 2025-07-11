@@ -164,7 +164,7 @@ class Position:
             return (self.expiration_date - current_date).days
         else:
             raise ValueError("Expiration date is not set")
-        
+
     def get_days_held(self, current_date: datetime) -> int:
         """
         Get the number of days held for a position from the given current_date.
