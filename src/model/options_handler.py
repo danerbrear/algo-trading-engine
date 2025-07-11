@@ -21,7 +21,7 @@ import os
 # Add the project root to the path to import progress_tracker
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 from src.model.progress_tracker import ProgressTracker, set_global_progress_tracker, progress_print, is_quiet_mode
-from ..common.models import OptionChain
+from ..common.models import OptionChain, OptionType, Option
 
 # Load environment variables from .env file
 load_dotenv()
@@ -42,7 +42,7 @@ class OptionsHandler:
         # Convert start_date to naive datetime for consistent comparison
         self.start_date = pd.Timestamp(start_date).tz_localize(None) if start_date else None
         
-    def _fetch_historical_contract_data(self, contract, current_date: datetime) -> Optional[Dict]:
+    def _fetch_historical_contract_data(self, contract, current_date: datetime) -> Optional[Option]:
         """Fetch historical data for a specific contract with retries"""
         def fetch_func():
             # Show detailed messages only when not in quiet mode
@@ -82,7 +82,8 @@ class OptionsHandler:
                 
                 # Enhanced data structure to support Polygon.io's available fields
                 # Note: For historical data, Greeks/IV would need Options Snapshot API
-                return {
+                return Option.from_dict({
+                    'ticker': day_data.ticker,
                     'strike': float(contract.strike_price),
                     'expiration': contract.expiration_date,
                     'type': 'call' if contract.contract_type.lower() == 'call' else 'put',
@@ -90,16 +91,16 @@ class OptionsHandler:
                     'volume': day_data.volume if hasattr(day_data, 'volume') else 0,
                     'open_interest': None,  # Available in Options Snapshot API (Starter+ plans)
                     'implied_volatility': None,  # Available in Options Snapshot API (Starter+ plans)
-                    'delta': None,  # Available in Options Snapshot API (Starter+ plans)
-                    'gamma': None,  # Available in Options Snapshot API (Starter+ plans)
-                    'theta': None,  # Available in Options Snapshot API (Starter+ plans)
-                    'vega': None,  # Available in Options Snapshot API (Starter+ plans)
+                    'delta': None,
+                    'gamma': None,
+                    'theta': None,
+                    'vega': None,
                     'last_price': day_data.close,
                     'bid': day_data.low,  # Real bid/ask available with Advanced plan ($199/month)
                     'ask': day_data.high,  # Real bid/ask available with Advanced plan ($199/month)
                     'mid_price': (day_data.low + day_data.high) / 2,
                     'moneyness': day_data.close / float(contract.strike_price),
-                }
+                })
             except ValueError as e:
                 if "SKIP_DATE_UNAUTHORIZED" in str(e):
                     raise  # Re-raise to be caught by the outer handler
@@ -120,7 +121,7 @@ class OptionsHandler:
             f"Error fetching historical data for {contract.ticker}"
         )
 
-    def get_specific_option_contract(self, target_strike: float, expiry: str, option_type: str, current_date: datetime) -> Optional[Dict]:
+    def get_specific_option_contract(self, target_strike: float, expiry: str, option_type: str, current_date: datetime) -> Optional[Option]:
         """
         Get a specific option contract for a given date, expiration, and strike price.
         First checks cache, then fetches from API if not available.
@@ -132,7 +133,7 @@ class OptionsHandler:
             current_date: The date for which to get the option data
             
         Returns:
-            Optional[Dict]: Option contract data if found, None otherwise
+            Optional[Option]: Option contract data if found, None otherwise
         """
         print(f"Getting specific option contract for {target_strike} {expiry} {option_type} as of {current_date}")
         # Ensure current_date is naive datetime
@@ -156,7 +157,7 @@ class OptionsHandler:
                     option_data.get('type', '').lower() == option_type.lower()):
                     
                     progress_print(f"✅ Found {option_type} ${target_strike:.0f} exp {expiry} in cache")
-                    return option_data
+                    return Option.from_dict(option_data)
 
         # If not in cache, fetch from API
         progress_print(f"🔍 Fetching {option_type} ${target_strike:.0f} exp {expiry} from API")
@@ -184,7 +185,7 @@ class OptionsHandler:
                         # Update cache with the new option data
                         self._update_cache_with_specific_option(option_data, current_date_naive)
                         
-                        progress_print(f"✅ Successfully fetched {option_type} ${float(closest_contract.strike_price):.0f} @ ${option_data['last_price']:.2f}")
+                        progress_print(f"✅ Successfully fetched {option_type} ${float(closest_contract.strike_price):.0f} @ ${option_data.last_price:.2f}")
                         return option_data
                     else:
                         progress_print(f"❌ No historical data available for {option_type} ${float(closest_contract.strike_price):.0f}")
@@ -198,7 +199,7 @@ class OptionsHandler:
         
         return None
 
-    def _update_cache_with_specific_option(self, option_data: Dict, current_date: datetime):
+    def _update_cache_with_specific_option(self, option_data: Option, current_date: datetime):
         """
         Update the cache with a specific option contract.
         
@@ -220,10 +221,10 @@ class OptionsHandler:
                 existing_cache = {'calls': [], 'puts': []}
             
             # Add the new option data to the appropriate list
-            if option_data['type'].lower() == 'call':
-                existing_cache['calls'].append(option_data)
+            if option_data.option_type == OptionType.CALL:
+                existing_cache['calls'].append(option_data.to_dict())
             else:
-                existing_cache['puts'].append(option_data)
+                existing_cache['puts'].append(option_data.to_dict())
             
             # Save updated cache
             self.cache_manager.save_date_to_cache(
@@ -234,12 +235,12 @@ class OptionsHandler:
                 self.symbol
             )
             
-            progress_print(f"💾 Updated cache with {option_data['type']} ${option_data['strike']:.0f}")
+            progress_print(f"💾 Updated cache with {option_data.option_type.value} ${option_data.strike:.0f}")
             
         except Exception as e:
             progress_print(f"⚠️ Warning: Could not update cache: {str(e)}")
 
-    def _fetch_historical_contracts_data(self, contracts: List, current_date: datetime, current_price: float) -> Dict:
+    def _fetch_historical_contracts_data(self, contracts: List, current_date: datetime, current_price: float) -> OptionChain:
         """Fetch historical data for a list of contracts"""
         chain_data = {'calls': [], 'puts': []}
         
@@ -257,7 +258,7 @@ class OptionsHandler:
             
             if not expiry_dates:
                 print(f"No expiration dates available for {current_date.date()}")
-                return chain_data
+                return OptionChain.from_dict_w_options(chain_data)
                 
             # Convert to datetime objects for comparison
             expiry_dates = [pd.Timestamp(exp).tz_localize(None) for exp in expiry_dates]
@@ -277,7 +278,7 @@ class OptionsHandler:
             
             if not target_expiry_contracts:
                 progress_print(f"No contracts found for target expiry {target_expiry_str}")
-                return chain_data
+                return OptionChain.from_dict_w_options(chain_data)
             
             # Step 3: Separate calls and puts, sorted by proximity to current price
             calls = [c for c in target_expiry_contracts if hasattr(c, 'contract_type') and c.contract_type.lower() == 'call']
@@ -298,7 +299,7 @@ class OptionsHandler:
                 except ValueError as e:
                     if "SKIP_DATE_UNAUTHORIZED" in str(e):
                         progress_print(f"🚫 Skipping {current_date.date()} - Plan doesn't include this timeframe")
-                        return chain_data
+                        return OptionChain.from_dict_w_options(chain_data)
                     raise
                     
             # Process puts
@@ -310,7 +311,7 @@ class OptionsHandler:
                 except ValueError as e:
                     if "SKIP_DATE_UNAUTHORIZED" in str(e):
                         progress_print(f"🚫 Skipping {current_date.date()} - Plan doesn't include this timeframe")
-                        return chain_data
+                        return OptionChain.from_dict_w_options(chain_data)
                     raise
                     
         except Exception as e:
@@ -319,7 +320,7 @@ class OptionsHandler:
             import traceback
             traceback.print_exc()
             
-        return chain_data
+        return OptionChain.from_dict_w_options(chain_data)
 
     def _get_contracts_from_cache(self, current_date: datetime, current_price: float) -> Optional[List]:
         """Get the list of contracts from cache if available, otherwise fetch from API"""
@@ -429,7 +430,7 @@ class OptionsHandler:
             traceback.print_exc()
             return []
 
-    def _get_option_chain_with_cache(self, current_date: datetime, current_price: float) -> Dict:
+    def _get_option_chain_with_cache(self, current_date: datetime, current_price: float) -> OptionChain:
         """Get option chain data for a date, using cache if available"""
         try:
             # Try to get from cache first
@@ -441,10 +442,10 @@ class OptionsHandler:
             )
             
             if chain_data is not None:
-                return chain_data
-                    
-            chain_data = {'calls': [], 'puts': []}
-            
+                return OptionChain.from_dict(chain_data)
+
+            chain_data = OptionChain.from_dict({'calls': [], 'puts': []})
+
             try:
                 # Get contracts (will use cache if available)
                 contracts = self._get_contracts_from_cache(current_date, current_price)
@@ -457,11 +458,11 @@ class OptionsHandler:
                 chain_data = self._fetch_historical_contracts_data(contracts, current_date, current_price)
                 
                 # Cache the data if we got any contracts
-                if chain_data['calls'] or chain_data['puts']:
+                if chain_data.calls or chain_data.puts:
                     print(f"Caching option chain data for {current_date.date()}")
                     self.cache_manager.save_date_to_cache(
                         current_date,
-                        chain_data,
+                        chain_data.to_dict(),
                         '',  # No suffix for main chain data
                         'options',
                         self.symbol
@@ -476,21 +477,21 @@ class OptionsHandler:
             print(f"Error type: {type(e)}")
             import traceback
             traceback.print_exc()
-            chain_data = {'calls': [], 'puts': []}
+            chain_data = OptionChain.from_dict({'calls': [], 'puts': []})
             
         return chain_data
         
-    def _get_target_expiry(self, current_date: datetime, chain_data: Dict) -> Optional[str]:
+    def _get_target_expiry(self, current_date: datetime, chain_data: OptionChain) -> Optional[str]:
         """Get the target expiration date closest to 30 days out"""
-        if not chain_data['calls'] and not chain_data['puts']:
+        if not chain_data.calls and not chain_data.puts:
             return None
             
         target_date = current_date + timedelta(days=30)
         
         # Get unique expiration dates
         expiry_dates = set()
-        for option_type in ['calls', 'puts']:
-            expiry_dates.update(opt['expiration'] for opt in chain_data[option_type])
+        expiry_dates.update(opt.expiration for opt in chain_data.puts)
+        expiry_dates.update(opt.expiration for opt in chain_data.calls)
             
         if not expiry_dates:
             print(f"No expiration dates available for {current_date.date()}")
@@ -530,21 +531,21 @@ class OptionsHandler:
             
         return atm_call, atm_put
             
-    def _get_strategy_option_strikes(self, current_price: float, chain_data: Dict, expiry: str, current_date: datetime) -> Dict:
+    def _get_strategy_option_strikes(self, current_price: float, chain_data: OptionChain, expiry: str, current_date: datetime) -> Dict:
         """Get multiple option strikes needed for realistic strategy calculations
         If strikes are missing, fetch them from Polygon API and update cache"""
         option_strikes = {}
         
         # Filter for target expiry
-        calls = [opt for opt in chain_data['calls'] if opt['expiration'] == expiry]
-        puts = [opt for opt in chain_data['puts'] if opt['expiration'] == expiry]
+        calls = [opt for opt in chain_data.calls if opt.expiration == expiry]
+        puts = [opt for opt in chain_data.puts if opt.expiration == expiry]
         
         if not calls or not puts:
             return option_strikes
         
         # Sort by strike price
-        calls_sorted = sorted(calls, key=lambda x: x['strike'])
-        puts_sorted = sorted(puts, key=lambda x: x['strike'])
+        calls_sorted = sorted(calls, key=lambda x: x.strike)
+        puts_sorted = sorted(puts, key=lambda x: x.strike)
         
         # Define target strikes for strategies
         target_strikes = {
@@ -563,9 +564,9 @@ class OptionsHandler:
             if 'call' in strike_name or strike_name == 'atm':
                 # Look for calls
                 closest_call = min(calls_sorted, 
-                                 key=lambda x: abs(x['strike'] - target_strike), 
+                                 key=lambda x: abs(x.strike - target_strike), 
                                  default=None)
-                if closest_call and abs(closest_call['strike'] - target_strike) <= 3.0:  # Within $3
+                if closest_call and abs(closest_call.strike - target_strike) <= 3.0:  # Within $3
                     if strike_name == 'atm':
                         option_strikes['atm_call'] = closest_call
                     else:
@@ -577,9 +578,9 @@ class OptionsHandler:
             if 'put' in strike_name or strike_name == 'atm':
                 # Look for puts
                 closest_put = min(puts_sorted, 
-                                key=lambda x: abs(x['strike'] - target_strike), 
+                                key=lambda x: abs(x.strike - target_strike), 
                                 default=None)
-                if closest_put and abs(closest_put['strike'] - target_strike) <= 3.0:  # Within $3
+                if closest_put and abs(closest_put.strike - target_strike) <= 3.0:  # Within $3
                     if strike_name == 'atm':
                         option_strikes['atm_put'] = closest_put
                     else:
@@ -696,25 +697,25 @@ class OptionsHandler:
             f"Error fetching contracts for {option_type} ${target_strike:.0f}"
         )
 
-    def _update_cache_with_additional_strikes(self, chain_data: Dict, additional_options: Dict, current_date: datetime):
+    def _update_cache_with_additional_strikes(self, chain_data: OptionChain, additional_options: Dict, current_date: datetime):
         """Update the cached chain data with newly fetched option strikes"""
         if not additional_options:
             return
-            
+
         print(f"💾 Updating cache with {len(additional_options)} additional option strikes")
-        
+
         # Add additional options to chain_data
         for strike_name, option_data in additional_options.items():
             if option_data['type'] == 'call':
-                chain_data['calls'].append(option_data)
+                chain_data.calls.append(option_data)
             else:
-                chain_data['puts'].append(option_data)
-        
+                chain_data.puts.append(option_data)
+
         # Update the cache
         try:
             self.cache_manager.save_date_to_cache(
                 current_date,
-                chain_data,
+                chain_data.to_dict(),
                 '',  # No suffix for main chain data
                 'options',
                 self.symbol
@@ -765,15 +766,15 @@ class OptionsHandler:
                 progress.update(
                     current_date=current_date_naive,
                     additional_info={
-                        'calls': len(chain_data.get('calls', [])),
-                        'puts': len(chain_data.get('puts', [])),
+                        'calls': len(chain_data.calls),
+                        'puts': len(chain_data.puts),
                         'api_calls': progress.successful_api_calls
                     }
                 )
                 
                 # Convert to OptionChain DTO and store
-                if chain_data.get('calls') or chain_data.get('puts'):
-                    option_chain = OptionChain.from_dict(chain_data)
+                if chain_data.calls or chain_data.puts:
+                    option_chain = chain_data
                     option_chain.underlying_symbol = self.symbol
                     option_chain.current_price = current_price
                     option_chain.date = current_date.strftime('%Y-%m-%d')
@@ -783,7 +784,7 @@ class OptionsHandler:
                     date_key = current_date.strftime('%Y-%m-%d')
                     options_data[date_key] = option_chain
                 
-                if not chain_data['calls'] or not chain_data['puts']:
+                if not chain_data.calls or not chain_data.puts:
                     # Just continue silently in quiet mode, show brief message in postfix
                     progress.update(summary_info="No options data")
                     continue
@@ -803,48 +804,48 @@ class OptionsHandler:
                 
                 # ATM Options (for features and straddle)
                 if 'atm_call' in option_strikes and 'atm_put' in option_strikes:
-                    atm_call = option_strikes['atm_call']
-                    atm_put = option_strikes['atm_put']
+                    atm_call: Option = option_strikes['atm_call']
+                    atm_put: Option = option_strikes['atm_put']
                     
                     # Store ATM option features
-                    data.loc[current_date, 'Call_IV'] = atm_call['implied_volatility']
-                    data.loc[current_date, 'Put_IV'] = atm_put['implied_volatility']
-                    data.loc[current_date, 'Call_Volume'] = atm_call['volume']
-                    data.loc[current_date, 'Put_Volume'] = atm_put['volume']
-                    data.loc[current_date, 'Call_OI'] = atm_call['open_interest']
-                    data.loc[current_date, 'Put_OI'] = atm_put['open_interest']
-                    data.loc[current_date, 'Call_Price'] = atm_call['last_price']
-                    data.loc[current_date, 'Put_Price'] = atm_put['last_price']
-                    data.loc[current_date, 'Call_Delta'] = atm_call['delta']
-                    data.loc[current_date, 'Put_Delta'] = atm_put['delta']
-                    data.loc[current_date, 'Call_Gamma'] = atm_call['gamma']
-                    data.loc[current_date, 'Put_Gamma'] = atm_put['gamma']
-                    data.loc[current_date, 'Call_Theta'] = atm_call['theta']
-                    data.loc[current_date, 'Put_Theta'] = atm_put['theta']
-                    data.loc[current_date, 'Call_Vega'] = atm_call['vega']
-                    data.loc[current_date, 'Put_Vega'] = atm_put['vega']
-                    data.loc[current_date, 'Option_Volume_Ratio'] = (atm_call['volume'] + atm_put['volume']) / data.loc[current_date, 'Volume']
-                    data.loc[current_date, 'Put_Call_Ratio'] = atm_put['volume'] / atm_call['volume'] if atm_call['volume'] > 0 else 1.0
+                    data.loc[current_date, 'Call_IV'] = atm_call.implied_volatility
+                    data.loc[current_date, 'Put_IV'] = atm_put.implied_volatility
+                    data.loc[current_date, 'Call_Volume'] = atm_call.volume
+                    data.loc[current_date, 'Put_Volume'] = atm_put.volume
+                    data.loc[current_date, 'Call_OI'] = atm_call.open_interest
+                    data.loc[current_date, 'Put_OI'] = atm_put.open_interest
+                    data.loc[current_date, 'Call_Price'] = atm_call.last_price
+                    data.loc[current_date, 'Put_Price'] = atm_put.last_price
+                    data.loc[current_date, 'Call_Delta'] = atm_call.delta
+                    data.loc[current_date, 'Put_Delta'] = atm_put.delta
+                    data.loc[current_date, 'Call_Gamma'] = atm_call.gamma
+                    data.loc[current_date, 'Put_Gamma'] = atm_put.gamma
+                    data.loc[current_date, 'Call_Theta'] = atm_call.theta
+                    data.loc[current_date, 'Put_Theta'] = atm_put.theta
+                    data.loc[current_date, 'Call_Vega'] = atm_call.vega
+                    data.loc[current_date, 'Put_Vega'] = atm_put.vega
+                    data.loc[current_date, 'Option_Volume_Ratio'] = (atm_call.volume + atm_put.volume) / data.loc[current_date, 'Volume']
+                    data.loc[current_date, 'Put_Call_Ratio'] = atm_put.volume / atm_call.volume if atm_call.volume > 0 else 1.0
                 
                 # Multi-strike options for strategy calculations (now guaranteed by API fetch)
                 if 'call_atm_plus5' in option_strikes:
-                    data.loc[current_date, 'Call_ATM_Plus5_Price'] = option_strikes['call_atm_plus5']['last_price']
+                    data.loc[current_date, 'Call_ATM_Plus5_Price'] = option_strikes['call_atm_plus5'].last_price
                 
                 if 'call_atm_plus10' in option_strikes:
-                    data.loc[current_date, 'Call_ATM_Plus10_Price'] = option_strikes['call_atm_plus10']['last_price']
+                    data.loc[current_date, 'Call_ATM_Plus10_Price'] = option_strikes['call_atm_plus10'].last_price
                 
                 if 'put_atm_minus5' in option_strikes:
-                    data.loc[current_date, 'Put_ATM_Minus5_Price'] = option_strikes['put_atm_minus5']['last_price']
+                    data.loc[current_date, 'Put_ATM_Minus5_Price'] = option_strikes['put_atm_minus5'].last_price
                 
                 if 'put_atm_minus10' in option_strikes:
-                    data.loc[current_date, 'Put_ATM_Minus10_Price'] = option_strikes['put_atm_minus10']['last_price']
+                    data.loc[current_date, 'Put_ATM_Minus10_Price'] = option_strikes['put_atm_minus10'].last_price
                 
                 # Create compact summary for progress bar postfix
                 strike_summary = ""
                 if 'atm_call' in option_strikes and 'atm_put' in option_strikes:
-                    call_price = option_strikes['atm_call']['last_price']
-                    put_price = option_strikes['atm_put']['last_price']
-                    strike = option_strikes['atm_call']['strike']
+                    call_price = option_strikes['atm_call'].last_price
+                    put_price = option_strikes['atm_put'].last_price
+                    strike = option_strikes['atm_call'].strike
                     strike_summary = f"ATM ${strike:.0f}: C${call_price:.2f}/P${put_price:.2f}"
                 
                 # Final update with strike summary and API call count
@@ -854,6 +855,8 @@ class OptionsHandler:
                 )
                 
             except Exception as e:
+                import traceback
+                traceback.print_exc()
                 progress.write(f"\nError processing {current_date}: {str(e)}")
         
         # Close progress tracker and print final summary

@@ -14,10 +14,10 @@ class CreditSpreadStrategy(Strategy):
     Stop Loss: 60%
     """
 
-    holding_period = 10
+    holding_period = 15
 
     def __init__(self, lstm_model, lstm_scaler, options_handler: OptionsHandler = None, start_date_offset: int = 0):
-        super().__init__(stop_loss=0.6, start_date_offset=start_date_offset)
+        super().__init__(stop_loss=0.6, profit_target=0.8, start_date_offset=start_date_offset)
         self.lstm_model = lstm_model
         self.lstm_scaler = lstm_scaler
         self.options_handler = options_handler
@@ -42,21 +42,29 @@ class CreditSpreadStrategy(Strategy):
             prediction = self._make_prediction(date)
             if prediction is not None:
                 if prediction['strategy'] == 1:
-                    # Call Credit Spread using real options data
-                    position = self._create_call_credit_spread_from_chain(date, StrategyType.CALL_CREDIT_SPREAD, prediction)
-                    if position:
-                        print(f"Adding position: {position.__str__()}")
-                        current_price = self.data.loc[date]['Close']
-                        print(f"    Current price: {round(current_price, 2)}")
-                        add_position(position)
+                    try:
+                        # Call Credit Spread using real options data
+                        position = self._create_call_credit_spread_from_chain(date, prediction)
+                        if position:
+                            print(f"Adding position: {position.__str__()}")
+                            current_price = self.data.loc[date]['Close']
+                            print(f"    Current price: {round(current_price, 2)}")
+                            add_position(position)
+                    except Exception as e:
+                        print(f"Error creating call credit spread: {e}")
+                        self.error_count += 1
                 elif prediction['strategy'] == 2:
-                    # Put Credit Spread using real options data
-                    position = self._create_put_credit_spread_from_chain(date, StrategyType.PUT_CREDIT_SPREAD, prediction)
-                    if position:
-                        print(f"Adding position: {position.__str__()}")
-                        current_price = self.data.loc[date]['Close']
-                        print(f"    Current price: {round(current_price, 2)}")
-                        add_position(position)
+                    try:
+                        # Put Credit Spread using real options data
+                        position = self._create_put_credit_spread_from_chain(date, prediction)
+                        if position:
+                            print(f"Adding position: {position.__str__()}")
+                            current_price = self.data.loc[date]['Close']
+                            print(f"    Current price: {round(current_price, 2)}")
+                            add_position(position)
+                    except Exception as e:
+                        print(f"Error creating put credit spread: {e}")
+                        self.error_count += 1
             else:
                 self.error_count += 1
 
@@ -79,13 +87,12 @@ class CreditSpreadStrategy(Strategy):
                             self.error_count += 1
                             continue
                         
-                        new_option = Option.from_dict(contract)
-                        if (new_option.option_type == OptionType.CALL):
-                            option_chain.calls.append(new_option)
-                        elif (new_option.option_type == OptionType.PUT):
-                            option_chain.puts.append(new_option)
+                        if (contract.option_type == OptionType.CALL):
+                            option_chain.calls.append(contract)
+                        elif (contract.option_type == OptionType.PUT):
+                            option_chain.puts.append(contract)
                         else:
-                            print(f"Error: Invalid option type: {new_option.option_type}")
+                            print(f"Error: Invalid option type: {contract.option_type}")
                             self.error_count += 1
                             continue
                     exit_price = position.calculate_exit_price(option_chain)
@@ -140,21 +147,21 @@ class CreditSpreadStrategy(Strategy):
         # Get available expirations from options handler
         if not self.options_handler:
             print("   ⚠️  No options handler available")
-            return None
+            raise Exception("No options handler available")
             
         # Get the option chain for the current date to extract available expirations
         try:
             chain_data = self.options_handler._get_option_chain_with_cache(date, current_price)
-            if not chain_data or (not chain_data.get('calls') and not chain_data.get('puts')):
+            if not chain_data or (not chain_data.calls and not chain_data.puts):
                 print("   ⚠️  No option chain data available")
-                return None
+                raise Exception("No option chain data available")
                 
             # Extract unique expiration dates from the chain data
             expirations = set()
-            for option_type in ['calls', 'puts']:
-                for option in chain_data.get(option_type, []):
-                    if 'expiration' in option:
-                        expirations.add(option['expiration'])
+            for option in chain_data.calls:
+                expirations.add(option.expiration)
+            for option in chain_data.puts:
+                expirations.add(option.expiration)
                         
             if not expirations:
                 print("   ⚠️  No expiration dates found in option chain")
@@ -164,7 +171,7 @@ class CreditSpreadStrategy(Strategy):
             
         except Exception as e:
             print(f"   ⚠️  Error getting option chain: {e}")
-            return None
+            raise e
         
         for expiry_str in expirations:
             expiry_date = datetime.strptime(expiry_str, '%Y-%m-%d').date()
@@ -175,12 +182,12 @@ class CreditSpreadStrategy(Strategy):
             print(f"   📊 Evaluating {expiry_str} ({days_to_expiry} days)...")
             
             # Filter options for this expiration
-            calls = [opt for opt in chain_data.get('calls', []) if opt.get('expiration') == expiry_str]
-            puts = [opt for opt in chain_data.get('puts', []) if opt.get('expiration') == expiry_str]
+            calls = [opt for opt in chain_data.calls if opt.expiration == expiry_str]
+            puts = [opt for opt in chain_data.puts if opt.expiration == expiry_str]
             
             for width in [5, 7, 8, 10, 12, 15, 25]:
                 total_evaluated += 1
-                
+
                 if strategy_type == StrategyType.CALL_CREDIT_SPREAD:
                     atm_strike = round(current_price)
                     otm_strike = atm_strike + width
@@ -193,7 +200,7 @@ class CreditSpreadStrategy(Strategy):
                         total_rejected += 1
                         continue
                         
-                    credit = atm_call['last_price'] - otm_call['last_price']
+                    credit = atm_call.last_price - otm_call.last_price
                     max_risk = width - credit
                     direction = 'bearish'
                 else:  # PUT_CREDIT_SPREAD
@@ -208,7 +215,7 @@ class CreditSpreadStrategy(Strategy):
                         total_rejected += 1
                         continue
                         
-                    credit = atm_put['last_price'] - otm_put['last_price']
+                    credit = atm_put.last_price - otm_put.last_price
                     max_risk = width - credit
                     direction = 'bullish'
                     
@@ -260,10 +267,10 @@ class CreditSpreadStrategy(Strategy):
             print(f"   ❌ No spreads meet the minimum criteria")
             return None
 
-    def _find_option_by_strike(self, options: list, strike: float):
+    def _find_option_by_strike(self, options: list[Option], strike: float):
         """Find an option by strike price"""
         for option in options:
-            if option.get('strike') == strike:
+            if option.strike == strike:
                 return option
         return None
 
@@ -446,7 +453,7 @@ class CreditSpreadStrategy(Strategy):
             print(f"Error making LSTM prediction: {e}")
             raise ValueError(f"Error making LSTM prediction: {e}")
 
-    def _create_call_credit_spread_from_chain(self, date: datetime, strategy_type: StrategyType, prediction: dict) -> Position:
+    def _create_call_credit_spread_from_chain(self, date: datetime, prediction: dict) -> Position:
         """Create a call credit spread using the options chain data"""
         if not self.options_data:
             print("⚠️  No options data available")
@@ -469,8 +476,8 @@ class CreditSpreadStrategy(Strategy):
             return None
             
         # Convert dictionary options to Option objects
-        atm_option = Option.from_dict(best_spread['atm_option'])
-        otm_option = Option.from_dict(best_spread['otm_option'])
+        atm_option = best_spread['atm_option']
+        otm_option = best_spread['otm_option']
         
         # Create position using the best spread
         position = Position(
@@ -493,7 +500,7 @@ class CreditSpreadStrategy(Strategy):
         
         return position
 
-    def _create_put_credit_spread_from_chain(self, date: datetime, strategy_type: StrategyType, prediction: dict) -> Position:
+    def _create_put_credit_spread_from_chain(self, date: datetime, prediction: dict) -> Position:
         """Create a put credit spread using the options chain data"""
         if not self.options_data:
             print("⚠️  No options data available")
@@ -506,7 +513,11 @@ class CreditSpreadStrategy(Strategy):
             
         current_price = self.data.loc[date]['Close']
         
-        confidence = prediction['confidence'] if prediction else 0.5
+        if prediction['confidence'] is None:
+            print("⚠️  No prediction available")
+            raise Exception("No prediction available")
+        
+        confidence = prediction['confidence']
         
         # Find best spread using the new method
         best_spread = self._find_best_spread(current_price, StrategyType.PUT_CREDIT_SPREAD, confidence, date)
@@ -514,10 +525,10 @@ class CreditSpreadStrategy(Strategy):
         if not best_spread:
             print("⚠️  No suitable put credit spread found")
             return None
-            
+
         # Convert dictionary options to Option objects
-        atm_option = Option.from_dict(best_spread['atm_option'])
-        otm_option = Option.from_dict(best_spread['otm_option'])
+        atm_option = best_spread['atm_option']
+        otm_option = best_spread['otm_option']
         
         # Create position using the best spread
         position = Position(
@@ -565,7 +576,7 @@ class CreditSpreadStrategy(Strategy):
             contract = self.options_handler.get_specific_option_contract(strike, expiration, OptionType.CALL.value, current_date)
             if contract is None:
                 return None
-            otm_calls = [Option.from_dict(contract)]
+            otm_calls = [contract]
             
         # Return the closest OTM call (lowest strike above ATM)
         return min(otm_calls, key=lambda opt: opt.strike)
@@ -581,7 +592,7 @@ class CreditSpreadStrategy(Strategy):
             contract = self.options_handler.get_specific_option_contract(strike, expiration, OptionType.PUT.value, current_date)
             if contract is None:
                 return None
-            otm_puts = [Option.from_dict(contract)]
+            otm_puts = [contract]
             
         # Return the closest OTM put (highest strike below ATM)
         return max(otm_puts, key=lambda opt: opt.strike)

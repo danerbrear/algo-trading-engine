@@ -13,6 +13,7 @@ class Option:
     """
     Data Transfer Object for an individual option contract, matching the cache format.
     """
+    ticker: str
     symbol: str
     strike: float
     expiration: str  # Always store as string for cache compatibility
@@ -77,6 +78,7 @@ class Option:
 
     def to_dict(self) -> Dict[str, Any]:
         return {
+            'ticker': self.ticker,
             'strike': self.strike,
             'expiration': self.expiration,
             'type': self.option_type.value,
@@ -98,6 +100,7 @@ class Option:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Option':
         return cls(
+            ticker=data.get('ticker', ''),
             symbol=data['symbol'],
             strike=data['strike'],
             expiration=data['expiration'],
@@ -168,6 +171,13 @@ class OptionChain:
         return cls(
             calls=[Option.from_dict(opt) for opt in data.get('calls', [])],
             puts=[Option.from_dict(opt) for opt in data.get('puts', [])],
+        )
+    
+    @classmethod
+    def from_dict_w_options(cls, data: Dict[Option, Any]) -> 'OptionChain':
+        return cls(
+            calls=[opt for opt in data.calls],
+            puts=[opt for opt in data.puts],
         )
     
     def get_option_data_for_option(self, option: Option) -> Option:
