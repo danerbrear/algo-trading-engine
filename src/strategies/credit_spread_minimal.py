@@ -33,7 +33,7 @@ class CreditSpreadStrategy(Strategy):
 
         if len(positions) == 0:
             # Determine if we should open a new position
-            print(f"No positions, opening new position")
+            print("No positions, opening new position")
             prediction = self._make_prediction(date)
             if prediction is not None:
                 if prediction['strategy'] == 1:
@@ -41,14 +41,16 @@ class CreditSpreadStrategy(Strategy):
                     position = self._create_call_credit_spread_from_chain(date)
                     if position:
                         print(f"Adding position: {position.__str__()}")
-                        print(f"    Current price: {round(self.data.loc[date]["Close"], 2)}")
+                        current_price = self.data.loc[date]['Close']
+                        print(f"    Current price: {round(current_price, 2)}")
                         add_position(position)
                 elif prediction['strategy'] == 2:
                     # Put Credit Spread using real options data
                     position = self._create_put_credit_spread_from_chain(date)
                     if position:
                         print(f"Adding position: {position.__str__()}")
-                        print(f"    Current price: {round(self.data.loc[date]["Close"], 2)}")
+                        current_price = self.data.loc[date]['Close']
+                        print(f"    Current price: {round(current_price, 2)}")
                         add_position(position)
                     else:
                         self.error_count += 1
@@ -97,7 +99,11 @@ class CreditSpreadStrategy(Strategy):
                     print(f"Profit target or stop loss hit for {position.__str__()}")
                     print(f"    Exit price: {exit_price} for {position.__str__()}")
                     remove_position(position, exit_price)
-                elif position.get_days_to_expiration(date) < self.holding_period:
+                elif position.get_days_held(date) < self.holding_period:
+                    print(f"Position {position.__str__()} past holding period")
+                    print(f"    Exit price: {exit_price} for {position.__str__()}")
+                    remove_position(position, exit_price)
+                elif position.get_days_to_expiration(date) < 1:
                     print(f"Position {position.__str__()} expired or near expiration")
                     print(f"    Exit price: {exit_price} for {position.__str__()}")
                     remove_position(position, exit_price)

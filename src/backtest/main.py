@@ -4,7 +4,7 @@ from datetime import datetime
 
 from src.model.options_handler import OptionsHandler
 from src.strategies.credit_spread_minimal import CreditSpreadStrategy
-from .models import Strategy, Position
+from .models import Benchmark, Strategy, Position
 from src.common.data_retriever import DataRetriever
 from src.common.functions import load_hmm_model, load_lstm_model
 
@@ -23,6 +23,8 @@ class BacktestEngine:
         self.start_date = start_date
         self.end_date = end_date
         self.positions = []
+        self.total_positions = 0
+        self.benchmark = Benchmark(initial_capital)
 
     def run(self) -> bool:
         """
@@ -37,6 +39,8 @@ class BacktestEngine:
         # Use only dates that exist in the data (not pd.bdate_range which includes holidays)
         # Filter data to the specified date range and use the actual dates
         date_range = self.data.index
+
+        self.benchmark.set_start_price(self.data.iloc[0]['Close'])
         
         print(f"📅 Running backtest on {len(date_range)} trading days")
         print(f"   Date range: {date_range[0].date()} to {date_range[-1].date()}")
@@ -54,17 +58,6 @@ class BacktestEngine:
 
         self._end()
 
-        # Calculate final performance metrics
-        initial_capital = self.initial_capital  # Use the initial capital from the constructor
-        final_return = self.capital - initial_capital
-        final_return_pct = (final_return / initial_capital) * 100
-        
-        print(f"\n📊 Backtest Results Summary:")
-        print(f"   Initial Capital: ${initial_capital:,.2f}")
-        print(f"   Final Capital: ${self.capital:,.2f}")
-        print(f"   Total Return: ${final_return:+,.2f} ({final_return_pct:+.2f}%)")
-        print(f"   Trading Days: {len(date_range)}")
-        
         return True
 
     def _end(self):
@@ -72,10 +65,12 @@ class BacktestEngine:
         On end, execute strategy and close any remaining positions.
         """
         print(f"\n🏁 Closing backtest - {len(self.positions)} positions remaining")
-        
+
         # Get the last available price from the data
         last_date = self.data.index[-1]
         last_price = self.data.loc[last_date, 'Close']
+        
+        self.benchmark.set_end_price(last_price)
         
         print(f"   Last trading date: {last_date.date()}")
         print(f"   Last closing price: ${last_price:.2f}")
@@ -100,9 +95,21 @@ class BacktestEngine:
                 
             except Exception as e:
                 print(f"   Error closing position {position}: {e}")
+
+        print(f"Total P&L from closing positions: ${total_pnl:+.2f}")
+
+        # Calculate final performance metrics
+        initial_capital = self.initial_capital  # Use the initial capital from the constructor
+        final_return = self.capital - initial_capital
+        final_return_pct = (final_return / initial_capital) * 100
         
-        print(f"   Total P&L from closing positions: ${total_pnl:+.2f}")
+        print(f"\n📊 Backtest Results Summary:")
+        print(f"   Benchmark return: {self.benchmark.get_return_percentage():+.2f}%")
+        print(f"   Benchmark return dollars: ${self.benchmark.get_return_dollars():+.2f}\n")
+        print(f"   Trading Days: {len(self.data.index)}")
+        print(f"   Total positions: {self.total_positions}")
         print(f"   Final capital: ${self.capital:.2f}")
+        print(f"   Total Return: ${final_return:+,.2f} ({final_return_pct:+.2f}%)")
 
     def _validate_data(self, data: pd.DataFrame) -> bool:
         """
@@ -202,6 +209,7 @@ class BacktestEngine:
         
         self.capital -= position.entry_price * position.quantity * 100
         self.positions.append(position)
+        self.total_positions += 1
 
     def _remove_position(self, position: Position, exit_price: float):
         """

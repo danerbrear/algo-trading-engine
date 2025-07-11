@@ -4,7 +4,43 @@ import pandas as pd
 from enum import Enum
 from src.common.models import OptionChain, Option
 import os
-from src.model.options_handler import OptionsHandler
+
+class Benchmark():
+    """
+    Benchmark to compare returns against
+    """
+
+    def __init__(self, initial_capital: float):
+        self.initial_capital = initial_capital
+        self.start_price = 0.0
+        self.end_price = None
+
+    def set_start_price(self, start_price: float):
+        """
+        Set the start price for the benchmark.
+        """
+        self.start_price = start_price
+
+    def set_end_price(self, end_price: float):
+        """
+        Set the end price for the benchmark.
+        """
+        self.end_price = end_price
+
+    def get_return_dollars(self) -> float:
+        """
+        Get the return for the benchmark.
+        """
+        shares = self.initial_capital / self.start_price
+        return (self.end_price - self.start_price) * shares
+
+    def get_return_percentage(self) -> float:
+        """
+        Get the return for the benchmark.
+        """
+        if self.end_price is None:
+            return None
+        return (self.end_price - self.start_price) / self.start_price * 100
 
 class OptionType(Enum):
     """
@@ -128,6 +164,15 @@ class Position:
             return (self.expiration_date - current_date).days
         else:
             raise ValueError("Expiration date is not set")
+        
+    def get_days_held(self, current_date: datetime) -> int:
+        """
+        Get the number of days held for a position from the given current_date.
+        """
+        if self.entry_date is not None:
+            return (current_date - self.entry_date).days
+        else:
+            raise ValueError("Entry date is not set")
         
     def get_return_dollars(self, exit_price: float) -> float:
         """
