@@ -104,7 +104,7 @@ class Strategy:
             return False
         return position.stop_loss_hit(self.stop_loss, exit_price)
     
-    def on_end(self, positions: tuple['Position', ...], remove_position: Callable[['Position'], None]):
+    def on_end(self, positions: tuple['Position', ...], remove_position: Callable[['Position'], None], date: datetime):
         """
         On end, execute strategy.
         """

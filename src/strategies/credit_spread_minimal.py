@@ -110,11 +110,21 @@ class CreditSpreadStrategy(Strategy):
                     print(f"    Exit price: {exit_price} for {position.__str__()}")
                     remove_position(position, exit_price)
 
-    def on_end(self, positions: tuple['Position', ...], remove_position: Callable[['Position'], None]):
+    def on_end(self, positions: tuple['Position', ...], remove_position: Callable[['Position'], None], date: datetime):
         """
         On end, execute strategy.
         """
-        super().on_end(positions, remove_position)
+        super().on_end(positions, remove_position, date)
+        for position in positions:
+            try:
+                # Calculate the return for this position
+                exit_price = position.calculate_exit_price(self.options_data[date.strftime('%Y-%m-%d')])
+
+                # Remove the position and update capital
+                remove_position(position, exit_price)
+
+            except Exception as e:
+                print(f"   Error closing position {position}: {e}")
         print(f"Total error count: {self.error_count}")
     
     def _make_prediction(self, date: datetime):

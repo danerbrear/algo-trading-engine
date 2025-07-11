@@ -69,41 +69,21 @@ class BacktestEngine:
         # Get the last available price from the data
         last_date = self.data.index[-1]
         last_price = self.data.loc[last_date, 'Close']
-        
+
         self.benchmark.set_end_price(last_price)
-        
+
         print(f"   Last trading date: {last_date.date()}")
         print(f"   Last closing price: ${last_price:.2f}")
 
         # Execute strategy's on_end method
-        self.strategy.on_end(self.positions, self._remove_position)
-        
-        # Close all remaining positions with the last available price
-        total_pnl = 0
-        for position in self.positions[:]:  # Create a copy to avoid modification during iteration
-            try:
-                # Calculate the return for this position
-                position_return = position.get_return_dollars(last_price)
-                total_pnl += position_return
-                
-                print(f"   Closing position: {position}")
-                print(f"     Exit price: ${last_price:.2f}")
-                print(f"     Return: ${position_return:+.2f}")
-                
-                # Remove the position and update capital
-                self._remove_position(position, last_price)
-                
-            except Exception as e:
-                print(f"   Error closing position {position}: {e}")
-
-        print(f"Total P&L from closing positions: ${total_pnl:+.2f}")
+        self.strategy.on_end(self.positions, self._remove_position, last_date)
 
         # Calculate final performance metrics
         initial_capital = self.initial_capital  # Use the initial capital from the constructor
         final_return = self.capital - initial_capital
         final_return_pct = (final_return / initial_capital) * 100
         
-        print(f"\n📊 Backtest Results Summary:")
+        print("\n📊 Backtest Results Summary:")
         print(f"   Benchmark return: {self.benchmark.get_return_percentage():+.2f}%")
         print(f"   Benchmark return dollars: ${self.benchmark.get_return_dollars():+.2f}\n")
         print(f"   Trading Days: {len(self.data.index)}")
