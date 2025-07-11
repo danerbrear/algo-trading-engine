@@ -6,11 +6,11 @@ import sys
 import threading
 
 class ProgressTracker:
-    def __init__(self, start_date: datetime, end_date: datetime, desc: str = "Processing", quiet_mode: bool = True):
+    def __init__(self, start_date: datetime, end_date: datetime, total_dates: int, desc: str = "Processing", quiet_mode: bool = True):
         self.start_time = time()
         self.processed_dates = 0
         self.successful_api_calls = 0
-        self.total_dates = self._count_trading_days(start_date, end_date)
+        self.total_dates = total_dates
         self.total_api_calls = self.total_dates * 5  # 5 API calls per date
         self._lock = threading.Lock()
         self.quiet_mode = quiet_mode
@@ -63,7 +63,7 @@ class ProgressTracker:
                 api_progress = (self.successful_api_calls / self.total_api_calls) * 100
                 
                 # Update progress bar description with compact format
-                desc = f"Processing {current_date.date()} ({date_progress:.1f}% dates, {api_progress:.1f}% API calls)"
+                desc = f"Processing {current_date.date()} ({date_progress:.1f}% dates, {api_progress:.1f}% fetches)"
                 self.pbar.set_description(desc)
                 
                 # Show summary info in postfix (key strike prices, etc.)

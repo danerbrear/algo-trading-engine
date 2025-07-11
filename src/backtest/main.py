@@ -40,7 +40,7 @@ class BacktestEngine:
         # Filter data to the specified date range and use the actual dates
         date_range = self.data.index
 
-        self.benchmark.set_start_price(self.data.iloc[0]['Close'])
+        self.benchmark.set_start_price(self.data.iloc[self.strategy.start_date_offset]['Close'])
         
         print(f"📅 Running backtest on {len(date_range)} trading days")
         print(f"   Date range: {date_range[0].date()} to {date_range[-1].date()}")
@@ -219,12 +219,10 @@ class BacktestEngine:
 
 if __name__ == "__main__":
     # Test with a smaller date range to verify the fix
-    start_date = datetime(2024, 1, 1)
+    start_date = datetime(2023, 10, 1)
     end_date = datetime(2024, 7, 31)
 
-    print("🧪 Testing backtest with fixed date handling...")
-
-    data_retriever = DataRetriever(symbol='SPY', hmm_start_date=start_date, lstm_start_date=start_date, use_free_tier=True, quiet_mode=True)
+    data_retriever = DataRetriever(symbol='SPY', hmm_start_date=start_date, lstm_start_date=start_date, use_free_tier=False, quiet_mode=True)
 
     # Load model directory from environment variable
     model_save_base_path = os.getenv('MODEL_SAVE_BASE_PATH', 'Trained_Models')
@@ -242,7 +240,8 @@ if __name__ == "__main__":
         strategy = CreditSpreadStrategy(
             lstm_model=lstm_model, 
             lstm_scaler=scaler,
-            options_handler=options_handler
+            options_handler=options_handler,
+            start_date_offset=60
         )
         strategy.set_data(data, options_data)
 

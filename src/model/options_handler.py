@@ -10,7 +10,6 @@ from polygon import RESTClient
 from typing import Dict, List, Optional, Tuple
 import os
 from dotenv import load_dotenv
-import requests
 try:
     from common.cache.cache_manager import CacheManager
 except ImportError:
@@ -22,8 +21,7 @@ import os
 # Add the project root to the path to import progress_tracker
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 from src.model.progress_tracker import ProgressTracker, set_global_progress_tracker, progress_print, is_quiet_mode
-from tqdm import tqdm
-from ..common.models import OptionChain, Option, OptionType
+from ..common.models import OptionChain
 
 # Load environment variables from .env file
 load_dotenv()
@@ -737,6 +735,7 @@ class OptionsHandler:
         progress = ProgressTracker(
             start_date=data.index[0],
             end_date=data.index[-1],
+            total_dates=len(data.index),
             desc="Processing options data",
             quiet_mode=self.quiet_mode
         )
@@ -746,10 +745,6 @@ class OptionsHandler:
         
         # Dictionary to store OptionChain DTOs for each date
         options_data = {}
-        
-        print("\n🔄 Processing options data with comprehensive multi-strike collection...")
-        if self.quiet_mode:
-            print("⚠️  Detailed logging suppressed for cleaner progress display. Check final summary for results.\n")
         
         for current_date in data.index:
             # Ensure current_date is naive datetime for comparison

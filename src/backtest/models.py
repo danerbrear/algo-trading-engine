@@ -54,11 +54,12 @@ class Strategy:
     Strategy is a class that represents a trading strategy.
     """
 
-    def __init__(self, profit_target: float = None, stop_loss: float = None):
+    def __init__(self, profit_target: float = None, stop_loss: float = None, start_date_offset: int = 0):
         self.profit_target = profit_target
         self.stop_loss = stop_loss
         self.data = None
         self.options_data = None
+        self.start_date_offset = start_date_offset
 
     def set_profit_target(self, profit_target: float):
         """
@@ -83,6 +84,7 @@ class Strategy:
         """
         On new date, execute strategy.
         """
+    
         if len(positions) > 0:
             print("\nOpen positions:")
             for position in positions:
