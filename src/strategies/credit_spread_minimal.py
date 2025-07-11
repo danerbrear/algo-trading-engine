@@ -54,8 +54,6 @@ class CreditSpreadStrategy(Strategy):
                         current_price = self.data.loc[date]['Close']
                         print(f"    Current price: {round(current_price, 2)}")
                         add_position(position)
-                    else:
-                        self.error_count += 1
             else:
                 self.error_count += 1
 
