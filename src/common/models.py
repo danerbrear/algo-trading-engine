@@ -176,8 +176,8 @@ class OptionChain:
     @classmethod
     def from_dict_w_options(cls, data: Dict[Option, Any]) -> 'OptionChain':
         return cls(
-            calls=[opt for opt in data.calls],
-            puts=[opt for opt in data.puts],
+            calls=data.get('calls', []),
+            puts=data.get('puts', []),
         )
     
     def get_option_data_for_option(self, option: Option) -> Option:
