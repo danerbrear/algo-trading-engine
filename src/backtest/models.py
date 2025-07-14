@@ -140,7 +140,6 @@ class Position:
         self.strike_price = strike_price
         self.entry_date = entry_date
         self.entry_price = entry_price
-        self.exit_price = exit_price
         self.spread_options: list[Option] = spread_options if spread_options is not None else []
         # Runtime type check
         if self.spread_options and not all(isinstance(opt, Option) for opt in self.spread_options):
@@ -175,6 +174,50 @@ class Position:
             return (current_date - self.entry_date).days
         else:
             raise ValueError("Entry date is not set")
+        
+    def get_return_dollars_from_assignment(self, underlying_price: float) -> float:
+        """
+        Get the return from assignment for a credit spread position at expiration.
+        
+        For credit spreads:
+        - Initial credit received is stored in entry_price
+        - Maximum risk is the width of the spread minus the credit received
+        - At expiration, we calculate the intrinsic value of our short and long legs
+        """
+        if not self.spread_options or len(self.spread_options) != 2:
+            raise ValueError("Spread options are not set")
+            
+        atm_option, otm_option = self.spread_options
+        
+        if self.strategy_type == StrategyType.CALL_CREDIT_SPREAD:
+            # Short ATM call, Long OTM call
+            short_strike = atm_option.strike  # ATM strike
+            long_strike = otm_option.strike   # OTM strike (higher)
+            
+            # Calculate intrinsic values at expiration
+            short_intrinsic = max(0, underlying_price - short_strike)
+            long_intrinsic = max(0, underlying_price - long_strike)
+            
+            # Net P&L = Initial credit - Short leg cost + Long leg value
+            # Since we sold the short leg and bought the long leg
+            net_pnl = self.entry_price - short_intrinsic + long_intrinsic
+            
+        elif self.strategy_type == StrategyType.PUT_CREDIT_SPREAD:
+            # Short ATM put, Long OTM put
+            short_strike = atm_option.strike  # ATM strike
+            long_strike = otm_option.strike   # OTM strike (lower)
+            
+            # Calculate intrinsic values at expiration
+            short_intrinsic = max(0, short_strike - underlying_price)
+            long_intrinsic = max(0, long_strike - underlying_price)
+            
+            # Net P&L = Initial credit - Short leg cost + Long leg value
+            net_pnl = self.entry_price - short_intrinsic + long_intrinsic
+            
+        else:
+            raise ValueError(f"Invalid strategy type: {self.strategy_type}")
+        
+        return net_pnl * self.quantity * 100
         
     def get_return_dollars(self, exit_price: float) -> float:
         """
@@ -219,6 +262,8 @@ class Position:
         current_atm_price = current_atm_option.last_price
         current_otm_price = current_otm_option.last_price
 
+        print(f"Current ATM price: {current_atm_price}, Current OTM price: {current_otm_price}")
+
         # Calculate current net credit/debit based on strategy type
         if self.strategy_type == StrategyType.CALL_CREDIT_SPREAD:
             # For call credit spread: sell ATM call, buy OTM call
@@ -230,12 +275,7 @@ class Position:
             return current_net_credit
         else:
             raise ValueError(f"Invalid strategy type: {self.strategy_type}")
-
+    
     def __str__(self) -> str:
-        if self.exit_price is not None:
-            return_pct = self._get_return(self.exit_price) * 100
-            return_dollars = self.get_return_dollars(self.exit_price)
-            return f"{self.symbol} {self.strike_price} @ {self.entry_price:.2f} -> {self.exit_price:.2f} ({return_pct:+.2f}%, ${return_dollars:+.2f})"
-        else:
-            return f"{self.symbol} {self.strike_price} @ {self.entry_price:.2f} (Open, expires {self.expiration_date.strftime('%Y-%m-%d')})"
+        return f"{self.strategy_type.value} {self.symbol} {self.strike_price} @ {self.entry_price:.2f} (Open, expires {self.expiration_date.strftime('%Y-%m-%d')})"
     

@@ -190,13 +190,15 @@ class BacktestEngine:
         self.positions.append(position)
         self.total_positions += 1
 
-    def _remove_position(self, position: Position, exit_price: float):
+    def _remove_position(self, date: datetime, position: Position, exit_price: float, underlying_price: float = None):
         """
         Remove a position from the positions list and update capital.
         
         Args:
+            date: Date at which the position is being closed
             position: Position to remove
             exit_price: Price at which the position is being closed
+            underlying_price: Price of the underlying at the time of exit
         """
         if position not in self.positions:
             print(f"⚠️  Warning: Position {position.__str__()} not found in positions list")
@@ -208,7 +210,14 @@ class BacktestEngine:
             final_exit_price = 0
 
         # Calculate the return for this position
-        position_return = position.get_return_dollars(final_exit_price)
+        if position.get_days_to_expiration(date) < 1:
+            if underlying_price is None:
+                raise ValueError(f"Underlying price not provided for position {position.__str__()}")
+
+            position_return = position.get_return_dollars_from_assignment(underlying_price)
+            print(f"   Position closed by assignment: {position.__str__()}")
+        else:
+            position_return = position.get_return_dollars(final_exit_price)
 
         # Update capital
         self.capital += position_return
@@ -252,7 +261,7 @@ if __name__ == "__main__":
         backtester = BacktestEngine(
             data=data, 
             strategy=strategy,
-            initial_capital=10000,
+            initial_capital=5000,
             start_date=start_date,
             end_date=end_date
         )

@@ -17,7 +17,7 @@ class CreditSpreadStrategy(Strategy):
     holding_period = 15
 
     def __init__(self, lstm_model, lstm_scaler, options_handler: OptionsHandler = None, start_date_offset: int = 0):
-        super().__init__(stop_loss=0.6, profit_target=0.8, start_date_offset=start_date_offset)
+        super().__init__(stop_loss=0.6, start_date_offset=start_date_offset)
         self.lstm_model = lstm_model
         self.lstm_scaler = lstm_scaler
         self.options_handler = options_handler
@@ -110,17 +110,18 @@ class CreditSpreadStrategy(Strategy):
                 try:
                     if position.get_days_to_expiration(date) < 1:
                         print(f"Position {position.__str__()} expired or near expiration")
-                        print(f"    Exit price: {exit_price} for {position.__str__()}")
-                        remove_position(position, exit_price)
+                        underlying_price = self.data.loc[date]['Close']
+                        print(f"    Underlying price: {underlying_price}")
+                        remove_position(date, position, exit_price, underlying_price)
                     elif (self._profit_target_hit(position, exit_price) or self._stop_loss_hit(position, exit_price)):
                         print(f"Profit target or stop loss hit for {position.__str__()}")
                         print(f"    Exit price: {exit_price} for {position.__str__()}")
-                        remove_position(position, exit_price)
+                        remove_position(date, position, exit_price)
                     elif position.get_days_held(date) >= self.holding_period:
                         print(f"Position {position.__str__()} past holding period")
                         if exit_price:
                             print(f"    Exit price: {exit_price} for {position.__str__()}")
-                            remove_position(position, exit_price)
+                            remove_position(date, position, exit_price)
                         else:
                             print(f"    No exit price available for {position.__str__()} on {date}. Skipping.")
                 except Exception as e:
