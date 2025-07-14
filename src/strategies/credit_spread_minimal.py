@@ -144,10 +144,13 @@ class CreditSpreadStrategy(Strategy):
                 exit_price = position.calculate_exit_price(self.options_data[date.strftime('%Y-%m-%d')])
 
                 # Remove the position and update capital
-                remove_position(position, exit_price)
-
+                remove_position(date, position, exit_price)
             except Exception as e:
                 print(f"   Error closing position {position}: {e}")
+                import traceback
+                traceback.print_exc()
+                raise e
+            
         print(f"Total error count: {self.error_count}")
 
     def _find_best_spread(self, current_price: float, strategy_type: StrategyType, confidence: float, 
