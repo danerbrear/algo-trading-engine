@@ -47,7 +47,7 @@ class OptionsHandler:
         def fetch_func():
             # Show detailed messages only when not in quiet mode
             if not is_quiet_mode():
-                print(f"Fetching historical data for {contract.ticker}")
+                print(f"Fetching historical data for {contract.__str__()}")
             try:
                 aggs_response = self.client.get_aggs(
                     ticker=contract.ticker,
@@ -60,12 +60,14 @@ class OptionsHandler:
                 
                 # Safely handle the generator response
                 aggs = []
+                print(f"Aggs response: {aggs_response}")
+                ticker = aggs_response.ticker if aggs_response is not None else None
                 if aggs_response:
                     try:
                         aggs = list(aggs_response)
                     except Exception as e:
                         error_str = str(e)
-                        progress_print(f"Error converting generator to list for {contract.ticker}: {error_str}")
+                        progress_print(f"Error converting generator to list for {contract.__str__()}: {error_str}")
                         
                         # Check for authorization errors that indicate plan limitations
                         if "NOT_AUTHORIZED" in error_str or "doesn't include this data timeframe" in error_str:
@@ -83,7 +85,7 @@ class OptionsHandler:
                 # Enhanced data structure to support Polygon.io's available fields
                 # Note: For historical data, Greeks/IV would need Options Snapshot API
                 return Option.from_dict({
-                    'ticker': day_data.ticker,
+                    'ticker': ticker,
                     'strike': float(contract.strike_price),
                     'expiration': contract.expiration_date,
                     'type': 'call' if contract.contract_type.lower() == 'call' else 'put',
@@ -104,11 +106,11 @@ class OptionsHandler:
             except ValueError as e:
                 if "SKIP_DATE_UNAUTHORIZED" in str(e):
                     raise  # Re-raise to be caught by the outer handler
-                progress_print(f"ValueError in fetch_func for {contract.ticker}: {str(e)}")
+                progress_print(f"ValueError in fetch_func for {contract.__str__()}: {str(e)}")
                 return None
             except Exception as e:
                 error_str = str(e)
-                progress_print(f"Error in fetch_func for {contract.ticker}: {error_str}")
+                progress_print(f"Error in fetch_func for {contract.__str__()}: {error_str}")
                 
                 # Check for authorization errors in general exceptions too
                 if "NOT_AUTHORIZED" in error_str or "doesn't include this data timeframe" in error_str:
@@ -118,7 +120,7 @@ class OptionsHandler:
             
         return self.retry_handler.fetch_with_retry(
             fetch_func,
-            f"Error fetching historical data for {contract.ticker}"
+            f"Error fetching historical data for {contract.__str__()}"
         )
 
     def get_specific_option_contract(self, target_strike: float, expiry: str, option_type: str, current_date: datetime) -> Optional[Option]:

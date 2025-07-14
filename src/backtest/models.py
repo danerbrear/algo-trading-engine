@@ -208,9 +208,6 @@ class Position:
             
         atm_option, otm_option = self.spread_options
 
-        if current_option_chain is None:
-            raise ValueError("Current option chain is None")
-
         # Find current prices for our specific options
         current_atm_option = current_option_chain.get_option_data_for_option(atm_option)
         current_otm_option = current_option_chain.get_option_data_for_option(otm_option)

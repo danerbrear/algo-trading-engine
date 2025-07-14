@@ -36,6 +36,8 @@ class CreditSpreadStrategy(Strategy):
         
         super().on_new_date(date, positions, add_position, remove_position)
 
+        has_error = False
+
         if len(positions) == 0:
             # Determine if we should open a new position
             print("No positions, opening new position")
@@ -52,7 +54,7 @@ class CreditSpreadStrategy(Strategy):
                             add_position(position)
                     except Exception as e:
                         print(f"Error creating call credit spread: {e}")
-                        self.error_count += 1
+                        has_error = True
                 elif prediction['strategy'] == 2:
                     try:
                         # Put Credit Spread using real options data
@@ -64,9 +66,9 @@ class CreditSpreadStrategy(Strategy):
                             add_position(position)
                     except Exception as e:
                         print(f"Error creating put credit spread: {e}")
-                        self.error_count += 1
+                        has_error = True
             else:
-                self.error_count += 1
+                has_error = True
 
         else:
             for position in positions:
@@ -84,28 +86,32 @@ class CreditSpreadStrategy(Strategy):
                         contract = self.options_handler.get_specific_option_contract(option.strike, option.expiration, option.option_type.value, date)
                         if contract is None:
                             print(f"Error: No contract found for {option.strike} {option.expiration} {option.option_type.value}")
-                            self.error_count += 1
-                            continue
+                            has_error = True
                         
-                        if (contract.option_type == OptionType.CALL):
-                            option_chain.calls.append(contract)
-                        elif (contract.option_type == OptionType.PUT):
-                            option_chain.puts.append(contract)
-                        else:
-                            print(f"Error: Invalid option type: {contract.option_type}")
-                            self.error_count += 1
-                            continue
-                    exit_price = position.calculate_exit_price(option_chain)
+                        if contract is not None:
+                            if (contract.option_type == OptionType.CALL):
+                                option_chain.calls.append(contract)
+                            elif (contract.option_type == OptionType.PUT):
+                                option_chain.puts.append(contract)
+                            else:
+                                print(f"Error: Invalid option type: {contract.option_type}")
+                                has_error = True
 
-                if exit_price is None:
+                    if not has_error:
+                        exit_price = position.calculate_exit_price(option_chain)
+
+                if exit_price is None or has_error:
                     print(f"Error calculating exit price for {position.__str__()}")
-                    self.error_count += 1
-                    continue
+                    has_error = True
                 else:
                     exit_price = round(max(exit_price, 0), 2)
 
                 # Determine if we should close a position
-                if (self._profit_target_hit(position, exit_price) or self._stop_loss_hit(position, exit_price)):
+                if position.get_days_to_expiration(date) < 1:
+                    print(f"Position {position.__str__()} expired or near expiration")
+                    print(f"    Exit price: {exit_price} for {position.__str__()}")
+                    remove_position(position, exit_price)
+                elif (self._profit_target_hit(position, exit_price) or self._stop_loss_hit(position, exit_price)):
                     print(f"Profit target or stop loss hit for {position.__str__()}")
                     print(f"    Exit price: {exit_price} for {position.__str__()}")
                     remove_position(position, exit_price)
@@ -113,10 +119,9 @@ class CreditSpreadStrategy(Strategy):
                     print(f"Position {position.__str__()} past holding period")
                     print(f"    Exit price: {exit_price} for {position.__str__()}")
                     remove_position(position, exit_price)
-                elif position.get_days_to_expiration(date) < 1:
-                    print(f"Position {position.__str__()} expired or near expiration")
-                    print(f"    Exit price: {exit_price} for {position.__str__()}")
-                    remove_position(position, exit_price)
+
+        if has_error:
+            self.error_count += 1
 
     def on_end(self, positions: tuple['Position', ...], remove_position: Callable[['Position'], None], date: datetime):
         """
