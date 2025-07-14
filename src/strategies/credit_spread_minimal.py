@@ -107,18 +107,27 @@ class CreditSpreadStrategy(Strategy):
                     exit_price = round(max(exit_price, 0), 2)
 
                 # Determine if we should close a position
-                if position.get_days_to_expiration(date) < 1:
-                    print(f"Position {position.__str__()} expired or near expiration")
-                    print(f"    Exit price: {exit_price} for {position.__str__()}")
-                    remove_position(position, exit_price)
-                elif (self._profit_target_hit(position, exit_price) or self._stop_loss_hit(position, exit_price)):
-                    print(f"Profit target or stop loss hit for {position.__str__()}")
-                    print(f"    Exit price: {exit_price} for {position.__str__()}")
-                    remove_position(position, exit_price)
-                elif position.get_days_held(date) >= self.holding_period:
-                    print(f"Position {position.__str__()} past holding period")
-                    print(f"    Exit price: {exit_price} for {position.__str__()}")
-                    remove_position(position, exit_price)
+                try:
+                    if position.get_days_to_expiration(date) < 1:
+                        print(f"Position {position.__str__()} expired or near expiration")
+                        print(f"    Exit price: {exit_price} for {position.__str__()}")
+                        remove_position(position, exit_price)
+                    elif (self._profit_target_hit(position, exit_price) or self._stop_loss_hit(position, exit_price)):
+                        print(f"Profit target or stop loss hit for {position.__str__()}")
+                        print(f"    Exit price: {exit_price} for {position.__str__()}")
+                        remove_position(position, exit_price)
+                    elif position.get_days_held(date) >= self.holding_period:
+                        print(f"Position {position.__str__()} past holding period")
+                        if exit_price:
+                            print(f"    Exit price: {exit_price} for {position.__str__()}")
+                            remove_position(position, exit_price)
+                        else:
+                            print(f"    No exit price available for {position.__str__()} on {date}. Skipping.")
+                except Exception as e:
+                    print(f"Error closing position {position}: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    has_error = True
 
         if has_error:
             self.error_count += 1

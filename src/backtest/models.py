@@ -86,7 +86,7 @@ class Strategy:
         """
     
         if len(positions) > 0:
-            print("\nOpen positions:")
+            print(f"\n{date}: Open positions:")
             for position in positions:
                 print(f"  {position.__str__()}")
 
@@ -97,7 +97,7 @@ class Strategy:
         if self.profit_target is None:
             return False
         return position.profit_target_hit(self.profit_target, exit_price)
-    
+
     def _stop_loss_hit(self, position: 'Position', exit_price: float) -> bool:
         """
         Check if the stop loss has been hit for a position.
@@ -150,13 +150,13 @@ class Position:
         """
         Check if the profit target has been hit for a position.
         """
-        return self._get_return(exit_price) >= profit_target
+        return self._get_return(exit_price) >= profit_target if exit_price is not None else False
     
     def stop_loss_hit(self, stop_loss: float, exit_price: float) -> bool:
         """
         Check if the stop loss has been hit for a position.
         """
-        return self._get_return(exit_price) <= -stop_loss
+        return self._get_return(exit_price) <= -stop_loss if exit_price is not None else False
     
     def get_days_to_expiration(self, current_date: datetime) -> int:
         """

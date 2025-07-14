@@ -187,7 +187,6 @@ class BacktestEngine:
         if self.capital < position.entry_price * position.quantity * 100:
             raise ValueError("Not enough capital to add position")
         
-        self.capital -= position.entry_price * position.quantity * 100
         self.positions.append(position)
         self.total_positions += 1
 
@@ -200,15 +199,20 @@ class BacktestEngine:
             exit_price: Price at which the position is being closed
         """
         if position not in self.positions:
-            print(f"⚠️  Warning: Position {position} not found in positions list")
+            print(f"⚠️  Warning: Position {position.__str__()} not found in positions list")
             return
-            
-        # Calculate the return for this position
-        position_return = position.get_return_dollars(exit_price)
         
+        final_exit_price = exit_price
+        if not exit_price:
+            print(f"⚠️  Warning: Exit price not provided for position {position.__str__()}. Defaulting to 0.")
+            final_exit_price = 0
+
+        # Calculate the return for this position
+        position_return = position.get_return_dollars(final_exit_price)
+
         # Update capital
         self.capital += position_return
-        
+
         # Remove the position
         self.positions.remove(position)
         
@@ -219,7 +223,7 @@ class BacktestEngine:
 
 if __name__ == "__main__":
     # Test with a smaller date range to verify the fix
-    start_date = datetime(2024, 4, 1)
+    start_date = datetime(2024, 1, 1)
     end_date = datetime(2025, 1, 1)
 
     data_retriever = DataRetriever(symbol='SPY', hmm_start_date=start_date, lstm_start_date=start_date, use_free_tier=False, quiet_mode=True)

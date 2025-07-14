@@ -61,7 +61,7 @@ class OptionsHandler:
                 # Safely handle the generator response
                 aggs = []
                 print(f"Aggs response: {aggs_response}")
-                ticker = aggs_response.ticker if aggs_response is not None else None
+               
                 if aggs_response:
                     try:
                         aggs = list(aggs_response)
@@ -85,7 +85,7 @@ class OptionsHandler:
                 # Enhanced data structure to support Polygon.io's available fields
                 # Note: For historical data, Greeks/IV would need Options Snapshot API
                 return Option.from_dict({
-                    'ticker': ticker,
+                    'ticker': contract.ticker,
                     'strike': float(contract.strike_price),
                     'expiration': contract.expiration_date,
                     'type': 'call' if contract.contract_type.lower() == 'call' else 'put',
