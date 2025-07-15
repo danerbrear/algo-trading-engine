@@ -237,10 +237,9 @@ class Position:
         """
         Get the percentage return for a position.
         """
-        if exit_price is None:
-            return None
-        if self.quantity is None:
+        if self.quantity is None or exit_price is None:
             raise ValueError("Quantity is not set")
+        
         return ((exit_price * self.quantity * 100) - (self.entry_price * self.quantity * 100)) / (self.entry_price * self.quantity * 100)
     
     def calculate_exit_price(self, current_option_chain: OptionChain) -> float:

@@ -187,6 +187,10 @@ class BacktestEngine:
         """
 
         position_size = self._get_position_size(position)
+        if position_size == 0:
+            print(f"⚠️  Warning: Not enough capital to add position. Position size is 0.")
+            return
+        
         position.set_quantity(position_size)
 
         if self.capital < position.entry_price * position.quantity * 100:
@@ -250,8 +254,8 @@ class BacktestEngine:
 
 if __name__ == "__main__":
     # Test with a smaller date range to verify the fix
-    start_date = datetime(2024, 1, 1)
-    end_date = datetime(2025, 1, 1)
+    start_date = datetime(2024, 5, 1)
+    end_date = datetime(2025, 5, 1)
 
     data_retriever = DataRetriever(symbol='SPY', hmm_start_date=start_date, lstm_start_date=start_date, use_free_tier=False, quiet_mode=True)
 
@@ -279,10 +283,10 @@ if __name__ == "__main__":
         backtester = BacktestEngine(
             data=data, 
             strategy=strategy,
-            initial_capital=5000,
+            initial_capital=1000,
             start_date=start_date,
             end_date=end_date,
-            max_position_size=0.1
+            max_position_size=0.2
         )
         
         success = backtester.run()
