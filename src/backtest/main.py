@@ -15,7 +15,8 @@ class BacktestEngine:
 
     def __init__(self, data: pd.DataFrame, strategy: Strategy, initial_capital: float = 100000,
                  start_date: datetime = datetime.now(),
-                 end_date: datetime = datetime.now()):
+                 end_date: datetime = datetime.now(),
+                 max_position_size: float = None):
         self.data = data
         self.strategy = strategy
         self.capital = initial_capital
@@ -25,6 +26,7 @@ class BacktestEngine:
         self.positions = []
         self.total_positions = 0
         self.benchmark = Benchmark(initial_capital)
+        self.max_position_size = max_position_size
 
     def run(self) -> bool:
         """
@@ -184,8 +186,13 @@ class BacktestEngine:
         Add a position to the positions list.
         """
 
+        position_size = self._get_position_size(position)
+        position.set_quantity(position_size)
+
         if self.capital < position.entry_price * position.quantity * 100:
             raise ValueError("Not enough capital to add position")
+        
+        print(f"Adding position: {position.__str__()}")
         
         self.positions.append(position)
         self.total_positions += 1
@@ -229,6 +236,17 @@ class BacktestEngine:
         print(f"   Position closed: {position.__str__()}")
         print(f"     Entry: ${position.entry_price:.2f} | Exit: ${exit_price:.2f}")
         print(f"     Return: ${position_return:+.2f} | Capital: ${self.capital:.2f}")
+    
+    def _get_position_size(self, position: Position) -> int:
+        """
+        Get the number of contracts to buy or sell for a position based on the max position size and the current capital.
+        """
+        if self.max_position_size is None:
+            return 1
+        
+        max_position_capital = self.capital * self.max_position_size
+
+        return int(max_position_capital / (position.entry_price * 100))
 
 if __name__ == "__main__":
     # Test with a smaller date range to verify the fix
@@ -263,7 +281,8 @@ if __name__ == "__main__":
             strategy=strategy,
             initial_capital=5000,
             start_date=start_date,
-            end_date=end_date
+            end_date=end_date,
+            max_position_size=0.1
         )
         
         success = backtester.run()

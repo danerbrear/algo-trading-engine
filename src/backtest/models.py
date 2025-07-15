@@ -132,10 +132,10 @@ class Position:
         spread_options (list[Option]): List of Option objects that make up the spread (e.g., [atm_option, otm_option])
     """
 
-    def __init__(self, symbol: str, quantity: int, expiration_date: datetime, strategy_type: StrategyType, strike_price: float, entry_date: datetime, entry_price: float, exit_price: float = None, spread_options: list[Option] = None):
+    def __init__(self, symbol: str, expiration_date: datetime, strategy_type: StrategyType, strike_price: float, entry_date: datetime, entry_price: float, exit_price: float = None, spread_options: list[Option] = None):
         self.symbol = symbol
         self.expiration_date = expiration_date
-        self.quantity = quantity
+        self.quantity = None
         self.strategy_type = strategy_type
         self.strike_price = strike_price
         self.entry_date = entry_date
@@ -144,6 +144,12 @@ class Position:
         # Runtime type check
         if self.spread_options and not all(isinstance(opt, Option) for opt in self.spread_options):
             raise TypeError("All elements of spread_options must be of type Option")
+        
+    def set_quantity(self, quantity: int):
+        """
+        Set the quantity for a position.
+        """
+        self.quantity = quantity
     
     def profit_target_hit(self, profit_target: float, exit_price: float) -> bool:
         """
@@ -223,6 +229,8 @@ class Position:
         """
         Get the return in dollars for a position.
         """
+        if self.quantity is None:
+            raise ValueError("Quantity is not set")
         return (exit_price * self.quantity * 100) - (self.entry_price * self.quantity * 100)
     
     def _get_return(self, exit_price: float) -> float:
@@ -231,6 +239,8 @@ class Position:
         """
         if exit_price is None:
             return None
+        if self.quantity is None:
+            raise ValueError("Quantity is not set")
         return ((exit_price * self.quantity * 100) - (self.entry_price * self.quantity * 100)) / (self.entry_price * self.quantity * 100)
     
     def calculate_exit_price(self, current_option_chain: OptionChain) -> float:
@@ -277,5 +287,5 @@ class Position:
             raise ValueError(f"Invalid strategy type: {self.strategy_type}")
     
     def __str__(self) -> str:
-        return f"{self.strategy_type.value} {self.symbol} {self.strike_price} @ {self.entry_price:.2f} (Open, expires {self.expiration_date.strftime('%Y-%m-%d')})"
+        return f"{self.strategy_type.value} {self.symbol} {self.strike_price} @ {self.entry_price:.2f} x{self.quantity} (Open, expires {self.expiration_date.strftime('%Y-%m-%d')})"
     

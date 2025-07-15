@@ -48,7 +48,6 @@ class CreditSpreadStrategy(Strategy):
                         # Call Credit Spread using real options data
                         position = self._create_call_credit_spread_from_chain(date, prediction)
                         if position:
-                            print(f"Adding position: {position.__str__()}")
                             current_price = self.data.loc[date]['Close']
                             print(f"    Current price: {round(current_price, 2)}")
                             add_position(position)
@@ -60,7 +59,6 @@ class CreditSpreadStrategy(Strategy):
                         # Put Credit Spread using real options data
                         position = self._create_put_credit_spread_from_chain(date, prediction)
                         if position:
-                            print(f"Adding position: {position.__str__()}")
                             current_price = self.data.loc[date]['Close']
                             print(f"    Current price: {round(current_price, 2)}")
                             add_position(position)
@@ -500,7 +498,6 @@ class CreditSpreadStrategy(Strategy):
         # Create position using the best spread
         position = Position(
             symbol=self.options_handler.symbol,
-            quantity=1,
             expiration_date=datetime.strptime(atm_option.expiration, '%Y-%m-%d'),
             strategy_type=StrategyType.CALL_CREDIT_SPREAD,
             strike_price=best_spread['atm_strike'],
@@ -551,7 +548,6 @@ class CreditSpreadStrategy(Strategy):
         # Create position using the best spread
         position = Position(
             symbol=self.options_handler.symbol,
-            quantity=1,
             expiration_date=datetime.strptime(atm_option.expiration, '%Y-%m-%d'),
             strategy_type=StrategyType.PUT_CREDIT_SPREAD,
             strike_price=best_spread['atm_strike'],
