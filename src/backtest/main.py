@@ -250,7 +250,7 @@ class BacktestEngine:
         
         max_position_capital = self.capital * self.max_position_size
 
-        return int(max_position_capital / (position.entry_price * 100))
+        return int(max_position_capital / position.get_max_risk())
 
 if __name__ == "__main__":
     # Test with a smaller date range to verify the fix
@@ -283,10 +283,10 @@ if __name__ == "__main__":
         backtester = BacktestEngine(
             data=data, 
             strategy=strategy,
-            initial_capital=1000,
+            initial_capital=2000,
             start_date=start_date,
             end_date=end_date,
-            max_position_size=0.2
+            max_position_size=0.25
         )
         
         success = backtester.run()

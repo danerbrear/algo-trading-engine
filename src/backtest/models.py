@@ -285,6 +285,15 @@ class Position:
         else:
             raise ValueError(f"Invalid strategy type: {self.strategy_type}")
     
+    def get_max_risk(self):
+        """
+        Determine the max loss for a position.
+        """
+        atm_option, otm_option = self.spread_options
+        width = abs(atm_option.strike - otm_option.strike)
+        net_credit = atm_option.last_price - otm_option.last_price
+        return (width - net_credit) * 100
+    
     def __str__(self) -> str:
         return f"{self.strategy_type.value} {self.symbol} {self.strike_price} @ {self.entry_price:.2f} x{self.quantity} (Open, expires {self.expiration_date.strftime('%Y-%m-%d')})"
     
