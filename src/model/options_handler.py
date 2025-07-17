@@ -60,7 +60,6 @@ class OptionsHandler:
                 
                 # Safely handle the generator response
                 aggs = []
-                print(f"Aggs response: {aggs_response}")
                
                 if aggs_response:
                     try:

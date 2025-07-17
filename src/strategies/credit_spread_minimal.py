@@ -209,10 +209,11 @@ class CreditSpreadStrategy(Strategy):
                     otm_strike = atm_strike + width
                     
                     # Find ATM and OTM call options
-                    atm_call = self._find_option_by_strike(calls, atm_strike)
-                    otm_call = self._find_option_by_strike(calls, otm_strike)
+                    atm_call = self.options_handler.get_specific_option_contract(atm_strike, expiry_date, OptionType.CALL.value, date)
+                    otm_call = self.options_handler.get_specific_option_contract(otm_strike, expiry_date, OptionType.CALL.value, date)
                     
                     if not atm_call or not otm_call:
+                        print(f"      ❌ No ATM or OTM call options found for {width}pt spread")
                         total_rejected += 1
                         continue
                         
@@ -224,10 +225,11 @@ class CreditSpreadStrategy(Strategy):
                     otm_strike = atm_strike - width
                     
                     # Find ATM and OTM put options
-                    atm_put = self._find_option_by_strike(puts, atm_strike)
-                    otm_put = self._find_option_by_strike(puts, otm_strike)
+                    atm_put = self.options_handler.get_specific_option_contract(atm_strike, expiry_date, OptionType.PUT.value, date)
+                    otm_put = self.options_handler.get_specific_option_contract(otm_strike, expiry_date, OptionType.PUT.value, date)
                     
                     if not atm_put or not otm_put:
+                        print(f"      ❌ No ATM or OTM put options found for {width}pt spread")
                         total_rejected += 1
                         continue
                         
@@ -282,13 +284,6 @@ class CreditSpreadStrategy(Strategy):
         else:
             print(f"   ❌ No spreads meet the minimum criteria")
             return None
-
-    def _find_option_by_strike(self, options: list[Option], strike: float):
-        """Find an option by strike price"""
-        for option in options:
-            if option.strike == strike:
-                return option
-        return None
 
     def _estimate_probability_of_profit(self, confidence: float, direction: str, width: int = None, 
                                        atm_strike: float = None, otm_strike: float = None, 

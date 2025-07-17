@@ -27,6 +27,8 @@ class BacktestEngine:
         self.total_positions = 0
         self.benchmark = Benchmark(initial_capital)
         self.max_position_size = max_position_size
+        self.daily_returns = []  # Track daily returns for Sharpe Ratio calculation
+        self.previous_capital = initial_capital  # Track previous day's capital
 
     def run(self) -> bool:
         """
@@ -85,6 +87,9 @@ class BacktestEngine:
         final_return = self.capital - initial_capital
         final_return_pct = (final_return / initial_capital) * 100
         
+        # Calculate Sharpe Ratio
+        sharpe_ratio = self._calculate_sharpe_ratio()
+        
         print("\n📊 Backtest Results Summary:")
         print(f"   Benchmark return: {self.benchmark.get_return_percentage():+.2f}%")
         print(f"   Benchmark return dollars: ${self.benchmark.get_return_dollars():+.2f}\n")
@@ -92,6 +97,7 @@ class BacktestEngine:
         print(f"   Total positions: {self.total_positions}")
         print(f"   Final capital: ${self.capital:.2f}")
         print(f"   Total Return: ${final_return:+,.2f} ({final_return_pct:+.2f}%)")
+        print(f"   Sharpe Ratio: {sharpe_ratio:.3f}")
 
     def _validate_data(self, data: pd.DataFrame) -> bool:
         """
@@ -233,6 +239,11 @@ class BacktestEngine:
         # Update capital
         self.capital += position_return
 
+        # Calculate daily return and add to tracking
+        daily_return = (self.capital - self.previous_capital) / self.previous_capital
+        self.daily_returns.append(daily_return)
+        self.previous_capital = self.capital
+
         # Remove the position
         self.positions.remove(position)
         
@@ -252,9 +263,38 @@ class BacktestEngine:
 
         return int(max_position_capital / position.get_max_risk())
 
+    def _calculate_sharpe_ratio(self) -> float:
+        """
+        Calculate the Sharpe Ratio based on daily returns.
+        
+        Returns:
+            float: Sharpe Ratio (annualized)
+        """
+        if not self.daily_returns:
+            return 0.0
+        
+        import numpy as np
+        
+        # Convert daily returns to numpy array
+        returns = np.array(self.daily_returns)
+        
+        # Calculate mean and standard deviation of returns
+        mean_return = np.mean(returns)
+        std_return = np.std(returns, ddof=1)  # Use sample standard deviation
+        
+        # Avoid division by zero
+        if std_return == 0:
+            return 0.0
+        
+        # Calculate Sharpe Ratio (assuming risk-free rate of 0 for simplicity)
+        # Annualize by multiplying by sqrt(252) for trading days
+        sharpe_ratio = (mean_return / std_return) * np.sqrt(252)
+        
+        return sharpe_ratio
+
 if __name__ == "__main__":
     # Test with a smaller date range to verify the fix
-    start_date = datetime(2024, 5, 1)
+    start_date = datetime(2023, 8, 1)
     end_date = datetime(2025, 5, 1)
 
     data_retriever = DataRetriever(symbol='SPY', hmm_start_date=start_date, lstm_start_date=start_date, use_free_tier=False, quiet_mode=True)
@@ -283,7 +323,7 @@ if __name__ == "__main__":
         backtester = BacktestEngine(
             data=data, 
             strategy=strategy,
-            initial_capital=2000,
+            initial_capital=5000,
             start_date=start_date,
             end_date=end_date,
             max_position_size=0.25
