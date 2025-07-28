@@ -88,9 +88,9 @@ class CreditSpreadStrategy(Strategy):
                         
                         if contract is not None:
                             if (contract.option_type == OptionType.CALL):
-                                option_chain.calls.append(contract)
+                                option_chain = option_chain.add_option(contract)
                             elif (contract.option_type == OptionType.PUT):
-                                option_chain.puts.append(contract)
+                                option_chain = option_chain.add_option(contract)
                             else:
                                 print(f"Error: Invalid option type: {contract.option_type}")
                                 has_error = True

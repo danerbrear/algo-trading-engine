@@ -775,11 +775,14 @@ class OptionsHandler:
                 
                 # Convert to OptionChain DTO and store
                 if chain_data.calls or chain_data.puts:
-                    option_chain = chain_data
-                    option_chain.underlying_symbol = self.symbol
-                    option_chain.current_price = current_price
-                    option_chain.date = current_date.strftime('%Y-%m-%d')
-                    option_chain.source = 'options_handler'
+                    option_chain = OptionChain(
+                        calls=chain_data.calls,
+                        puts=chain_data.puts,
+                        underlying_symbol=self.symbol,
+                        current_price=current_price,
+                        date=current_date.strftime('%Y-%m-%d'),
+                        source='options_handler'
+                    )
                     
                     # Store in options_data dictionary
                     date_key = current_date.strftime('%Y-%m-%d')

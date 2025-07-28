@@ -8,10 +8,10 @@ class OptionType(Enum):
     CALL = "call"
     PUT = "put"
 
-@dataclass
+@dataclass(frozen=True)
 class Option:
     """
-    Data Transfer Object for an individual option contract, matching the cache format.
+    Immutable Data Transfer Object for an individual option contract, matching the cache format.
     """
     ticker: str
     symbol: str
@@ -34,15 +34,27 @@ class Option:
     def __post_init__(self):
         # Ensure option_type is an OptionType enum
         if isinstance(self.option_type, str):
-            self.option_type = OptionType(self.option_type)
+            object.__setattr__(self, 'option_type', OptionType(self.option_type))
         elif not isinstance(self.option_type, OptionType):
             raise ValueError(f"option_type must be a string or OptionType enum, got {type(self.option_type)}")
+        
         # Ensure expiration is a string
         if isinstance(self.expiration, (datetime,)):
-            self.expiration = self.expiration.strftime('%Y-%m-%d')
+            object.__setattr__(self, 'expiration', self.expiration.strftime('%Y-%m-%d'))
+        
         # Calculate mid_price if not provided but bid/ask are available
         if self.mid_price is None and self.bid is not None and self.ask is not None:
-            self.mid_price = (self.bid + self.ask) / 2
+            object.__setattr__(self, 'mid_price', (self.bid + self.ask) / 2)
+        
+        # Validate required fields
+        if self.strike <= 0:
+            raise ValueError("Strike price must be positive")
+        if self.last_price < 0:
+            raise ValueError("Last price cannot be negative")
+        if self.volume is not None and self.volume < 0:
+            raise ValueError("Volume cannot be negative")
+        if self.open_interest is not None and self.open_interest < 0:
+            raise ValueError("Open interest cannot be negative")
 
     @property
     def is_call(self) -> bool:
@@ -77,6 +89,7 @@ class Option:
             return self.moneyness > 1.0
 
     def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization"""
         return {
             'ticker': self.ticker,
             'strike': self.strike,
@@ -99,6 +112,7 @@ class Option:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Option':
+        """Create from dictionary for deserialization"""
         return cls(
             ticker=data.get('ticker', ''),
             symbol=data['symbol'],
@@ -127,15 +141,14 @@ class Option:
                 f"expiration={self.expiration}, "
                 f"type={self.option_type.value}, price={self.last_price:.2f})")
 
-
-@dataclass
+@dataclass(frozen=True)
 class OptionChain:
     """
-    Data Transfer Object for an option chain matching the cache format.
+    Immutable Data Transfer Object for an option chain matching the cache format.
     Only 'calls' and 'puts' lists are required.
     """
-    calls: list[Option] = field(default_factory=list)
-    puts: list[Option] = field(default_factory=list)
+    calls: tuple[Option, ...] = field(default_factory=tuple)
+    puts: tuple[Option, ...] = field(default_factory=tuple)
     # Optional metadata for in-memory use, not present in cache
     underlying_symbol: Optional[str] = None
     expiration_date: Optional[str] = None
@@ -144,9 +157,12 @@ class OptionChain:
     source: Optional[str] = None
 
     def __post_init__(self):
-        # Ensure all items in calls and puts are Option instances
-        self.calls = [opt if isinstance(opt, Option) else Option.from_dict(opt) for opt in self.calls]
-        self.puts = [opt if isinstance(opt, Option) else Option.from_dict(opt) for opt in self.puts]
+        # Convert lists to tuples for immutability and ensure all items are Option instances
+        calls_list = [opt if isinstance(opt, Option) else Option.from_dict(opt) for opt in self.calls]
+        puts_list = [opt if isinstance(opt, Option) else Option.from_dict(opt) for opt in self.puts]
+        
+        object.__setattr__(self, 'calls', tuple(calls_list))
+        object.__setattr__(self, 'puts', tuple(puts_list))
 
     @property
     def total_calls(self) -> int:
@@ -161,6 +177,7 @@ class OptionChain:
         return self.total_calls + self.total_puts
 
     def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization"""
         return {
             'calls': [opt.to_dict() for opt in self.calls],
             'puts': [opt.to_dict() for opt in self.puts],
@@ -168,6 +185,7 @@ class OptionChain:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'OptionChain':
+        """Create from dictionary for deserialization"""
         return cls(
             calls=[Option.from_dict(opt) for opt in data.get('calls', [])],
             puts=[Option.from_dict(opt) for opt in data.get('puts', [])],
@@ -175,12 +193,13 @@ class OptionChain:
     
     @classmethod
     def from_dict_w_options(cls, data: Dict[Option, Any]) -> 'OptionChain':
+        """Create from dictionary with existing Option objects"""
         return cls(
             calls=data.get('calls', []),
             puts=data.get('puts', []),
         )
     
-    def get_option_data_for_option(self, option: Option) -> Option:
+    def get_option_data_for_option(self, option: Option) -> Optional[Option]:
         """
         Find the current option data for a given option by matching strike and expiration.
         
@@ -200,6 +219,39 @@ class OptionChain:
                 return current_option
         
         return None
+
+    def add_option(self, option: Option) -> 'OptionChain':
+        """
+        Create a new OptionChain with the added option.
+        
+        Args:
+            option: The option to add
+            
+        Returns:
+            OptionChain: New OptionChain with the added option
+        """
+        if option.is_call:
+            new_calls = self.calls + (option,)
+            return OptionChain(
+                calls=new_calls,
+                puts=self.puts,
+                underlying_symbol=self.underlying_symbol,
+                expiration_date=self.expiration_date,
+                current_price=self.current_price,
+                date=self.date,
+                source=self.source
+            )
+        else:
+            new_puts = self.puts + (option,)
+            return OptionChain(
+                calls=self.calls,
+                puts=new_puts,
+                underlying_symbol=self.underlying_symbol,
+                expiration_date=self.expiration_date,
+                current_price=self.current_price,
+                date=self.date,
+                source=self.source
+            )
 
     def __str__(self) -> str:
         """Return a descriptive string listing all options in the chain."""
