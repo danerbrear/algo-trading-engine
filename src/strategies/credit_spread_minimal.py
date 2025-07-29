@@ -201,7 +201,7 @@ class CreditSpreadStrategy(Strategy):
             calls = [opt for opt in chain_data.calls if opt.expiration == expiry_str]
             puts = [opt for opt in chain_data.puts if opt.expiration == expiry_str]
             
-            for width in [5, 7, 8, 10, 12, 15, 25]:
+            for width in [5, 7, 8, 10, 12, 15]:
                 total_evaluated += 1
 
                 if strategy_type == StrategyType.CALL_CREDIT_SPREAD:

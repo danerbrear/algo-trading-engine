@@ -89,7 +89,9 @@ class VolumeValidator:
             return {
                 'is_valid': False,
                 'reason': 'No options provided',
-                'options_status': []
+                'options_status': [],
+                'total_options': 0,
+                'valid_options': 0
             }
         
         options_status = []

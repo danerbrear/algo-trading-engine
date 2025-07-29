@@ -77,6 +77,23 @@ The LSTM model predicts optimal options trading strategies from three classes:
   - Creates `.env` file with required API keys
   - Sets up configuration directories
 
+### Backtesting System
+
+- **`src/backtest/main.py`** - Core backtesting engine with volume validation
+  - Validates option volume before adding positions
+  - Tracks volume validation statistics
+  - Configurable volume thresholds
+
+- **`src/backtest/volume_validator.py`** - Volume validation utilities
+  - Static methods for validating option volume
+  - Spread volume validation
+  - Volume status reporting
+
+- **`src/backtest/config.py`** - Volume validation configuration
+  - VolumeConfig DTO for settings
+  - VolumeStats DTO for tracking statistics
+  - Immutable configuration objects
+
 ### Data and Output Directories
 
 - **`data_cache/`** - Cached market and options data
@@ -91,6 +108,78 @@ The LSTM model predicts optimal options trading strategies from three classes:
 - **`Trained_Models/`** - Saved model files (when using --save flag)
   - Timestamped and latest model versions
   - Includes both LSTM and HMM models
+
+## Volume Validation System
+
+The backtesting system includes comprehensive volume validation to ensure only liquid options are traded. This improves the realism of backtests by avoiding illiquid options that would be difficult to trade in real market conditions.
+
+### Key Features
+
+- **Minimum Volume Threshold**: Configurable minimum volume requirement (default: 10 contracts)
+- **Strategy-Level Data Fetching**: Strategies handle volume data fetching and ensure data availability
+- **BacktestEngine Validation**: Centralized volume validation in the backtesting engine
+- **Statistics Tracking**: Comprehensive tracking of volume validation metrics
+- **Backward Compatibility**: Existing backtests continue to work with volume validation disabled
+
+### Configuration
+
+Volume validation can be configured when creating a BacktestEngine:
+
+```python
+from src.backtest.config import VolumeConfig
+from src.backtest.main import BacktestEngine
+
+# Enable volume validation with custom threshold
+volume_config = VolumeConfig(min_volume=15, enable_volume_validation=True)
+
+engine = BacktestEngine(
+    data=data,
+    strategy=strategy,
+    initial_capital=10000,
+    volume_config=volume_config
+)
+```
+
+### Usage Examples
+
+#### Basic Volume Validation
+```python
+# Default configuration (min_volume=10, enabled=True)
+engine = BacktestEngine(data=data, strategy=strategy)
+
+# Custom configuration
+config = VolumeConfig(min_volume=20, enable_volume_validation=True)
+engine = BacktestEngine(data=data, strategy=strategy, volume_config=config)
+```
+
+#### Disabling Volume Validation
+```python
+# Disable volume validation for existing backtests
+config = VolumeConfig(enable_volume_validation=False)
+engine = BacktestEngine(data=data, strategy=strategy, volume_config=config)
+```
+
+#### Accessing Volume Statistics
+```python
+# After running a backtest
+summary = engine.volume_stats.get_summary()
+print(f"Positions rejected: {summary['positions_rejected_volume']}")
+print(f"Options checked: {summary['options_checked']}")
+print(f"Rejection rate: {summary['rejection_rate']:.1f}%")
+```
+
+### Architecture
+
+The volume validation system follows a clean separation of concerns:
+
+1. **Strategy Responsibility**: Strategies fetch volume data and ensure it's available before creating positions
+2. **BacktestEngine Validation**: BacktestEngine validates volume requirements before adding positions
+3. **Configuration**: Immutable DTOs for settings and statistics tracking
+
+This architecture ensures that:
+- Data fetching is handled at the appropriate layer (Strategy)
+- Validation is centralized and consistent (BacktestEngine)
+- Configuration is type-safe and immutable (DTOs)
 
 ## Technical Architecture
 

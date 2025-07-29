@@ -112,11 +112,7 @@ class BacktestEngine:
             print(f"\n📈 Volume Validation Statistics:")
             print(f"   Options checked: {volume_summary['options_checked']}")
             print(f"   Positions rejected due to volume: {volume_summary['positions_rejected_volume']}")
-            print(f"   API fetch failures: {volume_summary['api_fetch_failures']}")
-            print(f"   API errors: {volume_summary['api_errors']}")
-            print(f"   Cache updates: {volume_summary['cache_updates']}")
             print(f"   Volume rejection rate: {volume_summary['rejection_rate']:.1f}%")
-            print(f"   API success rate: {volume_summary['api_success_rate']:.1f}%")
 
     def _validate_data(self, data: pd.DataFrame) -> bool:
         """
