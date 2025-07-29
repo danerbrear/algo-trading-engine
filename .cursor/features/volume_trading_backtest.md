@@ -6,7 +6,10 @@ Prevent trades when volume is less than 10 for an option contract when backtesti
 ## Overview
 This feature will add volume validation to the backtesting system to ensure that only options with sufficient liquidity (volume >= 10) are considered for trading. This will improve the realism of backtests by avoiding illiquid options that would be difficult to trade in real market conditions.
 
-**Key Design Principle**: Volume validation will be implemented at the highest level of abstraction possible - in the `BacktestEngine._add_position()` method. This approach minimizes changes to individual strategies and keeps the validation logic centralized.
+**Key Design Principle**: 
+1. **Strategy Responsibility**: Strategies handle data fetching and ensure volume data is available in options
+2. **BacktestEngine Validation**: BacktestEngine validates volume requirements before adding positions
+3. **Separation of Concerns**: Data fetching is handled by Strategy, validation by BacktestEngine
 
 ## Implementation Plan
 
@@ -45,7 +48,7 @@ This feature will add volume validation to the backtesting system to ensure that
 **Description**: Add volume validation to the _add_position method
 **Components**:
 - Add volume validation before position is added
-- Validate all options in spread_options list
+- Validate all options in spread_options list (assumes data is already fetched by Strategy)
 - Log volume validation decisions
 - Track volume rejection statistics
 - Return early if volume validation fails
@@ -55,10 +58,9 @@ This feature will add volume validation to the backtesting system to ensure that
 **Description**: Add volume-related statistics to backtest results
 **Components**:
 - Track rejected trades due to volume
-- Track API fetch attempts and failures
-- Track cache updates with fresh volume data
-- Add comprehensive volume statistics to final report
+- Track options checked for volume validation
 - Add volume validation summary in `_end()` method
+- Simplified statistics (no API tracking since data fetching is handled by Strategy)
 
 ### Phase 3: Data Integration and Validation
 
@@ -70,15 +72,14 @@ This feature will add volume validation to the backtesting system to ensure that
 - Add volume validation helper methods if needed
 - Ensure volume data is preserved in serialization/deserialization
 
-#### Task 3.2: Update Data Retriever with Volume Data Fallback
-**File**: `src/common/data_retriever.py`
-**Description**: Ensure volume data is properly loaded from cache with API fallback
+#### Task 3.2: Update Strategy Data Fetching
+**File**: `src/strategies/credit_spread_minimal.py`
+**Description**: Ensure strategies fetch volume data when creating positions
 **Components**:
-- Verify volume data is preserved in data loading
-- Add volume data validation in data loading process
-- Implement API fallback when volume data is missing from cache
-- Add error handling and logging for API failures
-- Update cache with fresh volume data when available
+- Update strategy to fetch fresh volume data when creating options
+- Ensure all options have volume data before creating positions
+- Add volume data validation in position creation methods
+- Handle API failures gracefully in strategy layer
 
 ### Phase 4: Testing and Validation
 
@@ -120,7 +121,7 @@ This feature will add volume validation to the backtesting system to ensure that
 
 ### Volume Validation in BacktestEngine._add_position()
 ```python
-def _add_position(self, position: Position, current_date: datetime = None):
+def _add_position(self, position: Position):
     """
     Add a position to the positions list with volume validation.
     """
@@ -128,7 +129,7 @@ def _add_position(self, position: Position, current_date: datetime = None):
     # Volume validation - check all options in the spread
     if self.volume_config.enable_volume_validation and position.spread_options:
         for option in position.spread_options:
-            if not self._validate_option_volume(option, current_date or position.entry_date):
+            if not self._validate_option_volume(option):
                 print(f"⚠️  Volume validation failed: {option.symbol} has insufficient volume")
                 self.volume_stats = self.volume_stats.increment_rejected_positions()
                 return  # Reject the position
@@ -150,26 +151,17 @@ class VolumeStats:
     """DTO for tracking volume validation statistics"""
     positions_rejected_volume: int = 0
     options_checked: int = 0
-    api_fetch_failures: int = 0
-    api_errors: int = 0
-    cache_updates: int = 0
     
     def increment_rejected_positions(self) -> 'VolumeStats':
         return VolumeStats(
             positions_rejected_volume=self.positions_rejected_volume + 1,
-            options_checked=self.options_checked,
-            api_fetch_failures=self.api_fetch_failures,
-            api_errors=self.api_errors,
-            cache_updates=self.cache_updates
+            options_checked=self.options_checked
         )
     
     def increment_options_checked(self) -> 'VolumeStats':
         return VolumeStats(
             positions_rejected_volume=self.positions_rejected_volume,
-            options_checked=self.options_checked + 1,
-            api_fetch_failures=self.api_fetch_failures,
-            api_errors=self.api_errors,
-            cache_updates=self.cache_updates
+            options_checked=self.options_checked + 1
         )
 
 @dataclass(frozen=True)
@@ -195,92 +187,90 @@ class BacktestEngine:
 
 ### Volume Validation Helper Method
 ```python
-def _validate_option_volume(self, option: Option, date: datetime) -> bool:
+def _validate_option_volume(self, option: Option) -> bool:
     """
-    Validate if an option has sufficient volume for trading with API fallback.
+    Validate if an option has sufficient volume for trading.
+    
+    Note: Data fetching is handled by the Strategy class. This method
+    only validates the volume data that is already present in the option.
     """
     self.volume_stats = self.volume_stats.increment_options_checked()
     
-    # Get volume data with fallback to API if needed
-    volume = self._get_volume_data_with_fallback(option, date)
-    
-    if volume is None:
+    if option.volume is None:
         return False
-    return volume >= self.volume_config.min_volume
+    return option.volume >= self.volume_config.min_volume
 ```
 
-### Volume Data Fallback Implementation
+### Strategy Data Fetching Example
 ```python
-def _get_volume_data_with_fallback(self, option: Option, date: datetime) -> Optional[int]:
+def _create_call_credit_spread_from_chain(self, date: datetime, prediction: dict) -> Position:
     """
-    Get volume data with fallback to API if not in cache.
+    Create a call credit spread position with volume data validation.
+    """
+    # ... existing logic to find options ...
+    
+    # Ensure volume data is available for both options
+    atm_option = self._ensure_volume_data(atm_option, date)
+    otm_option = self._ensure_volume_data(otm_option, date)
+    
+    if atm_option is None or otm_option is None:
+        print(f"⚠️  Could not fetch volume data for options")
+        return None
+    
+    # Create position with validated options
+    position = Position(
+        symbol=self.symbol,
+        expiration_date=expiration_date,
+        strategy_type=StrategyType.CALL_CREDIT_SPREAD,
+        strike_price=atm_strike,
+        entry_date=date,
+        entry_price=entry_price,
+        spread_options=[atm_option, otm_option]
+    )
+    
+    return position
+
+def _ensure_volume_data(self, option: Option, date: datetime) -> Option:
+    """
+    Ensure option has volume data, fetch if missing.
     
     Args:
-        option: The option to get volume data for
+        option: The option to check/fetch volume data for
         date: The date for the data
         
     Returns:
-        Optional[int]: Volume data if available, None otherwise
+        Option: The option with volume data, or None if unable to fetch
     """
-    # First try to get from cache
     if option.volume is not None:
-        return option.volume
+        return option
     
-    # If volume is missing, try to fetch from API once
-    try:
-        print(f"📡 Fetching fresh volume data for {option.symbol} on {date.strftime('%Y-%m-%d')}")
-        
-        # Fetch fresh data from API (get_specific_option_contract automatically updates cache)
-        fresh_option_data = self.options_handler.get_specific_option_contract(
-            option.strike, 
-            option.expiration, 
-            option.option_type.value, 
-            date
-        )
-        
-        if fresh_option_data and fresh_option_data.volume is not None:
-            print(f"✅ Successfully fetched volume data: {fresh_option_data.volume}")
-            self.volume_stats = VolumeStats(
-                positions_rejected_volume=self.volume_stats.positions_rejected_volume,
-                options_checked=self.volume_stats.options_checked,
-                api_fetch_failures=self.volume_stats.api_fetch_failures,
-                api_errors=self.volume_stats.api_errors,
-                cache_updates=self.volume_stats.cache_updates + 1
-            )
-            return fresh_option_data.volume
-        else:
-            print(f"⚠️  No volume data available from API for {option.symbol}")
-            self.volume_stats = VolumeStats(
-                positions_rejected_volume=self.volume_stats.positions_rejected_volume,
-                options_checked=self.volume_stats.options_checked,
-                api_fetch_failures=self.volume_stats.api_fetch_failures + 1,
-                api_errors=self.volume_stats.api_errors,
-                cache_updates=self.volume_stats.cache_updates
-            )
-            return None
-            
-    except Exception as e:
-        print(f"❌ Error fetching volume data from API for {option.symbol}: {e}")
-        self.volume_stats = VolumeStats(
-            positions_rejected_volume=self.volume_stats.positions_rejected_volume,
-            options_checked=self.volume_stats.options_checked,
-            api_fetch_failures=self.volume_stats.api_fetch_failures,
-            api_errors=self.volume_stats.api_errors + 1,
-            cache_updates=self.volume_stats.cache_updates
-        )
+    # Fetch fresh data from API
+    fresh_option = self.options_handler.get_specific_option_contract(
+        option.strike, 
+        option.expiration, 
+        option.option_type.value, 
+        date
+    )
+    
+    if fresh_option and fresh_option.volume is not None:
+        print(f"📡 Fetched volume data for {option.symbol}: {fresh_option.volume}")
+        return fresh_option
+    else:
+        print(f"⚠️  No volume data available for {option.symbol}")
         return None
 ```
 
 ## Success Criteria
 
-1. **Centralized Validation**: Volume validation occurs only in `BacktestEngine._add_position()`
-2. **Strategy Independence**: No changes required to individual strategies
-3. **Volume Validation**: All option trades are validated for minimum volume (>= 10)
-4. **Statistics Tracking**: Volume rejection statistics are tracked and reported
-5. **Configuration**: Volume thresholds are configurable via BacktestEngine constructor
-6. **Backward Compatibility**: Existing backtests continue to work with volume validation disabled
-7. **Performance**: Volume validation adds minimal overhead to backtest execution
-8. **Logging**: Clear logging of volume validation decisions for debugging
+1. **Separation of Concerns**: Data fetching handled by Strategy, validation by BacktestEngine
+2. **Strategy Responsibility**: Strategies ensure volume data is available before creating positions
+3. **BacktestEngine Validation**: BacktestEngine validates volume requirements before adding positions
+4. **Volume Validation**: All option trades are validated for minimum volume (>= 10)
+5. **Statistics Tracking**: Volume rejection statistics are tracked and reported
+6. **Configuration**: Volume thresholds are configurable via BacktestEngine constructor
+7. **Backward Compatibility**: Existing backtests continue to work with volume validation disabled
+8. **Performance**: Volume validation adds minimal overhead to backtest execution
+9. **Logging**: Clear logging of volume validation decisions for debugging
 
 ## Risk Mitigation
 
@@ -292,13 +282,14 @@ def _get_volume_data_with_fallback(self, option: Option, date: datetime) -> Opti
 
 ## Timeline Estimate
 
-- **Phase 1**: 1-2 days (Core infrastructure)
-- **Phase 2**: 2-3 days (Backtest engine integration)
-- **Phase 3**: 1 day (Data integration)
-- **Phase 4**: 2-3 days (Testing)
-- **Phase 5**: 1-2 days (Documentation)
+- **Phase 1**: ✅ **COMPLETED** (Core infrastructure)
+- **Phase 2**: ✅ **COMPLETED** (Backtest engine integration)
+- **Phase 3**: ✅ **COMPLETED** (Data integration)
+- **Phase 4**: 🔄 **IN PROGRESS** (Testing)
+- **Phase 5**: 📋 **PENDING** (Documentation)
 
 **Total Estimated Time**: 7-11 days (reduced from 9-15 days due to simplified approach)
+**Current Status**: Core implementation complete, testing and documentation remaining
 
 ## Compliance with .cursor/rules
 
@@ -337,3 +328,4 @@ def _get_volume_data_with_fallback(self, option: Option, date: datetime) -> Opti
 4. **Separation of Concerns**: Volume validation logic is centralized and separate from data transfer
 5. **Comprehensive Testing**: Dedicated test tasks for all new functionality
 6. **Existing Infrastructure**: Leverages proven cache update mechanisms
+7. **Simplified Statistics**: Removed API tracking since data fetching is handled by Strategy

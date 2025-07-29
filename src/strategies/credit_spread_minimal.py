@@ -490,6 +490,14 @@ class CreditSpreadStrategy(Strategy):
         atm_option = best_spread['atm_option']
         otm_option = best_spread['otm_option']
         
+        # Ensure volume data is available for both options
+        atm_option = self._ensure_volume_data(atm_option, date)
+        otm_option = self._ensure_volume_data(otm_option, date)
+        
+        if atm_option is None or otm_option is None:
+            print(f"⚠️  Could not fetch volume data for options")
+            return None
+        
         # Create position using the best spread
         position = Position(
             symbol=self.options_handler.symbol,
@@ -539,6 +547,14 @@ class CreditSpreadStrategy(Strategy):
         # Convert dictionary options to Option objects
         atm_option = best_spread['atm_option']
         otm_option = best_spread['otm_option']
+        
+        # Ensure volume data is available for both options
+        atm_option = self._ensure_volume_data(atm_option, date)
+        otm_option = self._ensure_volume_data(otm_option, date)
+        
+        if atm_option is None or otm_option is None:
+            print(f"⚠️  Could not fetch volume data for options")
+            return None
         
         # Create position using the best spread
         position = Position(
@@ -605,3 +621,32 @@ class CreditSpreadStrategy(Strategy):
             
         # Return the closest OTM put (highest strike below ATM)
         return max(otm_puts, key=lambda opt: opt.strike)
+
+    def _ensure_volume_data(self, option: Option, date: datetime) -> Option:
+        """
+        Ensure option has volume data, fetch if missing.
+        
+        Args:
+            option: The option to check/fetch volume data for
+            date: The date for the data
+            
+        Returns:
+            Option: The option with volume data, or None if unable to fetch
+        """
+        if option.volume is not None:
+            return option
+        
+        # Fetch fresh data from API
+        fresh_option = self.options_handler.get_specific_option_contract(
+            option.strike, 
+            option.expiration, 
+            option.option_type.value, 
+            date
+        )
+        
+        if fresh_option and fresh_option.volume is not None:
+            print(f"📡 Fetched volume data for {option.symbol}: {fresh_option.volume}")
+            return fresh_option
+        else:
+            print(f"⚠️  No volume data available for {option.symbol}")
+            return None

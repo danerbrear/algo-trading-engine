@@ -7,6 +7,8 @@ from src.strategies.credit_spread_minimal import CreditSpreadStrategy
 from .models import Benchmark, Strategy, Position
 from src.common.data_retriever import DataRetriever
 from src.common.functions import load_hmm_model, load_lstm_model
+from .config import VolumeConfig, VolumeStats
+from .volume_validator import VolumeValidator
 
 class BacktestEngine:
     """
@@ -16,7 +18,8 @@ class BacktestEngine:
     def __init__(self, data: pd.DataFrame, strategy: Strategy, initial_capital: float = 100000,
                  start_date: datetime = datetime.now(),
                  end_date: datetime = datetime.now(),
-                 max_position_size: float = None):
+                 max_position_size: float = None,
+                 volume_config: VolumeConfig = None):
         self.data = data
         self.strategy = strategy
         self.capital = initial_capital
@@ -29,6 +32,10 @@ class BacktestEngine:
         self.max_position_size = max_position_size
         self.daily_returns = []  # Track daily returns for Sharpe Ratio calculation
         self.previous_capital = initial_capital  # Track previous day's capital
+        
+        # Volume validation configuration and statistics
+        self.volume_config = volume_config or VolumeConfig()
+        self.volume_stats = VolumeStats()
 
     def run(self) -> bool:
         """
@@ -98,6 +105,18 @@ class BacktestEngine:
         print(f"   Final capital: ${self.capital:.2f}")
         print(f"   Total Return: ${final_return:+,.2f} ({final_return_pct:+.2f}%)")
         print(f"   Sharpe Ratio: {sharpe_ratio:.3f}")
+        
+        # Volume validation statistics
+        if self.volume_config.enable_volume_validation:
+            volume_summary = self.volume_stats.get_summary()
+            print(f"\n📈 Volume Validation Statistics:")
+            print(f"   Options checked: {volume_summary['options_checked']}")
+            print(f"   Positions rejected due to volume: {volume_summary['positions_rejected_volume']}")
+            print(f"   API fetch failures: {volume_summary['api_fetch_failures']}")
+            print(f"   API errors: {volume_summary['api_errors']}")
+            print(f"   Cache updates: {volume_summary['cache_updates']}")
+            print(f"   Volume rejection rate: {volume_summary['rejection_rate']:.1f}%")
+            print(f"   API success rate: {volume_summary['api_success_rate']:.1f}%")
 
     def _validate_data(self, data: pd.DataFrame) -> bool:
         """
@@ -189,8 +208,16 @@ class BacktestEngine:
 
     def _add_position(self, position: Position):
         """
-        Add a position to the positions list.
+        Add a position to the positions list with volume validation.
         """
+        
+        # Volume validation - check all options in the spread
+        if self.volume_config.enable_volume_validation and position.spread_options:
+            for option in position.spread_options:
+                if not self._validate_option_volume(option):
+                    print(f"⚠️  Volume validation failed: {option.symbol} has insufficient volume")
+                    self.volume_stats = self.volume_stats.increment_rejected_positions()
+                    return  # Reject the position
 
         position_size = self._get_position_size(position)
         if position_size == 0:
@@ -291,6 +318,19 @@ class BacktestEngine:
         sharpe_ratio = (mean_return / std_return) * np.sqrt(252)
         
         return sharpe_ratio
+    
+    def _validate_option_volume(self, option) -> bool:
+        """
+        Validate if an option has sufficient volume for trading.
+        
+        Note: Data fetching is handled by the Strategy class. This method
+        only validates the volume data that is already present in the option.
+        """
+        self.volume_stats = self.volume_stats.increment_options_checked()
+        
+        if option.volume is None:
+            return False
+        return option.volume >= self.volume_config.min_volume
 
 if __name__ == "__main__":
     # Test with a smaller date range to verify the fix
