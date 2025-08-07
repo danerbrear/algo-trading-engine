@@ -1,21 +1,21 @@
 {
   "Core CPI": {
-    "last_event": "2025-06-11",
-    "next_event": "2025-07-09",
+    "last_event": "2025-07-09",
+    "next_event": "2025-08-12",
     "description": "Core Consumer Price Index (CPI) monthly release",
     "typical_interval_days": 30,
     "source": "Bureau of Labor Statistics"
   },
   "CB Consumer Confidence": {
-    "last_event": "2025-06-24",
-    "next_event": "2025-07-29",
+    "last_event": "2025-07-29",
+    "next_event": "2025-08-26",
     "description": "Conference Board Consumer Confidence Index",
     "typical_interval_days": 30,
     "source": "Conference Board"
   },
   "Fed Funds Rate": {
-    "last_event": "2025-06-18",
-    "next_event": "2025-07-30",
+    "last_event": "2025-07-30",
+    "next_event": "2025-09-16",
     "description": "Federal Reserve Federal Funds Rate decision",
     "typical_interval_days": 42,
     "source": "Federal Reserve"

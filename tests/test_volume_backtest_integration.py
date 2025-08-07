@@ -370,6 +370,88 @@ class TestVolumeValidationIntegration:
         assert engine.volume_stats.options_checked == 0  # No options checked
         assert engine.volume_stats.positions_rejected_volume == 0  # No rejections
 
+    def test_position_closure_volume_validation(self):
+        """Test that position closures are skipped when volume is insufficient."""
+        # Create mock data
+        data = pd.DataFrame({
+            'Close': [100, 101, 102, 103, 104],
+            'Volume': [1000, 1100, 1200, 1300, 1400],
+            'Returns': [0.01, 0.01, 0.01, 0.01, 0.01],
+            'Log_Returns': [0.01, 0.01, 0.01, 0.01, 0.01],
+            'Volatility': [0.02, 0.02, 0.02, 0.02, 0.02],
+            'RSI': [50, 50, 50, 50, 50],
+            'MACD_Hist': [0, 0, 0, 0, 0],
+            'Volume_Ratio': [1.0, 1.0, 1.0, 1.0, 1.0],
+            'Market_State': [0, 0, 0, 0, 0],
+            'Put_Call_Ratio': [1.0, 1.0, 1.0, 1.0, 1.0],
+            'Option_Volume_Ratio': [1.0, 1.0, 1.0, 1.0, 1.0],
+            'Days_Until_Next_CPI': [30, 29, 28, 27, 26],
+            'Days_Since_Last_CPI': [5, 6, 7, 8, 9],
+            'Days_Until_Next_CC': [30, 29, 28, 27, 26],
+            'Days_Since_Last_CC': [5, 6, 7, 8, 9],
+            'Days_Until_Next_FFR': [30, 29, 28, 27, 26],
+            'Days_Since_Last_FFR': [5, 6, 7, 8, 9]
+        }, index=pd.date_range('2024-01-01', periods=5))
+        
+        # Create strategy with volume validation enabled
+        strategy = MockStrategy()
+        
+        # Create backtest engine with volume validation
+        engine = BacktestEngine(
+            data=data,
+            strategy=strategy,
+            initial_capital=100000,
+            volume_config=VolumeConfig(min_volume=10, enable_volume_validation=True)
+        )
+        
+        # Create a position with options that have insufficient volume
+        low_volume_option = Option(
+            ticker="SPY",
+            symbol="SPY240119C00100000",
+            strike=100.0,
+            expiration="2024-01-19",
+            option_type=OptionType.CALL,
+            last_price=1.50,
+            volume=5,  # Insufficient volume
+            open_interest=100,
+            bid=1.45,
+            ask=1.55
+        )
+        
+        position = Position(
+            symbol="SPY",
+            expiration_date=datetime(2024, 1, 19),
+            strategy_type=StrategyType.CALL_CREDIT_SPREAD,
+            strike_price=100.0,
+            entry_date=datetime(2024, 1, 1),
+            entry_price=1.50,
+            spread_options=[low_volume_option]
+        )
+        
+        # Add position to engine
+        engine.positions.append(position)
+        
+        # Try to close the position
+        initial_capital = engine.capital
+        initial_positions_count = len(engine.positions)
+        
+        # Attempt to close position
+        engine._remove_position(
+            date=datetime(2024, 1, 2),
+            position=position,
+            exit_price=1.25
+        )
+        
+        # Verify that position was not closed due to insufficient volume
+        assert len(engine.positions) == initial_positions_count, "Position should not be closed due to insufficient volume"
+        assert engine.capital == initial_capital, "Capital should not change when position closure is skipped"
+        
+        # Verify volume statistics
+        volume_summary = engine.volume_stats.get_summary()
+        assert volume_summary['positions_rejected_closure_volume'] == 1, "Should track rejected closure"
+        assert volume_summary['skipped_closures'] == 1, "Should track skipped closure"
+        assert volume_summary['options_checked'] >= 1, "Should have checked at least one option"
+
 
 if __name__ == "__main__":
     pytest.main([__file__]) 

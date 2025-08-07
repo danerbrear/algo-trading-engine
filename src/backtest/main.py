@@ -8,7 +8,7 @@ from .models import Benchmark, Strategy, Position
 from src.common.data_retriever import DataRetriever
 from src.common.functions import load_hmm_model, load_lstm_model
 from .config import VolumeConfig, VolumeStats
-from .volume_validator import VolumeValidator
+from src.common.progress_tracker import ProgressTracker, set_global_progress_tracker, progress_print
 
 class BacktestEngine:
     """
@@ -19,7 +19,9 @@ class BacktestEngine:
                  start_date: datetime = datetime.now(),
                  end_date: datetime = datetime.now(),
                  max_position_size: float = None,
-                 volume_config: VolumeConfig = None):
+                 volume_config: VolumeConfig = None,
+                 enable_progress_tracking: bool = True,
+                 quiet_mode: bool = True):
         self.data = data
         self.strategy = strategy
         self.capital = initial_capital
@@ -36,6 +38,11 @@ class BacktestEngine:
         # Volume validation configuration and statistics
         self.volume_config = volume_config or VolumeConfig()
         self.volume_stats = VolumeStats()
+        
+        # Progress tracking
+        self.enable_progress_tracking = enable_progress_tracking
+        self.quiet_mode = quiet_mode
+        self.progress_tracker = None
 
     def run(self) -> bool:
         """
@@ -53,6 +60,17 @@ class BacktestEngine:
 
         self.benchmark.set_start_price(self.data.iloc[self.strategy.start_date_offset]['Close'])
         
+        # Initialize progress tracker if enabled
+        if self.enable_progress_tracking:
+            self.progress_tracker = ProgressTracker(
+                start_date=date_range[0],
+                end_date=date_range[-1],
+                total_dates=len(date_range),
+                desc="Running Backtest",
+                quiet_mode=self.quiet_mode
+            )
+            set_global_progress_tracker(self.progress_tracker)
+            
         print(f"📅 Running backtest on {len(date_range)} trading days")
         print(f"   Date range: {date_range[0].date()} to {date_range[-1].date()}")
 
@@ -61,10 +79,18 @@ class BacktestEngine:
             # Convert to tuple for immutability
             positions_tuple = tuple(self.positions)
 
+            # Update progress tracker
+            if self.progress_tracker:
+                self.progress_tracker.update(current_date=date)
+
             try:
                 self.strategy.on_new_date(date, positions_tuple, self._add_position, self._remove_position)
             except Exception as e:
-                print(f"Error in on_new_date: {e}")
+                error_msg = f"Error in on_new_date: {e}"
+                if self.progress_tracker:
+                    progress_print(error_msg, force=True)
+                else:
+                    print(error_msg)
                 return False
 
         self._end()
@@ -75,7 +101,10 @@ class BacktestEngine:
         """
         On end, execute strategy and close any remaining positions.
         """
-        print(f"\n🏁 Closing backtest - {len(self.positions)} positions remaining")
+        if self.progress_tracker:
+            progress_print(f"\n🏁 Closing backtest - {len(self.positions)} positions remaining", force=True)
+        else:
+            print(f"\n🏁 Closing backtest - {len(self.positions)} positions remaining")
 
         # Get the last available price from the data
         last_date = self.data.index[-1]
@@ -83,11 +112,19 @@ class BacktestEngine:
 
         self.benchmark.set_end_price(last_price)
 
-        print(f"   Last trading date: {last_date.date()}")
-        print(f"   Last closing price: ${last_price:.2f}")
+        if self.progress_tracker:
+            progress_print(f"   Last trading date: {last_date.date()}", force=True)
+            progress_print(f"   Last closing price: ${last_price:.2f}", force=True)
+        else:
+            print(f"   Last trading date: {last_date.date()}")
+            print(f"   Last closing price: ${last_price:.2f}")
 
-        # Execute strategy's on_end method
-        self.strategy.on_end(self.positions, self._remove_position, last_date)
+        # Create a wrapper function that handles the new _remove_position signature
+        def remove_position_wrapper(date: datetime, position: Position, exit_price: float, current_volumes: list[int] = None):
+            self._remove_position(date, position, exit_price, current_volumes=current_volumes)
+
+        # Execute strategy's on_end method with the wrapper
+        self.strategy.on_end(self.positions, remove_position_wrapper, last_date)
 
         # Calculate final performance metrics
         initial_capital = self.initial_capital  # Use the initial capital from the constructor
@@ -96,6 +133,11 @@ class BacktestEngine:
         
         # Calculate Sharpe Ratio
         sharpe_ratio = self._calculate_sharpe_ratio()
+        
+        # Close progress tracker if it exists
+        if self.progress_tracker:
+            self.progress_tracker.close()
+            set_global_progress_tracker(None)
         
         print("\n📊 Backtest Results Summary:")
         print(f"   Benchmark return: {self.benchmark.get_return_percentage():+.2f}%")
@@ -111,7 +153,10 @@ class BacktestEngine:
             volume_summary = self.volume_stats.get_summary()
             print(f"\n📈 Volume Validation Statistics:")
             print(f"   Options checked: {volume_summary['options_checked']}")
-            print(f"   Positions rejected due to volume: {volume_summary['positions_rejected_volume']}")
+            print(f"   Position opens rejected due to volume: {volume_summary['positions_rejected_volume']}")
+            print(f"   Position closures rejected due to volume: {volume_summary['positions_rejected_closure_volume']}")
+            print(f"   Skipped closures: {volume_summary['skipped_closures']}")
+            print(f"   Total rejections: {volume_summary['total_rejections']}")
             print(f"   Volume rejection rate: {volume_summary['rejection_rate']:.1f}%")
 
     def _validate_data(self, data: pd.DataFrame) -> bool:
@@ -124,9 +169,14 @@ class BacktestEngine:
         Returns:
             bool: True if data is valid, False otherwise
         """
-        print(f"\n🔍 Validating data for backtest...")
-        print(f"   Original data shape: {data.shape}")
-        print(f"   Date range: {self.start_date} to {self.end_date}")
+        if self.progress_tracker:
+            progress_print(f"\n🔍 Validating data for backtest...", force=True)
+            progress_print(f"   Original data shape: {data.shape}", force=True)
+            progress_print(f"   Date range: {self.start_date} to {self.end_date}", force=True)
+        else:
+            print(f"\n🔍 Validating data for backtest...")
+            print(f"   Original data shape: {data.shape}")
+            print(f"   Date range: {self.start_date} to {self.end_date}")
         
         # Check if the data has the required columns
         required_columns = [
@@ -142,19 +192,33 @@ class BacktestEngine:
         
         missing_columns = [col for col in required_columns if col not in data.columns]
         if missing_columns:
-            print(f"⚠️  Warning: Missing columns: {missing_columns}")
-            print(f"   Available columns: {list(data.columns)}")
+            if self.progress_tracker:
+                progress_print(f"⚠️  Warning: Missing columns: {missing_columns}", force=True)
+                progress_print(f"   Available columns: {list(data.columns)}", force=True)
+            else:
+                print(f"⚠️  Warning: Missing columns: {missing_columns}")
+                print(f"   Available columns: {list(data.columns)}")
             return False
         else:
-            print(f"✅ All required columns present")
+            if self.progress_tracker:
+                progress_print(f"✅ All required columns present", force=True)
+            else:
+                print(f"✅ All required columns present")
         
         # Check if data has datetime index
         if not isinstance(data.index, pd.DatetimeIndex):
-            print("❌ Error: Data must have a datetime index for backtesting")
+            error_msg = "❌ Error: Data must have a datetime index for backtesting"
+            if self.progress_tracker:
+                progress_print(error_msg, force=True)
+            else:
+                print(error_msg)
             return False
         
         # Filter data to the specified date range
-        print(f"   Data index range: {data.index.min()} to {data.index.max()}")
+        if self.progress_tracker:
+            progress_print(f"   Data index range: {data.index.min()} to {data.index.max()}", force=True)
+        else:
+            print(f"   Data index range: {data.index.min()} to {data.index.max()}")
 
         # Convert start_date and end_date to datetime if they're not already
         if isinstance(self.start_date, datetime):
@@ -230,16 +294,35 @@ class BacktestEngine:
         self.positions.append(position)
         self.total_positions += 1
 
-    def _remove_position(self, date: datetime, position: Position, exit_price: float, underlying_price: float = None):
+    def _remove_position(self, date: datetime, position: Position, exit_price: float, underlying_price: float = None, current_volumes: list[int] = None):
         """
-        Remove a position from the positions list and update capital.
+        Remove a position from the positions list with enhanced current date volume validation.
         
         Args:
             date: Date at which the position is being closed
             position: Position to remove
             exit_price: Price at which the position is being closed
             underlying_price: Price of the underlying at the time of exit
+            current_volumes: List of current volume data for each option in position.spread_options
         """
+        # Enhanced volume validation - check all options in the spread with current date data
+        if self.volume_config.enable_volume_validation and position.spread_options and current_volumes:
+            volume_validation_failed = False
+            failed_options = []
+            
+            for option, current_volume in zip(position.spread_options, current_volumes):
+                if current_volume is None or current_volume < self.volume_config.min_volume:
+                    volume_validation_failed = True
+                    failed_options.append(option.symbol)
+            
+            if volume_validation_failed:
+                print(f"⚠️  Volume validation failed for position closure: {', '.join(failed_options)} have insufficient volume")
+                self.volume_stats = self.volume_stats.increment_rejected_closures()
+                
+                # Skip closing the position for this date due to insufficient volume
+                print(f"⚠️  Skipping position closure for {date.date()} due to insufficient volume")
+                return  # Skip closure and keep position open
+        
         if position not in self.positions:
             print(f"⚠️  Warning: Position {position.__str__()} not found in positions list")
             return
@@ -272,7 +355,7 @@ class BacktestEngine:
         
         # Log the position closure
         print(f"   Position closed: {position.__str__()}")
-        print(f"     Entry: ${position.entry_price:.2f} | Exit: ${exit_price:.2f}")
+        print(f"     Entry: ${position.entry_price:.2f} | Exit: ${final_exit_price:.2f}")
         print(f"     Return: ${position_return:+.2f} | Capital: ${self.capital:.2f}")
     
     def _get_position_size(self, position: Position) -> int:
@@ -328,10 +411,31 @@ class BacktestEngine:
             return False
         return option.volume >= self.volume_config.min_volume
 
+    def _handle_insufficient_volume_closure(self, position: Position, date: datetime) -> bool:
+        """
+        Handle position closure when volume is insufficient.
+        
+        Args:
+            position: The position to close
+            date: The date of closure
+            
+        Returns:
+            bool: True if closure should be skipped, False if closure should proceed
+        """
+        if self.volume_config.skip_closure_on_insufficient_volume:
+            # Skip closure and keep position open
+            print(f"⚠️  Skipping closure of position {position.__str__()} for {date.date()} due to insufficient volume")
+            self.volume_stats = self.volume_stats.increment_skipped_closures()
+            return True  # Indicate that closure should be skipped
+        else:
+            # Proceed with closure despite insufficient volume (for backward compatibility)
+            print(f"⚠️  Proceeding with closure of position {position.__str__()} despite insufficient volume")
+            return False  # Indicate that closure should proceed
+
 if __name__ == "__main__":
     # Test with a smaller date range to verify the fix
-    start_date = datetime(2024, 8, 1)
-    end_date = datetime(2025, 5, 1)
+    start_date = datetime(2024, 12, 1)
+    end_date = datetime(2025, 7, 1)
 
     data_retriever = DataRetriever(symbol='SPY', hmm_start_date=start_date, lstm_start_date=start_date, use_free_tier=False, quiet_mode=True)
 

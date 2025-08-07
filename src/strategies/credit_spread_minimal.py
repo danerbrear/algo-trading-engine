@@ -5,6 +5,7 @@ import pandas as pd
 from src.backtest.models import Position, Strategy, StrategyType
 from src.common.models import Option, OptionType, OptionChain
 from src.model.options_handler import OptionsHandler
+from src.common.progress_tracker import progress_print
 
 
 class CreditSpreadStrategy(Strategy):
@@ -133,7 +134,7 @@ class CreditSpreadStrategy(Strategy):
 
     def on_end(self, positions: tuple['Position', ...], remove_position: Callable[['Position'], None], date: datetime):
         """
-        On end, execute strategy.
+        On end, execute strategy with enhanced current date volume validation.
         """
         super().on_end(positions, remove_position, date)
         for position in positions:
@@ -141,8 +142,11 @@ class CreditSpreadStrategy(Strategy):
                 # Calculate the return for this position
                 exit_price = position.calculate_exit_price(self.options_data[date.strftime('%Y-%m-%d')])
 
-                # Remove the position and update capital
-                remove_position(date, position, exit_price)
+                # Fetch current date volume data for enhanced validation
+                current_volumes = self.get_current_volumes_for_position(position, date)
+
+                # Remove the position and update capital with current date volume validation
+                remove_position(date, position, exit_price, current_volumes=current_volumes)
             except Exception as e:
                 print(f"   Error closing position {position}: {e}")
                 import traceback
@@ -213,7 +217,7 @@ class CreditSpreadStrategy(Strategy):
                     otm_call = self.options_handler.get_specific_option_contract(otm_strike, expiry_date, OptionType.CALL.value, date)
                     
                     if not atm_call or not otm_call:
-                        print(f"      ❌ No ATM or OTM call options found for {width}pt spread")
+                        progress_print(f"      ❌ No ATM or OTM call options found for {width}pt spread")
                         total_rejected += 1
                         continue
                         
@@ -513,6 +517,7 @@ class CreditSpreadStrategy(Strategy):
         print(f"   Sell ATM Call: ${best_spread['atm_strike']:.0f} @ ${atm_option.last_price:.2f}")
         print(f"   Buy OTM Call: ${best_spread['otm_strike']:.0f} @ ${otm_option.last_price:.2f}")
         print(f"   Net Credit: ${best_spread['credit']:.2f}")
+        print(f"   Max Risk: ${position.get_max_risk():.2f}")
         print(f"   Risk/Reward: 1:{best_spread['risk_reward']:.2f}")
         print(f"   Probability: {best_spread['prob_profit']:.1%}")
         
@@ -571,6 +576,7 @@ class CreditSpreadStrategy(Strategy):
         print(f"   Sell ATM Put: ${best_spread['atm_strike']:.0f} @ ${atm_option.last_price:.2f}")
         print(f"   Buy OTM Put: ${best_spread['otm_strike']:.0f} @ ${otm_option.last_price:.2f}")
         print(f"   Net Credit: ${best_spread['credit']:.2f}")
+        print(f"   Max Risk: ${position.get_max_risk():.2f}")
         print(f"   Risk/Reward: 1:{best_spread['risk_reward']:.2f}")
         print(f"   Probability: {best_spread['prob_profit']:.1%}")
         
@@ -650,3 +656,39 @@ class CreditSpreadStrategy(Strategy):
         else:
             print(f"⚠️  No volume data available for {option.symbol}")
             return None
+
+    def get_current_volumes_for_position(self, position: Position, date: datetime) -> list[int]:
+        """
+        Fetch current date volume data for all options in a position.
+        
+        Args:
+            position: The position containing options to check
+            date: The current date for volume validation
+            
+        Returns:
+            list[int]: List of current volume values for each option in position.spread_options
+        """
+        current_volumes = []
+        
+        for option in position.spread_options:
+            try:
+                # Fetch fresh data from API for the current date
+                fresh_option = self.options_handler.get_specific_option_contract(
+                    option.strike, 
+                    option.expiration, 
+                    option.option_type.value, 
+                    date  # Use the current date for closure validation
+                )
+                
+                if fresh_option and fresh_option.volume is not None:
+                    current_volumes.append(fresh_option.volume)
+                    print(f"📡 Fetched volume data for {option.symbol} on {date.date()}: {fresh_option.volume}")
+                else:
+                    current_volumes.append(None)
+                    print(f"⚠️  No volume data available for {option.symbol} on {date.date()}")
+                    
+            except Exception as e:
+                print(f"⚠️  Error fetching volume data for {option.symbol}: {e}")
+                current_volumes.append(None)
+        
+        return current_volumes

@@ -227,13 +227,15 @@ class TestVolumeConfig:
         
         assert config.min_volume == 10
         assert config.enable_volume_validation is True
+        assert config.skip_closure_on_insufficient_volume is True
     
     def test_volume_config_custom_values(self):
         """Test VolumeConfig with custom values."""
-        config = VolumeConfig(min_volume=20, enable_volume_validation=False)
+        config = VolumeConfig(min_volume=20, enable_volume_validation=False, skip_closure_on_insufficient_volume=False)
         
         assert config.min_volume == 20
         assert config.enable_volume_validation is False
+        assert config.skip_closure_on_insufficient_volume is False
     
     def test_volume_config_negative_min_volume_raises_error(self):
         """Test that negative min_volume raises ValueError."""
@@ -261,14 +263,18 @@ class TestVolumeStats:
         stats = VolumeStats()
         
         assert stats.positions_rejected_volume == 0
+        assert stats.positions_rejected_closure_volume == 0
         assert stats.options_checked == 0
+        assert stats.skipped_closures == 0
     
     def test_volume_stats_custom_values(self):
         """Test VolumeStats with custom values."""
-        stats = VolumeStats(positions_rejected_volume=5, options_checked=10)
+        stats = VolumeStats(positions_rejected_volume=5, positions_rejected_closure_volume=3, options_checked=10, skipped_closures=2)
         
         assert stats.positions_rejected_volume == 5
+        assert stats.positions_rejected_closure_volume == 3
         assert stats.options_checked == 10
+        assert stats.skipped_closures == 2
     
     def test_increment_rejected_positions(self):
         """Test incrementing rejected positions count."""
@@ -277,8 +283,34 @@ class TestVolumeStats:
         new_stats = stats.increment_rejected_positions()
         
         assert new_stats.positions_rejected_volume == 4
+        assert new_stats.positions_rejected_closure_volume == 0
         assert new_stats.options_checked == 10
+        assert new_stats.skipped_closures == 0
         assert stats.positions_rejected_volume == 3  # Original unchanged
+    
+    def test_increment_rejected_closures(self):
+        """Test incrementing rejected closures count."""
+        stats = VolumeStats(positions_rejected_volume=3, positions_rejected_closure_volume=1, options_checked=10, skipped_closures=1)
+        
+        new_stats = stats.increment_rejected_closures()
+        
+        assert new_stats.positions_rejected_volume == 3
+        assert new_stats.positions_rejected_closure_volume == 2
+        assert new_stats.options_checked == 10
+        assert new_stats.skipped_closures == 2
+        assert stats.positions_rejected_closure_volume == 1  # Original unchanged
+    
+    def test_increment_skipped_closures(self):
+        """Test incrementing skipped closures count."""
+        stats = VolumeStats(positions_rejected_volume=3, positions_rejected_closure_volume=1, options_checked=10, skipped_closures=1)
+        
+        new_stats = stats.increment_skipped_closures()
+        
+        assert new_stats.positions_rejected_volume == 3
+        assert new_stats.positions_rejected_closure_volume == 1
+        assert new_stats.options_checked == 10
+        assert new_stats.skipped_closures == 2
+        assert stats.skipped_closures == 1  # Original unchanged
     
     def test_increment_options_checked(self):
         """Test incrementing options checked count."""
@@ -292,22 +324,28 @@ class TestVolumeStats:
     
     def test_get_summary(self):
         """Test getting summary statistics."""
-        stats = VolumeStats(positions_rejected_volume=5, options_checked=20)
+        stats = VolumeStats(positions_rejected_volume=5, positions_rejected_closure_volume=3, options_checked=20, skipped_closures=2)
         
         summary = stats.get_summary()
         
         assert summary['positions_rejected_volume'] == 5
+        assert summary['positions_rejected_closure_volume'] == 3
         assert summary['options_checked'] == 20
-        assert summary['rejection_rate'] == 25.0  # 5/20 * 100
+        assert summary['skipped_closures'] == 2
+        assert summary['total_rejections'] == 8  # 5 + 3
+        assert summary['rejection_rate'] == 40.0  # 8/20 * 100
     
     def test_get_summary_with_zero_options_checked(self):
         """Test getting summary with zero options checked."""
-        stats = VolumeStats(positions_rejected_volume=0, options_checked=0)
+        stats = VolumeStats(positions_rejected_volume=0, positions_rejected_closure_volume=0, options_checked=0, skipped_closures=0)
         
         summary = stats.get_summary()
         
         assert summary['positions_rejected_volume'] == 0
+        assert summary['positions_rejected_closure_volume'] == 0
         assert summary['options_checked'] == 0
+        assert summary['skipped_closures'] == 0
+        assert summary['total_rejections'] == 0
         assert summary['rejection_rate'] == 0.0  # 0/1 * 100 (max(0, 1) = 1)
     
     def test_volume_stats_immutability(self):
@@ -316,6 +354,138 @@ class TestVolumeStats:
         
         with pytest.raises(dataclasses.FrozenInstanceError):
             stats.positions_rejected_volume = 5
+
+
+class TestVolumeValidationLogic:
+    """Test cases for volume validation logic with real Option objects."""
+    
+    def test_volume_validation_with_sufficient_volume(self):
+        """Test volume validation with sufficient volume."""
+        high_volume_option = Option(
+            ticker="SPY",
+            symbol="SPY240119C00100000",
+            strike=100.0,
+            expiration="2024-01-19",
+            option_type=OptionType.CALL,
+            last_price=1.50,
+            volume=15,  # Sufficient volume
+            open_interest=100,
+            bid=1.45,
+            ask=1.55
+        )
+        
+        config = VolumeConfig(min_volume=10)
+        
+        # High volume should pass
+        assert high_volume_option.volume >= config.min_volume
+        assert VolumeValidator.validate_option_volume(high_volume_option, config.min_volume) is True
+    
+    def test_volume_validation_with_insufficient_volume(self):
+        """Test volume validation with insufficient volume."""
+        low_volume_option = Option(
+            ticker="SPY",
+            symbol="SPY240119C00100000",
+            strike=100.0,
+            expiration="2024-01-19",
+            option_type=OptionType.CALL,
+            last_price=1.50,
+            volume=5,  # Insufficient volume
+            open_interest=100,
+            bid=1.45,
+            ask=1.55
+        )
+        
+        config = VolumeConfig(min_volume=10)
+        
+        # Low volume should fail
+        assert low_volume_option.volume < config.min_volume
+        assert VolumeValidator.validate_option_volume(low_volume_option, config.min_volume) is False
+    
+    def test_volume_validation_with_none_volume(self):
+        """Test volume validation with None volume."""
+        none_volume_option = Option(
+            ticker="SPY",
+            symbol="SPY240119C00100000",
+            strike=100.0,
+            expiration="2024-01-19",
+            option_type=OptionType.CALL,
+            last_price=1.50,
+            volume=None,  # No volume data
+            open_interest=100,
+            bid=1.45,
+            ask=1.55
+        )
+        
+        config = VolumeConfig(min_volume=10)
+        
+        assert none_volume_option.volume is None
+        assert VolumeValidator.validate_option_volume(none_volume_option, config.min_volume) is False
+    
+    def test_spread_volume_validation_with_mixed_volume(self):
+        """Test spread volume validation with mixed volume levels."""
+        high_volume_option = Option(
+            ticker="SPY",
+            symbol="SPY240119C00100000",
+            strike=100.0,
+            expiration="2024-01-19",
+            option_type=OptionType.CALL,
+            last_price=1.50,
+            volume=15,  # Sufficient volume
+            open_interest=100,
+            bid=1.45,
+            ask=1.55
+        )
+        
+        low_volume_option = Option(
+            ticker="SPY",
+            symbol="SPY240119C00110000",
+            strike=110.0,
+            expiration="2024-01-19",
+            option_type=OptionType.CALL,
+            last_price=0.50,
+            volume=5,  # Insufficient volume
+            open_interest=50,
+            bid=0.45,
+            ask=0.55
+        )
+        
+        spread_options = [high_volume_option, low_volume_option]
+        
+        # Spread should fail because one option has insufficient volume
+        assert VolumeValidator.validate_spread_volume(spread_options, min_volume=10) is False
+    
+    def test_spread_volume_validation_with_all_sufficient_volume(self):
+        """Test spread volume validation with all options having sufficient volume."""
+        option1 = Option(
+            ticker="SPY",
+            symbol="SPY240119C00100000",
+            strike=100.0,
+            expiration="2024-01-19",
+            option_type=OptionType.CALL,
+            last_price=1.50,
+            volume=15,  # Sufficient volume
+            open_interest=100,
+            bid=1.45,
+            ask=1.55
+        )
+        
+        option2 = Option(
+            ticker="SPY",
+            symbol="SPY240119C00110000",
+            strike=110.0,
+            expiration="2024-01-19",
+            option_type=OptionType.CALL,
+            last_price=0.50,
+            volume=12,  # Sufficient volume
+            open_interest=50,
+            bid=0.45,
+            ask=0.55
+        )
+        
+        spread_options = [option1, option2]
+        
+        # Spread should pass because all options have sufficient volume
+        assert VolumeValidator.validate_spread_volume(spread_options, min_volume=10) is True
 
 
 if __name__ == "__main__":

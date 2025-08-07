@@ -20,7 +20,7 @@ import sys
 import os
 # Add the project root to the path to import progress_tracker
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
-from src.model.progress_tracker import ProgressTracker, set_global_progress_tracker, progress_print, is_quiet_mode
+from src.common.progress_tracker import ProgressTracker, set_global_progress_tracker, progress_print, is_quiet_mode
 from ..common.models import OptionChain, OptionType, Option
 
 # Load environment variables from .env file
@@ -136,7 +136,7 @@ class OptionsHandler:
         Returns:
             Optional[Option]: Option contract data if found, None otherwise
         """
-        print(f"Getting specific option contract for {target_strike} {expiry} {option_type} as of {current_date}")
+        progress_print(f"Getting specific option contract for {target_strike} {expiry} {option_type} as of {current_date}")
         # Ensure current_date is naive datetime
         current_date_naive = pd.Timestamp(current_date).tz_localize(None)
 
@@ -661,12 +661,7 @@ class OptionsHandler:
     def _fetch_contracts_for_strike(self, target_strike: float, expiry: str, option_type: str, current_date: datetime) -> List:
         """Fetch option contracts for a specific strike and expiration"""
         def fetch_func():
-            try:
-                # Parse expiration date
-                expiry_date = pd.Timestamp(expiry)
-                
-                progress_print(f"Searching for {option_type} options: strike ${target_strike}, expiry {expiry}")
-                
+            try:                                
                 contracts_response = self.client.list_options_contracts(
                     underlying_ticker=self.symbol,
                     as_of=current_date.strftime('%Y-%m-%d'),
