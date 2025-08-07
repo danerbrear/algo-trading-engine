@@ -1,13 +1,14 @@
 import os
 import pandas as pd
 from datetime import datetime
+from typing import List
 
 from src.model.options_handler import OptionsHandler
 from src.strategies.credit_spread_minimal import CreditSpreadStrategy
 from .models import Benchmark, Strategy, Position
 from src.common.data_retriever import DataRetriever
 from src.common.functions import load_hmm_model, load_lstm_model
-from .config import VolumeConfig, VolumeStats
+from .config import VolumeConfig, VolumeStats, OverallPerformanceStats, StrategyPerformanceStats
 from src.common.progress_tracker import ProgressTracker, set_global_progress_tracker, progress_print
 
 class BacktestEngine:
@@ -36,13 +37,16 @@ class BacktestEngine:
         self.previous_capital = initial_capital  # Track previous day's capital
         
         # Volume validation configuration and statistics
-        self.volume_config = volume_config or VolumeConfig()
-        self.volume_stats = VolumeStats()
+        self.volume_config = volume_config or VolumeConfig(min_volume=10)
+        self.volume_stats = VolumeStats(options_checked=0, positions_rejected_volume=0, positions_rejected_closure_volume=0, skipped_closures=0)
         
         # Progress tracking
         self.enable_progress_tracking = enable_progress_tracking
         self.quiet_mode = quiet_mode
         self.progress_tracker = None
+        
+        # Position tracking for statistics
+        self.closed_positions = []
 
     def run(self) -> bool:
         """
@@ -138,15 +142,7 @@ class BacktestEngine:
         if self.progress_tracker:
             self.progress_tracker.close()
             set_global_progress_tracker(None)
-        
-        print("\n📊 Backtest Results Summary:")
-        print(f"   Benchmark return: {self.benchmark.get_return_percentage():+.2f}%")
-        print(f"   Benchmark return dollars: ${self.benchmark.get_return_dollars():+.2f}\n")
-        print(f"   Trading Days: {len(self.data.index)}")
-        print(f"   Total positions: {self.total_positions}")
-        print(f"   Final capital: ${self.capital:.2f}")
-        print(f"   Total Return: ${final_return:+,.2f} ({final_return_pct:+.2f}%)")
-        print(f"   Sharpe Ratio: {sharpe_ratio:.3f}")
+
         
         # Volume validation statistics
         if self.volume_config.enable_volume_validation:
@@ -157,7 +153,20 @@ class BacktestEngine:
             print(f"   Position closures rejected due to volume: {volume_summary['positions_rejected_closure_volume']}")
             print(f"   Skipped closures: {volume_summary['skipped_closures']}")
             print(f"   Total rejections: {volume_summary['total_rejections']}")
-            print(f"   Volume rejection rate: {volume_summary['rejection_rate']:.1f}%")
+            print(f"   Volume rejection rate: {volume_summary['volume_rejection_rate']:.1f}%")
+        
+        # Position performance statistics
+        if self.closed_positions:
+            self._print_position_statistics()
+
+        print("\n📊 Backtest Results Summary:")
+        print(f"   Benchmark return: {self.benchmark.get_return_percentage():+.2f}%")
+        print(f"   Benchmark return dollars: ${self.benchmark.get_return_dollars():+.2f}\n")
+        print(f"   Trading Days: {len(self.data.index)}")
+        print(f"   Total positions: {self.total_positions}")
+        print(f"   Final capital: ${self.capital:.2f}")
+        print(f"   Total Return: ${final_return:+,.2f} ({final_return_pct:+.2f}%)")
+        print(f"   Sharpe Ratio: {sharpe_ratio:.3f}")
 
     def _validate_data(self, data: pd.DataFrame) -> bool:
         """
@@ -288,7 +297,7 @@ class BacktestEngine:
 
         if self.capital < position.entry_price * position.quantity * 100:
             raise ValueError("Not enough capital to add position")
-        
+
         print(f"Adding position: {position.__str__()}")
         
         self.positions.append(position)
@@ -310,6 +319,10 @@ class BacktestEngine:
             volume_validation_failed = False
             failed_options = []
             
+            # Increment options checked counter for each option in the spread
+            for option in position.spread_options:
+                self.volume_stats = self.volume_stats.increment_options_checked()
+            
             for option, current_volume in zip(position.spread_options, current_volumes):
                 if current_volume is None or current_volume < self.volume_config.min_volume:
                     volume_validation_failed = True
@@ -318,6 +331,7 @@ class BacktestEngine:
             if volume_validation_failed:
                 print(f"⚠️  Volume validation failed for position closure: {', '.join(failed_options)} have insufficient volume")
                 self.volume_stats = self.volume_stats.increment_rejected_closures()
+                self.volume_stats = self.volume_stats.increment_skipped_closures()
                 
                 # Skip closing the position for this date due to insufficient volume
                 print(f"⚠️  Skipping position closure for {date.date()} due to insufficient volume")
@@ -350,6 +364,20 @@ class BacktestEngine:
         self.daily_returns.append(daily_return)
         self.previous_capital = self.capital
 
+        # Track closed position for statistics
+        closed_position_data = {
+            'strategy_type': position.strategy_type,
+            'entry_date': position.entry_date,
+            'exit_date': date,
+            'entry_price': position.entry_price,
+            'exit_price': final_exit_price,
+            'return_dollars': position_return,
+            'return_percentage': (position_return / position.get_max_risk()) * 100 if position.quantity else 0,
+            'days_held': position.get_days_held(date),
+            'max_risk': position.get_max_risk()
+        }
+        self.closed_positions.append(closed_position_data)
+        
         # Remove the position
         self.positions.remove(position)
         
@@ -411,6 +439,105 @@ class BacktestEngine:
             return False
         return option.volume >= self.volume_config.min_volume
 
+    def _print_position_statistics(self):
+        """Print comprehensive position performance statistics"""
+        overall_stats = self._calculate_overall_statistics()
+        strategy_stats = self._calculate_strategy_statistics()
+        
+        self._print_overall_statistics(overall_stats)
+        self._print_strategy_statistics(strategy_stats)
+    
+    def _calculate_overall_statistics(self) -> 'OverallPerformanceStats':
+        """Calculate overall performance statistics"""
+        total_positions = len(self.closed_positions)
+        total_return = sum(pos['return_dollars'] for pos in self.closed_positions)
+        winning_positions = [pos for pos in self.closed_positions if pos['return_dollars'] > 0]
+        
+        win_rate = len(winning_positions) / total_positions * 100 if total_positions > 0 else 0
+        avg_return = total_return / total_positions if total_positions > 0 else 0
+        avg_drawdown = self._calculate_average_drawdown(self.closed_positions, self.initial_capital)
+        
+        return OverallPerformanceStats(
+            total_positions=total_positions,
+            win_rate=win_rate,
+            total_pnl=total_return,
+            average_return=avg_return,
+            average_drawdown=avg_drawdown
+        )
+    
+    def _calculate_strategy_statistics(self) -> List['StrategyPerformanceStats']:
+        """Calculate performance statistics for each strategy type"""
+        strategy_data = {}
+        
+        # Group positions by strategy type
+        for pos in self.closed_positions:
+            strategy_type = pos['strategy_type']
+            if strategy_type not in strategy_data:
+                strategy_data[strategy_type] = []
+            strategy_data[strategy_type].append(pos)
+        
+        # Calculate statistics for each strategy
+        strategy_stats = []
+        for strategy_type, positions in strategy_data.items():
+            total_return = sum(pos['return_dollars'] for pos in positions)
+            winning_positions = [pos for pos in positions if pos['return_dollars'] > 0]
+            
+            win_rate = len(winning_positions) / len(positions) * 100 if positions else 0
+            avg_return = total_return / len(positions) if positions else 0
+            avg_drawdown = self._calculate_average_drawdown(positions, self.initial_capital)
+            
+            stats = StrategyPerformanceStats(
+                strategy_type=strategy_type,
+                positions_count=len(positions),
+                win_rate=win_rate,
+                total_pnl=total_return,
+                average_return=avg_return,
+                average_drawdown=avg_drawdown
+            )
+            strategy_stats.append(stats)
+        
+        return strategy_stats
+    
+    def _calculate_average_drawdown(self, positions: List[dict], initial_capital: float) -> float:
+        """Calculate average drawdown for a list of positions"""
+        if not positions:
+            return 0.0
+        
+        drawdowns = []
+        peak_capital = initial_capital
+        current_capital = initial_capital
+        
+        for pos in positions:
+            current_capital += pos['return_dollars']
+            if current_capital > peak_capital:
+                peak_capital = current_capital
+            
+            # Only calculate drawdown if we have a positive peak and current value is below peak
+            if peak_capital > 0 and current_capital < peak_capital:
+                drawdown = (peak_capital - current_capital) / peak_capital * 100
+                drawdowns.append(drawdown)
+        
+        return sum(drawdowns) / len(drawdowns) if drawdowns else 0.0
+    
+    def _print_overall_statistics(self, stats: 'OverallPerformanceStats'):
+        """Print overall performance statistics"""
+        print(f"\n📊 Position Performance Statistics:")
+        print(f"   Total closed positions: {stats.total_positions}")
+        print(f"   Overall win rate: {stats.win_rate:.1f}%")
+        print(f"   Total P&L: ${stats.total_pnl:+,.2f}")
+        print(f"   Average return per position: ${stats.average_return:+.2f}")
+        print(f"   Average drawdown: {stats.average_drawdown:.1f}%")
+    
+    def _print_strategy_statistics(self, strategy_stats: List['StrategyPerformanceStats']):
+        """Print strategy-specific performance statistics"""
+        for stats in strategy_stats:
+            print(f"\n   {stats.strategy_type.value.replace('_', ' ').title()}:")
+            print(f"     Positions: {stats.positions_count}")
+            print(f"     Win rate: {stats.win_rate:.1f}%")
+            print(f"     Total P&L: ${stats.total_pnl:+,.2f}")
+            print(f"     Average return: ${stats.average_return:+.2f}")
+            print(f"     Average drawdown: {stats.average_drawdown:.1f}%")
+
     def _handle_insufficient_volume_closure(self, position: Position, date: datetime) -> bool:
         """
         Handle position closure when volume is insufficient.
@@ -434,7 +561,7 @@ class BacktestEngine:
 
 if __name__ == "__main__":
     # Test with a smaller date range to verify the fix
-    start_date = datetime(2024, 12, 1)
+    start_date = datetime(2024, 11, 1)
     end_date = datetime(2025, 7, 1)
 
     data_retriever = DataRetriever(symbol='SPY', hmm_start_date=start_date, lstm_start_date=start_date, use_free_tier=False, quiet_mode=True)
@@ -466,7 +593,7 @@ if __name__ == "__main__":
             initial_capital=5000,
             start_date=start_date,
             end_date=end_date,
-            max_position_size=0.25
+            max_position_size=0.20
         )
         
         success = backtester.run()

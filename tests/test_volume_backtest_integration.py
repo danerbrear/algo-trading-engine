@@ -117,7 +117,7 @@ class TestVolumeValidationIntegration:
             initial_capital=10000,
             start_date=datetime(2024, 1, 1),
             end_date=datetime(2024, 1, 3),
-            volume_config=VolumeConfig(enable_volume_validation=False)
+            volume_config=VolumeConfig(min_volume=10, enable_volume_validation=False)
         )
         
         # Run backtest
@@ -327,7 +327,7 @@ class TestVolumeValidationIntegration:
         summary = engine.volume_stats.get_summary()
         assert summary['positions_rejected_volume'] == 0
         assert summary['options_checked'] == 2
-        assert summary['rejection_rate'] == 0.0  # 0/2 * 100
+        assert summary['volume_rejection_rate'] == 0.0  # 0/2 * 100
     
     def test_backtest_engine_with_position_without_spread_options(self):
         """Test BacktestEngine handles positions without spread_options gracefully."""
@@ -404,8 +404,8 @@ class TestVolumeValidationIntegration:
             volume_config=VolumeConfig(min_volume=10, enable_volume_validation=True)
         )
         
-        # Create a position with options that have insufficient volume
-        low_volume_option = Option(
+                # Create a position with options that have insufficient volume
+        atm_option = Option(
             ticker="SPY",
             symbol="SPY240119C00100000",
             strike=100.0,
@@ -418,15 +418,29 @@ class TestVolumeValidationIntegration:
             ask=1.55
         )
         
+        otm_option = Option(
+            ticker="SPY",
+            symbol="SPY240119C00105000",
+            strike=105.0,
+            expiration="2024-01-19",
+            option_type=OptionType.CALL,
+            last_price=0.75,
+            volume=5,  # Insufficient volume
+            open_interest=100,
+            bid=0.70,
+            ask=0.80
+        )
+
         position = Position(
             symbol="SPY",
             expiration_date=datetime(2024, 1, 19),
             strategy_type=StrategyType.CALL_CREDIT_SPREAD,
             strike_price=100.0,
             entry_date=datetime(2024, 1, 1),
-            entry_price=1.50,
-            spread_options=[low_volume_option]
+            entry_price=0.75,  # Net credit (1.50 - 0.75)
+            spread_options=[atm_option, otm_option]
         )
+        position.set_quantity(1)  # Set quantity after creation
         
         # Add position to engine
         engine.positions.append(position)
@@ -435,11 +449,12 @@ class TestVolumeValidationIntegration:
         initial_capital = engine.capital
         initial_positions_count = len(engine.positions)
         
-        # Attempt to close position
+        # Attempt to close position with insufficient volume data
         engine._remove_position(
             date=datetime(2024, 1, 2),
             position=position,
-            exit_price=1.25
+            exit_price=1.25,
+            current_volumes=[5, 5]  # Both options have insufficient volume (below min_volume of 10)
         )
         
         # Verify that position was not closed due to insufficient volume

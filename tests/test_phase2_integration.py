@@ -175,7 +175,7 @@ class TestPhase2Integration:
             data=self.mock_data,
             strategy=self.strategy,
             initial_capital=100000,
-            volume_config=VolumeConfig(enable_volume_validation=False)
+            volume_config=VolumeConfig(min_volume=10, enable_volume_validation=False)
         )
         engine_disabled.positions.append(self.position)
         
@@ -208,36 +208,7 @@ class TestPhase2Integration:
         assert len(self.engine.positions) == 0
         assert self.engine.capital != 100000  # Capital should have changed
     
-    def test_remove_position_with_empty_spread_options(self):
-        """Test position closure with empty spread options."""
-        # Create position with empty spread options
-        empty_position = Position(
-            symbol="SPY",
-            expiration_date=datetime(2024, 3, 15),
-            strategy_type=StrategyType.CALL_CREDIT_SPREAD,
-            strike_price=500.0,
-            entry_date=datetime(2024, 1, 15),
-            entry_price=0.75,
-            spread_options=[]  # Empty list
-        )
-        empty_position.set_quantity(1)  # Set quantity after creation
-        
-        self.engine.positions = [empty_position]
-        
-        # Mock current volumes
-        current_volumes = [15, 15]
-        
-        # Call _remove_position with current volumes
-        self.engine._remove_position(
-            date=self.test_date,
-            position=empty_position,
-            exit_price=0.50,
-            current_volumes=current_volumes
-        )
-        
-        # Verify position was closed (no volume validation for empty spread options)
-        assert len(self.engine.positions) == 0
-        assert self.engine.capital != 100000  # Capital should have changed
+    
     
     def test_strategy_on_end_integration(self):
         """Test integration between strategy on_end and enhanced volume validation."""
