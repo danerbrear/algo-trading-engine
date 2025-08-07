@@ -231,7 +231,16 @@ class Position:
         """
         if self.quantity is None:
             raise ValueError("Quantity is not set")
-        return (exit_price * self.quantity * 100) - (self.entry_price * self.quantity * 100)
+        
+        # For credit spreads, the return is: Initial Credit - Cost to Close
+        if self.strategy_type in [StrategyType.CALL_CREDIT_SPREAD, StrategyType.PUT_CREDIT_SPREAD]:
+            # entry_price = net credit received when opening
+            # exit_price = cost to close the position
+            # Return = Credit received - Cost to close
+            return (self.entry_price * self.quantity * 100) - (exit_price * self.quantity * 100)
+        else:
+            # For other position types, use the standard calculation
+            return (exit_price * self.quantity * 100) - (self.entry_price * self.quantity * 100)
     
     def _get_return(self, exit_price: float) -> float:
         """
@@ -240,7 +249,12 @@ class Position:
         if self.quantity is None or exit_price is None:
             raise ValueError("Quantity is not set")
         
-        return ((exit_price * self.quantity * 100) - (self.entry_price * self.quantity * 100)) / (self.entry_price * self.quantity * 100)
+        # For credit spreads, calculate percentage return based on max risk
+        if self.strategy_type in [StrategyType.CALL_CREDIT_SPREAD, StrategyType.PUT_CREDIT_SPREAD]:
+            return ((self.entry_price * self.quantity * 100) - (exit_price * self.quantity * 100)) / (self.entry_price * self.quantity * 100)
+        else:
+            # For other position types, use the standard calculation
+            return ((exit_price * self.quantity * 100) - (self.entry_price * self.quantity * 100)) / (self.entry_price * self.quantity * 100)
     
     def calculate_exit_price(self, current_option_chain: OptionChain) -> float:
         """

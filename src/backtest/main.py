@@ -5,7 +5,7 @@ from typing import List
 
 from src.model.options_handler import OptionsHandler
 from src.strategies.credit_spread_minimal import CreditSpreadStrategy
-from .models import Benchmark, Strategy, Position
+from .models import Benchmark, Strategy, Position, StrategyType
 from src.common.data_retriever import DataRetriever
 from src.common.functions import load_hmm_model, load_lstm_model
 from .config import VolumeConfig, VolumeStats, OverallPerformanceStats, StrategyPerformanceStats
@@ -120,7 +120,7 @@ class BacktestEngine:
             progress_print(f"   Last trading date: {last_date.date()}", force=True)
             progress_print(f"   Last closing price: ${last_price:.2f}", force=True)
         else:
-            print(f"   Last trading date: {last_date.date()}")
+            print(f"   Last trading date: {last_date.date()}") 
             print(f"   Last closing price: ${last_price:.2f}")
 
         # Create a wrapper function that handles the new _remove_position signature
@@ -295,8 +295,17 @@ class BacktestEngine:
         
         position.set_quantity(position_size)
 
-        if self.capital < position.entry_price * position.quantity * 100:
-            raise ValueError("Not enough capital to add position")
+        # For credit spreads, we need to reserve the maximum risk amount
+        if position.strategy_type in [StrategyType.CALL_CREDIT_SPREAD, StrategyType.PUT_CREDIT_SPREAD]:
+            # For credit spreads: Add the net credit received to capital
+            # The net credit is already stored in position.entry_price
+            credit_received = position.entry_price * position.quantity * 100
+            self.capital += credit_received
+            print(f"💰 Added net credit of ${credit_received:.2f} to capital")
+        else:
+            # For other position types, check if we have enough capital
+            if self.capital < position.entry_price * position.quantity * 100:
+                raise ValueError("Not enough capital to add position")
 
         print(f"Adding position: {position.__str__()}")
         
@@ -356,8 +365,16 @@ class BacktestEngine:
         else:
             position_return = position.get_return_dollars(final_exit_price)
 
-        # Update capital
-        self.capital += position_return
+        # Update capital based on position type
+        if position.strategy_type in [StrategyType.CALL_CREDIT_SPREAD, StrategyType.PUT_CREDIT_SPREAD]:
+            # For credit spreads: Subtract the cost to buy back the spread
+            # The exit_price represents the cost to close the position
+            cost_to_close = final_exit_price * position.quantity * 100
+            self.capital -= cost_to_close
+            print(f"💰 Subtracted cost to close of ${cost_to_close:.2f} from capital")
+        else:
+            # For other position types, add the return
+            self.capital += position_return
 
         # Calculate daily return and add to tracking
         daily_return = (self.capital - self.previous_capital) / self.previous_capital
@@ -386,6 +403,7 @@ class BacktestEngine:
         print(f"     Entry: ${position.entry_price:.2f} | Exit: ${final_exit_price:.2f}")
         print(f"     Return: ${position_return:+.2f} | Capital: ${self.capital:.2f}")
     
+    # TODO: Only works for credit spreads since using max risk
     def _get_position_size(self, position: Position) -> int:
         """
         Get the number of contracts to buy or sell for a position based on the max position size and the current capital.
