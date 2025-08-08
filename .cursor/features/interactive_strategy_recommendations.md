@@ -22,16 +22,21 @@ Key principles:
 
 - File: `src/prediction/decision_store.py`
 - Components:
-  - `PositionLegDTO` (DTO): represents a single option leg (ticker, option_type, strike, expiration, last_price, volume)
-  - `ProposedPositionDTO` (DTO): represents a full proposed position (symbol, strategy_type, legs, credit, width, probability_of_profit, confidence, expiration_date, created_at)
+  - Reuse existing VOs where possible:
+    - Legs use `src/common/models.Option`
+    - Strategy uses `src/backtest/models.StrategyType`
+    - Runtime position logic uses `src/backtest/models.Position` (not stored directly)
+  - `ProposedPositionDTO` (DTO): represents a full proposed position (symbol, strategy_type [StrategyType], legs [tuple[Option, ...]], credit, width, probability_of_profit, confidence, expiration_date, created_at)
   - `DecisionRecord` (DTO): immutable record capturing the decision outcome (accepted/rejected), timestamps, and rationale
-  - `OpenPositionDTO` (DTO): represents a currently open position derived from accepted decisions (quantity, entry_price, entry_date, legs, strategy_type)
   - `JsonDecisionStore` (class): append-only JSON storage and retrieval
     - Default path: `predictions/decisions/decisions_YYYYMMDD.json`
     - Methods:
       - `append_decision(record: DecisionRecord) -> None`
-      - `get_open_positions(symbol: str | None = None) -> list[OpenPositionDTO]`
+      - `get_open_positions(symbol: str | None = None, strategy_type: StrategyType | None = None) -> list[DecisionRecord]`
       - `mark_closed(open_position_id: str, exit_price: float, closed_at: datetime) -> None`
+    - Notes:
+      - Supports multiple strategies per day/file; `DecisionRecord.proposal.strategy_type` is persisted.
+      - Deterministic IDs should include `strategy_type` in addition to `symbol`, `legs`, and timestamps to avoid collisions across strategies.
 
 Validation:
 - Ensure file/folder creation is idempotent
@@ -47,7 +52,7 @@ Validation:
   - Prompt user for acceptance via `input()` (with `--yes` flag for non-interactive environments)
   - Persist accepted decision via `JsonDecisionStore`
   - Detect open positions and recommend closure:
-    - Compute exit price using `Position.calculate_exit_price()` when current `OptionChain` is available
+    - Construct a runtime `Position` from accepted decision(s) and compute exit price using `Position.calculate_exit_price()` when current `OptionChain` is available
     - Apply existing rules: profit target, stop loss, holding period, expiration proximity
     - If enhanced volume validation is enabled, fetch current volumes via strategy helper and use current-date volume thresholds when advising closure
   - Provide an explanation/rationale string for each recommendation (probability, R/R, rule hit, volume status)
@@ -59,7 +64,7 @@ Public methods:
 
 Persistence decisions:
 - Accepted open decisions create a new open position entry
-- Accepted close decisions update the corresponding open position as closed
+- Accepted close decisions update the corresponding decision as closed (store `exit_price` and `closed_at`)
 
 ### Phase 3: CLI Wiring
 
@@ -67,8 +72,10 @@ Persistence decisions:
 - Purpose: Simple CLI to run the recommender end-to-end
 - Behavior:
   - Ensures venv is active (documented in README; CI assumes venv)
-  - Arguments: `--symbol`, `--yes`, `--date YYYY-MM-DD`
-  - Instantiates `OptionsHandler`, loads data via `DataRetriever`, wires `CreditSpreadStrategy`, and runs `InteractiveStrategyRecommender` for the date
+  - Arguments: `--symbol`, `--date YYYY-MM-DD`, `--strategy`, `--yes`
+    - `--strategy`: non-interactive strategy selection (default: `credit_spread`)
+  - Open-position short-circuit: If the decision store contains any accepted-but-open positions for the selected `--symbol`, the CLI skips historical data fetching/model prediction entirely and only runs the close recommendation flow for the date
+  - Otherwise, it instantiates `OptionsHandler`, loads recent data via `DataRetriever` (fixed lookback window to seed indicators and LSTM sequence), builds the selected Strategy via a registry, and runs `InteractiveStrategyRecommender` for the date
 
 ### Phase 4: Integration Touchpoints
 
@@ -96,24 +103,17 @@ Persistence decisions:
 # src/prediction/decision_store.py
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional, Literal
+from typing import Optional, Literal, Tuple
+from src.common.models import Option
+from src.backtest.models import StrategyType
 
 DecisionOutcome = Literal['accepted', 'rejected']
 
 @dataclass(frozen=True)
-class PositionLegDTO:
-    symbol: str
-    option_type: str  # 'CALL' | 'PUT'
-    strike: float
-    expiration: str   # YYYY-MM-DD
-    last_price: float
-    volume: Optional[int]
-
-@dataclass(frozen=True)
 class ProposedPositionDTO:
     symbol: str
-    strategy_type: str
-    legs: tuple[PositionLegDTO, ...]
+    strategy_type: StrategyType
+    legs: Tuple[Option, ...]
     credit: float
     width: float
     probability_of_profit: float
@@ -135,7 +135,7 @@ class DecisionRecord:
 
 class JsonDecisionStore:
     def append_decision(self, record: DecisionRecord) -> None: ...
-    def get_open_positions(self, symbol: Optional[str] = None) -> list[DecisionRecord]: ...
+    def get_open_positions(self, symbol: Optional[str] = None, strategy_type: Optional[StrategyType] = None) -> list[DecisionRecord]: ...
     def mark_closed(self, open_decision_id: str, exit_price: float, closed_at: datetime) -> None: ...
 ```
 
@@ -161,6 +161,7 @@ class InteractiveStrategyRecommender:
 
     def recommend_close_positions(self, date: datetime):
         # For each open position from store:
+        #   - construct a runtime Position from the accepted DecisionRecord
         #   - compute exit price via Position.calculate_exit_price(current_chain)
         #   - fetch current volumes and apply volume validation for closure
         #   - derive rationale (profit target/stop loss/holding/expiration)
@@ -185,9 +186,14 @@ def main():
     parser.add_argument('--symbol', default='SPY')
     parser.add_argument('--yes', action='store_true')
     parser.add_argument('--date')
+    parser.add_argument('--strategy', default='credit_spread',
+                        help='Strategy to run (non-interactive). Default: credit_spread')
     args = parser.parse_args()
 
     # Wire OptionsHandler, DataRetriever, Strategy, Store, Recommender
+    # Build strategy via a small registry mapping
+    # STRATEGY_REGISTRY = { 'credit_spread': CreditSpreadStrategy }
+    # strategy = STRATEGY_REGISTRY[args.strategy](...)
     # Ensure venv is active per project standards
     # Run recommender.run(date, auto_yes=args.yes)
 
@@ -199,7 +205,7 @@ if __name__ == '__main__':
 1. A new class under `src/prediction/` can execute a `Strategy` and produce a proposed position when appropriate.
 2. The user is prompted to accept or reject proposed positions; accepted ones are stored as immutable JSON decision records.
 3. Existing open positions are detected and a close recommendation is produced with rationale; accepted closures update the JSON record.
-4. DTOs are used for proposals and decisions; no raw dicts are exposed across layers.
+4. DTOs are used for proposals and decisions; reuse existing VOs (`Option`, `StrategyType`, and runtime `Position`) and avoid duplicate leg/open-position VOs.
 5. Tests cover storage, open recommendation, close recommendation, and non-interactive flows.
 
 ## Risk Mitigation
@@ -226,12 +232,12 @@ Total: 2.5–3.5 days
 - All imports are used and validated
 
 ### DTO Rules
-- Well-defined DTOs (`ProposedPositionDTO`, `DecisionRecord`, `PositionLegDTO`, `OpenPositionDTO`)
+- Well-defined DTOs (`ProposedPositionDTO`, `DecisionRecord`); reuse `Option` for legs and `StrategyType` for strategy
 - Clear naming, flat structures, immutability via `@dataclass(frozen=True)` where appropriate
 - Validation at I/O boundaries (store)
 
 ### VO Rules
-- Leverage existing Value Objects from `src/common/models.py` and `src/backtest/models.py` where appropriate
+- Reuse existing Value Objects from `src/common/models.py` (`Option`) and `src/backtest/models.py` (`StrategyType`, runtime `Position`). No new leg or open-position VOs are introduced.
 - Business logic remains in strategy and recommender; DTOs transport data only
 
 ### Project Structure
