@@ -17,11 +17,23 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 src_dir = os.path.join(current_dir, '..')
 sys.path.insert(0, src_dir)
 
-from model.market_state_classifier import MarketStateClassifier
-from model.options_handler import OptionsHandler
-from common.cache.cache_manager import CacheManager
+# Add try/except for linter compatibility
+try:
+    from model.market_state_classifier import MarketStateClassifier
+    from model.options_handler import OptionsHandler
+    from model.calendar_features import CalendarFeatureProcessor
+    from common.cache.cache_manager import CacheManager
+except ImportError:
+    # Fallback for direct script execution
+    sys.path.insert(0, os.path.join(src_dir, '..'))
+    from src.model.market_state_classifier import MarketStateClassifier
+    from src.model.options_handler import OptionsHandler
+    from src.model.calendar_features import CalendarFeatureProcessor
+    from src.common.cache.cache_manager import CacheManager
 
 class DataRetriever:
+    """Handles data retrieval, feature calculation, and preparation for LSTM and HMM models."""
+    
     def __init__(self, symbol='SPY', hmm_start_date='2010-01-01', lstm_start_date='2020-01-01', use_free_tier=False, quiet_mode=True):
         """Initialize DataRetriever with separate date ranges for HMM and LSTM
         
@@ -42,46 +54,53 @@ class DataRetriever:
         self.lstm_data = None  # Separate data for LSTM training
         self.features = None
         self.ticker = None
-        self.state_classifier = MarketStateClassifier()
         self.cache_manager = CacheManager()
         self.options_handler = OptionsHandler(symbol, start_date=lstm_start_date, cache_dir=self.cache_manager.base_dir, use_free_tier=use_free_tier, quiet_mode=quiet_mode)
+        self.calendar_processor = None  # Initialize lazily when needed
+        self.options_data = {}  # Store OptionChain DTOs for each date
+
+    def prepare_data_for_lstm(self, sequence_length=60, state_classifier=None):
+        """Prepare data for LSTM model with enhanced features using separate date ranges
         
-        print(f"🔄 DataRetriever Configuration:")
-        print(f"   📊 HMM training data: {hmm_start_date} onwards (for market state classification)")
-        print(f"   🎯 LSTM training data: {lstm_start_date} onwards (for options signal prediction)")
-        
-    def prepare_data_for_lstm(self, sequence_length=60):
-        """Prepare data for LSTM model with enhanced features using separate date ranges"""
-        print(f"\n📈 Phase 1: Preparing HMM training data from {self.hmm_start_date}")
-        # Fetch HMM training data (longer history for market state patterns)
-        self.hmm_data = self.fetch_data_for_period(self.hmm_start_date, 'hmm')
-        self.calculate_features_for_data(self.hmm_data)
-        
-        print(f"\n🎯 Phase 2: Training HMM on market data ({len(self.hmm_data)} samples)")
-        # Train HMM on the longer historical data
-        states = self.state_classifier.find_optimal_states(self.hmm_data)
-        print(f"✅ Optimal number of market states found: {states}")
-        
-        print(f"\n📊 Phase 3: Preparing LSTM training data from {self.lstm_start_date}")
+        Args:
+            sequence_length: Length of sequences for LSTM
+            state_classifier: Trained MarketStateClassifier instance for market state prediction
+            
+        Returns:
+            Tuple[pd.DataFrame, Dict[str, OptionChain]]: 
+                - lstm_data: DataFrame with calculated features for LSTM training
+                - options_data: Dictionary mapping date strings to OptionChain DTOs
+        """
+        print(f"\n📊 Phase 1: Preparing LSTM training data from {self.lstm_start_date}")
         # Fetch LSTM training data (more recent data for options trading)
         self.lstm_data = self.fetch_data_for_period(self.lstm_start_date, 'lstm')
         self.calculate_features_for_data(self.lstm_data)
-        
+
         # Calculate option features for LSTM data
-        self.lstm_data = self.options_handler.calculate_option_features(self.lstm_data)
-        
-        print(f"\n🔮 Phase 4: Applying trained HMM to LSTM data")
+        self.lstm_data, self.options_data = self.options_handler.calculate_option_features(self.lstm_data)
+
+        print(f"\n🔮 Phase 2: Applying trained HMM to LSTM data")
         # Apply the trained HMM to the LSTM data
-        self.lstm_data['Market_State'] = self.state_classifier.predict_states(self.lstm_data)
-        
-        print(f"\n💰 Phase 5: Generating option signals for LSTM data")
+        if state_classifier is not None:
+            self.lstm_data['Market_State'] = state_classifier.predict_states(self.lstm_data)
+        else:
+            print("⚠️  No state classifier provided, skipping market state prediction")
+            self.lstm_data['Market_State'] = 0  # Default state
+
+        print(f"\n💰 Phase 3: Generating option signals for LSTM data")
         # Calculate option trading signals for LSTM data
         self.lstm_data = self.options_handler.calculate_option_signals(self.lstm_data)
-        
+
+        print(f"\n📅 Phase 4: Adding economic calendar features")
+        # Add all calendar features at once (CPI and CC)
+        if self.calendar_processor is None:
+            self.calendar_processor = CalendarFeatureProcessor()
+        self.lstm_data = self.calendar_processor.calculate_all_features(self.lstm_data)
+
         # Use LSTM data as the main dataset for training
         self.data = self.lstm_data
-        
-        return self.lstm_data
+
+        return self.lstm_data, self.options_data
 
     def fetch_data_for_period(self, start_date: str, data_type: str = 'general'):
         """Fetch data for a specific period with caching"""
@@ -103,11 +122,11 @@ class DataRetriever:
         if self.ticker is None:
             self.ticker = yf.Ticker(self.symbol)
         
-        # Get data and ensure index is timezone-naive
-        data = self.ticker.history(start=start_date)
+        # Always fetch full history and filter manually (yfinance bug workaround)
+        data = self.ticker.history(period='max')
         if data.empty:
             raise ValueError(f"No data retrieved for {self.symbol} from {start_date}")
-            
+        
         data.index = data.index.tz_localize(None)
         print(f"📊 Initial {data_type} data range: {data.index[0]} to {data.index[-1]}")
         
@@ -133,17 +152,28 @@ class DataRetriever:
 
     def calculate_features_for_data(self, data: pd.DataFrame, window=20):
         """Calculate technical features for a given dataset"""
+        # Check if we have enough data for proper feature calculation
+        min_required_samples = max(window, 50) + 10  # Need enough for rolling windows plus buffer
+
+        if len(data) < min_required_samples:
+            raise ValueError(
+                f"Insufficient data for feature calculation: {len(data)} samples available, "
+                f"need at least {min_required_samples} samples. "
+                f"This ensures proper calculation of technical indicators like SMA50, RSI, and MACD."
+            )
+
+        # Standard feature calculation for adequate datasets
         # Basic returns and volatility
         data['Returns'] = data['Close'].pct_change()
         data['Log_Returns'] = np.log(data['Close'] / data['Close'].shift(1))
         
         # Volatility measures
-        data['Volatility'] = data['Returns'].rolling(window=window).std()
+        data['Volatility'] = data['Returns'].rolling(window=window, min_periods=1).std()
         data['High_Low_Range'] = (data['High'] - data['Low']) / data['Close']
         
         # Trend indicators
-        data['SMA20'] = data['Close'].rolling(window=window).mean()
-        data['SMA50'] = data['Close'].rolling(window=50).mean()
+        data['SMA20'] = data['Close'].rolling(window=window, min_periods=1).mean()
+        data['SMA50'] = data['Close'].rolling(window=50, min_periods=1).mean()
         data['Price_to_SMA20'] = data['Close'] / data['SMA20']  # Keep for HMM, exclude from LSTM
         data['SMA20_to_SMA50'] = data['SMA20'] / data['SMA50']
         
@@ -153,13 +183,44 @@ class DataRetriever:
         macd_line, macd_signal = self._calculate_macd(data['Close'])
         data['MACD_Hist'] = macd_line - macd_signal
         
+        # Time series features for SMA20_to_SMA50
+        data['SMA20_to_SMA50_Lag1'] = data['SMA20_to_SMA50'].shift(1)
+        data['SMA20_to_SMA50_Lag5'] = data['SMA20_to_SMA50'].shift(5)
+        data['SMA20_to_SMA50_MA5'] = data['SMA20_to_SMA50'].rolling(window=5, min_periods=1).mean()
+        data['SMA20_to_SMA50_MA10'] = data['SMA20_to_SMA50'].rolling(window=10, min_periods=1).mean()
+        data['SMA20_to_SMA50_Std5'] = data['SMA20_to_SMA50'].rolling(window=5, min_periods=1).std()
+        data['SMA20_to_SMA50_Momentum'] = data['SMA20_to_SMA50'] - data['SMA20_to_SMA50'].shift(5)
+        
+        # Time series features for RSI
+        data['RSI_Lag1'] = data['RSI'].shift(1)
+        data['RSI_Lag5'] = data['RSI'].shift(5)
+        data['RSI_MA5'] = data['RSI'].rolling(window=5, min_periods=1).mean()
+        data['RSI_MA10'] = data['RSI'].rolling(window=10, min_periods=1).mean()
+        data['RSI_Std5'] = data['RSI'].rolling(window=5, min_periods=1).std()
+        data['RSI_Momentum'] = data['RSI'] - data['RSI'].shift(5)
+        data['RSI_Overbought'] = (data['RSI'] > 70).astype(int)
+        data['RSI_Oversold'] = (data['RSI'] < 30).astype(int)
+        
         # Volume features
-        data['Volume_SMA'] = data['Volume'].rolling(window=window).mean()
+        data['Volume_SMA'] = data['Volume'].rolling(window=window, min_periods=1).mean()
         data['Volume_Ratio'] = data['Volume'] / data['Volume_SMA']
         data['OBV'] = self._calculate_obv(data['Close'], data['Volume'])
         
         # Drop NaN values
+        original_length = len(data)
         data.dropna(inplace=True)
+        
+        if len(data) == 0:
+            raise ValueError(
+                f"All data was dropped due to NaN values after feature calculation. "
+                f"This indicates data quality issues or insufficient data for proper technical analysis."
+            )
+        
+        if len(data) < original_length * 0.8:  # If we lost more than 20% of data
+            print(f"⚠️  Warning: Lost {original_length - len(data)} samples due to NaN values")
+            print(f"   Keeping {len(data)} samples")
+        
+        print(f"✅ Calculated features for {len(data)} samples")
 
     def fetch_data(self):
         """Legacy method for backward compatibility - uses LSTM start date"""
@@ -168,13 +229,20 @@ class DataRetriever:
     def prepare_data(self, sequence_length=60):
         """Legacy method for backward compatibility - delegates to prepare_data_for_lstm"""
         print("⚠️  prepare_data() is deprecated. Use prepare_data_for_lstm() instead.")
-        return self.prepare_data_for_lstm(sequence_length)
+        lstm_data, options_data = self.prepare_data_for_lstm(sequence_length)
+        return lstm_data  # Return only lstm_data for backward compatibility
 
     def _calculate_rsi(self, prices, window=14):
         """Calculate Relative Strength Index"""
+        if len(prices) < window + 1:
+            raise ValueError(
+                f"Insufficient data for RSI calculation: {len(prices)} samples available, "
+                f"need at least {window + 1} samples for window size {window}."
+            )
+            
         delta = prices.diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=window).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=window).mean()
+        gain = (delta.where(delta > 0, 0)).rolling(window=window, min_periods=1).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=window, min_periods=1).mean()
         rs = gain / loss
         return 100 - (100 / (1 + rs))
 
@@ -201,5 +269,4 @@ class DataRetriever:
                 obv.iloc[i] = obv.iloc[i-1]
         
         return obv
-
  

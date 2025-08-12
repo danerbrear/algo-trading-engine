@@ -89,11 +89,17 @@ class LSTMModel:
         # Prepare feature matrix for LSTM (including all features and market states)
         self.feature_columns = [
             'High_Low_Range',
-            'SMA20_to_SMA50',
-            'RSI', 'MACD_Hist',
+            'SMA20_to_SMA50', 'SMA20_to_SMA50_Lag1', 'SMA20_to_SMA50_Lag5', 
+            'SMA20_to_SMA50_MA5', 'SMA20_to_SMA50_MA10', 'SMA20_to_SMA50_Std5', 'SMA20_to_SMA50_Momentum',
+            'RSI', 'RSI_Lag1', 'RSI_Lag5', 'RSI_MA5', 'RSI_MA10', 'RSI_Std5', 'RSI_Momentum', 
+            'RSI_Overbought', 'RSI_Oversold',
+            'MACD_Hist',
             'Volume_Ratio', 'OBV',
             'Put_Call_Ratio', 'Option_Volume_Ratio',
-            'Market_State'
+            'Market_State',
+            'Days_Until_Next_CPI', 'Days_Since_Last_CPI',
+            'Days_Until_Next_CC', 'Days_Since_Last_CC',
+            'Days_Until_Next_FFR', 'Days_Since_Last_FFR'
         ]
         
         # Store original features for reference
@@ -182,8 +188,8 @@ class LSTMModel:
         # Find highly correlated pairs
         high_corr_pairs = []
         
-        for i in range(len(correlation_matrix.columns)):
-            for j in range(i+1, len(correlation_matrix.columns)):
+        for i, col1 in enumerate(correlation_matrix.columns):
+            for j, col2 in enumerate(correlation_matrix.columns[i+1:], i+1):
                 corr = correlation_matrix.iloc[i, j]
                 if abs(corr) > threshold:
                     high_corr_pairs.append({
