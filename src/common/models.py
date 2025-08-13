@@ -113,16 +113,43 @@ class Option:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Option':
         """Create from dictionary for deserialization"""
+        # Robust field extraction with fallbacks for Polygon responses and legacy cache entries
+        bid = data.get('bid')
+        ask = data.get('ask')
+        mid_price = data.get('mid_price') or data.get('midprice')
+        # Possible price fields from different sources: 'last_price', 'close', 'c', 'price'
+        last_price = (
+            data.get('last_price', None)
+            if 'last_price' in data else
+            data.get('close', None)
+            if 'close' in data else
+            data.get('c', None)
+            if 'c' in data else
+            data.get('price', None)
+        )
+        if last_price is None:
+            if mid_price is not None:
+                last_price = mid_price
+            elif bid is not None and ask is not None:
+                last_price = (bid + ask) / 2
+            else:
+                # As a last resort, set to 0.0; callers should filter such entries if undesired
+                last_price = 0.0
+
+        option_type = data.get('type') or data.get('option_type')
+        if option_type is None:
+            raise ValueError("Option type missing in data")
+
         return cls(
             ticker=data.get('ticker', ''),
-            symbol=data['symbol'],
+            symbol=data.get('symbol', data.get('ticker', '')),
             strike=data['strike'],
             expiration=data['expiration'],
-            option_type=data['type'],
-            last_price=data['last_price'],
-            bid=data.get('bid'),
-            ask=data.get('ask'),
-            mid_price=data.get('mid_price'),
+            option_type=option_type,
+            last_price=last_price,
+            bid=bid,
+            ask=ask,
+            mid_price=mid_price,
             volume=data.get('volume'),
             open_interest=data.get('open_interest'),
             delta=data.get('delta'),
@@ -186,10 +213,14 @@ class OptionChain:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'OptionChain':
         """Create from dictionary for deserialization"""
-        return cls(
-            calls=[Option.from_dict(opt) for opt in data.get('calls', [])],
-            puts=[Option.from_dict(opt) for opt in data.get('puts', [])],
-        )
+        try:
+            return cls(
+                calls=[Option.from_dict(opt) for opt in data.get('calls', [])],
+                puts=[Option.from_dict(opt) for opt in data.get('puts', [])],
+            )
+        except Exception as e:
+            # Fail fast with a clear error if any entry is malformed
+            raise ValueError(f"Malformed option chain data: {e}")
     
     @classmethod
     def from_dict_w_options(cls, data: Dict[Option, Any]) -> 'OptionChain':
