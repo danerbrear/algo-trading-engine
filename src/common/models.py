@@ -132,9 +132,6 @@ class Option:
                 last_price = mid_price
             elif bid is not None and ask is not None:
                 last_price = (bid + ask) / 2
-            else:
-                # As a last resort, set to 0.0; callers should filter such entries if undesired
-                last_price = 0.0
 
         option_type = data.get('type') or data.get('option_type')
         if option_type is None:

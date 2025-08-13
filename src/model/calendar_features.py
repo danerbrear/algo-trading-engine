@@ -65,9 +65,7 @@ class CalendarFeatureProcessor:
         """Load and parse calendar events from CSV for a specific event type"""
         if not calendar_data_path.exists():
             raise FileNotFoundError(f"{event_type} calendar data not found at {calendar_data_path}")
-        
-        print(f"📅 Loading {event_type} calendar data from {calendar_data_path}")
-        
+                
         # Read CSV with no header (data starts from first row)
         df = pd.read_csv(calendar_data_path, header=None, names=[
             'Date', 'Time', 'Currency', 'Impact', 'Event', 'Actual', 'Forecast', 'Previous'

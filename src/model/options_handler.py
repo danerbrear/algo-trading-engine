@@ -909,7 +909,6 @@ class OptionsHandler:
         
         # Credit spread P&L: Short leg profit - Long leg loss (reversed from debit spread)
         data['Future_Call_Credit_Return'] = -atm_call_future + plus5_call_future
-        print("✅ Using REAL Call Credit Spread calculation (Sell ATM Call + Buy ATM+5 Call)")
         
         # 2. Put Credit Spread: Sell ATM Put + Buy ATM-5 Put
         atm_put_future = data['Put_Price'].shift(-holding_period) / data['Put_Price'] - 1
@@ -917,7 +916,6 @@ class OptionsHandler:
         
         # Credit spread P&L: Short leg profit - Long leg loss (reversed from debit spread)
         data['Future_Put_Credit_Return'] = -atm_put_future + minus5_put_future
-        print("✅ Using REAL Put Credit Spread calculation (Sell ATM Put + Buy ATM-5 Put)")
         
         # =====================
         # EV/Gating label logic
@@ -929,8 +927,8 @@ class OptionsHandler:
             return 0.5 * (1.0 + _np.vectorize(lambda v: erf(v / _np.sqrt(2.0)))(x))
         
         # Spread widths (ensure positive, avoid division by zero)
-        width_call = (data['Call_ATM_Plus5_Strike'] - data['ATM_Strike']).clip(lower=0.01)
-        width_put = (data['ATM_Strike'] - data['Put_ATM_Minus5_Strike']).clip(lower=0.01)
+        width_call = 5
+        width_put = 5
         
         # Credits (short - long), floored at 0
         call_credit = (data['Call_Price'] - data['Call_ATM_Plus5_Price']).clip(lower=0.0)
@@ -959,13 +957,6 @@ class OptionsHandler:
         ev_call = pop_call * credit_frac_call - (1.0 - pop_call) * (1.0 - credit_frac_call)
         ev_put = pop_put * credit_frac_put - (1.0 - pop_put) * (1.0 - credit_frac_put)
         
-        # Volatility gating using rolling min-max percentile of Volatility
-        vol = data['Volatility'] if 'Volatility' in data.columns else data['Returns'].rolling(window=20, min_periods=1).std()
-        vol_min = vol.rolling(window=lookback, min_periods=5).min()
-        vol_max = vol.rolling(window=lookback, min_periods=5).max()
-        vol_pct = ((vol - vol_min) / (vol_max - vol_min + 1e-9)).clip(lower=0.0, upper=1.0)
-        low_vol_mask = vol_pct < 0.7
-        
         # Trend tilt via SMA ratio
         trend = data['SMA20_to_SMA50'] if 'SMA20_to_SMA50' in data.columns else 1.0
         ev_call_adj = ev_call * _np.where(trend < 1.0, 1.10, 0.95)
@@ -976,11 +967,7 @@ class OptionsHandler:
             pcr = data['Put_Call_Ratio']
             ev_call_adj *= _np.where(pcr > 1.2, 1.05, 1.0)
             ev_put_adj *= _np.where(pcr < 0.8, 1.05, 1.0)
-        
-        # Apply volatility gate (disallow spreads in high vol)
-        ev_call_adj = _np.where(low_vol_mask, ev_call_adj, -1.0)
-        ev_put_adj = _np.where(low_vol_mask, ev_put_adj, -1.0)
-        
+                
         # Choose strategy only if edge exceeds threshold
         edge = float(min_return_threshold)
         ev_max = _np.maximum(ev_call_adj, ev_put_adj)
@@ -1003,7 +990,7 @@ class OptionsHandler:
         counts = pd.Series(data['Option_Signal']).value_counts().sort_index()
         total_signals = int(counts.sum())
         if total_signals > 0:
-            print("\nStrategy Distribution (EV/gating):")
+            print("\nStrategy Distribution (EV):")
             for i, name in enumerate(strategy_names):
                 cnt = int(counts.get(i, 0))
                 pct = (cnt / total_signals) if total_signals else 0
