@@ -815,6 +815,8 @@ class OptionsHandler:
                     data.loc[current_date, 'Put_OI'] = atm_put.open_interest
                     data.loc[current_date, 'Call_Price'] = atm_call.last_price
                     data.loc[current_date, 'Put_Price'] = atm_put.last_price
+                    # Store ATM strike for probability calculations
+                    data.loc[current_date, 'ATM_Strike'] = getattr(atm_call, 'strike', None) or getattr(atm_put, 'strike', None)
                     data.loc[current_date, 'Call_Delta'] = atm_call.delta
                     data.loc[current_date, 'Put_Delta'] = atm_put.delta
                     data.loc[current_date, 'Call_Gamma'] = atm_call.gamma
@@ -829,15 +831,20 @@ class OptionsHandler:
                 # Multi-strike options for strategy calculations (now guaranteed by API fetch)
                 if 'call_atm_plus5' in option_strikes:
                     data.loc[current_date, 'Call_ATM_Plus5_Price'] = option_strikes['call_atm_plus5'].last_price
+                    # Store strike for spread width
+                    data.loc[current_date, 'Call_ATM_Plus5_Strike'] = option_strikes['call_atm_plus5'].strike
                 
                 if 'call_atm_plus10' in option_strikes:
                     data.loc[current_date, 'Call_ATM_Plus10_Price'] = option_strikes['call_atm_plus10'].last_price
+                    data.loc[current_date, 'Call_ATM_Plus10_Strike'] = option_strikes['call_atm_plus10'].strike
                 
                 if 'put_atm_minus5' in option_strikes:
                     data.loc[current_date, 'Put_ATM_Minus5_Price'] = option_strikes['put_atm_minus5'].last_price
+                    data.loc[current_date, 'Put_ATM_Minus5_Strike'] = option_strikes['put_atm_minus5'].strike
                 
                 if 'put_atm_minus10' in option_strikes:
                     data.loc[current_date, 'Put_ATM_Minus10_Price'] = option_strikes['put_atm_minus10'].last_price
+                    data.loc[current_date, 'Put_ATM_Minus10_Strike'] = option_strikes['put_atm_minus10'].strike
                 
                 # Create compact summary for progress bar postfix
                 strike_summary = ""
@@ -912,64 +919,100 @@ class OptionsHandler:
         data['Future_Put_Credit_Return'] = -atm_put_future + minus5_put_future
         print("✅ Using REAL Put Credit Spread calculation (Sell ATM Put + Buy ATM-5 Put)")
         
-        # Strategy counters
-        strategy_counts = [0, 0, 0]  # Hold, Call Credit, Put Credit
-        strategy_names = ['Hold', 'Call Credit Spread', 'Put Credit Spread']
+        # =====================
+        # EV/Gating label logic
+        # =====================
+        from math import erf
+        import numpy as _np
         
-        # Generate labels based on best performing strategy with market context
-        valid_strategies = 0
-        for i in range(len(data) - holding_period):  # Exclude last holding_period rows
-            
-            # Get future returns for each strategy
-            call_credit_return = data['Future_Call_Credit_Return'].iloc[i]
-            put_credit_return = data['Future_Put_Credit_Return'].iloc[i]
-            
-            # Skip if we don't have complete option data
-            if (pd.isna(call_credit_return) or pd.isna(put_credit_return)):
-                continue
-            
-            valid_strategies += 1
-            
-            # Market regime factors for strategy selection
-            recent_trend = data['SMA20_to_SMA50'].iloc[i] if not pd.isna(data['SMA20_to_SMA50'].iloc[i]) else 1.0
-            
-            # Find the best strategy that meets minimum threshold
-            # Credit spreads work better in sideways/trending markets with less strict requirements
-            strategy_returns = {
-                1: call_credit_return if recent_trend < 0.998 else call_credit_return * 0.8,      # Favor in downtrends/neutral
-                2: put_credit_return if recent_trend > 1.002 else put_credit_return * 0.8,       # Favor in uptrends/neutral
-            }
-            
-            # Find best strategy above threshold
-            best_strategy = 0  # Default to Hold
-            best_return = 0
-            
-            for strategy_id, strategy_return in strategy_returns.items():
-                if strategy_return > min_return_threshold and strategy_return > best_return:
-                    best_strategy = strategy_id
-                    best_return = strategy_return
-            
-            # Assign the best strategy
-            data.iloc[i, data.columns.get_loc('Option_Signal')] = best_strategy
-            strategy_counts[best_strategy] += 1
+        def _norm_cdf(x: _np.ndarray) -> _np.ndarray:
+            return 0.5 * (1.0 + _np.vectorize(lambda v: erf(v / _np.sqrt(2.0)))(x))
+        
+        # Spread widths (ensure positive, avoid division by zero)
+        width_call = (data['Call_ATM_Plus5_Strike'] - data['ATM_Strike']).clip(lower=0.01)
+        width_put = (data['ATM_Strike'] - data['Put_ATM_Minus5_Strike']).clip(lower=0.01)
+        
+        # Credits (short - long), floored at 0
+        call_credit = (data['Call_Price'] - data['Call_ATM_Plus5_Price']).clip(lower=0.0)
+        put_credit = (data['Put_Price'] - data['Put_ATM_Minus5_Price']).clip(lower=0.0)
+        
+        # Normalize credits by width, bounded [0,1]
+        credit_frac_call = (call_credit / width_call).clip(lower=0.0, upper=1.0)
+        credit_frac_put = (put_credit / width_put).clip(lower=0.0, upper=1.0)
+        
+        # Estimate hp-day return distribution from daily returns (no lookahead)
+        lookback = 60
+        mu_daily = data['Returns'].rolling(window=lookback, min_periods=10).mean()
+        sigma_daily = data['Returns'].rolling(window=lookback, min_periods=10).std().clip(lower=1e-6)
+        mu_hp = mu_daily * holding_period
+        sigma_hp = sigma_daily * _np.sqrt(holding_period)
+        
+        # Threshold return to finish at ATM strike
+        threshold_ret_atm = (data['ATM_Strike'] / data['Close']) - 1.0
+        z = (threshold_ret_atm - mu_hp) / sigma_hp
+        
+        # Probability of profit approximations
+        pop_call = _norm_cdf(z)                # P(S_T <= ATM_Strike)
+        pop_put = 1.0 - pop_call               # P(S_T >= ATM_Strike)
+        
+        # EV per unit width
+        ev_call = pop_call * credit_frac_call - (1.0 - pop_call) * (1.0 - credit_frac_call)
+        ev_put = pop_put * credit_frac_put - (1.0 - pop_put) * (1.0 - credit_frac_put)
+        
+        # Volatility gating using rolling min-max percentile of Volatility
+        vol = data['Volatility'] if 'Volatility' in data.columns else data['Returns'].rolling(window=20, min_periods=1).std()
+        vol_min = vol.rolling(window=lookback, min_periods=5).min()
+        vol_max = vol.rolling(window=lookback, min_periods=5).max()
+        vol_pct = ((vol - vol_min) / (vol_max - vol_min + 1e-9)).clip(lower=0.0, upper=1.0)
+        low_vol_mask = vol_pct < 0.7
+        
+        # Trend tilt via SMA ratio
+        trend = data['SMA20_to_SMA50'] if 'SMA20_to_SMA50' in data.columns else 1.0
+        ev_call_adj = ev_call * _np.where(trend < 1.0, 1.10, 0.95)
+        ev_put_adj = ev_put * _np.where(trend > 1.0, 1.10, 0.95)
+        
+        # Optional sentiment tilt via Put/Call ratio if available
+        if 'Put_Call_Ratio' in data.columns:
+            pcr = data['Put_Call_Ratio']
+            ev_call_adj *= _np.where(pcr > 1.2, 1.05, 1.0)
+            ev_put_adj *= _np.where(pcr < 0.8, 1.05, 1.0)
+        
+        # Apply volatility gate (disallow spreads in high vol)
+        ev_call_adj = _np.where(low_vol_mask, ev_call_adj, -1.0)
+        ev_put_adj = _np.where(low_vol_mask, ev_put_adj, -1.0)
+        
+        # Choose strategy only if edge exceeds threshold
+        edge = float(min_return_threshold)
+        ev_max = _np.maximum(ev_call_adj, ev_put_adj)
+        raw_choice = _np.where(ev_max <= edge, 0, _np.where(ev_call_adj > ev_put_adj, 1, 2))
+        
+        # Respect data availability: if any required field is NaN, set to Hold
+        required_cols = [
+            'ATM_Strike', 'Call_ATM_Plus5_Strike', 'Put_ATM_Minus5_Strike',
+            'Call_Price', 'Call_ATM_Plus5_Price', 'Put_Price', 'Put_ATM_Minus5_Price'
+        ]
+        valid_mask = _np.ones(len(data), dtype=bool)
+        for col in required_cols:
+            valid_mask &= ~data[col].isna().values if col in data.columns else False
+        
+        final_choice = _np.where(valid_mask, raw_choice, 0)
+        data['Option_Signal'] = final_choice.astype(int)
         
         # Display strategy distribution
-        total_signals = sum(strategy_counts)
-        
+        strategy_names = ['Hold', 'Call Credit Spread', 'Put Credit Spread']
+        counts = pd.Series(data['Option_Signal']).value_counts().sort_index()
+        total_signals = int(counts.sum())
         if total_signals > 0:
-            print(f"\nStrategy Distribution ({valid_strategies} valid samples):")
-            for i, (name, count) in enumerate(zip(strategy_names, strategy_counts)):
-                print(f"  {i}: {name:18} {count:4d} ({count/total_signals:.1%})")
-            
-            # Show average returns for each strategy when selected
-            for strategy_id in range(1, 3):
+            print("\nStrategy Distribution (EV/gating):")
+            for i, name in enumerate(strategy_names):
+                cnt = int(counts.get(i, 0))
+                pct = (cnt / total_signals) if total_signals else 0
+                print(f"  {i}: {name:18} {cnt:4d} ({pct:.1%})")
+            # Show average realized returns for selected strategies
+            for strategy_id in [1, 2]:
                 strategy_mask = data['Option_Signal'] == strategy_id
                 if strategy_mask.sum() > 0:
-                    if strategy_id == 1:
-                        avg_return = data[strategy_mask]['Future_Call_Credit_Return'].mean()
-                    else:  # strategy_id == 2
-                        avg_return = data[strategy_mask]['Future_Put_Credit_Return'].mean()
-                    
+                    avg_return = data.loc[strategy_mask, 'Future_Call_Credit_Return' if strategy_id == 1 else 'Future_Put_Credit_Return'].mean()
                     print(f"  Avg {strategy_names[strategy_id]} Return: {avg_return:.2%}")
         else:
             print("⚠️ No valid strategy signals generated - check multi-strike data availability")
