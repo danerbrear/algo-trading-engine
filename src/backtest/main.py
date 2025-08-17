@@ -153,7 +153,7 @@ class BacktestEngine:
             print(f"   Position closures rejected due to volume: {volume_summary['positions_rejected_closure_volume']}")
             print(f"   Skipped closures: {volume_summary['skipped_closures']}")
             print(f"   Total rejections: {volume_summary['total_rejections']}")
-            print(f"   Volume rejection rate: {volume_summary['volume_rejection_rate']:.1f}%")
+            print(f"   Volume rejection rate: {volume_summary['rejection_rate']:.1f}%")
         
         # Position performance statistics
         if self.closed_positions:
@@ -340,7 +340,6 @@ class BacktestEngine:
             if volume_validation_failed:
                 print(f"⚠️  Volume validation failed for position closure: {', '.join(failed_options)} have insufficient volume")
                 self.volume_stats = self.volume_stats.increment_rejected_closures()
-                self.volume_stats = self.volume_stats.increment_skipped_closures()
                 
                 # Skip closing the position for this date due to insufficient volume
                 print(f"⚠️  Skipping position closure for {date.date()} due to insufficient volume")

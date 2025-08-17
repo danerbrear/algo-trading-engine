@@ -5,7 +5,7 @@ This module provides DTOs for volume validation configuration and statistics tra
 """
 
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List
 from enum import Enum
 
 
@@ -17,18 +17,25 @@ class StrategyType(Enum):
 @dataclass(frozen=True)
 class VolumeConfig:
     """Configuration for volume validation settings"""
-    min_volume: int
+    min_volume: int = 10
     enable_volume_validation: bool = True
     skip_closure_on_insufficient_volume: bool = True
+    
+    def __post_init__(self):
+        """Validate min_volume after initialization"""
+        if self.min_volume < 0:
+            raise ValueError("Minimum volume cannot be negative")
+        if self.min_volume == 0:
+            raise ValueError("Minimum volume must be greater than 0")
 
 
 @dataclass(frozen=True)
 class VolumeStats:
     """Statistics tracking for volume validation"""
-    options_checked: int
-    positions_rejected_volume: int
-    positions_rejected_closure_volume: int
-    skipped_closures: int
+    options_checked: int = 0
+    positions_rejected_volume: int = 0
+    positions_rejected_closure_volume: int = 0
+    skipped_closures: int = 0
 
     def increment_options_checked(self) -> 'VolumeStats':
         """Increment the number of options checked"""
@@ -54,7 +61,7 @@ class VolumeStats:
             options_checked=self.options_checked,
             positions_rejected_volume=self.positions_rejected_volume,
             positions_rejected_closure_volume=self.positions_rejected_closure_volume + 1,
-            skipped_closures=self.skipped_closures
+            skipped_closures=self.skipped_closures + 1
         )
 
     def increment_skipped_closures(self) -> 'VolumeStats':
@@ -77,7 +84,7 @@ class VolumeStats:
             'positions_rejected_closure_volume': self.positions_rejected_closure_volume,
             'skipped_closures': self.skipped_closures,
             'total_rejections': total_rejections,
-            'volume_rejection_rate': (total_rejections / total_checked * 100) if total_checked > 0 else 0
+            'rejection_rate': (total_rejections / total_checked * 100) if total_checked > 0 else 0
         }
 
 

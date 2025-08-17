@@ -327,7 +327,7 @@ class TestVolumeValidationIntegration:
         summary = engine.volume_stats.get_summary()
         assert summary['positions_rejected_volume'] == 0
         assert summary['options_checked'] == 2
-        assert summary['volume_rejection_rate'] == 0.0  # 0/2 * 100
+        assert summary['rejection_rate'] == 0.0  # 0/2 * 100
     
     def test_backtest_engine_with_position_without_spread_options(self):
         """Test BacktestEngine handles positions without spread_options gracefully."""

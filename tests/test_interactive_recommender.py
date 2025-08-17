@@ -64,13 +64,18 @@ def test_recommender_open_accept(monkeypatch, tmp_path):
     date = datetime(2025, 8, 8)
     strategy.data.loc.__getitem__.return_value = {'Close': 500}
     strategy._make_prediction.return_value = {'strategy': 2, 'confidence': 0.7}
+    
+    # Create proper option objects instead of MagicMock
+    atm_option = _make_option('A', 500, '2025-09-06', 'put', 2.0)
+    otm_option = _make_option('B', 495, '2025-09-06', 'put', 1.0)
+    
     strategy._find_best_spread.return_value = {
         'expiry': datetime(2025, 9, 6),
         'width': 5,
         'atm_strike': 500,
         'otm_strike': 495,
-        'atm_option': _make_option('A', 500, '2025-09-06', 'put', 2.0),
-        'otm_option': _make_option('B', 495, '2025-09-06', 'put', 1.0),
+        'atm_option': atm_option,
+        'otm_option': otm_option,
         'credit': 1.05,
         'risk_reward': 0.45,
         'prob_profit': 0.68,
@@ -78,6 +83,7 @@ def test_recommender_open_accept(monkeypatch, tmp_path):
     strategy._ensure_volume_data.side_effect = lambda opt, d: opt
 
     options_handler = MagicMock()
+    options_handler.symbol = 'SPY'
     store = JsonDecisionStore(base_dir=str(tmp_path))
 
     rec = InteractiveStrategyRecommender(strategy, options_handler, store, auto_yes=True).recommend_open_position(date)
