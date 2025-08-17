@@ -67,10 +67,14 @@ class BacktestEngine:
         
         # Initialize progress tracker if enabled
         if self.enable_progress_tracking:
+            # Account for start_date_offset in progress tracking
+            effective_start_date = date_range[self.strategy.start_date_offset] if self.strategy.start_date_offset < len(date_range) else date_range[0]
+            effective_total_dates = len(date_range) - self.strategy.start_date_offset
+            
             self.progress_tracker = ProgressTracker(
-                start_date=date_range[0],
+                start_date=effective_start_date,
                 end_date=date_range[-1],
-                total_dates=len(date_range),
+                total_dates=effective_total_dates,
                 desc="Running Backtest",
                 quiet_mode=self.quiet_mode
             )
@@ -80,12 +84,12 @@ class BacktestEngine:
         print(f"   Date range: {date_range[0].date()} to {date_range[-1].date()}")
 
         # For each date in the range, simulate the strategy
-        for date in date_range:
+        for i, date in enumerate(date_range):
             # Convert to tuple for immutability
             positions_tuple = tuple(self.positions)
 
-            # Update progress tracker
-            if self.progress_tracker:
+            # Update progress tracker only for dates that are actually being processed
+            if self.progress_tracker and i >= self.strategy.start_date_offset:
                 self.progress_tracker.update(current_date=date)
 
             try:
