@@ -26,6 +26,9 @@ from ..common.models import OptionChain, OptionType, Option
 # Load environment variables from .env file
 load_dotenv()
 
+# Global variable to track API calls
+total_api_calls_made = 0
+
 class OptionsHandler:
     def __init__(self, symbol: str, api_key: Optional[str] = None, cache_dir: str = 'data_cache', start_date: str = None, use_free_tier: bool = False, quiet_mode: bool = True):
         """Initialize the OptionsHandler with a symbol and optional Polygon.io API key"""
@@ -567,7 +570,7 @@ class OptionsHandler:
                 closest_call = min(calls_sorted, 
                                  key=lambda x: abs(x.strike - target_strike), 
                                  default=None)
-                if closest_call and abs(closest_call.strike - target_strike) <= 3.0:  # Within $3
+                if closest_call and abs(closest_call.strike - target_strike) <= 5.0:  # Within $5
                     if strike_name == 'atm':
                         option_strikes['atm_call'] = closest_call
                     else:
@@ -581,7 +584,7 @@ class OptionsHandler:
                 closest_put = min(puts_sorted, 
                                 key=lambda x: abs(x.strike - target_strike), 
                                 default=None)
-                if closest_put and abs(closest_put.strike - target_strike) <= 3.0:  # Within $3
+                if closest_put and abs(closest_put.strike - target_strike) <= 5.0:  # Within $5
                     if strike_name == 'atm':
                         option_strikes['atm_put'] = closest_put
                     else:
@@ -592,7 +595,12 @@ class OptionsHandler:
         
         # Fetch missing strikes from Polygon API and update cache
         if missing_strikes:
-            progress_print(f"🔄 Fetching {len(missing_strikes)} missing option strikes from Polygon API...")
+            # Create a detailed list of missing strikes for the print statement
+            missing_strikes_details = []
+            for strike_name, target_strike, option_type in missing_strikes:
+                missing_strikes_details.append(f"{strike_name}(${target_strike:.0f} {option_type})")
+            
+            progress_print(f"🔄 Fetching {len(missing_strikes)} missing option strikes from Polygon API: {', '.join(missing_strikes_details)}")
             additional_options = self._fetch_missing_strikes(missing_strikes, expiry, current_date)
             
             # Add fetched options to our results
@@ -605,6 +613,7 @@ class OptionsHandler:
 
     def _fetch_missing_strikes(self, missing_strikes: List, expiry: str, current_date: datetime) -> Dict:
         """Fetch specific missing option strikes from Polygon API"""
+        global total_api_calls_made
         additional_options = {}
         
         for strike_name, target_strike, option_type in missing_strikes:
@@ -613,6 +622,7 @@ class OptionsHandler:
                 
                 # Find contracts close to target strike
                 contracts = self._fetch_contracts_for_strike(target_strike, expiry, option_type, current_date)
+                total_api_calls_made += 1  # Track total API calls
                 
                 if contracts:
                     # Get the closest contract to our target strike
@@ -622,6 +632,7 @@ class OptionsHandler:
                     if abs(float(closest_contract.strike_price) - target_strike) <= 5.0:  # Within $5
                         # Try to fetch historical data for this contract
                         option_data = self._fetch_historical_contract_data(closest_contract, current_date)
+                        total_api_calls_made += 1  # Track total API calls
                         
                         # If no data available, try alternative strikes
                         if not option_data:
@@ -635,6 +646,7 @@ class OptionsHandler:
                             for alt_contract in sorted_contracts[1:4]:  # Skip the first one we already tried
                                 progress_print(f"Trying alternative {option_type} ${float(alt_contract.strike_price):.0f}")
                                 option_data = self._fetch_historical_contract_data(alt_contract, current_date)
+                                total_api_calls_made += 1  # Track total API calls
                                 if option_data:
                                     progress_print(f"✅ Found data for alternative {option_type} ${float(alt_contract.strike_price):.0f}")
                                     break
@@ -659,7 +671,28 @@ class OptionsHandler:
         return additional_options
 
     def _fetch_contracts_for_strike(self, target_strike: float, expiry: str, option_type: str, current_date: datetime) -> List:
-        """Fetch option contracts for a specific strike and expiration"""
+        """Fetch option contracts for a specific strike price and expiration date from Polygon API.
+        
+        This method queries the Polygon API to retrieve available option contracts that match
+        the specified criteria. It uses the retry handler to handle API rate limits and failures.
+        
+        Args:
+            target_strike (float): The target strike price to search for (e.g., 420.0)
+            expiry (str): The expiration date in 'YYYY-MM-DD' format (e.g., '2025-01-17')
+            option_type (str): The option type - either 'call' or 'put'
+            current_date (datetime): The date as of which to search for contracts
+            
+        Returns:
+            List: A list of option contract objects from Polygon API. Each contract contains
+                  metadata like strike_price, expiration_date, contract_type, ticker, etc.
+                  Returns empty list if no contracts found or API call fails.
+                  
+        Note:
+            - Uses retry logic to handle API rate limits and temporary failures
+            - Limits results to 14 contracts to avoid overwhelming responses
+            - Only fetches non-expired contracts (expired=False)
+            - Logs the number of contracts found for debugging purposes
+        """
         def fetch_func():
             try:                                
                 contracts_response = self.client.list_options_contracts(
@@ -742,8 +775,12 @@ class OptionsHandler:
         
         # Dictionary to store OptionChain DTOs for each date
         options_data = {}
+        # Track actual API calls globally for this method
+        global total_api_calls_made
+        total_api_calls_made = 0
         
         for current_date in data.index:
+            progress_print(f"\n****Start processing {current_date}****")
             # Ensure current_date is naive datetime for comparison
             current_date_naive = pd.Timestamp(current_date).tz_localize(None)
             # Skip dates before start_date if specified
@@ -754,6 +791,7 @@ class OptionsHandler:
             try:
                 # Get current price
                 current_price = data.loc[current_date, 'Close']
+                print(f"Current Price: {current_price}")
                 
                 # Get option chain with multiple strikes
                 chain_data = self._get_option_chain_with_cache(current_date, current_price)
@@ -763,8 +801,7 @@ class OptionsHandler:
                     current_date=current_date_naive,
                     additional_info={
                         'calls': len(chain_data.calls),
-                        'puts': len(chain_data.puts),
-                        'api_calls': progress.successful_api_calls
+                        'puts': len(chain_data.puts)
                     }
                 )
                 
@@ -778,6 +815,7 @@ class OptionsHandler:
                         date=current_date.strftime('%Y-%m-%d'),
                         source='options_handler'
                     )
+                    print(f"Option Chain: {option_chain.__str__()}")
                     
                     # Store in options_data dictionary
                     date_key = current_date.strftime('%Y-%m-%d')
@@ -847,9 +885,8 @@ class OptionsHandler:
                     strike = option_strikes['atm_call'].strike
                     strike_summary = f"ATM ${strike:.0f}: C${call_price:.2f}/P${put_price:.2f}"
                 
-                # Final update with strike summary and API call count
+                # Final update with strike summary
                 progress.update(
-                    increment_operations=5,  # 5 API calls per date
                     summary_info=strike_summary
                 )
                 
@@ -866,6 +903,7 @@ class OptionsHandler:
         
         print(f"✅ Processed {len(options_data)} days of option chain data")
         print(f"   Option chains available for: {list(options_data.keys())[:5]}{'...' if len(options_data) > 5 else ''}")
+        print(f"   Total successful API calls: {total_api_calls_made}")
                 
         return data, options_data
 
@@ -885,6 +923,13 @@ class OptionsHandler:
         
         # Initialize the signal column
         data['Option_Signal'] = 0  # Default to Hold
+        
+        # Check if required columns exist, if not create them with NaN values
+        required_columns = ['Call_ATM_Plus5_Price', 'Put_ATM_Minus5_Price', 'Call_Price', 'Put_Price']
+        for col in required_columns:
+            if col not in data.columns:
+                data[col] = np.nan
+                print(f"⚠️ Warning: {col} column not found, using NaN values")
         
         # Multi-strike returns for realistic strategy calculations
         data['Call_Plus5_Return'] = data['Call_ATM_Plus5_Price'].pct_change(fill_method=None)
