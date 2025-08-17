@@ -2,14 +2,15 @@ import os
 import pandas as pd
 from datetime import datetime
 from typing import List
+import argparse
 
 from src.model.options_handler import OptionsHandler
-from src.strategies.credit_spread_minimal import CreditSpreadStrategy
 from .models import Benchmark, Strategy, Position, StrategyType
 from src.common.data_retriever import DataRetriever
 from src.common.functions import load_hmm_model, load_lstm_model
 from .config import VolumeConfig, VolumeStats, OverallPerformanceStats, StrategyPerformanceStats
 from src.common.progress_tracker import ProgressTracker, set_global_progress_tracker, progress_print
+from .strategy_builder import StrategyFactory, create_strategy_from_args
 
 class BacktestEngine:
     """
@@ -576,16 +577,64 @@ class BacktestEngine:
             print(f"⚠️  Proceeding with closure of position {position.__str__()} despite insufficient volume")
             return False  # Indicate that closure should proceed
 
-if __name__ == "__main__":
-    # Test with a smaller date range to verify the fix
-    start_date = datetime(2024, 8, 1)
-    end_date = datetime(2025, 8, 1)
 
-    data_retriever = DataRetriever(symbol='SPY', hmm_start_date=start_date, lstm_start_date=start_date, use_free_tier=False, quiet_mode=True)
+def parse_arguments():
+    """Parse command line arguments for backtest configuration"""
+    parser = argparse.ArgumentParser(description='Run backtest with specified strategy')
+    parser.add_argument('--strategy', 
+                       choices=StrategyFactory.get_available_strategies(),
+                       default='credit_spread',
+                       help='Strategy to use for backtesting')
+    parser.add_argument('--start-date-offset', type=int, default=60,
+                       help='Start date offset for strategy')
+    parser.add_argument('--stop-loss', type=float, default=0.6,
+                       help='Stop loss percentage')
+    parser.add_argument('--profit-target', type=float, default=None,
+                       help='Profit target percentage')
+    parser.add_argument('--initial-capital', type=float, default=5000,
+                       help='Initial capital for backtesting')
+    parser.add_argument('--max-position-size', type=float, default=0.20,
+                       help='Maximum position size as fraction of capital')
+    parser.add_argument('--start-date', type=str, default='2025-01-01',
+                       help='Start date for backtest (YYYY-MM-DD)')
+    parser.add_argument('--end-date', type=str, default='2025-08-01',
+                       help='End date for backtest (YYYY-MM-DD)')
+    parser.add_argument('--symbol', type=str, default='SPY',
+                       help='Symbol to trade')
+    parser.add_argument('--verbose', action='store_true', default=False,
+                       help='Run in quiet mode')
+    
+    return parser.parse_args()
+
+if __name__ == "__main__":
+    # Parse command line arguments
+    args = parse_arguments()
+    
+    # Convert date strings to datetime objects
+    start_date = datetime.strptime(args.start_date, '%Y-%m-%d')
+    end_date = datetime.strptime(args.end_date, '%Y-%m-%d')
+    
+    print(f"🚀 Starting backtest with strategy: {args.strategy}")
+    print(f"   Date range: {start_date.date()} to {end_date.date()}")
+    print(f"   Symbol: {args.symbol}")
+    print(f"   Initial capital: ${args.initial_capital:,.2f}")
+    print(f"   Max position size: {args.max_position_size * 100:.1f}%")
+    print(f"   Stop loss: {args.stop_loss * 100:.1f}%")
+    if args.profit_target:
+        print(f"   Profit target: {args.profit_target * 100:.1f}%")
+    print()
+
+    data_retriever = DataRetriever(
+        symbol=args.symbol, 
+        hmm_start_date=start_date, 
+        lstm_start_date=start_date, 
+        use_free_tier=False, 
+        quiet_mode=not args.verbose
+    )
 
     # Load model directory from environment variable
     model_save_base_path = os.getenv('MODEL_SAVE_BASE_PATH', 'Trained_Models')
-    model_dir = os.path.join(model_save_base_path, 'lstm_poc', 'SPY', 'latest')
+    model_dir = os.path.join(model_save_base_path, 'lstm_poc', args.symbol, 'latest')
 
     options_handler = data_retriever.options_handler
 
@@ -596,21 +645,31 @@ if __name__ == "__main__":
         # Then prepare the data for LSTM
         data, options_data = data_retriever.prepare_data_for_lstm(state_classifier=hmm_model)
 
-        strategy = CreditSpreadStrategy(
-            lstm_model=lstm_model, 
+        # Create strategy using the builder pattern
+        strategy = create_strategy_from_args(
+            strategy_name=args.strategy,
+            lstm_model=lstm_model,
             lstm_scaler=scaler,
             options_handler=options_handler,
-            start_date_offset=60
+            start_date_offset=args.start_date_offset,
+            stop_loss=args.stop_loss,
+            profit_target=args.profit_target
         )
+        
+        if strategy is None:
+            print("❌ Failed to create strategy")
+            exit(1)
+        
         strategy.set_data(data, options_data)
 
         backtester = BacktestEngine(
             data=data, 
             strategy=strategy,
-            initial_capital=5000,
+            initial_capital=args.initial_capital,
             start_date=start_date,
             end_date=end_date,
-            max_position_size=0.20
+            max_position_size=args.max_position_size,
+            quiet_mode=not args.verbose
         )
         
         success = backtester.run()
