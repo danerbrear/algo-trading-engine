@@ -884,7 +884,7 @@ class OptionsHandler:
                         date=current_date.strftime('%Y-%m-%d'),
                         source='options_handler'
                     )
-                    print(f"Option Chain: {option_chain.__str__()}")
+                    progress_print(f"Option Chain: {option_chain.__str__()}")
                     
                     # Store in options_data dictionary
                     date_key = current_date.strftime('%Y-%m-%d')

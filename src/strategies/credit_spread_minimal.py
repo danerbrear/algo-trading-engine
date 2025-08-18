@@ -35,7 +35,7 @@ class CreditSpreadStrategy(Strategy):
         if date.date() < self.data.index[self.start_date_offset].date():
             return
         
-        super().on_new_date(date, positions, add_position, remove_position)
+        super().on_new_date(date, positions)
 
         has_error = False
 
@@ -136,7 +136,6 @@ class CreditSpreadStrategy(Strategy):
         """
         On end, execute strategy with enhanced current date volume validation.
         """
-        super().on_end(positions, remove_position, date)
         for position in positions:
             try:
                 # Calculate the return for this position

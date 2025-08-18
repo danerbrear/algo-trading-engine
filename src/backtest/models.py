@@ -3,7 +3,7 @@ from datetime import datetime
 import pandas as pd
 from enum import Enum
 from src.common.models import OptionChain, Option
-import os
+from abc import ABC, abstractmethod
 
 class Benchmark():
     """
@@ -49,7 +49,7 @@ class OptionType(Enum):
     PUT = "P"
     CALL = "C"
 
-class Strategy:
+class Strategy(ABC):
     """
     Strategy is a class that represents a trading strategy.
     """
@@ -60,6 +60,28 @@ class Strategy:
         self.data = None
         self.options_data = None
         self.start_date_offset = start_date_offset
+
+    @abstractmethod
+    def on_new_date(self, date: datetime, positions: tuple['Position', ...], add_position: Callable[['Position'], None], remove_position: Callable[['Position'], None]):
+        """
+        On new date, execute strategy.
+        """
+
+    def on_new_date(self, date: datetime, positions: tuple['Position', ...]):
+        """
+        On new date, execute strategy.
+        """
+    
+        if len(positions) > 0:
+            print(f"\n{date}: Open positions:")
+            for position in positions:
+                print(f"  {position.__str__()}")
+
+    @abstractmethod
+    def on_end(self, positions: tuple['Position', ...], remove_position: Callable[['Position'], None], date: datetime):
+        """
+        On end, execute strategy.
+        """
 
     def set_profit_target(self, profit_target: float):
         """
@@ -80,16 +102,6 @@ class Strategy:
         self.data = data
         self.options_data = options_data
 
-    def on_new_date(self, date: datetime, positions: tuple['Position', ...], add_position: Callable[['Position'], None], remove_position: Callable[['Position'], None]):
-        """
-        On new date, execute strategy.
-        """
-    
-        if len(positions) > 0:
-            print(f"\n{date}: Open positions:")
-            for position in positions:
-                print(f"  {position.__str__()}")
-
     def _profit_target_hit(self, position: 'Position', exit_price: float) -> bool:
         """
         Check if the profit target has been hit for a position.
@@ -105,12 +117,6 @@ class Strategy:
         if self.stop_loss is None:
             return False
         return position.stop_loss_hit(self.stop_loss, exit_price)
-    
-    def on_end(self, positions: tuple['Position', ...], remove_position: Callable[['Position'], None], date: datetime):
-        """
-        On end, execute strategy.
-        """
-        pass
 
 class StrategyType(Enum):
     """
