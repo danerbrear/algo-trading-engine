@@ -576,8 +576,11 @@ class OptionsHandler:
                     else:
                         option_strikes[strike_name] = closest_call
                 else:
-                    # Mark as missing for API fetch
-                    missing_strikes.append((strike_name, target_strike, 'call'))
+                    # Check if this strike is cached as missing before making API call
+                    if not self._is_strike_cached_as_missing(strike_name, target_strike, 'call', current_date):
+                        missing_strikes.append((strike_name, target_strike, 'call'))
+                    else:
+                        progress_print(f"⏭️ Skipping {strike_name}(${target_strike:.0f} call) - cached as missing")
             
             if 'put' in strike_name or strike_name == 'atm':
                 # Look for puts
@@ -590,8 +593,11 @@ class OptionsHandler:
                     else:
                         option_strikes[strike_name] = closest_put
                 else:
-                    # Mark as missing for API fetch
-                    missing_strikes.append((strike_name, target_strike, 'put'))
+                    # Check if this strike is cached as missing before making API call
+                    if not self._is_strike_cached_as_missing(strike_name, target_strike, 'put', current_date):
+                        missing_strikes.append((strike_name, target_strike, 'put'))
+                    else:
+                        progress_print(f"⏭️ Skipping {strike_name}(${target_strike:.0f} put) - cached as missing")
         
         # Fetch missing strikes from Polygon API and update cache
         if missing_strikes:
@@ -612,9 +618,10 @@ class OptionsHandler:
         return option_strikes
 
     def _fetch_missing_strikes(self, missing_strikes: List, expiry: str, current_date: datetime) -> Dict:
-        """Fetch specific missing option strikes from Polygon API"""
+        """Fetch specific missing option strikes from Polygon API and cache missing strikes to avoid repeated API calls"""
         global total_api_calls_made
         additional_options = {}
+        missing_strikes_to_cache = []  # Track strikes that don't exist for caching
         
         for strike_name, target_strike, option_type in missing_strikes:
             try:
@@ -659,16 +666,78 @@ class OptionsHandler:
                             progress_print(f"✅ Successfully fetched {option_type} ${float(closest_contract.strike_price):.0f} @ ${option_data['last_price']:.2f}")
                         else:
                             progress_print(f"❌ No historical data available for any {option_type} strikes near ${target_strike:.0f}")
+                            # Cache this missing strike to avoid future API calls
+                            missing_strikes_to_cache.append((strike_name, target_strike, option_type))
                     else:
                         progress_print(f"⚠️ No suitable {option_type} found near ${target_strike:.0f} (closest: ${float(closest_contract.strike_price):.0f})")
                 else:
                     progress_print(f"❌ No contracts found for {option_type} ${target_strike:.0f}")
+                    # Cache this missing strike to avoid future API calls
+                    missing_strikes_to_cache.append((strike_name, target_strike, option_type))
                     
             except Exception as e:
                 progress_print(f"❌ Error fetching {option_type} ${target_strike:.0f}: {str(e)}")
                 continue
         
+        # Cache missing strikes to avoid repeated API calls
+        if missing_strikes_to_cache:
+            self._cache_missing_strikes(missing_strikes_to_cache, current_date)
+        
         return additional_options
+
+    def _cache_missing_strikes(self, missing_strikes: List, current_date: datetime):
+        """Cache missing strikes to avoid repeated API calls for strikes that don't exist"""
+        try:
+            # Load existing missing strikes cache
+            missing_strikes_cache = self.cache_manager.load_date_from_cache(
+                current_date,
+                '_missing_strikes',
+                'options',
+                self.symbol
+            )
+            
+            if missing_strikes_cache is None:
+                missing_strikes_cache = []
+            
+            # Add new missing strikes to cache
+            for strike_name, target_strike, option_type in missing_strikes:
+                missing_strike_key = f"{strike_name}_{target_strike}_{option_type}"
+                if missing_strike_key not in missing_strikes_cache:
+                    missing_strikes_cache.append(missing_strike_key)
+            
+            # Save updated cache
+            self.cache_manager.save_date_to_cache(
+                current_date,
+                missing_strikes_cache,
+                '_missing_strikes',
+                'options',
+                self.symbol
+            )
+            
+            progress_print(f"💾 Cached {len(missing_strikes)} missing strikes to avoid future API calls")
+            
+        except Exception as e:
+            progress_print(f"⚠️ Warning: Could not cache missing strikes: {str(e)}")
+
+    def _is_strike_cached_as_missing(self, strike_name: str, target_strike: float, option_type: str, current_date: datetime) -> bool:
+        """Check if a strike is cached as missing to avoid unnecessary API calls"""
+        try:
+            missing_strikes_cache = self.cache_manager.load_date_from_cache(
+                current_date,
+                '_missing_strikes',
+                'options',
+                self.symbol
+            )
+            
+            if missing_strikes_cache is None:
+                return False
+            
+            missing_strike_key = f"{strike_name}_{target_strike}_{option_type}"
+            return missing_strike_key in missing_strikes_cache
+            
+        except Exception as e:
+            progress_print(f"⚠️ Warning: Could not check missing strikes cache: {str(e)}")
+            return False
 
     def _fetch_contracts_for_strike(self, target_strike: float, expiry: str, option_type: str, current_date: datetime) -> List:
         """Fetch option contracts for a specific strike price and expiration date from Polygon API.
