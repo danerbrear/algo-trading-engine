@@ -15,7 +15,7 @@ class CreditSpreadStrategy(Strategy):
     Stop Loss: 60%
     """
 
-    holding_period = 15
+    holding_period = 25
 
     def __init__(self, lstm_model, lstm_scaler, options_handler: OptionsHandler = None, start_date_offset: int = 0):
         super().__init__(stop_loss=0.6, start_date_offset=start_date_offset)
@@ -203,7 +203,7 @@ class CreditSpreadStrategy(Strategy):
             # Filter options for this expiration
             calls = [opt for opt in chain_data.calls if opt.expiration == expiry_str]
             puts = [opt for opt in chain_data.puts if opt.expiration == expiry_str]
-            
+
             for width in [5, 7, 8, 10, 12, 15]:
                 total_evaluated += 1
 
@@ -243,15 +243,21 @@ class CreditSpreadStrategy(Strategy):
                 if max_risk <= 0 or credit <= 0:
                     total_rejected += 1
                     continue
-                    
+
                 risk_reward = credit / max_risk
                 prob_profit = self._estimate_probability_of_profit(confidence, direction, width, atm_strike, otm_strike, current_price, days_to_expiry)
                 
-                # Calculate minimum required risk/reward ratio
-                min_risk_reward = (1 - prob_profit) / prob_profit if prob_profit > 0 else float('inf')
+                # Calculate expected value and minimum required risk/reward ratio
+                expected_value = (credit * prob_profit) - (max_risk * (1 - prob_profit))
                 
-                # Only include spreads that meet the minimum risk/reward requirement
-                if risk_reward >= min_risk_reward:
+                # Minimum R/R ratio based on probability of profit
+                # For credit spreads, we want at least 1:1 R/R for 50% probability
+                # Higher probability trades can accept lower R/R ratios
+                min_risk_reward = 1.0 / prob_profit if prob_profit > 0 else float('inf')
+                
+                # Only include spreads that are profitable (positive expected value)
+                # and meet minimum risk/reward requirements
+                if expected_value > 0 and risk_reward >= min_risk_reward:
                     candidates.append({
                         'expiry': expiry_date,
                         'width': width,
@@ -264,25 +270,26 @@ class CreditSpreadStrategy(Strategy):
                         'risk_reward': risk_reward,
                         'prob_profit': prob_profit,
                         'min_risk_reward': min_risk_reward,
+                        'expected_value': expected_value,
                         'days': days_to_expiry
                     })
-                    print(f"      ✅ {width}pt spread: R/R={risk_reward:.2f}, Prob={prob_profit:.1%}, Min={min_risk_reward:.2f}")
+                    print(f"      ✅ {width}pt spread: R/R={risk_reward:.2f}, Prob={prob_profit:.1%}, EV=${expected_value:.2f}, Min={min_risk_reward:.2f}")
                 else:
                     total_rejected += 1
-                    print(f"      ❌ {width}pt spread: R/R={risk_reward:.2f} < Min={min_risk_reward:.2f} (Prob={prob_profit:.1%})")
+                    print(f"      ❌ {width}pt spread: R/R={risk_reward:.2f} < Min={min_risk_reward:.2f} or EV=${expected_value:.2f} <= 0 (Prob={prob_profit:.1%})")
         
         print(f"   📈 Evaluation Summary:")
         print(f"      • Total spreads evaluated: {total_evaluated}")
         print(f"      • Spreads rejected: {total_rejected}")
         print(f"      • Spreads meeting criteria: {len(candidates)}")
         
-        # Sort by risk/reward ascending (minimize), then probability of profit descending (maximize)
+        # Sort by expected value descending (maximize), then risk/reward descending (maximize)
         if candidates:
-            candidates.sort(key=lambda x: (x['risk_reward'], -x['prob_profit']))
+            candidates.sort(key=lambda x: (-x.get('expected_value', 0), -x['risk_reward'], -x['prob_profit']))
             best = candidates[0]
             print(f"   🏆 Best spread selected:")
             print(f"      • {best['width']}pt spread expiring {best['expiry'].strftime('%Y-%m-%d')}")
-            print(f"      • Risk/Reward: 1:{best['risk_reward']:.2f}, Probability: {best['prob_profit']:.1%}")
+            print(f"      • Risk/Reward: 1:{best['risk_reward']:.2f}, Probability: {best['prob_profit']:.1%}, Expected Value: ${best['expected_value']:.2f}")
             return best
         else:
             print(f"   ❌ No spreads meet the minimum criteria")

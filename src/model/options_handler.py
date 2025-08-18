@@ -860,7 +860,7 @@ class OptionsHandler:
             try:
                 # Get current price
                 current_price = data.loc[current_date, 'Close']
-                print(f"Current Price: {current_price}")
+                progress_print(f"Current Price: {current_price}")
                 
                 # Get option chain with multiple strikes
                 chain_data = self._get_option_chain_with_cache(current_date, current_price)
