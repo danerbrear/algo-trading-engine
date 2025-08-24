@@ -172,7 +172,7 @@ class VelocitySignalMomentumStrategyBuilder(StrategyBuilder):
         except ImportError:
             from src.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
         
-        strategy = VelocitySignalMomentumStrategy(symbol=self._symbol)
+        strategy = VelocitySignalMomentumStrategy()
         strategy.start_date_offset = self._start_date_offset
         
         self.reset()

@@ -89,7 +89,7 @@ class TestVelocitySignalMomentumStrategy:
         
         current_date = datetime(2021, 1, 20)
         sharpe_ratio = self.strategy._calculate_sharpe_ratio(
-            self.position, current_date, mock_option_chain
+            self.position, current_date
         )
         
         # Should return a valid Sharpe ratio (not 0.0)
@@ -114,7 +114,7 @@ class TestVelocitySignalMomentumStrategy:
         
         current_date = datetime(2021, 1, 20)
         sharpe_ratio = self.strategy._calculate_sharpe_ratio(
-            self.position, current_date, mock_option_chain
+            self.position, current_date
         )
         
         # Should still calculate Sharpe ratio (risk-free rate defaults to 0.0)
@@ -126,11 +126,12 @@ class TestVelocitySignalMomentumStrategy:
         
         current_date = datetime(2021, 1, 20)
         sharpe_ratio = self.strategy._calculate_sharpe_ratio(
-            self.position, current_date, None
+            self.position, current_date
         )
         
-        # Should return 2.0 when option chain is not available (realistic fallback)
-        assert sharpe_ratio == 2.0
+        # Should calculate a valid Sharpe ratio using max profit (no longer needs option chain)
+        assert isinstance(sharpe_ratio, float)
+        assert sharpe_ratio > 0
 
     def test_calculate_sharpe_ratio_without_spread_options(self):
         """Test Sharpe ratio calculation when position has no spread options"""
@@ -150,7 +151,7 @@ class TestVelocitySignalMomentumStrategy:
         mock_option_chain = Mock()
         current_date = datetime(2021, 1, 20)
         sharpe_ratio = self.strategy._calculate_sharpe_ratio(
-            position_without_options, current_date, mock_option_chain
+            position_without_options, current_date
         )
         
         # Should return 2.0 when no spread options (realistic fallback)
@@ -166,11 +167,12 @@ class TestVelocitySignalMomentumStrategy:
         
         current_date = datetime(2021, 1, 20)
         sharpe_ratio = self.strategy._calculate_sharpe_ratio(
-            self.position, current_date, mock_option_chain
+            self.position, current_date
         )
         
-        # Should return 2.0 when option data is missing (realistic fallback)
-        assert sharpe_ratio == 2.0
+        # Should calculate a valid Sharpe ratio using max profit (no longer needs option data)
+        assert isinstance(sharpe_ratio, float)
+        assert sharpe_ratio > 0
 
     def test_calculate_sharpe_ratio_with_zero_max_risk(self):
         """Test Sharpe ratio calculation when max risk is zero"""
@@ -201,7 +203,7 @@ class TestVelocitySignalMomentumStrategy:
         
         current_date = datetime(2021, 1, 20)
         sharpe_ratio = self.strategy._calculate_sharpe_ratio(
-            position_zero_risk, current_date, mock_option_chain
+            position_zero_risk, current_date
         )
         
         # Should handle zero max risk gracefully
@@ -224,7 +226,7 @@ class TestVelocitySignalMomentumStrategy:
         
         current_date = datetime(2021, 1, 20)
         sharpe_ratio = self.strategy._calculate_sharpe_ratio(
-            self.position, current_date, mock_option_chain
+            self.position, current_date
         )
         
         # Should return 2.0 when market data is not available (realistic fallback)
@@ -248,7 +250,7 @@ class TestVelocitySignalMomentumStrategy:
         
         current_date = datetime(2021, 1, 20)
         sharpe_ratio = self.strategy._calculate_sharpe_ratio(
-            self.position, current_date, mock_option_chain
+            self.position, current_date
         )
         
         # Should return 2.0 when market data is empty (realistic fallback)
@@ -272,7 +274,7 @@ class TestVelocitySignalMomentumStrategy:
         
         current_date = datetime(2021, 1, 20)
         sharpe_ratio = self.strategy._calculate_sharpe_ratio(
-            self.position, current_date, mock_option_chain
+            self.position, current_date
         )
         
         # Should calculate a valid Sharpe ratio for positive return
@@ -296,7 +298,7 @@ class TestVelocitySignalMomentumStrategy:
         
         current_date = datetime(2021, 1, 20)
         sharpe_ratio = self.strategy._calculate_sharpe_ratio(
-            self.position, current_date, mock_option_chain
+            self.position, current_date
         )
         
         # Should calculate a valid Sharpe ratio for negative return
@@ -313,10 +315,283 @@ class TestVelocitySignalMomentumStrategy:
         assert risk_free_rate == 0.001  # Should match treasury data
 
     def test_get_risk_free_rate_without_treasury_data(self):
-        """Test getting risk-free rate when treasury data is not available"""
-        self.strategy.set_data(self.market_data, {}, None)
+        """Test getting risk-free rate when treasury data is not available."""
+        strategy = VelocitySignalMomentumStrategy()
+        strategy.set_data(pd.DataFrame({'Close': [100, 101, 102]}), {})
         
-        current_date = datetime(2021, 1, 15)
-        risk_free_rate = self.strategy._get_risk_free_rate(current_date)
+        rate = strategy._get_risk_free_rate(datetime.now())
+        assert rate == 0.0
+
+    def test_determine_expiration_date_with_valid_data(self):
+        """Test determining expiration date with valid options data."""
+        strategy = VelocitySignalMomentumStrategy()
         
-        assert risk_free_rate == 0.0  # Should default to 0.0
+        # Create mock data
+        data = pd.DataFrame({
+            'Close': [100, 101, 102]
+        }, index=pd.date_range('2024-01-01', periods=3))
+        
+        # Create mock options data with multiple expiration dates
+        atm_put_1 = Option(
+            ticker='SPY',
+            symbol='SPY240115P100',
+            strike=100.0,
+            expiration='2024-01-15',
+            option_type=OptionType.PUT,
+            last_price=2.50,
+            volume=100
+        )
+        
+        otm_put_1 = Option(
+            ticker='SPY',
+            symbol='SPY240115P90',
+            strike=90.0,
+            expiration='2024-01-15',
+            option_type=OptionType.PUT,
+            last_price=0.50,
+            volume=100
+        )
+        
+        atm_put_2 = Option(
+            ticker='SPY',
+            symbol='SPY240130P100',
+            strike=100.0,
+            expiration='2024-01-30',
+            option_type=OptionType.PUT,
+            last_price=3.00,
+            volume=100
+        )
+        
+        otm_put_2 = Option(
+            ticker='SPY',
+            symbol='SPY240130P90',
+            strike=90.0,
+            expiration='2024-01-30',
+            option_type=OptionType.PUT,
+            last_price=0.75,
+            volume=100
+        )
+        
+        option_chain = OptionChain(
+            calls=[],
+            puts=[atm_put_1, otm_put_1, atm_put_2, otm_put_2]
+        )
+        
+        options_data = {'2024-01-01': option_chain}
+        
+        # Create mock treasury data
+        treasury_data = TreasuryRates(pd.DataFrame({
+            'IRX_1Y': [0.05, 0.06, 0.07],
+            'TNX_10Y': [0.04, 0.05, 0.06]
+        }, index=pd.date_range('2024-01-01', periods=3)))
+        
+        strategy.set_data(data, options_data, treasury_data)
+        
+        # Test expiration date determination
+        expiration_date = strategy._determine_expiration_date(datetime(2024, 1, 1))
+        
+        # Should return one of the valid expiration dates
+        assert expiration_date in [datetime(2024, 1, 15), datetime(2024, 1, 30)]
+
+    def test_determine_expiration_date_without_options_data(self):
+        """Test determining expiration date when no options data is available."""
+        strategy = VelocitySignalMomentumStrategy()
+        strategy.set_data(pd.DataFrame({'Close': [100, 101, 102]}), {})
+        
+        with pytest.raises(ValueError, match="Options data is required for expiration date determination but is not available"):
+            strategy._determine_expiration_date(datetime(2024, 1, 1))
+
+    def test_determine_expiration_date_without_market_data(self):
+        """Test determining expiration date when no market data is available."""
+        strategy = VelocitySignalMomentumStrategy()
+        
+        # Create mock options data but with None market data
+        atm_put = Option(
+            ticker='SPY',
+            symbol='SPY240115P100',
+            strike=100.0,
+            expiration='2024-01-15',
+            option_type=OptionType.PUT,
+            last_price=2.50,
+            volume=100
+        )
+        
+        option_chain = OptionChain(
+            calls=[],
+            puts=[atm_put]
+        )
+        
+        options_data = {'2024-01-01': option_chain}
+        
+        strategy.set_data(None, options_data)
+        
+        with pytest.raises(ValueError, match="Market data is required for expiration date determination but is not available"):
+            strategy._determine_expiration_date(datetime(2024, 1, 1))
+
+    def test_determine_expiration_date_with_empty_market_data(self):
+        """Test determining expiration date when market data is empty."""
+        strategy = VelocitySignalMomentumStrategy()
+        
+        # Create mock options data but with empty market data
+        atm_put = Option(
+            ticker='SPY',
+            symbol='SPY240115P100',
+            strike=100.0,
+            expiration='2024-01-15',
+            option_type=OptionType.PUT,
+            last_price=2.50,
+            volume=100
+        )
+        
+        option_chain = OptionChain(
+            calls=[],
+            puts=[atm_put]
+        )
+        
+        options_data = {'2024-01-01': option_chain}
+        
+        strategy.set_data(pd.DataFrame(), options_data)
+        
+        with pytest.raises(ValueError, match="Market data is required for expiration date determination but is not available"):
+            strategy._determine_expiration_date(datetime(2024, 1, 1))
+
+    def test_determine_expiration_date_without_treasury_data(self):
+        """Test determining expiration date when no treasury data is available."""
+        strategy = VelocitySignalMomentumStrategy()
+        
+        # Create mock data
+        data = pd.DataFrame({
+            'Close': [100, 101, 102]
+        }, index=pd.date_range('2024-01-01', periods=3))
+        
+        # Create mock options data
+        atm_put = Option(
+            ticker='SPY',
+            symbol='SPY240115P100',
+            strike=100.0,
+            expiration='2024-01-15',
+            option_type=OptionType.PUT,
+            last_price=2.50,
+            volume=100
+        )
+        
+        option_chain = OptionChain(
+            calls=[],
+            puts=[atm_put]
+        )
+        
+        options_data = {'2024-01-01': option_chain}
+        
+        strategy.set_data(data, options_data)  # No treasury data
+        
+        with pytest.raises(ValueError, match="Treasury data is required for Sharpe ratio calculation but is not available"):
+            strategy._determine_expiration_date(datetime(2024, 1, 1))
+
+    def test_create_test_put_credit_spread_success(self):
+        """Test creating a test put credit spread successfully."""
+        strategy = VelocitySignalMomentumStrategy()
+        
+        # Create mock data
+        data = pd.DataFrame({
+            'Close': [100, 101, 102]
+        }, index=pd.date_range('2024-01-01', periods=3))
+        
+        # Create mock options data
+        atm_put = Option(
+            ticker='SPY',
+            symbol='SPY240115P100',
+            strike=100.0,
+            expiration='2024-01-15',
+            option_type=OptionType.PUT,
+            last_price=2.50,
+            volume=100
+        )
+        
+        otm_put = Option(
+            ticker='SPY',
+            symbol='SPY240115P90',
+            strike=90.0,
+            expiration='2024-01-15',
+            option_type=OptionType.PUT,
+            last_price=0.50,
+            volume=100
+        )
+        
+        option_chain = OptionChain(
+            calls=[],
+            puts=[atm_put, otm_put]
+        )
+        
+        options_data = {'2024-01-01': option_chain}
+        
+        # Create mock treasury data
+        treasury_data = TreasuryRates(pd.DataFrame({
+            'IRX_1Y': [0.05, 0.06, 0.07],
+            'TNX_10Y': [0.04, 0.05, 0.06]
+        }, index=pd.date_range('2024-01-01', periods=3)))
+        
+        strategy.set_data(data, options_data, treasury_data)
+        
+        # Test creating test put credit spread
+        position = strategy._create_test_put_credit_spread(
+            datetime(2024, 1, 1), 100.0, '2024-01-15'
+        )
+        
+        assert position is not None
+        assert position.strategy_type == StrategyType.PUT_CREDIT_SPREAD
+        assert position.strike_price == 100.0
+        assert position.entry_price == 2.0  # 2.50 - 0.50
+        assert len(position.spread_options) == 2
+
+    def test_create_test_put_credit_spread_no_credit(self):
+        """Test creating a test put credit spread when no credit is received."""
+        strategy = VelocitySignalMomentumStrategy()
+        
+        # Create mock data
+        data = pd.DataFrame({
+            'Close': [100, 101, 102]
+        }, index=pd.date_range('2024-01-01', periods=3))
+        
+        # Create mock options data where ATM put is cheaper than OTM put (no credit)
+        atm_put = Option(
+            ticker='SPY',
+            symbol='SPY240115P100',
+            strike=100.0,
+            expiration='2024-01-15',
+            option_type=OptionType.PUT,
+            last_price=0.50,
+            volume=100
+        )
+        
+        otm_put = Option(
+            ticker='SPY',
+            symbol='SPY240115P90',
+            strike=90.0,
+            expiration='2024-01-15',
+            option_type=OptionType.PUT,
+            last_price=2.50,
+            volume=100
+        )
+        
+        option_chain = OptionChain(
+            calls=[],
+            puts=[atm_put, otm_put]
+        )
+        
+        options_data = {'2024-01-01': option_chain}
+        
+        # Create mock treasury data
+        treasury_data = TreasuryRates(pd.DataFrame({
+            'IRX_1Y': [0.05, 0.06, 0.07],
+            'TNX_10Y': [0.04, 0.05, 0.06]
+        }, index=pd.date_range('2024-01-01', periods=3)))
+        
+        strategy.set_data(data, options_data, treasury_data)
+        
+        # Test creating test put credit spread
+        position = strategy._create_test_put_credit_spread(
+            datetime(2024, 1, 1), 100.0, '2024-01-15'
+        )
+        
+        # Should return None because no credit is received
+        assert position is None
