@@ -30,6 +30,7 @@ except ImportError:
     from src.model.options_handler import OptionsHandler
     from src.model.calendar_features import CalendarFeatureProcessor
     from src.common.cache.cache_manager import CacheManager
+from src.common.models import TreasuryRates
 
 class DataRetriever:
     """Handles data retrieval, feature calculation, and preparation for LSTM and HMM models."""
@@ -58,6 +59,71 @@ class DataRetriever:
         self.options_handler = OptionsHandler(symbol, start_date=lstm_start_date, cache_dir=self.cache_manager.base_dir, use_free_tier=use_free_tier, quiet_mode=quiet_mode)
         self.calendar_processor = None  # Initialize lazily when needed
         self.options_data = {}  # Store OptionChain DTOs for each date
+        self.treasury_rates: Optional[TreasuryRates] = None  # Store treasury rates data
+
+    def load_treasury_rates(self, start_date: datetime, end_date: datetime = None):
+        """
+        Load treasury rates from cache for the specified date range.
+        
+        Args:
+            start_date: Start date for treasury data
+            end_date: End date for treasury data (optional, defaults to start_date)
+        """
+        if end_date is None:
+            end_date = start_date
+            
+        print(f"📈 Loading treasury rates for date range: {start_date.date()} to {end_date.date()}")
+        
+        # Try to load treasury rates for the start date
+        treasury_data = self.cache_manager.load_date_from_cache(
+            start_date, '_treasury_rates', 'treasury', 'rates'
+        )
+        
+        if treasury_data is not None:
+            self.treasury_rates = TreasuryRates(treasury_data)
+            print(f"✅ Loaded treasury rates for {start_date.date()}")
+        else:
+            # Fallback: try to find the closest available treasury data
+            self._find_closest_treasury_data(start_date)
+
+    def _find_closest_treasury_data(self, target_date: datetime):
+        """
+        Find the closest available treasury data file to the target date.
+        """
+        treasury_dir = self.cache_manager.get_cache_dir('treasury', 'rates')
+        available_files = list(treasury_dir.glob('*_treasury_rates.pkl'))
+        
+        if not available_files:
+            print("⚠️  No treasury rate files found in cache")
+            return
+            
+        # Parse dates from filenames and find the closest
+        closest_file = None
+        min_date_diff = float('inf')
+        
+        for file_path in available_files:
+            try:
+                date_str = file_path.stem.split('_')[0]  # Extract date from filename
+                file_date = datetime.strptime(date_str, '%Y-%m-%d')
+                date_diff = abs((target_date - file_date).days)
+                
+                if date_diff < min_date_diff:
+                    min_date_diff = date_diff
+                    closest_file = file_path
+            except (ValueError, IndexError):
+                continue
+        
+        if closest_file:
+            treasury_data = self.cache_manager.load_from_cache(
+                closest_file.name, 'treasury', 'rates'
+            )
+            if treasury_data is not None:
+                self.treasury_rates = TreasuryRates(treasury_data)
+                print(f"✅ Loaded closest treasury rates from {closest_file.name} (diff: {min_date_diff} days)")
+        else:
+            print("⚠️  Could not find any treasury rate files")
+
+
 
     def prepare_data_for_lstm(self, sequence_length=60, state_classifier=None):
         """Prepare data for LSTM model with enhanced features using separate date ranges

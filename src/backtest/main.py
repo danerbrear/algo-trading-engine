@@ -635,6 +635,9 @@ if __name__ == "__main__":
         quiet_mode=not args.verbose
     )
 
+    # Load treasury rates before starting backtest
+    data_retriever.load_treasury_rates(start_date, end_date)
+
     # Load model directory from environment variable
     model_save_base_path = os.getenv('MODEL_SAVE_BASE_PATH', 'Trained_Models')
     model_dir = os.path.join(model_save_base_path, 'lstm_poc', args.symbol, 'latest')
@@ -663,7 +666,7 @@ if __name__ == "__main__":
             print("❌ Failed to create strategy")
             exit(1)
         
-        strategy.set_data(data, options_data)
+        strategy.set_data(data, options_data, data_retriever.treasury_rates)
 
         backtester = BacktestEngine(
             data=data, 

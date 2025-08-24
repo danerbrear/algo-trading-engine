@@ -2,6 +2,8 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 from dataclasses import dataclass, field
 from enum import Enum
+from decimal import Decimal
+import pandas as pd
 
 class OptionType(Enum):
     """Enum for option types."""
@@ -271,3 +273,108 @@ class OptionChain:
 
     def __repr__(self) -> str:
         return f"OptionChain(calls={self.total_calls}, puts={self.total_puts})"
+
+@dataclass(frozen=True)
+class TreasuryRates:
+    """
+    Value Object representing treasury rates data.
+    
+    This encapsulates treasury yield data and provides domain-specific
+    methods for accessing risk-free rates.
+    """
+    rates_data: pd.DataFrame  # The underlying treasury rates DataFrame
+    
+    def __post_init__(self):
+        """Validate treasury rates data"""
+        if self.rates_data is None or len(self.rates_data) == 0:
+            raise ValueError("Treasury rates data cannot be empty")
+        
+        # Validate required columns exist
+        required_columns = ['IRX_1Y', 'TNX_10Y']
+        missing_columns = [col for col in required_columns if col not in self.rates_data.columns]
+        if missing_columns:
+            raise ValueError(f"Missing required treasury rate columns: {missing_columns}")
+    
+    def __eq__(self, other):
+        """Value-based equality for TreasuryRates"""
+        if not isinstance(other, TreasuryRates):
+            return False
+        return self.rates_data.equals(other.rates_data)
+    
+    def __hash__(self):
+        """Hash based on the data content"""
+        # Convert DataFrame to a hashable format
+        data_hash = hash((
+            tuple(self.rates_data.index),
+            tuple(self.rates_data.columns),
+            tuple(self.rates_data.values.flatten())
+        ))
+        return hash((TreasuryRates, data_hash))
+    
+    def get_risk_free_rate(self, date: datetime) -> Decimal:
+        """
+        Get the risk-free rate for a specific date.
+        
+        Args:
+            date: The date to get the risk-free rate for
+            
+        Returns:
+            Decimal: Risk-free rate (1-year Treasury yield)
+        """
+        try:
+            # Try to get the 1-year rate (IRX_1Y) for the specific date
+            if date in self.rates_data.index:
+                rate = self.rates_data.loc[date, 'IRX_1Y']
+                return Decimal(str(rate))
+            
+            # If exact date not found, use the closest available date
+            available_dates = self.rates_data.index
+            if len(available_dates) > 0:
+                # Find the closest date
+                closest_date = min(available_dates, key=lambda x: abs((x - date).days))
+                rate = self.rates_data.loc[closest_date, 'IRX_1Y']
+                return Decimal(str(rate))
+                
+        except (KeyError, IndexError, ValueError):
+            pass
+            
+        return Decimal('0.0')  # Default fallback
+    
+    def get_10_year_rate(self, date: datetime) -> Decimal:
+        """
+        Get the 10-year Treasury rate for a specific date.
+        
+        Args:
+            date: The date to get the 10-year rate for
+            
+        Returns:
+            Decimal: 10-year Treasury yield
+        """
+        try:
+            if date in self.rates_data.index:
+                rate = self.rates_data.loc[date, 'TNX_10Y']
+                return Decimal(str(rate))
+            
+            available_dates = self.rates_data.index
+            if len(available_dates) > 0:
+                closest_date = min(available_dates, key=lambda x: abs((x - date).days))
+                rate = self.rates_data.loc[closest_date, 'TNX_10Y']
+                return Decimal(str(rate))
+                
+        except (KeyError, IndexError, ValueError):
+            pass
+            
+        return Decimal('0.0')
+    
+    def get_date_range(self) -> tuple[datetime, datetime]:
+        """
+        Get the date range covered by this treasury rates data.
+        
+        Returns:
+            tuple: (start_date, end_date)
+        """
+        return self.rates_data.index.min(), self.rates_data.index.max()
+    
+    def is_empty(self) -> bool:
+        """Check if treasury rates data is empty"""
+        return len(self.rates_data) == 0

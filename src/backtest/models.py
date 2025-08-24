@@ -1,8 +1,8 @@
-from typing import Callable, Dict
+from typing import Callable, Dict, Optional
 from datetime import datetime
 import pandas as pd
 from enum import Enum
-from src.common.models import OptionChain, Option
+from src.common.models import OptionChain, Option, TreasuryRates
 from abc import ABC, abstractmethod
 
 class Benchmark():
@@ -95,12 +95,13 @@ class Strategy(ABC):
         """
         self.stop_loss = stop_loss
 
-    def set_data(self, data: pd.DataFrame, options_data: Dict[str, OptionChain]):
+    def set_data(self, data: pd.DataFrame, options_data: Dict[str, OptionChain], treasury_data: Optional[TreasuryRates] = None):
         """
         Set the data for the strategy.
         """
         self.data = data
         self.options_data = options_data
+        self.treasury_data = treasury_data
 
     def _profit_target_hit(self, position: 'Position', exit_price: float) -> bool:
         """
