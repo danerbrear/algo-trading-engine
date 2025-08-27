@@ -1,8 +1,8 @@
 from datetime import datetime
-from typing import Callable, Optional
+from typing import Callable, Optional, Dict
 import pandas as pd
 
-from src.backtest.models import Strategy, Position, StrategyType
+from src.backtest.models import Strategy, Position, StrategyType, OptionChain, TreasuryRates
 from src.common.progress_tracker import progress_print
 from src.model.options_handler import OptionsHandler
 
@@ -17,6 +17,21 @@ class VelocitySignalMomentumStrategy(Strategy):
         if options_handler is None:
             raise ValueError("options_handler is required for VelocitySignalMomentumStrategy")
         self.options_handler = options_handler
+    
+    def set_data(self, data: pd.DataFrame, options_data: Dict[str, OptionChain], treasury_data: Optional[TreasuryRates] = None):
+        super().set_data(data, options_data, treasury_data)
+        
+        # Pre-calculate moving averages and velocity for performance
+        if self.data is not None and not self.data.empty:
+            # Calculate SMA 15 and SMA 30
+            self.data['SMA_15'] = self.data['Close'].rolling(window=15).mean()
+            self.data['SMA_30'] = self.data['Close'].rolling(window=30).mean()
+            
+            # Calculate MA velocity (SMA 15 / SMA 30)
+            self.data['MA_Velocity_15_30'] = self.data['SMA_15'] / self.data['SMA_30']
+            
+            # Calculate velocity changes for signal detection
+            self.data['Velocity_Changes'] = self.data['MA_Velocity_15_30'].diff()
 
     def on_new_date(self, date: datetime, positions: tuple['Position', ...], add_position: Callable[['Position'], None], remove_position: Callable[['Position'], None]):
         super().on_new_date(date, positions)
@@ -25,6 +40,9 @@ class VelocitySignalMomentumStrategy(Strategy):
             # Determine if we should open a new position
 
             expiration_date = self._determine_expiration_date(date)
+
+            if self._has_buy_signal(date):
+                print(f"Buy signal detected for {date}")
         else:
             # Check if we should close any positions
             pass
@@ -34,13 +52,107 @@ class VelocitySignalMomentumStrategy(Strategy):
 
     def _has_buy_signal(self, date: datetime) -> bool:
         """
+        Check for buy signal using MA velocity (SMA 15/30) approach.
+        
         If the data matches the following criteria for a buy signal, return True:
-            - Price must increase over the trend period
+            - MA velocity (SMA 15/30) must increase (signal detected)
+            - Price must increase over the trend period (3-60 days)
             - No significant reversals (>2% drop) during the trend
             - Trend must last at least 3 days
             - Trend must not exceed 60 days
         """
-        return False
+        if self.data is None or self.data.empty:
+            return False
+        
+        # Get the current date index in the data
+        try:
+            current_idx = self.data.index.get_loc(date)
+        except KeyError:
+            return False
+        
+        # Check if we have enough data to analyze (need at least 30 days for SMA 30)
+        if current_idx < 30:
+            return False
+        
+        # Check if pre-calculated velocity data is available
+        if 'Velocity_Changes' not in self.data.columns:
+            return False
+        
+        # Check if current velocity increased (positive velocity change)
+        if current_idx < 1 or self.data['Velocity_Changes'].iloc[current_idx] <= 0:
+            return False
+        
+        # This is a velocity signal - now check if it leads to a successful trend
+        signal_index = current_idx
+        signal_price = self.data['Close'].iloc[signal_index]
+        
+        # Check if this leads to an upward trend of at least 3 days, max 60 days
+        success, duration, trend_return = self._check_trend_success(
+            self.data, signal_index, 'up', min_duration=3, max_duration=60
+        )
+
+        progress_print(f"Trend success: {success}, duration: {duration}, trend_return: {trend_return}")
+        
+        return success
+
+    def _check_trend_success(self, data: pd.DataFrame, signal_index: int, 
+                           trend_type: str, min_duration: int = 3, 
+                           max_duration: int = 60) -> tuple[bool, int, float]:
+        """
+        Check if a trend signal leads to a successful trend.
+        This method mimics the analysis module's approach.
+        
+        Args:
+            data: DataFrame with price data
+            signal_index: Index of the signal
+            trend_type: 'up' or 'down'
+            min_duration: Minimum trend duration in days
+            max_duration: Maximum trend duration in days
+            
+        Returns:
+            Tuple of (success, duration, return)
+        """
+        start_price = data['Close'].iloc[signal_index]
+        
+        # Look for trend continuation
+        for duration in range(min_duration, min(max_duration + 1, len(data) - signal_index)):
+            end_index = signal_index + duration
+            if end_index >= len(data):
+                break
+                
+            end_price = data['Close'].iloc[end_index]
+            total_return = (end_price - start_price) / start_price
+            
+            if trend_type == 'up':
+                if total_return > 0:
+                    # Check if this is a sustained upward trend
+                    # Look for any significant reversal within the trend period
+                    trend_sustained = True
+                    for j in range(signal_index + 1, end_index):
+                        current_price = data['Close'].iloc[j]
+                        current_return = (current_price - start_price) / start_price
+                        if current_return < -0.02:  # 2% reversal threshold
+                            trend_sustained = False
+                            break
+                    
+                    if trend_sustained:
+                        return True, duration, total_return
+            else:  # down trend
+                if total_return < 0:
+                    # Check if this is a sustained downward trend
+                    # Look for any significant reversal within the trend period
+                    trend_sustained = True
+                    for j in range(signal_index + 1, end_index):
+                        current_price = data['Close'].iloc[j]
+                        current_return = (current_price - start_price) / start_price
+                        if current_return > 0.02:  # 2% reversal threshold
+                            trend_sustained = False
+                            break
+                    
+                    if trend_sustained:
+                        return True, duration, total_return
+        
+        return False, 0, 0.0
 
     def _determine_expiration_date(self, date: datetime) -> datetime:
         """
