@@ -77,6 +77,10 @@ class MockStrategy(Strategy):
             )
             
             add_position(position)
+    
+    def on_end(self, positions, remove_position, date):
+        """Mock strategy end method."""
+        pass
 
 
 class TestVolumeValidationIntegration:
@@ -164,6 +168,10 @@ class TestVolumeValidationIntegration:
                     
                     add_position(position)
         
+        def on_end(self, positions, remove_position, date):
+            """Mock strategy end method."""
+            pass
+        
         strategy = MockStrategyWithLowVolume()
         data = strategy.data
         
@@ -221,6 +229,10 @@ class TestVolumeValidationIntegration:
                     
                     add_position(position)
         
+        def on_end(self, positions, remove_position, date):
+            """Mock strategy end method."""
+            pass
+        
         strategy = MockStrategyWithMissingVolume()
         data = strategy.data
         
@@ -277,6 +289,10 @@ class TestVolumeValidationIntegration:
                     )
                     
                     add_position(position)
+        
+        def on_end(self, positions, remove_position, date):
+            """Mock strategy end method."""
+            pass
         
         strategy = MockStrategyWithCustomVolume()
         data = strategy.data
@@ -348,6 +364,10 @@ class TestVolumeValidationIntegration:
                     )
                     
                     add_position(position)
+        
+        def on_end(self, positions, remove_position, date):
+            """Mock strategy end method."""
+            pass
         
         strategy = MockStrategyWithoutSpreadOptions()
         data = strategy.data

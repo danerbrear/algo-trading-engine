@@ -326,7 +326,7 @@ class OptionsHandler:
             
         return OptionChain.from_dict_w_options(chain_data)
 
-    def _get_contracts_from_cache(self, current_date: datetime, current_price: float) -> Optional[List]:
+    def _fetch_filtered_option_contracts(self, current_date: datetime, current_price: float) -> Optional[List]:
         """Get the list of contracts from cache if available, otherwise fetch from API"""
         try:
             # Try to get from cache first
@@ -346,8 +346,8 @@ class OptionsHandler:
             
             def fetch_func():
                 try:                    
-                    # Calculate strike price range (7% around current price)
-                    price_range = current_price * 0.07  # 7% range for broader coverage
+                    # Calculate strike price range
+                    price_range = current_price * 0.10
                     min_strike = current_price - price_range
                     max_strike = current_price + price_range
                     
@@ -367,7 +367,7 @@ class OptionsHandler:
                             "expiration_date.lte": max_expiry.strftime('%Y-%m-%d')
                         },
                         expired=False,
-                        limit=200  # Limit results per page to reduce pagination
+                        limit=300  # Limit results per page to reduce pagination
                     )
                     
                     contracts = []
@@ -428,7 +428,7 @@ class OptionsHandler:
             )
             
         except Exception as e:
-            print(f"Error in _get_contracts_from_cache for {current_date}: {str(e)}")
+            print(f"Error in _fetch_filtered_option_contracts for {current_date}: {str(e)}")
             print(f"Error type: {type(e)}")
             import traceback
             traceback.print_exc()
@@ -452,7 +452,7 @@ class OptionsHandler:
 
             try:
                 # Get contracts (will use cache if available)
-                contracts = self._get_contracts_from_cache(current_date, current_price)
+                contracts = self._fetch_filtered_option_contracts(current_date, current_price)
                 
                 if not contracts:
                     progress_print(f"No options data available for {current_date.date()}")

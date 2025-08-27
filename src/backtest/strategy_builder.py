@@ -152,7 +152,6 @@ class VelocitySignalMomentumStrategyBuilder(StrategyBuilder):
         return self
     
     def set_options_handler(self, handler: OptionsHandler):
-        # Not used for this strategy but required by interface
         self._options_handler = handler
         return self
     
@@ -172,8 +171,10 @@ class VelocitySignalMomentumStrategyBuilder(StrategyBuilder):
         except ImportError:
             from src.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
         
-        strategy = VelocitySignalMomentumStrategy()
-        strategy.start_date_offset = self._start_date_offset
+        strategy = VelocitySignalMomentumStrategy(
+            options_handler=self._options_handler,
+            start_date_offset=self._start_date_offset
+        )
         
         self.reset()
         return strategy

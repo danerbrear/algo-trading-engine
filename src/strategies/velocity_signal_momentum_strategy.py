@@ -4,6 +4,7 @@ import pandas as pd
 
 from src.backtest.models import Strategy, Position, StrategyType
 from src.common.progress_tracker import progress_print
+from src.model.options_handler import OptionsHandler
 
 class VelocitySignalMomentumStrategy(Strategy):
     """
@@ -11,8 +12,11 @@ class VelocitySignalMomentumStrategy(Strategy):
     the upward or downward trends. 
     """
 
-    def __init__(self):
-        super().__init__(start_date_offset=60)
+    def __init__(self, options_handler: OptionsHandler, start_date_offset: int = 60):
+        super().__init__(start_date_offset=start_date_offset)
+        if options_handler is None:
+            raise ValueError("options_handler is required for VelocitySignalMomentumStrategy")
+        self.options_handler = options_handler
 
     def on_new_date(self, date: datetime, positions: tuple['Position', ...], add_position: Callable[['Position'], None], remove_position: Callable[['Position'], None]):
         super().on_new_date(date, positions)
@@ -70,11 +74,22 @@ class VelocitySignalMomentumStrategy(Strategy):
         # Get all available option chains for this date
         option_chain = self.options_data[date_key]
         
-        # Group options by expiration date
+        # Get expiration dates using options_handler
         expiration_dates = set()
-        for option in option_chain.calls + option_chain.puts:
-            if option.expiration:
-                expiration_dates.add(option.expiration)
+        try:
+            # Fetch contracts using options_handler to get all available expiration dates
+            contracts = self.options_handler._fetch_filtered_option_contracts(date, current_price)
+            if contracts:
+                for contract in contracts:
+                    if hasattr(contract, 'expiration_date') and contract.expiration_date:
+                        expiration_dates.add(contract.expiration_date)
+                progress_print(f"📊 Fetched {len(expiration_dates)} expiration dates using options_handler")
+            else:
+                progress_print(f"⚠️ No contracts found for {date.date()}")
+                return date + pd.Timedelta(days=30)
+        except Exception as e:
+            progress_print(f"⚠️ Error fetching expiration dates from options_handler: {e}")
+            return date + pd.Timedelta(days=30)
         
         progress_print(f"📊 Evaluating {len(expiration_dates)} expiration dates for optimal Sharpe ratio")
         
