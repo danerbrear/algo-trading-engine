@@ -594,13 +594,13 @@ def parse_arguments():
                        help='Stop loss percentage')
     parser.add_argument('--profit-target', type=float, default=None,
                        help='Profit target percentage')
-    parser.add_argument('--initial-capital', type=float, default=5000,
+    parser.add_argument('--initial-capital', type=float, default=2000,
                        help='Initial capital for backtesting')
-    parser.add_argument('--max-position-size', type=float, default=0.20,
+    parser.add_argument('--max-position-size', type=float, default=0.40,
                        help='Maximum position size as fraction of capital')
     parser.add_argument('--start-date', type=str, default='2025-01-01',
                        help='Start date for backtest (YYYY-MM-DD)')
-    parser.add_argument('--end-date', type=str, default='2025-07-15',
+    parser.add_argument('--end-date', type=str, default='2025-09-01',
                        help='End date for backtest (YYYY-MM-DD)')
     parser.add_argument('--symbol', type=str, default='SPY',
                        help='Symbol to trade')

@@ -1,6 +1,8 @@
 from datetime import datetime
 from typing import Callable, Optional, Dict
 import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 
 from src.backtest.models import Strategy, Position, StrategyType, OptionChain, TreasuryRates
 from src.common.models import OptionType
@@ -21,9 +23,14 @@ class VelocitySignalMomentumStrategy(Strategy):
         if options_handler is None:
             raise ValueError("options_handler is required for VelocitySignalMomentumStrategy")
         self.options_handler = options_handler
+        # Track position entries for plotting
+        self._position_entries = []
     
     def set_data(self, data: pd.DataFrame, options_data: Dict[str, OptionChain], treasury_data: Optional[TreasuryRates] = None):
         super().set_data(data, options_data, treasury_data)
+        
+        # Reset position entries tracking for new backtest run
+        self._position_entries = []
         
         # Pre-calculate moving averages and velocity for performance
         if self.data is not None and not self.data.empty:
@@ -46,7 +53,94 @@ class VelocitySignalMomentumStrategy(Strategy):
         self._try_close_positions(date, positions, remove_position)
 
     def on_end(self, positions: tuple['Position', ...], remove_position: Callable[['Position'], None], date: datetime):
-        pass
+        """
+        Create a plot showing SPY price over time with position entry indicators.
+        """
+        if self.data is None or self.data.empty:
+            progress_print("⚠️  No data available for plotting")
+            return
+        
+        try:
+            # Create the plot
+            fig, ax = plt.subplots(figsize=(15, 8))
+            
+            # Plot SPY price
+            ax.plot(self.data.index, self.data['Close'], 
+                   label='SPY Close Price', color='blue', alpha=0.7, linewidth=1)
+            
+            # Get position entry dates from the backtest engine
+            # We need to access the backtest engine's closed_positions to get entry dates
+            # Since we don't have direct access, we'll track entries in the strategy itself
+            if hasattr(self, '_position_entries'):
+                entry_dates = self._position_entries
+            else:
+                # Fallback: try to get from the strategy's internal tracking
+                entry_dates = []
+                if hasattr(self, '_entry_dates'):
+                    entry_dates = self._entry_dates
+            
+            # Plot position entry indicators
+            if entry_dates:
+                for entry_date in entry_dates:
+                    if entry_date in self.data.index:
+                        entry_price = self.data.loc[entry_date, 'Close']
+                        ax.scatter(entry_date, entry_price, 
+                                 color='red', s=100, marker='^', 
+                                 label='Position Entry' if entry_date == entry_dates[0] else "", 
+                                 zorder=5, alpha=0.8)
+            
+            # Add moving averages if they exist
+            if 'SMA_15' in self.data.columns:
+                ax.plot(self.data.index, self.data['SMA_15'], 
+                       label='SMA 15', color='orange', alpha=0.6, linewidth=1)
+            
+            if 'SMA_30' in self.data.columns:
+                ax.plot(self.data.index, self.data['SMA_30'], 
+                       label='SMA 30', color='green', alpha=0.6, linewidth=1)
+            
+            # Format the plot
+            num_positions = len(entry_dates) if entry_dates else 0
+            title = f'SPY Price with Position Entries - Velocity Signal Momentum Strategy\nTotal Positions: {num_positions}'
+            ax.set_title(title, fontsize=14, fontweight='bold')
+            ax.set_xlabel('Date', fontsize=12)
+            ax.set_ylabel('SPY Price ($)', fontsize=12)
+            ax.legend(loc='upper left')
+            ax.grid(True, alpha=0.3)
+            
+            # Add text box with strategy info
+            strategy_info = f'Strategy: Velocity Signal Momentum\nHolding Period: {self.holding_period} days\nMA Periods: 15/30'
+            ax.text(0.02, 0.98, strategy_info, transform=ax.transAxes, fontsize=10,
+                   verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+            
+            # Format x-axis dates
+            ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+            ax.xaxis.set_major_locator(mdates.MonthLocator(interval=1))
+            plt.xticks(rotation=45)
+            
+            # Adjust layout
+            plt.tight_layout()
+            
+            # Show the plot
+            plt.show()
+            
+            # Save the plot to a file
+            import os
+            from datetime import datetime
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            plot_filename = f"velocity_strategy_positions_{timestamp}.png"
+            plot_path = os.path.join("predictions", plot_filename)
+            
+            # Create predictions directory if it doesn't exist
+            os.makedirs("predictions", exist_ok=True)
+            
+            plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+            progress_print(f"📊 Position entry plot saved to: {plot_path}")
+            progress_print("📊 Position entry plot generated successfully")
+            
+        except Exception as e:
+            progress_print(f"⚠️  Error creating plot: {e}")
+            import traceback
+            traceback.print_exc()
 
     def _has_buy_signal(self, date: datetime) -> bool:
         """
@@ -249,6 +343,10 @@ class VelocitySignalMomentumStrategy(Strategy):
         if position is None:
             progress_print("⚠️  Failed to create put credit spread for selected expiration")
             return
+        
+        # Track position entry for plotting
+        self._position_entries.append(date)
+        
         add_position(position)
 
     def _get_current_underlying_price(self, date: datetime) -> Optional[float]:

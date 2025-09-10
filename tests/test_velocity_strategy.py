@@ -473,3 +473,94 @@ class TestVelocitySignalMomentumStrategy:
         velocity = strategy.data['MA_Velocity_15_30'].iloc[35:]  # After both windows
         assert not velocity.isna().all()
         assert (velocity > 0).all()  # Velocity should be positive
+
+    def test_position_entries_tracking(self):
+        """Test that position entries are tracked correctly for plotting."""
+        mock_options_handler = Mock()
+        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        
+        # Create market data
+        dates = pd.date_range('2024-01-01', '2024-03-10', freq='D')
+        prices = [100 + i * 0.1 for i in range(len(dates))]
+        market_data = pd.DataFrame({
+            'Close': prices
+        }, index=dates)
+        
+        strategy.set_data(market_data, {}, None)
+        
+        # Initially, no position entries should be tracked
+        assert len(strategy._position_entries) == 0
+        
+        # Simulate adding position entries
+        entry_date1 = datetime(2024, 1, 15)
+        entry_date2 = datetime(2024, 2, 1)
+        
+        strategy._position_entries.append(entry_date1)
+        strategy._position_entries.append(entry_date2)
+        
+        # Verify entries are tracked
+        assert len(strategy._position_entries) == 2
+        assert entry_date1 in strategy._position_entries
+        assert entry_date2 in strategy._position_entries
+        
+        # Test that set_data resets position entries
+        strategy.set_data(market_data, {}, None)
+        assert len(strategy._position_entries) == 0
+
+    def test_on_end_plotting_with_no_data(self):
+        """Test on_end method when no data is available."""
+        mock_options_handler = Mock()
+        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        
+        # Mock the progress_print function to capture output
+        mock_progress_print = Mock()
+        with pytest.MonkeyPatch().context() as m:
+            m.setattr('src.strategies.velocity_signal_momentum_strategy.progress_print', mock_progress_print)
+            
+            # Call on_end with no data
+            strategy.on_end((), Mock(), datetime.now())
+            
+            # Verify that progress_print was called with warning message
+            mock_progress_print.assert_called_with("⚠️  No data available for plotting")
+
+    def test_on_end_plotting_with_data(self):
+        """Test on_end method with valid data (without actually showing plot)."""
+        mock_options_handler = Mock()
+        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        
+        # Create market data
+        dates = pd.date_range('2024-01-01', '2024-01-10', freq='D')
+        prices = [100 + i * 0.1 for i in range(len(dates))]
+        market_data = pd.DataFrame({
+            'Close': prices
+        }, index=dates)
+        
+        strategy.set_data(market_data, {}, None)
+        
+        # Add some position entries
+        strategy._position_entries = [datetime(2024, 1, 5), datetime(2024, 1, 8)]
+        
+        # Mock matplotlib to prevent actual plotting
+        mock_fig = Mock()
+        mock_ax = Mock()
+        mock_subplots = Mock(return_value=(mock_fig, mock_ax))
+        mock_show = Mock()
+        mock_savefig = Mock()
+        mock_tight_layout = Mock()
+        mock_progress_print = Mock()
+        
+        with pytest.MonkeyPatch().context() as m:
+            m.setattr('matplotlib.pyplot.subplots', mock_subplots)
+            m.setattr('matplotlib.pyplot.show', mock_show)
+            m.setattr('matplotlib.pyplot.savefig', mock_savefig)
+            m.setattr('matplotlib.pyplot.tight_layout', mock_tight_layout)
+            m.setattr('src.strategies.velocity_signal_momentum_strategy.progress_print', mock_progress_print)
+            
+            # Call on_end
+            strategy.on_end((), Mock(), datetime.now())
+            
+            # Verify that plotting functions were called
+            mock_subplots.assert_called_once()
+            mock_show.assert_called_once()
+            mock_savefig.assert_called_once()
+            mock_tight_layout.assert_called_once()
