@@ -6,7 +6,7 @@ trading strategies with flexible parameter selection and validation.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, Type, List
+from typing import Dict, Type, List
 try:
     from .models import Strategy
     from ..model.options_handler import OptionsHandler

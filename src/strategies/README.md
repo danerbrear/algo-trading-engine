@@ -27,7 +27,7 @@ A momentum-based strategy that trades credit spreads to capitalize on upward or 
 
 2. **Position Management**:
    - Opens positions when no existing positions are held
-   - Uses Sharpe ratio to determine optimal expiration dates
+   - Uses a standard expiration of approximately one week from the current date
    - Implements stop-loss and profit target logic
 
 3. **Risk Management**:
@@ -72,7 +72,6 @@ All strategies inherit from the `Strategy` base class in `src/backtest/models.py
 
 ### Optional Methods
 - `_has_buy_signal()`: Determine if a buy signal exists
-- `_determine_expiration_date()`: Find optimal expiration dates
 - `_calculate_sharpe_ratio()`: Calculate risk-adjusted returns
 
 ### Data Access

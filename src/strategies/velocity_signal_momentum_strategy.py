@@ -3,6 +3,7 @@ from typing import Callable, Optional, Dict
 import pandas as pd
 
 from src.backtest.models import Strategy, Position, StrategyType, OptionChain, TreasuryRates
+from src.common.models import OptionType
 from src.common.progress_tracker import progress_print
 from src.model.options_handler import OptionsHandler
 
@@ -11,6 +12,9 @@ class VelocitySignalMomentumStrategy(Strategy):
     A momentum strategy to trade credit spreads in order to capitalize on 
     the upward or downward trends. 
     """
+
+    # Configurable holding period in trading days
+    holding_period = 5
 
     def __init__(self, options_handler: OptionsHandler, start_date_offset: int = 60):
         super().__init__(start_date_offset=start_date_offset)
@@ -37,15 +41,9 @@ class VelocitySignalMomentumStrategy(Strategy):
         super().on_new_date(date, positions)
 
         if len(positions) == 0:
-            # Determine if we should open a new position
-
-            expiration_date = self._determine_expiration_date(date)
-
-            if self._has_buy_signal(date):
-                print(f"Buy signal detected for {date}")
-        else:
-            # Check if we should close any positions
-            pass
+            self._try_open_position(date, add_position)
+            return
+        self._try_close_positions(date, positions, remove_position)
 
     def on_end(self, positions: tuple['Position', ...], remove_position: Callable[['Position'], None], date: datetime):
         pass
@@ -153,95 +151,8 @@ class VelocitySignalMomentumStrategy(Strategy):
                         return True, duration, total_return
         
         return False, 0, 0.0
-
-    def _determine_expiration_date(self, date: datetime) -> datetime:
-        """
-        Find an expiration date by looking for the highest risk weighted return (Sharpe ratio)
-        for an ATM/+10 put credit spread for each daily option chain. Use a 5-40 day range.
-        
-        Args:
-            date: Current date to evaluate from
-            
-        Returns:
-            datetime: Optimal expiration date with highest Sharpe ratio
-        """
-        if not self.options_data:
-            raise ValueError("Options data is required for expiration date determination but is not available")
-        
-        if self.data is None or self.data.empty:
-            raise ValueError("Market data is required for expiration date determination but is not available")
-        
-        if self.treasury_data is None:
-            raise ValueError("Treasury data is required for Sharpe ratio calculation but is not available")
-        
-        date_key = date.strftime('%Y-%m-%d')
-        if date_key not in self.options_data:
-            progress_print(f"⚠️  No options data for {date_key}")
-            return date + pd.Timedelta(days=30)
-        
-        current_price = self.data.loc[date]['Close']
-        best_expiration = None
-        best_sharpe_ratio = float('-inf')
-        
-        # Get all available option chains for this date
-        option_chain = self.options_data[date_key]
-        
-        # Get expiration dates using options_handler
-        expiration_dates = set()
-        try:
-            # Fetch contracts using options_handler to get all available expiration dates
-            contracts = self.options_handler._fetch_filtered_option_contracts(date, current_price)
-            if contracts:
-                for contract in contracts:
-                    if hasattr(contract, 'expiration_date') and contract.expiration_date:
-                        expiration_dates.add(contract.expiration_date)
-                progress_print(f"📊 Fetched {len(expiration_dates)} expiration dates using options_handler")
-            else:
-                progress_print(f"⚠️ No contracts found for {date.date()}")
-                return date + pd.Timedelta(days=30)
-        except Exception as e:
-            progress_print(f"⚠️ Error fetching expiration dates from options_handler: {e}")
-            return date + pd.Timedelta(days=30)
-        
-        progress_print(f"📊 Evaluating {len(expiration_dates)} expiration dates for optimal Sharpe ratio")
-        
-        for expiration_str in sorted(expiration_dates):
-            try:
-                expiration_date = datetime.strptime(expiration_str, '%Y-%m-%d')
-                days_to_expiration = (expiration_date - date).days
-                
-                # Check if expiration is within our target range (5-40 days)
-                if days_to_expiration < 5 or days_to_expiration > 40:
-                    continue
-                
-                # Create ATM/+10 put credit spread for this expiration
-                position = self._create_test_put_credit_spread(date, current_price, expiration_str)
-                
-                if position is None:
-                    continue
-                
-                # Calculate Sharpe ratio for this position
-                sharpe_ratio = self._calculate_sharpe_ratio(position, date)
-                
-                progress_print(f"   {expiration_str} ({days_to_expiration} days): Sharpe = {sharpe_ratio:.3f}")
-                
-                # Update best if this Sharpe ratio is higher
-                if sharpe_ratio > best_sharpe_ratio:
-                    best_sharpe_ratio = sharpe_ratio
-                    best_expiration = expiration_date
-                    
-            except Exception as e:
-                progress_print(f"⚠️  Error evaluating expiration {expiration_str}: {e}")
-                continue
-        
-        if best_expiration is None:
-            progress_print("⚠️  No suitable expiration dates found, using default 30 days")
-            return date + pd.Timedelta(days=30)
-        
-        progress_print(f"✅ Selected expiration date: {best_expiration.strftime('%Y-%m-%d')} (Sharpe: {best_sharpe_ratio:.3f})")
-        return best_expiration
     
-    def _create_test_put_credit_spread(self, date: datetime, current_price: float, expiration: str) -> Optional[Position]:
+    def _create_put_credit_spread(self, date: datetime, current_price: float, expiration: str) -> Optional[Position]:
         """
         Create a test ATM/+10 put credit spread for Sharpe ratio calculation.
         
@@ -269,7 +180,7 @@ class VelocitySignalMomentumStrategy(Strategy):
                         atm_put = put
                         break
                 
-                # Find OTM put (+10 strike)
+                # Find OTM put (-10 strike)
                 otm_strike = atm_strike - 10
                 otm_put = None
                 
@@ -302,44 +213,6 @@ class VelocitySignalMomentumStrategy(Strategy):
         except Exception as e:
             progress_print(f"⚠️  Error creating test put credit spread: {e}")
             return None
-
-    def _calculate_sharpe_ratio(self, position: Position, current_date: datetime) -> float:
-        """
-        Calculate the Sharpe ratio for a position using max profit potential.
-        
-        Args:
-            position: The position to analyze
-            current_date: Current date for calculations
-            
-        Returns:
-            float: Sharpe ratio for the position
-        """
-        # Get risk-free rate for the current date
-        risk_free_rate = self._get_risk_free_rate(current_date)
-        
-        # Calculate position return using max profit (credit received)
-        if position.spread_options:
-            # Use the credit received as the max profit potential
-            max_profit = position.entry_price  # This is the credit received
-            
-            # Calculate percentage return based on max risk
-            max_risk = position.get_max_risk()
-            if max_risk > 0:
-                percentage_return = max_profit / max_risk
-                
-                # For a single position, we need to estimate volatility
-                # Use a simple approach: assume volatility based on underlying asset
-                if self.data is not None and not self.data.empty:
-                    # Calculate historical volatility of the underlying
-                    returns = self.data['Close'].pct_change().dropna()
-                    if len(returns) > 0:
-                        volatility = returns.std()
-                        
-                        # Calculate Sharpe ratio: (Return - Risk_Free_Rate) / Volatility
-                        sharpe_ratio = (percentage_return - risk_free_rate) / volatility
-                        return sharpe_ratio
-        
-        raise ValueError("Unable to calculate Sharpe ratio for position")
     
     def _get_risk_free_rate(self, date: datetime) -> float:
         """
@@ -356,3 +229,173 @@ class VelocitySignalMomentumStrategy(Strategy):
             return 2.0
             
         return float(self.treasury_data.get_risk_free_rate(date))
+
+    # ==== Helper methods (opening) ====
+    def _try_open_position(self, date: datetime, add_position: Callable[['Position'], None]):
+        # Standard expiration target ~1 week
+        if not self._has_buy_signal(date):
+            return
+        progress_print(f"📈 Buy signal detected for {date.strftime('%Y-%m-%d')}")
+        current_price = self._get_current_underlying_price(date)
+        if current_price is None:
+            return
+        chain = self._get_option_chain(date)
+        if chain is None:
+            return
+        expiration_str = self._select_week_expiration(date, chain)
+        if not expiration_str:
+            return
+        position = self._create_put_credit_spread(date, current_price, expiration_str)
+        if position is None:
+            progress_print("⚠️  Failed to create put credit spread for selected expiration")
+            return
+        add_position(position)
+
+    def _get_current_underlying_price(self, date: datetime) -> Optional[float]:
+        if self.data is None or self.data.empty or date not in self.data.index:
+            return None
+        try:
+            return float(self.data.loc[date]['Close'])
+        except Exception:
+            return None
+
+    def _get_option_chain(self, date: datetime) -> Optional[OptionChain]:
+        date_key = date.strftime('%Y-%m-%d')
+        if not self.options_data or date_key not in self.options_data:
+            progress_print(f"⚠️  No options data available for {date_key}")
+            return None
+        return self.options_data[date_key]
+
+    def _select_week_expiration(self, date: datetime, chain: OptionChain) -> Optional[str]:
+        # Prefer expirations 5-10 days out, else nearest > 0 days, target 7
+        target_days = 7
+        expirations = set(p.expiration for p in chain.puts) if chain and chain.puts else set()
+        if not expirations:
+            progress_print("⚠️  No put expirations found in option chain")
+            return None
+        def days_out(exp_str: str) -> int:
+            try:
+                exp_dt = datetime.strptime(exp_str, '%Y-%m-%d')
+                return (exp_dt - date).days
+            except Exception:
+                return -9999
+        valid = [(e, days_out(e)) for e in expirations]
+        valid = [(e, d) for e, d in valid if d > 0]
+        if not valid:
+            progress_print("⚠️  No future expirations available")
+            return None
+        window = [(e, d) for e, d in valid if 5 <= d <= 10]
+        candidates = window if window else valid
+        return min(candidates, key=lambda x: abs(x[1] - target_days))[0]
+
+    
+
+    # ==== Helper methods (closing) ====
+    def _try_close_positions(self, date: datetime, positions: tuple['Position', ...], remove_position: Callable[['Position'], None]):
+        current_underlying_price = self._get_current_underlying_price(date)
+        for position in positions:
+            # Assignment/expiration close
+            if self._should_close_due_to_assignment(position, date):
+                progress_print(f"⏰ Position {position.__str__()} expired or near expiration")
+                if current_underlying_price is not None:
+                    current_volumes = self.get_current_volumes_for_position(position, date)
+                    remove_position(date, position, 0.0, underlying_price=current_underlying_price, current_volumes=current_volumes)
+                else:
+                    progress_print("⚠️  Underlying price unavailable for assignment close; skipping.")
+                continue
+
+            # Compute exit price for stop/holding decisions
+            exit_price, has_error = self._compute_exit_price(date, position)
+            if not has_error and exit_price is not None:
+                exit_price = self._sanitize_exit_price(exit_price)
+
+            # Stop loss
+            if self._should_close_due_to_stop(position, exit_price):
+                progress_print(f"🛑 Stop loss hit for {position.__str__()} at exit {exit_price}")
+                current_volumes = self.get_current_volumes_for_position(position, date)
+                remove_position(date, position, exit_price if exit_price is not None else 0.0, current_volumes=current_volumes)
+                continue
+
+            # Holding period
+            if self._should_close_due_to_holding(position, date, self.holding_period):
+                if exit_price is not None and not has_error:
+                    progress_print(f"📆 Holding period met for {position.__str__()} at exit {exit_price}")
+                    current_volumes = self.get_current_volumes_for_position(position, date)
+                    remove_position(date, position, exit_price, current_volumes=current_volumes)
+                else:
+                    progress_print(f"⚠️  No exit price available for {position.__str__()} on {date}. Skipping holding-period close.")
+
+    def _compute_exit_price(self, date: datetime, position: Position) -> tuple[Optional[float], bool]:
+        date_key = date.strftime('%Y-%m-%d')
+        option_chain = self.options_data.get(date_key) if self.options_data else None
+        has_error = False
+        exit_price = None
+        if option_chain is not None:
+            try:
+                exit_price = position.calculate_exit_price(option_chain)
+            except Exception as e:
+                progress_print(f"⚠️  Error calculating exit price: {e}")
+        if exit_price is None:
+            # Attempt to augment chain with missing contracts
+            if option_chain is None:
+                option_chain = OptionChain(calls=[], puts=[])
+            for option in position.spread_options:
+                try:
+                    contract = self.options_handler.get_specific_option_contract(option.strike, option.expiration, option.option_type.value, date)
+                except Exception as e:
+                    progress_print(f"⚠️  Error fetching contract for {option.strike} {option.expiration} {option.option_type.value}: {e}")
+                    contract = None
+                if contract is None:
+                    progress_print(f"⚠️  No contract found for {option.strike} {option.expiration} {option.option_type.value}")
+                    has_error = True
+                    continue
+                option_chain = option_chain.add_option(contract)
+            if not has_error:
+                try:
+                    exit_price = position.calculate_exit_price(option_chain)
+                except Exception as e:
+                    progress_print(f"⚠️  Error recalculating exit price: {e}")
+                    has_error = True
+        return exit_price, has_error
+
+    def _sanitize_exit_price(self, value: Optional[float]) -> Optional[float]:
+        if value is None:
+            return None
+        return round(max(value, 0), 2)
+
+    def _should_close_due_to_assignment(self, position: Position, date: datetime) -> bool:
+        try:
+            return position.get_days_to_expiration(date) < 1
+        except Exception:
+            return False
+
+    def _should_close_due_to_stop(self, position: Position, exit_price: Optional[float]) -> bool:
+        return (exit_price is not None) and self._stop_loss_hit(position, exit_price)
+
+    def _should_close_due_to_holding(self, position: Position, date: datetime, holding_period: int) -> bool:
+        try:
+            return position.get_days_held(date) >= holding_period
+        except Exception:
+            return False
+
+    def get_current_volumes_for_position(self, position: Position, date: datetime) -> list[int]:
+        """
+        Fetch current date volume data for all options in a position.
+        """
+        current_volumes = []
+        for option in position.spread_options:
+            try:
+                fresh_option = self.options_handler.get_specific_option_contract(
+                    option.strike,
+                    option.expiration,
+                    option.option_type.value,
+                    date
+                )
+                if fresh_option and fresh_option.volume is not None:
+                    current_volumes.append(fresh_option.volume)
+                else:
+                    current_volumes.append(None)
+            except Exception as e:
+                progress_print(f"⚠️  Error fetching volume data for {option.symbol}: {e}")
+                current_volumes.append(None)
+        return current_volumes
