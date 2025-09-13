@@ -327,7 +327,37 @@ class OptionsHandler:
         return OptionChain.from_dict_w_options(chain_data)
 
     def _fetch_filtered_option_contracts(self, current_date: datetime, current_price: float) -> Optional[List]:
-        """Get the list of contracts from cache if available, otherwise fetch from API"""
+        """Fetch option contracts within a RANGE of strikes and expiration dates.
+        
+        This method performs bulk fetching of contracts for building full option chains.
+        It fetches contracts within a calculated strike price range (±20% of current price)
+        and expiration date range (24-36 days out, targeting ~30 DTE).
+        
+        Args:
+            current_date: The date as of which to fetch contracts
+            current_price: Current underlying price to calculate strike range around
+            
+        Returns:
+            Optional[List]: List of contract objects within the specified ranges, or None if error
+            
+        API Query:
+            - Strike Range: current_price ± 20% (e.g., $460-$690 for SPY@$575)
+            - Expiry Range: current_date + 24 to 36 days (targeting ~30 DTE)
+            - Limit: Up to 300 contracts per page
+            
+        Cache Strategy:
+            - Uses '_contracts' cache key
+            - All-or-nothing caching: returns entire cached list or fetches all new
+            - Caches broad range for efficient bulk operations
+            
+        Use Cases:
+            - Building full option chains for backtesting
+            - Strategy evaluation requiring multiple strikes/expiries
+            - Bulk data preparation for analysis
+            
+        Note:
+            Complements _fetch_contracts_for_strike() which targets specific contracts.
+        """
         try:
             # Try to get from cache first
             contracts = self.cache_manager.load_date_from_cache(
@@ -347,7 +377,7 @@ class OptionsHandler:
             def fetch_func():
                 try:                    
                     # Calculate strike price range
-                    price_range = current_price * 0.10
+                    price_range = current_price * 0.15
                     min_strike = current_price - price_range
                     max_strike = current_price + price_range
                     
@@ -740,28 +770,101 @@ class OptionsHandler:
             return False
 
     def _fetch_contracts_for_strike(self, target_strike: float, expiry: str, option_type: str, current_date: datetime) -> List:
-        """Fetch option contracts for a specific strike price and expiration date from Polygon API.
+        """Fetch option contracts for a SPECIFIC strike price and expiration date.
         
-        This method queries the Polygon API to retrieve available option contracts that match
-        the specified criteria. It uses the retry handler to handle API rate limits and failures.
+        This method performs targeted fetching of contracts for exact option specifications.
+        Unlike _fetch_filtered_option_contracts() which fetches ranges, this method targets
+        a single strike price and expiration date combination.
         
         Args:
-            target_strike (float): The target strike price to search for (e.g., 420.0)
-            expiry (str): The expiration date in 'YYYY-MM-DD' format (e.g., '2025-01-17')
-            option_type (str): The option type - either 'call' or 'put'
+            target_strike (float): The exact strike price to search for (e.g., 657.0)
+            expiry (str): The exact expiration date in 'YYYY-MM-DD' format (e.g., '2025-10-10')
+            option_type (str): The specific option type - either 'call' or 'put'
             current_date (datetime): The date as of which to search for contracts
             
         Returns:
-            List: A list of option contract objects from Polygon API. Each contract contains
-                  metadata like strike_price, expiration_date, contract_type, ticker, etc.
-                  Returns empty list if no contracts found or API call fails.
+            List: List of contract objects matching exact criteria. Typically 1-14 contracts.
+                  Returns empty list if no contracts found.
+                  
+        API Query:
+            - Strike: Exact target_strike (e.g., 657.0)
+            - Expiry: Exact expiry date (e.g., '2025-10-10')
+            - Type: Specific 'call' or 'put'
+            - Limit: Up to 50 contracts (stops at 14 for efficiency)
+            
+        Cache Strategy:
+            - First searches existing '_contracts' cache for matching contracts
+            - Only hits API if specific contract not found in cache
+            - Updates '_contracts' cache incrementally with newly fetched contracts
+            - Shares cache with _fetch_filtered_option_contracts() for consistency
+            
+        Use Cases:
+            - Live trading requiring specific option contracts
+            - Targeted option pricing for exact strikes
+            - Missing strikes not covered by bulk fetching ranges
+            
+        Caching Flow:
+            1. Check if contract exists in '_contracts' cache
+            2. Return cached contract if found (no API call)
+            3. Fetch from API if not cached
+            4. Add new contracts to existing cache
                   
         Note:
-            - Uses retry logic to handle API rate limits and temporary failures
-            - Limits results to 14 contracts to avoid overwhelming responses
-            - Only fetches non-expired contracts (expired=False)
-            - Logs the number of contracts found for debugging purposes
+            Complements _fetch_filtered_option_contracts() which fetches strike/date ranges.
         """
+        # First, check if we already have this contract in the '_contracts' cache
+        try:
+            cached_contracts = self.cache_manager.load_date_from_cache(
+                current_date,
+                '_contracts',
+                'options',
+                self.symbol
+            )
+            
+            if cached_contracts is not None:
+                progress_print(f"🔍 Checking cache: found {len(cached_contracts)} cached contracts for {current_date.date()}")
+                
+                # Search through cached contracts for matching strike/expiry/type
+                matching_contracts = []
+                for i, contract in enumerate(cached_contracts):
+                    if (hasattr(contract, 'strike_price') and hasattr(contract, 'expiration_date') and hasattr(contract, 'contract_type')):
+                        contract_strike = float(contract.strike_price)
+                        contract_expiry = contract.expiration_date
+                        contract_type = contract.contract_type.lower()
+                        
+                        if (abs(contract_strike - target_strike) < 0.01 and 
+                            contract_expiry == expiry and
+                            contract_type == option_type.lower()):
+                            matching_contracts.append(contract)
+                            progress_print(f"  ✅ Match found: contract {i} - {contract_type} ${contract_strike:.0f} exp {contract_expiry}")
+                    # Handle dict format from cache
+                    elif isinstance(contract, dict):
+                        contract_strike = float(contract.get('strike_price', 0))
+                        contract_expiry = contract.get('expiration_date', '')
+                        contract_type = contract.get('contract_type', '').lower()
+                        
+                        if (abs(contract_strike - target_strike) < 0.01 and 
+                            contract_expiry == expiry and
+                            contract_type == option_type.lower()):
+                            matching_contracts.append(contract)
+                            progress_print(f"  ✅ Match found: dict contract {i} - {contract_type} ${contract_strike:.0f} exp {contract_expiry}")
+                
+                if matching_contracts:
+                    progress_print(f"✅ Found {len(matching_contracts)} cached contracts for {option_type} ${target_strike:.0f}")
+                    return matching_contracts
+                else:
+                    progress_print(f"❌ No cached contracts match {option_type} ${target_strike:.0f} exp {expiry}")
+            else:
+                progress_print(f"🔍 No contracts cache found for {current_date.date()}")
+        
+        except Exception as e:
+            progress_print(f"⚠️ Error checking cache for contracts: {str(e)}")
+            import traceback
+            traceback.print_exc()
+        
+        # If not in cache, fetch from API
+        progress_print(f"🔍 Fetching {option_type} ${target_strike:.0f} contracts from API")
+        
         def fetch_func():
             try:                                
                 contracts_response = self.client.list_options_contracts(
@@ -784,6 +887,11 @@ class OptionsHandler:
                             break
                 
                 progress_print(f"Found {len(contracts)} contracts for {option_type} ${target_strike:.0f}")
+                
+                # Update the '_contracts' cache with newly fetched contracts
+                if contracts:
+                    self._update_contracts_cache(contracts, current_date)
+                
                 return contracts
                 
             except Exception as e:
@@ -794,6 +902,138 @@ class OptionsHandler:
             fetch_func,
             f"Error fetching contracts for {option_type} ${target_strike:.0f}"
         )
+
+    def get_available_expirations(self, current_date: datetime, min_days: int = 20, max_days: int = 40) -> List[str]:
+        """Get available expiration dates without fetching full contract data.
+        
+        This is a lightweight alternative to fetching full option chains just to discover
+        expiration dates. It checks cache first, then queries API for metadata only.
+        
+        Args:
+            current_date: The date as of which to search for expirations
+            min_days: Minimum days to expiration (default: 20)
+            max_days: Maximum days to expiration (default: 40)
+            
+        Returns:
+            List[str]: List of expiration dates in 'YYYY-MM-DD' format within the specified range
+        """
+        try:
+            # Check if we have expiration data in cache first
+            cache_key = f"_expirations_{min_days}_{max_days}"
+            cached_expirations = self.cache_manager.load_date_from_cache(
+                current_date,
+                cache_key,
+                'options',
+                self.symbol
+            )
+            
+            if cached_expirations is not None:
+                progress_print(f"✅ Found {len(cached_expirations)} cached expiration dates: {cached_expirations}")
+                return cached_expirations
+            
+            # Calculate target expiration date range
+            min_expiry = current_date + timedelta(days=min_days)
+            max_expiry = current_date + timedelta(days=max_days)
+            
+            progress_print(f"🔍 Finding expirations between {min_expiry.strftime('%Y-%m-%d')} and {max_expiry.strftime('%Y-%m-%d')}")
+            
+            def fetch_func():
+                try:
+                    # Query for a minimal set of contracts just to get expiration metadata
+                    contracts_response = self.client.list_options_contracts(
+                        underlying_ticker=self.symbol,
+                        as_of=current_date.strftime('%Y-%m-%d'),
+                        params={
+                            "expiration_date.gte": min_expiry.strftime('%Y-%m-%d'),
+                            "expiration_date.lte": max_expiry.strftime('%Y-%m-%d')
+                        },
+                        expired=False
+                    )
+                    
+                    # Extract unique expiration dates
+                    expirations = set()
+                    if contracts_response:
+                        for contract in contracts_response:
+                            if hasattr(contract, 'expiration_date'):
+                                expirations.add(contract.expiration_date)
+                    
+                    expiration_list = sorted(list(expirations))
+                    
+                    # Cache the results for future use
+                    if expiration_list:
+                        self.cache_manager.save_date_to_cache(
+                            current_date,
+                            expiration_list,
+                            cache_key,
+                            'options',
+                            self.symbol
+                        )
+                    
+                    tier_msg = "(free tier)" if self.retry_handler.use_rate_limit else "(paid tier)"
+                    progress_print(f"✅ Found {len(expiration_list)} expiration dates {tier_msg}: {expiration_list}")
+                    return expiration_list
+                    
+                except Exception as e:
+                    progress_print(f"❌ Error fetching expiration dates: {str(e)}")
+                    return []
+            
+            return self.retry_handler.fetch_with_retry(
+                fetch_func,
+                f"Error fetching expiration dates for {current_date.date()}"
+            )
+            
+        except Exception as e:
+            progress_print(f"⚠️ Error in get_available_expirations: {str(e)}")
+            return []
+
+    def _update_contracts_cache(self, new_contracts: List, current_date: datetime):
+        """Update the '_contracts' cache with newly fetched contracts.
+        
+        Args:
+            new_contracts: List of new contract objects to add to cache
+            current_date: The date for the cache entry
+        """
+        try:
+            # Load existing contracts cache
+            existing_contracts = self.cache_manager.load_date_from_cache(
+                current_date,
+                '_contracts',
+                'options',
+                self.symbol
+            )
+            
+            if existing_contracts is None:
+                existing_contracts = []
+            
+            # Add new contracts to existing cache (avoid duplicates)
+            existing_contract_keys = set()
+            for contract in existing_contracts:
+                if hasattr(contract, 'ticker'):
+                    existing_contract_keys.add(contract.ticker)
+                elif isinstance(contract, dict) and 'ticker' in contract:
+                    existing_contract_keys.add(contract['ticker'])
+            
+            contracts_added = 0
+            for contract in new_contracts:
+                contract_ticker = getattr(contract, 'ticker', None) or (contract.get('ticker') if isinstance(contract, dict) else None)
+                if contract_ticker and contract_ticker not in existing_contract_keys:
+                    existing_contracts.append(contract)
+                    existing_contract_keys.add(contract_ticker)
+                    contracts_added += 1
+            
+            # Save updated cache
+            if contracts_added > 0:
+                self.cache_manager.save_date_to_cache(
+                    current_date,
+                    existing_contracts,
+                    '_contracts',
+                    'options',
+                    self.symbol
+                )
+                progress_print(f"💾 Added {contracts_added} new contracts to cache")
+            
+        except Exception as e:
+            progress_print(f"⚠️ Warning: Could not update contracts cache: {str(e)}")
 
     def _update_cache_with_additional_strikes(self, chain_data: OptionChain, additional_options: Dict, current_date: datetime):
         """Update the cached chain data with newly fetched option strikes"""

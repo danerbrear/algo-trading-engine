@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import asdict
 from datetime import datetime
 from typing import Optional, List
 
-from src.backtest.models import Position, StrategyType
+from src.backtest.models import Position, StrategyType, Strategy
 from src.common.models import Option, OptionChain
 from src.prediction.decision_store import (
     JsonDecisionStore,
@@ -23,7 +22,7 @@ class InteractiveStrategyRecommender:
     `get_current_volumes_for_position`).
     """
 
-    def __init__(self, strategy, options_handler, decision_store: JsonDecisionStore, auto_yes: bool = False):
+    def __init__(self, strategy: Strategy, options_handler, decision_store: JsonDecisionStore, auto_yes: bool = False):
         self.strategy = strategy
         self.options_handler = options_handler
         self.decision_store = decision_store
@@ -41,6 +40,7 @@ class InteractiveStrategyRecommender:
         """Use the strategy to propose an opening trade for the date and capture decision."""
         # Require strategy data
         if getattr(self.strategy, "data", None) is None:
+            print("No data found for strategy")
             return None
 
         # Determine current price
@@ -51,66 +51,44 @@ class InteractiveStrategyRecommender:
             try:
                 current_price = float(self.strategy.data.loc[date.date()]["Close"])  # type: ignore[index]
             except Exception:
+                print(f"Could not find current price for date {date.date()}")
+                if self.strategy.data is not None and len(self.strategy.data) > 0:
+                    print(f"Available data range: {self.strategy.data.index[0].date()} to {self.strategy.data.index[-1].date()}")
+                    print(f"Total data points: {len(self.strategy.data)}")
+                else:
+                    print("Strategy data is empty or None")
                 return None
 
-        # Get model prediction if available
-        strategy_type: Optional[StrategyType] = None
-        confidence: float = 0.5
-        if hasattr(self.strategy, "_make_prediction"):
-            pred = self.strategy._make_prediction(date)  # noqa: SLF001 (intentional use of internal method per design)
-            if pred is None:
-                return None
-            # Map integer label to StrategyType used by credit spreads
-            label = int(pred.get("strategy", 0))
-            confidence = float(pred.get("confidence", 0.5))
-            if label == 1:
-                strategy_type = StrategyType.CALL_CREDIT_SPREAD
-            elif label == 2:
-                strategy_type = StrategyType.PUT_CREDIT_SPREAD
-            else:
-                # Hold
-                return None
-        else:
-            # No prediction available; cannot propose
+        # Delegate to strategy's recommend_open_position method
+        recommendation = self.strategy.recommend_open_position(date, current_price)
+        if recommendation is None:
+            print("No recommendation found for strategy")
             return None
 
-        # Find best spread
-        if not hasattr(self.strategy, "_find_best_spread"):
-            return None
-
-        best = self.strategy._find_best_spread(  # noqa: SLF001
-            current_price,
-            strategy_type,
-            confidence,
-            date,
-        )
-        if not best:
-            return None
-
-        # Ensure volume for both legs
-        atm_option: Option = best["atm_option"]
-        otm_option: Option = best["otm_option"]
-        if hasattr(self.strategy, "_ensure_volume_data"):
-            atm_option = self.strategy._ensure_volume_data(atm_option, date)  # noqa: SLF001
-            otm_option = self.strategy._ensure_volume_data(otm_option, date)  # noqa: SLF001
-            if atm_option is None or otm_option is None:  # type: ignore[truthy-bool]
-                return None
+        # Extract recommendation details
+        strategy_type = recommendation["strategy_type"]
+        legs = recommendation["legs"]
+        credit = recommendation["credit"]
+        width = recommendation["width"]
+        probability_of_profit = recommendation["probability_of_profit"]
+        confidence = recommendation["confidence"]
+        expiration_date = recommendation["expiration_date"]
 
         # Build proposal DTO
         proposal = ProposedPositionDTO(
             symbol=self.options_handler.symbol,
             strategy_type=strategy_type,
-            legs=(atm_option, otm_option),
-            credit=float(best["credit"]),
-            width=float(best["width"]),
-            probability_of_profit=float(best.get("prob_profit", confidence)),
-            confidence=confidence,
-            expiration_date=best["expiry"].strftime("%Y-%m-%d"),
+            legs=legs,
+            credit=float(credit),
+            width=float(width),
+            probability_of_profit=float(probability_of_profit),
+            confidence=float(confidence),
+            expiration_date=expiration_date,
             created_at=datetime.utcnow().isoformat(),
         )
 
         # Prompt user
-        summary = self._format_open_summary(proposal, best)
+        summary = self._format_open_summary(proposal, recommendation)
         if not self.prompt(f"Open recommendation:\n{summary}\nOpen this position?"):
             return None
 
@@ -120,7 +98,7 @@ class InteractiveStrategyRecommender:
             proposal=proposal,
             outcome="accepted",
             decided_at=decided_at,
-            rationale=f"model_confidence={proposal.confidence:.2f}; risk_reward={best.get('risk_reward')}",
+            rationale=f"strategy_confidence={proposal.confidence:.2f}",
             quantity=1,
             entry_price=proposal.credit,
         )

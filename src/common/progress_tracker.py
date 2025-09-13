@@ -98,7 +98,7 @@ class ProgressTracker:
             self.pbar.close()
             
             # Print final summary
-            print(f"\n✅ Processing completed:")
+            print(f"\nProcessing completed:")
             print(f"   Total time: {timedelta(seconds=int(stats['elapsed_time']))}")
             print(f"   Average time per date: {stats['avg_time_per_date']:.2f} seconds")
             # API call tracking removed from progress tracker

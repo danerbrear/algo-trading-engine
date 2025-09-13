@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Callable
+from typing import Callable, Optional
 import pandas as pd
 
 from src.backtest.models import Position, Strategy, StrategyType
@@ -163,33 +163,23 @@ class CreditSpreadStrategy(Strategy):
         
         print(f"   🔍 Evaluating spreads for {strategy_type.value} strategy...")
         
-        # Get available expirations from options handler
+        # Get available expirations from options handler (lightweight approach)
         if not self.options_handler:
             print("   ⚠️  No options handler available")
             raise Exception("No options handler available")
             
-        # Get the option chain for the current date to extract available expirations
+        # Get available expiration dates without fetching full option chains
         try:
-            chain_data = self.options_handler._get_option_chain_with_cache(date, current_price)
-            if not chain_data or (not chain_data.calls and not chain_data.puts):
-                print("   ⚠️  No option chain data available")
-                raise Exception("No option chain data available")
-                
-            # Extract unique expiration dates from the chain data
-            expirations = set()
-            for option in chain_data.calls:
-                expirations.add(option.expiration)
-            for option in chain_data.puts:
-                expirations.add(option.expiration)
-                        
+            expirations = self.options_handler.get_available_expirations(date, min_days, max_days)
+            
             if not expirations:
-                print("   ⚠️  No expiration dates found in option chain")
+                print("   ⚠️  No expiration dates found in target range")
                 return None
                 
             print(f"   📅 Available expirations: {len(expirations)} total")
             
         except Exception as e:
-            print(f"   ⚠️  Error getting option chain: {e}")
+            print(f"   ⚠️  Error getting expiration dates: {e}")
             raise e
         
         for expiry_str in expirations:
@@ -199,10 +189,6 @@ class CreditSpreadStrategy(Strategy):
                 continue
                 
             print(f"   📊 Evaluating {expiry_str} ({days_to_expiry} days)...")
-            
-            # Filter options for this expiration
-            calls = [opt for opt in chain_data.calls if opt.expiration == expiry_str]
-            puts = [opt for opt in chain_data.puts if opt.expiration == expiry_str]
 
             for width in [5, 7, 8, 10, 12, 15]:
                 total_evaluated += 1
@@ -474,6 +460,26 @@ class CreditSpreadStrategy(Strategy):
             print(f"Error making LSTM prediction: {e}")
             raise ValueError(f"Error making LSTM prediction: {e}")
 
+    def map_prediction_to_strategy_type(self, prediction: dict) -> Optional[StrategyType]:
+        """
+        Map prediction integer to StrategyType enum.
+        
+        Args:
+            prediction: Dictionary containing 'strategy' key with integer value
+            
+        Returns:
+            StrategyType or None: Mapped strategy type, None for hold (strategy=0)
+        """
+        strategy_int = prediction.get('strategy')
+        
+        if strategy_int == 1:
+            return StrategyType.CALL_CREDIT_SPREAD
+        elif strategy_int == 2:
+            return StrategyType.PUT_CREDIT_SPREAD
+        else:
+            # strategy_int == 0 or invalid values return None (no position to open)
+            return None
+
     def _create_call_credit_spread_from_chain(self, date: datetime, prediction: dict) -> Position:
         """Create a call credit spread using the options chain data"""
         if not self.options_data:
@@ -662,6 +668,56 @@ class CreditSpreadStrategy(Strategy):
         else:
             print(f"⚠️  No volume data available for {option.symbol}")
             return None
+
+    def recommend_open_position(self, date: datetime, current_price: float) -> Optional[dict]:
+        """
+        Recommend opening a position for the given date and current price.
+        
+        Args:
+            date: Current date
+            current_price: Current underlying price
+            
+        Returns:
+            dict or None: Position recommendation with required keys, None if no position should be opened
+        """
+        # Get model prediction
+        prediction = self._make_prediction(date)
+        if prediction is None:
+            return None
+            
+        # Map prediction to strategy type
+        strategy_type = self.map_prediction_to_strategy_type(prediction)
+        if strategy_type is None:
+            return None
+        print(f"****Strategy type: {strategy_type.value}****")
+            
+        confidence = float(prediction.get("confidence", 0.5))
+        
+        # Find best spread
+        best = self._find_best_spread(current_price, strategy_type, confidence, date)
+        if not best:
+            print("No suitable spread found")
+            return None
+
+        # Ensure volume for both legs
+        atm_option = best["atm_option"]
+        otm_option = best["otm_option"]
+        atm_option = self._ensure_volume_data(atm_option, date)
+        otm_option = self._ensure_volume_data(otm_option, date)
+        if atm_option is None or otm_option is None:
+            print("Could not fetch volume data for options")
+            return None
+
+        # Return standardized recommendation dict
+        return {
+            "strategy_type": strategy_type,
+            "legs": (atm_option, otm_option),
+            "credit": float(best["credit"]),
+            "width": float(best["width"]),
+            "probability_of_profit": float(best.get("prob_profit", confidence)),
+            "confidence": confidence,
+            "expiration_date": best["expiry"].strftime("%Y-%m-%d"),
+        }
 
     def get_current_volumes_for_position(self, position: Position, date: datetime) -> list[int]:
         """

@@ -31,8 +31,9 @@ The system operates in two main stages:
   - Common functions
 
 - **`src/prediction/`** - Prediction pipeline
-  - Daily prediction generation
-  - Model inference
+  - Interactive recommendations and decision capture
+  - JSON decision store
+  - CLI for open/close flows
 
 ## 📁 Project Structure
 
@@ -59,7 +60,9 @@ lstm_poc/
 │   │   ├── cache/            # Caching system
 │   │   └── ...
 │   └── prediction/           # Prediction pipeline
-│       ├── predict_today.py  # Daily predictions
+│       ├── recommend_cli.py          # CLI entrypoint for recommendations
+│       ├── recommendation_engine.py  # InteractiveStrategyRecommender
+│       ├── decision_store.py         # JSON decision store
 │       └── ...
 ├── data_cache/               # Cached market data
 │   ├── stocks/               # Stock price data
@@ -105,10 +108,27 @@ python setup_env.py
 python -m src.model.main --free --save
 ```
 
-4. **Make predictions:**
+4. **Run the prediction engine (interactive recommender):**
 ```bash
-python -m src.prediction.predict_today
+# Basic run (interactive prompts)
+python -m src.prediction.recommend_cli --symbol SPY --strategy credit_spread
+
+# Specify a historical or specific date (YYYY-MM-DD)
+python -m src.prediction.recommend_cli --symbol SPY --strategy credit_spread --date 2025-09-10
+
+# Non-interactive (auto-accept recommendations; useful for batch runs)
+python -m src.prediction.recommend_cli --symbol SPY --strategy credit_spread --yes
 ```
+
+Flags:
+- `--symbol`: underlying symbol (default `SPY`)
+- `--strategy`: `credit_spread` (default) or `velocity_momentum`
+- `--date`: run date in `YYYY-MM-DD`; defaults to today
+- `--yes`: auto-accept prompts (non-interactive)
+
+Outputs:
+- Accepted decisions are written to `predictions/decisions/decisions_YYYYMMDD.json`.
+- When open positions exist, the CLI prints their current status and will only run the close flow for that day.
 
 5. **Run backtests:**
 ```bash

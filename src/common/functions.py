@@ -58,15 +58,15 @@ def load_lstm_model(model_dir, return_lstm_instance=False):
     try:
         import keras
         keras_model = keras.models.load_model(lstm_path)
-        print(f"✅ LSTM model loaded from {lstm_path}")
+        print(f"LSTM model loaded from {lstm_path}")
         scaler = None
         scaler_path = os.path.join(model_dir, 'lstm_scaler.pkl')
         if os.path.exists(scaler_path):
             with open(scaler_path, 'rb') as f:
                 scaler = pickle.load(f)
-            print(f"✅ LSTM scaler loaded from {scaler_path}")
+            print(f"LSTM scaler loaded from {scaler_path}")
         else:
-            print(f"⚠️  LSTM scaler not found at {scaler_path}")
+            print(f"WARNING: LSTM scaler not found at {scaler_path}")
         if return_lstm_instance:
             try:
                 from src.model.lstm_model import LSTMModel

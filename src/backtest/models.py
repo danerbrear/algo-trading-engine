@@ -83,6 +83,27 @@ class Strategy(ABC):
         On end, execute strategy.
         """
 
+    @abstractmethod
+    def recommend_open_position(self, date: datetime, current_price: float) -> Optional[Dict]:
+        """
+        Recommend opening a position for the given date and current price.
+        
+        Args:
+            date: Current date
+            current_price: Current underlying price
+            
+        Returns:
+            dict or None: Position recommendation with keys:
+                - strategy_type: StrategyType enum value
+                - legs: tuple of (atm_option, otm_option) Option objects
+                - credit: float, net credit received
+                - width: float, strike width
+                - probability_of_profit: float, estimated probability of profit
+                - confidence: float, model confidence (0.0-1.0)
+                - expiration_date: str, expiration in 'YYYY-MM-DD' format
+            Returns None if no position should be opened.
+        """
+
     def set_profit_target(self, profit_target: float):
         """
         Set the profit target for the strategy.

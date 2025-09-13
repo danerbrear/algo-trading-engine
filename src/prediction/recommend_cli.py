@@ -10,23 +10,35 @@ from src.model.options_handler import OptionsHandler
 from src.prediction.decision_store import JsonDecisionStore
 from src.prediction.recommendation_engine import InteractiveStrategyRecommender
 from src.strategies.credit_spread_minimal import CreditSpreadStrategy
+from src.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
 
 LOOKBACK_DAYS = 120
 
 STRATEGY_REGISTRY = {
     "credit_spread": CreditSpreadStrategy,
+    "velocity_momentum": VelocitySignalMomentumStrategy
 }
-
 
 def build_strategy(name: str, options_handler: OptionsHandler, symbol: str):
     if name not in STRATEGY_REGISTRY:
         raise ValueError(f"Unknown strategy: {name}")
 
-    # Load trained LSTM model and scaler for prediction use inside the strategy
+    StrategyClass = STRATEGY_REGISTRY[name]
+
+    # Load trained LSTM model and scaler for strategies that need prediction support
     model_dir = get_model_directory(symbol=symbol)
     lstm_model, lstm_scaler = load_lstm_model(model_dir, return_lstm_instance=True)
 
-    StrategyClass = STRATEGY_REGISTRY[name]
+    # VelocitySignalMomentumStrategy expects only options_handler in its constructor,
+    # but it still uses lstm_model/lstm_scaler internally for predictions.
+    if StrategyClass is VelocitySignalMomentumStrategy:
+        strategy = StrategyClass(options_handler=options_handler)
+        # Attach LSTM artifacts for internal prediction usage
+        strategy.lstm_model = lstm_model
+        strategy.lstm_scaler = lstm_scaler
+        return strategy
+
+    # Default path: strategies that take LSTM artifacts in the constructor
     strategy = StrategyClass(lstm_model, lstm_scaler, options_handler=options_handler)
     return strategy
 
@@ -48,7 +60,7 @@ def main():
     store = JsonDecisionStore()
     open_records = store.get_open_positions(symbol=args.symbol)
     if open_records:
-        options_handler = OptionsHandler(args.symbol, quiet_mode=True)
+        options_handler = OptionsHandler(args.symbol, quiet_mode=True, use_free_tier=True)
         strategy = build_strategy(args.strategy, options_handler, symbol=args.symbol)
         recommender = InteractiveStrategyRecommender(strategy, options_handler, store, auto_yes=args.yes)
 
@@ -70,7 +82,7 @@ def main():
 
     # Prepare data around the run date to ensure the LSTM sequence/features exist
     lstm_start_date = (run_date.date() - timedelta(days=LOOKBACK_DAYS)).strftime("%Y-%m-%d")
-    retriever = DataRetriever(symbol=args.symbol, lstm_start_date=lstm_start_date, quiet_mode=True)
+    retriever = DataRetriever(symbol=args.symbol, lstm_start_date=lstm_start_date, quiet_mode=True, use_free_tier=True)
 
     # HMM is required for LSTM features; fail fast if unavailable
     try:
@@ -82,6 +94,13 @@ def main():
         sys.exit(1)
 
     data, options_data = retriever.prepare_data_for_lstm(state_classifier=hmm_model)
+
+    # Print date range information for the processed data
+    if data is not None and len(data) > 0:
+        start_date = data.index[0]
+        end_date = data.index[-1]
+        print(f"\nDate range: {start_date.date()} to {end_date.date()}")
+        print(f"Options data dates: {len(options_data)} days\n")
 
     # Wire options handler and strategy
     options_handler = retriever.options_handler
