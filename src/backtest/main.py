@@ -606,6 +606,8 @@ def parse_arguments():
                        help='Symbol to trade')
     parser.add_argument('--verbose', action='store_true', default=False,
                        help='Run in quiet mode')
+    parser.add_argument('-f', '--free', action='store_true', default=False,
+                       help='Use free tier rate limiting (13 second timeout between API requests)')
     
     return parser.parse_args()
 
@@ -631,7 +633,7 @@ if __name__ == "__main__":
         symbol=args.symbol, 
         hmm_start_date=start_date, 
         lstm_start_date=start_date, 
-        use_free_tier=False, 
+        use_free_tier=args.free, 
         quiet_mode=not args.verbose
     )
 

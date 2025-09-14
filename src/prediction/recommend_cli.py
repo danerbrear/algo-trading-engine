@@ -50,6 +50,8 @@ def main():
     parser.add_argument("--strategy", default="credit_spread", help="Strategy to run (default: credit_spread)")
     parser.add_argument("--yes", action="store_true", help="Auto-accept prompts (non-interactive)")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose output (disable quiet mode)")
+    parser.add_argument('-f', '--free', action='store_true', default=False,
+                       help='Use free tier rate limiting (13 second timeout between API requests)')
     args = parser.parse_args()
 
     # Resolve date
@@ -61,7 +63,7 @@ def main():
     store = JsonDecisionStore()
     open_records = store.get_open_positions(symbol=args.symbol)
     if open_records:
-        options_handler = OptionsHandler(args.symbol, quiet_mode=not args.verbose, use_free_tier=True)
+        options_handler = OptionsHandler(args.symbol, quiet_mode=not args.verbose, use_free_tier=args.free)
         strategy = build_strategy(args.strategy, options_handler, symbol=args.symbol)
         recommender = InteractiveStrategyRecommender(strategy, options_handler, store, auto_yes=args.yes)
 
@@ -83,7 +85,7 @@ def main():
 
     # Prepare data around the run date to ensure the LSTM sequence/features exist
     lstm_start_date = (run_date.date() - timedelta(days=LOOKBACK_DAYS)).strftime("%Y-%m-%d")
-    retriever = DataRetriever(symbol=args.symbol, lstm_start_date=lstm_start_date, quiet_mode=not args.verbose, use_free_tier=True)
+    retriever = DataRetriever(symbol=args.symbol, lstm_start_date=lstm_start_date, quiet_mode=not args.verbose, use_free_tier=args.free)
 
     # HMM is required for LSTM features; fail fast if unavailable
     try:
