@@ -224,22 +224,36 @@ class OptionsHandler:
                 # Create new cache entry
                 existing_cache = {'calls': [], 'puts': []}
             
-            # Add the new option data to the appropriate list
-            if option_data.option_type == OptionType.CALL:
-                existing_cache['calls'].append(option_data.to_dict())
+            # Check for duplicates before adding
+            option_dict = option_data.to_dict()
+            option_ticker = option_dict.get('ticker')
+            
+            # Determine which list to check/update
+            target_list = existing_cache['calls'] if option_data.option_type == OptionType.CALL else existing_cache['puts']
+            
+            # Check if this option already exists
+            already_exists = False
+            for existing_option in target_list:
+                if existing_option.get('ticker') == option_ticker:
+                    already_exists = True
+                    break
+            
+            # Only add if it doesn't already exist
+            if not already_exists:
+                target_list.append(option_dict)
+                
+                # Save updated cache
+                self.cache_manager.save_date_to_cache(
+                    current_date,
+                    existing_cache,
+                    '',  # No suffix for main chain data
+                    'options',
+                    self.symbol
+                )
+                
+                progress_print(f"💾 Updated cache with {option_data.option_type.value} ${option_data.strike:.0f}")
             else:
-                existing_cache['puts'].append(option_data.to_dict())
-            
-            # Save updated cache
-            self.cache_manager.save_date_to_cache(
-                current_date,
-                existing_cache,
-                '',  # No suffix for main chain data
-                'options',
-                self.symbol
-            )
-            
-            progress_print(f"💾 Updated cache with {option_data.option_type.value} ${option_data.strike:.0f}")
+                progress_print(f"⏭️ Skipping duplicate {option_data.option_type.value} ${option_data.strike:.0f} (already in cache)")
             
         except Exception as e:
             progress_print(f"⚠️ Warning: Could not update cache: {str(e)}")
@@ -299,7 +313,14 @@ class OptionsHandler:
                 try:
                     call_data = self._fetch_historical_contract_data(call, current_date)
                     if call_data:
-                        chain_data['calls'].append(call_data)
+                        # Check for duplicates before adding
+                        call_ticker = call_data.ticker if hasattr(call_data, 'ticker') else None
+                        existing_tickers = [c.ticker if hasattr(c, 'ticker') else c.get('ticker') for c in chain_data['calls']]
+                        
+                        if call_ticker not in existing_tickers:
+                            chain_data['calls'].append(call_data)
+                        else:
+                            progress_print(f"⏭️ Skipping duplicate call {call_ticker}")
                 except ValueError as e:
                     if "SKIP_DATE_UNAUTHORIZED" in str(e):
                         progress_print(f"🚫 Skipping {current_date.date()} - Plan doesn't include this timeframe")
@@ -311,7 +332,14 @@ class OptionsHandler:
                 try:
                     put_data = self._fetch_historical_contract_data(put, current_date)
                     if put_data:
-                        chain_data['puts'].append(put_data)
+                        # Check for duplicates before adding
+                        put_ticker = put_data.ticker if hasattr(put_data, 'ticker') else None
+                        existing_tickers = [p.ticker if hasattr(p, 'ticker') else p.get('ticker') for p in chain_data['puts']]
+                        
+                        if put_ticker not in existing_tickers:
+                            chain_data['puts'].append(put_data)
+                        else:
+                            progress_print(f"⏭️ Skipping duplicate put {put_ticker}")
                 except ValueError as e:
                     if "SKIP_DATE_UNAUTHORIZED" in str(e):
                         progress_print(f"🚫 Skipping {current_date.date()} - Plan doesn't include this timeframe")
@@ -494,13 +522,48 @@ class OptionsHandler:
                 # Cache the data if we got any contracts
                 if chain_data.calls or chain_data.puts:
                     print(f"Caching option chain data for {current_date.date()}")
-                    self.cache_manager.save_date_to_cache(
+                    
+                    # Load existing cache and merge (with deduplication)
+                    existing_cache = self.cache_manager.load_date_from_cache(
                         current_date,
-                        chain_data.to_dict(),
                         '',  # No suffix for main chain data
                         'options',
                         self.symbol
                     )
+                    
+                    if existing_cache is None:
+                        # No existing cache, save new data
+                        self.cache_manager.save_date_to_cache(
+                            current_date,
+                            chain_data.to_dict(),
+                            '',  # No suffix for main chain data
+                            'options',
+                            self.symbol
+                        )
+                    else:
+                        # Merge with existing cache, avoiding duplicates
+                        chain_dict = chain_data.to_dict()
+                        
+                        # Merge calls with deduplication
+                        existing_call_tickers = {call.get('ticker') for call in existing_cache.get('calls', [])}
+                        for call in chain_dict.get('calls', []):
+                            if call.get('ticker') not in existing_call_tickers:
+                                existing_cache.setdefault('calls', []).append(call)
+                        
+                        # Merge puts with deduplication
+                        existing_put_tickers = {put.get('ticker') for put in existing_cache.get('puts', [])}
+                        for put in chain_dict.get('puts', []):
+                            if put.get('ticker') not in existing_put_tickers:
+                                existing_cache.setdefault('puts', []).append(put)
+                        
+                        # Save merged cache
+                        self.cache_manager.save_date_to_cache(
+                            current_date,
+                            existing_cache,
+                            '',  # No suffix for main chain data
+                            'options',
+                            self.symbol
+                        )
                 
             except Exception as e:
                 print(f"Error type: {type(e)}")
