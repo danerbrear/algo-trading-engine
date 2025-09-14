@@ -160,14 +160,17 @@ class VelocitySignalMomentumStrategy(Strategy):
         try:
             current_idx = self.data.index.get_loc(date)
         except KeyError:
+            progress_print("⚠️  Date not found in data")
             return False
         
         # Check if we have enough data to analyze (need at least 30 days for SMA 30)
         if current_idx < 30:
+            progress_print("⚠️  Not enough data to analyze")
             return False
         
         # Check if pre-calculated velocity data is available
         if 'Velocity_Changes' not in self.data.columns:
+            progress_print("⚠️  No velocity changes data available")
             return False
         
         # Check if current velocity increased (positive velocity change)
@@ -176,7 +179,6 @@ class VelocitySignalMomentumStrategy(Strategy):
         
         # This is a velocity signal - now check if it leads to a successful trend
         signal_index = current_idx
-        signal_price = self.data['Close'].iloc[signal_index]
         
         # Check if this leads to an upward trend of at least 3 days, max 60 days
         success, duration, trend_return = self._check_trend_success(
