@@ -114,8 +114,5 @@ def main():
     recommender = InteractiveStrategyRecommender(strategy, options_handler, store, auto_yes=args.yes)
     recommender.run(run_date, auto_yes=args.yes)
 
-
 if __name__ == "__main__":
     main()
-
-

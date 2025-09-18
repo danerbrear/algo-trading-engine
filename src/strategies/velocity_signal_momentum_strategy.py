@@ -334,12 +334,16 @@ class VelocitySignalMomentumStrategy(Strategy):
         progress_print(f"📈 Buy signal detected for {date.strftime('%Y-%m-%d')}")
         current_price = self._get_current_underlying_price(date)
         if current_price is None:
+            print("⚠️  Failed to get current price.")
             return
         chain = self._get_option_chain(date)
         if chain is None:
+            progress_print("⚠️  Failed to get option chain for: {}", date.strftime('%Y-%m-%d'))
             return
         expiration_str = self._select_week_expiration(date, chain)
+        progress_print(f"Selected expiration: {expiration_str}")
         if not expiration_str:
+            progress_print("⚠️  Failed to get valid expiration date")
             return
         position = self._create_put_credit_spread(date, current_price, expiration_str)
         if position is None:
@@ -385,9 +389,14 @@ class VelocitySignalMomentumStrategy(Strategy):
             progress_print("⚠️  No future expirations available")
             return None
         window = [(e, d) for e, d in valid if 5 <= d <= 10]
-        candidates = window if window else valid
-        return min(candidates, key=lambda x: abs(x[1] - target_days))[0]
+        if window:
+            candidates = window
+        else:
+            progress_print("No expirations within window")
 
+            # TODO: Fetch list of contracts for specific window in case cached data doesn't contain valid expirations
+
+        return min(candidates, key=lambda x: abs(x[1] - target_days))[0]
     
 
     # ==== Helper methods (closing) ====

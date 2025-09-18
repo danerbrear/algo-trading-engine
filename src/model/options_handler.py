@@ -354,7 +354,7 @@ class OptionsHandler:
             
         return OptionChain.from_dict_w_options(chain_data)
 
-    def _fetch_filtered_option_contracts(self, current_date: datetime, current_price: float) -> Optional[List]:
+    def _fetch_filtered_option_contracts(self, current_date: datetime, current_price: float, min_dte: int = 24, max_dte: int = 36) -> Optional[List]:
         """Fetch option contracts within a RANGE of strikes and expiration dates.
         
         This method performs bulk fetching of contracts for building full option chains.
@@ -410,8 +410,8 @@ class OptionsHandler:
                     max_strike = current_price + price_range
                     
                     # Calculate expiration date range (focus on options around 30-day target)
-                    min_expiry = current_date + timedelta(days=24)  # Minimum 24 days out (closer to 30-day target)
-                    max_expiry = current_date + timedelta(days=36)  # Maximum 36 days out
+                    min_expiry = current_date + timedelta(days=min_dte)
+                    max_expiry = current_date + timedelta(days=max_dte)
                     
                     progress_print(f"Filtering contracts: strikes ${min_strike:.0f}-${max_strike:.0f}, expiry {min_expiry.strftime('%Y-%m-%d')} to {max_expiry.strftime('%Y-%m-%d')} (targeting ~30 days)")
                     
