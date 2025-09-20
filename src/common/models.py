@@ -10,6 +10,25 @@ class OptionType(Enum):
     CALL = "call"
     PUT = "put"
 
+class MarketStateType(Enum):
+    """Enum for market state types identified by HMM"""
+    LOW_VOLATILITY_UPTREND = "low_volatility_uptrend"
+    MOMENTUM_UPTREND = "momentum_uptrend"
+    CONSOLIDATION = "consolidation"
+    HIGH_VOLATILITY_DOWNTREND = "high_volatility_downtrend"
+    HIGH_VOLATILITY_RALLY = "high_volatility_rally"
+
+class SignalType(Enum):
+    """Enum for trading signal types"""
+    HOLD = "hold"
+    CALL_CREDIT_SPREAD = "call_credit_spread"
+    PUT_CREDIT_SPREAD = "put_credit_spread"
+    LONG_STOCK = "long_stock"
+    LONG_CALL = "long_call"
+    SHORT_CALL = "short_call"
+    LONG_PUT = "long_put"
+    SHORT_PUT = "short_put"
+
 @dataclass(frozen=True)
 class Option:
     """
@@ -378,3 +397,114 @@ class TreasuryRates:
     def is_empty(self) -> bool:
         """Check if treasury rates data is empty"""
         return len(self.rates_data) == 0
+
+@dataclass(frozen=True)
+class MarketState:
+    """Represents a market state with characteristics"""
+    state_type: MarketStateType
+    volatility: Decimal
+    average_return: Decimal
+    confidence: Decimal
+    
+    def __post_init__(self):
+        if not 0 <= self.confidence <= 1:
+            raise ValueError("Confidence must be between 0 and 1")
+        if self.volatility < 0:
+            raise ValueError("Volatility cannot be negative")
+    
+    def is_bullish(self) -> bool:
+        """Check if this market state is generally bullish"""
+        return self.state_type in [
+            MarketStateType.LOW_VOLATILITY_UPTREND,
+            MarketStateType.MOMENTUM_UPTREND,
+            MarketStateType.HIGH_VOLATILITY_RALLY
+        ]
+    
+    def is_bearish(self) -> bool:
+        """Check if this market state is generally bearish"""
+        return self.state_type == MarketStateType.HIGH_VOLATILITY_DOWNTREND
+    
+    def is_consolidation(self) -> bool:
+        """Check if this market state represents consolidation"""
+        return self.state_type == MarketStateType.CONSOLIDATION
+
+@dataclass(frozen=True)
+class TradingSignal:
+    """Represents a trading signal with strategy and confidence"""
+    signal_type: SignalType
+    confidence: Decimal
+    ticker: str
+    expiration_date: Optional[str] = None
+    strike_prices: Optional[tuple[Decimal, Decimal]] = None
+    
+    def __post_init__(self):
+        if not 0 <= self.confidence <= 1:
+            raise ValueError("Confidence must be between 0 and 1")
+        if self.signal_type != SignalType.HOLD and not self.expiration_date:
+            raise ValueError("Expiration date required for option strategies")
+    
+    def is_option_strategy(self) -> bool:
+        """Check if this signal represents an option strategy"""
+        return self.signal_type in [
+            SignalType.CALL_CREDIT_SPREAD, 
+            SignalType.PUT_CREDIT_SPREAD,
+            SignalType.LONG_CALL,
+            SignalType.SHORT_CALL,
+            SignalType.LONG_PUT,
+            SignalType.SHORT_PUT
+        ]
+    
+    def is_credit_spread(self) -> bool:
+        """Check if this signal represents a credit spread strategy"""
+        return self.signal_type in [
+            SignalType.CALL_CREDIT_SPREAD,
+            SignalType.PUT_CREDIT_SPREAD
+        ]
+
+@dataclass(frozen=True)
+class PriceRange:
+    """Represents a price range with validation"""
+    low: Decimal
+    high: Decimal
+    
+    def __post_init__(self):
+        if self.low > self.high:
+            raise ValueError("Low price cannot be greater than high price")
+        if self.low < 0:
+            raise ValueError("Price cannot be negative")
+    
+    def contains(self, price: Decimal) -> bool:
+        """Check if a price falls within this range"""
+        return self.low <= price <= self.high
+    
+    def spread(self) -> Decimal:
+        """Calculate the spread between high and low prices"""
+        return self.high - self.low
+    
+    def midpoint(self) -> Decimal:
+        """Calculate the midpoint of the price range"""
+        return (self.low + self.high) / 2
+
+@dataclass(frozen=True)
+class Volatility:
+    """Represents volatility with validation"""
+    value: Decimal
+    period: int  # days
+    
+    def __post_init__(self):
+        if self.value < 0:
+            raise ValueError("Volatility cannot be negative")
+        if self.period <= 0:
+            raise ValueError("Period must be positive")
+    
+    def is_high(self) -> bool:
+        """Check if volatility is considered high (>30%)"""
+        return self.value > Decimal('0.3')
+    
+    def is_low(self) -> bool:
+        """Check if volatility is considered low (<10%)"""
+        return self.value < Decimal('0.1')
+    
+    def is_moderate(self) -> bool:
+        """Check if volatility is moderate (10-30%)"""
+        return not self.is_high() and not self.is_low()

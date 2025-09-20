@@ -1,9 +1,9 @@
 from datetime import datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-from src.prediction.decision_store import JsonDecisionStore, ProposedPositionDTO, DecisionRecord, generate_decision_id
+from src.prediction.decision_store import JsonDecisionStore, ProposedPositionRequest, DecisionResponse, generate_decision_id
 from src.prediction.recommendation_engine import InteractiveStrategyRecommender
-from src.backtest.models import StrategyType, Position
+from src.backtest.models import StrategyType
 from src.common.models import Option
 
 
@@ -28,7 +28,7 @@ def test_store_append_and_read(tmp_path):
         _make_option('OPT1', 500, '2025-09-06', 'call', 2.0),
         _make_option('OPT2', 505, '2025-09-06', 'call', 1.0),
     )
-    proposal = ProposedPositionDTO(
+    proposal = ProposedPositionRequest(
         symbol='SPY',
         strategy_type=StrategyType.CALL_CREDIT_SPREAD,
         legs=legs,
@@ -40,7 +40,7 @@ def test_store_append_and_read(tmp_path):
         created_at=date.isoformat(),
     )
     rec_id = generate_decision_id(proposal, date.isoformat())
-    record = DecisionRecord(
+    record = DecisionResponse(
         id=rec_id,
         proposal=proposal,
         outcome='accepted',
@@ -58,16 +58,25 @@ def test_store_append_and_read(tmp_path):
 
 
 def test_recommender_open_accept(monkeypatch, tmp_path):
+    # Create proper option objects first
+    atm_option = _make_option('A', 500, '2025-09-06', 'put', 2.0)
+    otm_option = _make_option('B', 495, '2025-09-06', 'put', 1.0)
+    
     # Strategy mock
     strategy = MagicMock()
     strategy.data = MagicMock()
     date = datetime(2025, 8, 8)
     strategy.data.loc.__getitem__.return_value = {'Close': 500}
     strategy._make_prediction.return_value = {'strategy': 2, 'confidence': 0.7}
-    
-    # Create proper option objects instead of MagicMock
-    atm_option = _make_option('A', 500, '2025-09-06', 'put', 2.0)
-    otm_option = _make_option('B', 495, '2025-09-06', 'put', 1.0)
+    strategy.recommend_open_position.return_value = {
+        'strategy_type': StrategyType.PUT_CREDIT_SPREAD,
+        'legs': [atm_option, otm_option],
+        'credit': 1.05,
+        'width': 5,
+        'probability_of_profit': 0.68,
+        'confidence': 0.7,
+        'expiration_date': '2025-09-06'
+    }
     
     strategy._find_best_spread.return_value = {
         'expiry': datetime(2025, 9, 6),
@@ -98,7 +107,7 @@ def test_recommender_close_accept(monkeypatch, tmp_path):
         _make_option('A', 500, '2025-09-06', 'call', 2.0, 500),
         _make_option('B', 505, '2025-09-06', 'call', 1.0, 500),
     )
-    proposal = ProposedPositionDTO(
+    proposal = ProposedPositionRequest(
         symbol='SPY',
         strategy_type=StrategyType.CALL_CREDIT_SPREAD,
         legs=legs,
@@ -111,7 +120,7 @@ def test_recommender_close_accept(monkeypatch, tmp_path):
     )
     decided_at = datetime(2025, 7, 1).isoformat()
     rec_id = generate_decision_id(proposal, decided_at)
-    record = DecisionRecord(
+    record = DecisionResponse(
         id=rec_id,
         proposal=proposal,
         outcome='accepted',

@@ -1,10 +1,6 @@
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-from pathlib import Path
-import pickle
-from concurrent.futures import ThreadPoolExecutor
-import multiprocessing
 import time
 from polygon import RESTClient
 from typing import Dict, List, Optional, Tuple

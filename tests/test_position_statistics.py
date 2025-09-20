@@ -9,7 +9,6 @@ from unittest.mock import Mock
 
 from src.backtest.main import BacktestEngine
 from src.backtest.models import StrategyType
-from src.backtest.config import VolumeConfig
 
 
 class TestPositionStatistics:

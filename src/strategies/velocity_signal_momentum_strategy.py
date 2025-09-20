@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
 from src.backtest.models import Strategy, Position, StrategyType, OptionChain, TreasuryRates
-from src.common.models import OptionType
 from src.common.progress_tracker import progress_print
 from src.model.options_handler import OptionsHandler
 
@@ -20,8 +19,6 @@ class VelocitySignalMomentumStrategy(Strategy):
 
     def __init__(self, options_handler: OptionsHandler, start_date_offset: int = 60):
         super().__init__(start_date_offset=start_date_offset)
-        if options_handler is None:
-            raise ValueError("options_handler is required for VelocitySignalMomentumStrategy")
         self.options_handler = options_handler
         # Track position entries for plotting
         self._position_entries = []
@@ -33,6 +30,19 @@ class VelocitySignalMomentumStrategy(Strategy):
         self._position_entries = []
         
         # Pre-calculate moving averages and velocity for performance
+        if self.data is not None and not self.data.empty:
+            # Calculate SMA 15 and SMA 30
+            self.data['SMA_15'] = self.data['Close'].rolling(window=15).mean()
+            self.data['SMA_30'] = self.data['Close'].rolling(window=30).mean()
+            
+            # Calculate MA velocity (SMA 15 / SMA 30)
+            self.data['MA_Velocity_15_30'] = self.data['SMA_15'] / self.data['SMA_30']
+            
+            # Calculate velocity changes for signal detection
+            self.data['Velocity_Changes'] = self.data['MA_Velocity_15_30'].diff()
+
+    def _recalculate_moving_averages(self):
+        """Recalculate moving averages and velocity changes after data updates."""
         if self.data is not None and not self.data.empty:
             # Calculate SMA 15 and SMA 30
             self.data['SMA_15'] = self.data['Close'].rolling(window=15).mean()
@@ -160,8 +170,35 @@ class VelocitySignalMomentumStrategy(Strategy):
         try:
             current_idx = self.data.index.get_loc(date)
         except KeyError:
-            progress_print("⚠️  Date not found in data")
-            return False
+            # If the date is not found in cached data, check if it's the current date
+            current_date = datetime.now().date()
+            if date.date() == current_date:
+                # For current date, fetch live price and append to data
+                live_price = self._get_current_underlying_price(date)
+                if live_price is not None:
+                    # Create a new row with the live price
+                    new_row = pd.DataFrame({
+                        'Close': [live_price],
+                        'Open': [live_price],  # Use live price as open for current day
+                        'High': [live_price],
+                        'Low': [live_price],
+                        'Volume': [0]  # Volume not available for live price
+                    }, index=[date])
+                    
+                    # Append to existing data
+                    self.data = pd.concat([self.data, new_row])
+                    current_idx = len(self.data) - 1
+                    
+                    # Recalculate moving averages and velocity changes for the updated data
+                    self._recalculate_moving_averages()
+                    progress_print(f"📅 Fetched live price ${live_price:.2f} for current date {date.date()} and appended to data")
+                else:
+                    # Fallback to last available data point if live price fetch fails
+                    current_idx = len(self.data) - 1
+                    progress_print(f"⚠️ Could not fetch live price for {date.date()}, using last available data point (index {current_idx})")
+            else:
+                progress_print("⚠️  Date not found in data")
+                return False
         
         # Check if we have enough data to analyze (need at least 30 days for SMA 30)
         if current_idx < 30:
@@ -193,58 +230,71 @@ class VelocitySignalMomentumStrategy(Strategy):
                            trend_type: str, min_duration: int = 3, 
                            max_duration: int = 60) -> tuple[bool, int, float]:
         """
-        Check if a trend signal leads to a successful trend.
-        This method mimics the analysis module's approach.
+        Check if a trend signal is part of a successful upward trend by looking backward.
+        This method always uses backward analysis for consistency between backtesting and live trading.
+        
+        Note: This strategy only considers upward trends for momentum trading.
         
         Args:
             data: DataFrame with price data
             signal_index: Index of the signal
-            trend_type: 'up' or 'down'
+            trend_type: Only 'up' is supported (downward trends are ignored)
             min_duration: Minimum trend duration in days
             max_duration: Maximum trend duration in days
             
         Returns:
             Tuple of (success, duration, return)
         """
-        start_price = data['Close'].iloc[signal_index]
+        # Always use backward trend analysis for consistency
+        return self._check_backward_trend_success(data, signal_index, trend_type, min_duration, max_duration)
+    
+    def _check_backward_trend_success(self, data: pd.DataFrame, signal_index: int, 
+                                    trend_type: str, min_duration: int = 3, 
+                                    max_duration: int = 60) -> tuple[bool, int, float]:
+        """
+        Check for successful upward trend by looking backward from the current date.
+        This is used when we're on the current date and can't look forward.
         
-        # Look for trend continuation
-        for duration in range(min_duration, min(max_duration + 1, len(data) - signal_index)):
-            end_index = signal_index + duration
-            if end_index >= len(data):
+        Note: This strategy only considers upward trends for momentum trading.
+        
+        Args:
+            data: DataFrame with price data
+            signal_index: Index of the signal (current date)
+            trend_type: Only 'up' is supported (downward trends are ignored)
+            min_duration: Minimum trend duration in days
+            max_duration: Maximum trend duration in days
+            
+        Returns:
+            Tuple of (success, duration, return)
+        """
+        current_price = data['Close'].iloc[signal_index]
+        
+        # Look backward for trend continuation
+        for duration in range(min_duration, min(max_duration + 1, signal_index + 1)):
+            start_index = signal_index - duration
+            if start_index < 0:
                 break
                 
-            end_price = data['Close'].iloc[end_index]
-            total_return = (end_price - start_price) / start_price
+            start_price = data['Close'].iloc[start_index]
+            total_return = (current_price - start_price) / start_price
             
             if trend_type == 'up':
+                progress_print(f"🔍 Backward up trend detected for {duration} days, total return: {total_return}")
                 if total_return > 0:
                     # Check if this is a sustained upward trend
                     # Look for any significant reversal within the trend period
                     trend_sustained = True
-                    for j in range(signal_index + 1, end_index):
-                        current_price = data['Close'].iloc[j]
-                        current_return = (current_price - start_price) / start_price
+                    for j in range(start_index + 1, signal_index):
+                        current_price_in_trend = data['Close'].iloc[j]
+                        current_return = (current_price_in_trend - start_price) / start_price
                         if current_return < -0.02:  # 2% reversal threshold
                             trend_sustained = False
                             break
                     
                     if trend_sustained:
                         return True, duration, total_return
-            else:  # down trend
-                if total_return < 0:
-                    # Check if this is a sustained downward trend
-                    # Look for any significant reversal within the trend period
-                    trend_sustained = True
-                    for j in range(signal_index + 1, end_index):
-                        current_price = data['Close'].iloc[j]
-                        current_return = (current_price - start_price) / start_price
-                        if current_return > 0.02:  # 2% reversal threshold
-                            trend_sustained = False
-                            break
-                    
-                    if trend_sustained:
-                        return True, duration, total_return
+            # Note: This strategy only considers upward trends for momentum trading
+            # Downward trends are not used as they don't align with the strategy's purpose
         
         return False, 0, 0.0
     
@@ -356,6 +406,24 @@ class VelocitySignalMomentumStrategy(Strategy):
         add_position(position)
 
     def _get_current_underlying_price(self, date: datetime) -> Optional[float]:
+        # Check if the specified date is the current date
+        current_date = datetime.now().date()
+        if date.date() == current_date:
+            # Use live price from DataRetriever if available
+            if hasattr(self, 'data_retriever') and self.data_retriever:
+                live_price = self.data_retriever.get_live_price()
+                if live_price is not None:
+                    return live_price
+            elif hasattr(self.options_handler, 'symbol'):
+                # Fallback: create a temporary DataRetriever for live price
+                from src.common.data_retriever import DataRetriever
+                temp_retriever = DataRetriever(symbol=self.options_handler.symbol, use_free_tier=True, quiet_mode=True)
+                temp_retriever.options_handler = self.options_handler
+                live_price = temp_retriever.get_live_price()
+                if live_price is not None:
+                    return live_price
+        
+        # Fallback to cached data if live price failed or date is not current
         if self.data is None or self.data.empty or date not in self.data.index:
             return None
         try:

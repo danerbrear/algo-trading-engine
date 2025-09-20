@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal, Optional, Tuple, List
 import hashlib
@@ -15,7 +15,7 @@ DecisionOutcome = Literal["accepted", "rejected"]
 
 
 @dataclass(frozen=True)
-class ProposedPositionDTO:
+class ProposedPositionRequest:
     """Represents a proposed position to open.
 
     Legs reuse the existing Option VO for clarity and compatibility with the
@@ -47,8 +47,8 @@ class ProposedPositionDTO:
         }
 
     @staticmethod
-    def from_dict(data: dict) -> "ProposedPositionDTO":
-        return ProposedPositionDTO(
+    def from_dict(data: dict) -> "ProposedPositionRequest":
+        return ProposedPositionRequest(
             symbol=data["symbol"],
             strategy_type=StrategyType(data["strategy_type"]),
             legs=tuple(Option.from_dict(opt) for opt in data.get("legs", [])),
@@ -62,7 +62,7 @@ class ProposedPositionDTO:
 
 
 @dataclass(frozen=True)
-class DecisionRecord:
+class DecisionResponse:
     """Immutable record of a decision outcome for a proposal.
 
     When outcome is "accepted" for an open decision, the record represents an
@@ -70,7 +70,7 @@ class DecisionRecord:
     """
 
     id: str
-    proposal: ProposedPositionDTO
+    proposal: ProposedPositionRequest
     outcome: DecisionOutcome
     decided_at: str
     rationale: str
@@ -93,10 +93,10 @@ class DecisionRecord:
         }
 
     @staticmethod
-    def from_dict(data: dict) -> "DecisionRecord":
-        return DecisionRecord(
+    def from_dict(data: dict) -> "DecisionResponse":
+        return DecisionResponse(
             id=str(data["id"]),
-            proposal=ProposedPositionDTO.from_dict(data["proposal"]),
+            proposal=ProposedPositionRequest.from_dict(data["proposal"]),
             outcome=data["outcome"],
             decided_at=str(data["decided_at"]),
             rationale=str(data["rationale"]),
@@ -107,7 +107,7 @@ class DecisionRecord:
         )
 
 
-def generate_decision_id(proposal: ProposedPositionDTO, decided_at_iso: str) -> str:
+def generate_decision_id(proposal: ProposedPositionRequest, decided_at_iso: str) -> str:
     """Generate a deterministic ID for a decision.
 
     Incorporates symbol, strategy_type, legs signature (type/strike/expiration),
@@ -148,7 +148,7 @@ class JsonDecisionStore:
         self.base_dir = base_dir
         self._ensure_base_dir()
 
-    def append_decision(self, record: DecisionRecord) -> None:
+    def append_decision(self, record: DecisionResponse) -> None:
         """Append a decision to the file for the decision date.
 
         Chooses the file based on `record.decided_at` date.
@@ -168,16 +168,16 @@ class JsonDecisionStore:
         self,
         symbol: Optional[str] = None,
         strategy_type: Optional[StrategyType] = None,
-    ) -> List[DecisionRecord]:
+    ) -> List[DecisionResponse]:
         """Return all accepted-but-not-closed decisions across all files.
 
         Filter by symbol and/or strategy_type if provided.
         """
-        results: List[DecisionRecord] = []
+        results: List[DecisionResponse] = []
         for path in self._list_decision_files():
             for rec in self._read_records(path):
                 try:
-                    record = DecisionRecord.from_dict(rec)
+                    record = DecisionResponse.from_dict(rec)
                 except Exception:
                     continue
                 if record.outcome != "accepted" or record.closed_at is not None:

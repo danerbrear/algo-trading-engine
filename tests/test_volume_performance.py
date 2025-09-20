@@ -5,12 +5,11 @@ This module contains performance tests to measure the impact of enhanced volume 
 on backtest performance and scalability.
 """
 
-import pytest
 import time
 import sys
 import os
 from datetime import datetime, timedelta
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))

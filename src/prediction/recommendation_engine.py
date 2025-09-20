@@ -1,17 +1,16 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
 
 from src.backtest.models import Position, StrategyType, Strategy
-from src.common.models import Option, OptionChain
+from src.common.models import OptionChain
 from src.prediction.decision_store import (
     JsonDecisionStore,
-    ProposedPositionDTO,
-    DecisionRecord,
+    ProposedPositionRequest,
+    DecisionResponse,
     generate_decision_id,
 )
-
 
 class InteractiveStrategyRecommender:
     """Produce open/close recommendations and capture user decisions.
@@ -36,7 +35,7 @@ class InteractiveStrategyRecommender:
 
     # ---------- Open recommendation ----------
 
-    def recommend_open_position(self, date: datetime) -> Optional[DecisionRecord]:
+    def recommend_open_position(self, date: datetime) -> Optional[DecisionResponse]:
         """Use the strategy to propose an opening trade for the date and capture decision."""
         # Require strategy data
         if getattr(self.strategy, "data", None) is None:
@@ -44,20 +43,41 @@ class InteractiveStrategyRecommender:
             return None
 
         # Determine current price
-        try:
-            current_price = float(self.strategy.data.loc[date]["Close"])
-        except Exception:
-            # try normalize date
+        current_price = None
+        
+        # Check if the specified date is the current date
+        current_date = datetime.now().date()
+        if date.date() == current_date:
+            # Use live price from Polygon API
+            print(f"📡 Fetching live price for {date.date()} (current date)")
+            if hasattr(self.strategy, 'data_retriever') and self.strategy.data_retriever:
+                current_price = self.strategy.data_retriever.get_live_price()
+            elif hasattr(self.options_handler, 'symbol'):
+                # Fallback: create a temporary DataRetriever for live price
+                from src.common.data_retriever import DataRetriever
+                temp_retriever = DataRetriever(symbol=self.options_handler.symbol, use_free_tier=True, quiet_mode=True)
+                temp_retriever.options_handler = self.options_handler
+                current_price = temp_retriever.get_live_price()
+            
+            if current_price is None:
+                print("⚠️ Could not fetch live price, falling back to cached data")
+        
+        # Fallback to cached data if live price failed or date is not current
+        if current_price is None:
             try:
-                current_price = float(self.strategy.data.loc[date.date()]["Close"])  # type: ignore[index]
+                current_price = float(self.strategy.data.loc[date]["Close"])
             except Exception:
-                print(f"Could not find current price for date {date.date()}")
-                if self.strategy.data is not None and len(self.strategy.data) > 0:
-                    print(f"Available data range: {self.strategy.data.index[0].date()} to {self.strategy.data.index[-1].date()}")
-                    print(f"Total data points: {len(self.strategy.data)}")
-                else:
-                    print("Strategy data is empty or None")
-                return None
+                # try normalize date
+                try:
+                    current_price = float(self.strategy.data.loc[date.date()]["Close"])  # type: ignore[index]
+                except Exception:
+                    print(f"Could not find current price for date {date.date()}")
+                    if self.strategy.data is not None and len(self.strategy.data) > 0:
+                        print(f"Available data range: {self.strategy.data.index[0].date()} to {self.strategy.data.index[-1].date()}")
+                        print(f"Total data points: {len(self.strategy.data)}")
+                    else:
+                        print("Strategy data is empty or None")
+                    return None
 
         # Delegate to strategy's recommend_open_position method
         recommendation = self.strategy.recommend_open_position(date, current_price)
@@ -75,7 +95,7 @@ class InteractiveStrategyRecommender:
         expiration_date = recommendation["expiration_date"]
 
         # Build proposal DTO
-        proposal = ProposedPositionDTO(
+        proposal = ProposedPositionRequest(
             symbol=self.options_handler.symbol,
             strategy_type=strategy_type,
             legs=legs,
@@ -84,7 +104,7 @@ class InteractiveStrategyRecommender:
             probability_of_profit=float(probability_of_profit),
             confidence=float(confidence),
             expiration_date=expiration_date,
-            created_at=datetime.utcnow().isoformat(),
+            created_at=datetime.now(timezone.utc).isoformat(),
         )
 
         # Prompt user
@@ -92,8 +112,8 @@ class InteractiveStrategyRecommender:
         if not self.prompt(f"Open recommendation:\n{summary}\nOpen this position?"):
             return None
 
-        decided_at = datetime.utcnow().isoformat()
-        record = DecisionRecord(
+        decided_at = datetime.now(timezone.utc).isoformat()
+        record = DecisionResponse(
             id=generate_decision_id(proposal, decided_at),
             proposal=proposal,
             outcome="accepted",
@@ -107,10 +127,10 @@ class InteractiveStrategyRecommender:
 
     # ---------- Close recommendation ----------
 
-    def recommend_close_positions(self, date: datetime) -> List[DecisionRecord]:
+    def recommend_close_positions(self, date: datetime) -> List[DecisionResponse]:
         """Check open decisions and recommend closure when rules trigger."""
         open_records = self.decision_store.get_open_positions()
-        closed_records: List[DecisionRecord] = []
+        closed_records: List[DecisionResponse] = []
 
         for rec in open_records:
             position = self._position_from_decision(rec)
@@ -163,7 +183,7 @@ class InteractiveStrategyRecommender:
             # Mark closed in the store
             self.decision_store.mark_closed(rec.id, exit_price=exit_price, closed_at=date)
             # Return an updated record instance for the caller
-            updated = DecisionRecord(
+            updated = DecisionResponse(
                 id=rec.id,
                 proposal=rec.proposal,
                 outcome=rec.outcome,
@@ -226,7 +246,7 @@ class InteractiveStrategyRecommender:
         answer = input(f"{message} [y/N]: ").strip().lower()
         return answer in {"y", "yes"}
 
-    def _position_from_decision(self, rec: DecisionRecord) -> Position:
+    def _position_from_decision(self, rec: DecisionResponse) -> Position:
         # Determine representative strike for display based on strategy type
         legs = list(rec.proposal.legs)
         strike = legs[0].strike if legs else 0.0
@@ -249,7 +269,7 @@ class InteractiveStrategyRecommender:
         position.set_quantity(int(rec.quantity) if rec.quantity is not None else 1)
         return position
 
-    def _format_open_summary(self, proposal: ProposedPositionDTO, best: dict) -> str:
+    def _format_open_summary(self, proposal: ProposedPositionRequest, best: dict) -> str:
         legs_str = ", ".join(
             [f"{leg.option_type.value.upper()} {int(leg.strike)} exp {leg.expiration}" for leg in proposal.legs]
         )

@@ -4,7 +4,6 @@ from datetime import datetime
 from typing import List
 import argparse
 
-from src.model.options_handler import OptionsHandler
 from .models import Benchmark, Strategy, Position, StrategyType
 from src.common.data_retriever import DataRetriever
 from src.common.functions import load_hmm_model, load_lstm_model

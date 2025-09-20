@@ -5,7 +5,6 @@ This module provides DTOs for volume validation configuration and statistics tra
 """
 
 from dataclasses import dataclass
-from typing import List
 from enum import Enum
 
 

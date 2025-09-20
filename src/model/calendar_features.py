@@ -1,7 +1,5 @@
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
-import os
 from pathlib import Path
 
 
@@ -366,13 +364,6 @@ class CalendarFeatureProcessor:
             summaries[event_type] = self.get_event_summary(event_type)
         return summaries
     
-    def get_cpi_event_summary(self):
-        """Get summary statistics of CPI events (backward compatibility)
-        
-        Returns:
-            Dictionary with CPI event statistics
-        """
-        return self.get_event_summary("Core CPI")
     
     def get_ffr_event_summary(self):
         """Get summary statistics of Fed Funds Rate events
@@ -455,14 +446,6 @@ class CalendarFeatureProcessor:
         except Exception as e:
             print(f"⚠️  Error creating plot: {e}")
     
-    def plot_cpi_features(self, data, save_path=None):
-        """Create a plot showing the CPI calendar features over time (backward compatibility)
-        
-        Args:
-            data: DataFrame with CPI features
-            save_path: Optional path to save the plot
-        """
-        return self.plot_features(data, feature_prefix="CPI", event_type="Core CPI", save_path=save_path)
 
 
 def add_cpi_features_to_data(data, calendar_data_path=None):

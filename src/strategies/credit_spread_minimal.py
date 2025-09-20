@@ -3,7 +3,7 @@ from typing import Callable, Optional
 import pandas as pd
 
 from src.backtest.models import Position, Strategy, StrategyType
-from src.common.models import Option, OptionType, OptionChain
+from src.common.models import Option, OptionType
 from src.model.options_handler import OptionsHandler
 from src.common.progress_tracker import progress_print
 
@@ -109,9 +109,12 @@ class CreditSpreadStrategy(Strategy):
                 try:
                     if position.get_days_to_expiration(date) < 1:
                         print(f"Position {position.__str__()} expired or near expiration")
-                        underlying_price = self.data.loc[date]['Close']
-                        print(f"    Underlying price: {underlying_price}")
-                        remove_position(date, position, exit_price, underlying_price)
+                        underlying_price = self._get_current_underlying_price(date)
+                        if underlying_price is not None:
+                            print(f"    Underlying price: {underlying_price}")
+                            remove_position(date, position, exit_price, underlying_price)
+                        else:
+                            print("    Failed to get underlying price")
                     elif (self._profit_target_hit(position, exit_price) or self._stop_loss_hit(position, exit_price)):
                         print(f"Profit target or stop loss hit for {position.__str__()}")
                         print(f"    Exit price: {exit_price} for {position.__str__()}")
@@ -491,7 +494,10 @@ class CreditSpreadStrategy(Strategy):
             print(f"⚠️  No options data for {date_key}")
             return None
             
-        current_price = self.data.loc[date]['Close']
+        current_price = self._get_current_underlying_price(date)
+        if current_price is None:
+            print("⚠️  Failed to get current price")
+            return None
         
         confidence = prediction['confidence'] if prediction else 0.5
         
@@ -546,7 +552,10 @@ class CreditSpreadStrategy(Strategy):
             print(f"⚠️  No options data for {date_key}")
             return None
             
-        current_price = self.data.loc[date]['Close']
+        current_price = self._get_current_underlying_price(date)
+        if current_price is None:
+            print("⚠️  Failed to get current price")
+            return None
         
         if prediction['confidence'] is None:
             print("⚠️  No prediction available")
@@ -718,6 +727,33 @@ class CreditSpreadStrategy(Strategy):
             "confidence": confidence,
             "expiration_date": best["expiry"].strftime("%Y-%m-%d"),
         }
+
+    def _get_current_underlying_price(self, date: datetime) -> Optional[float]:
+        """Get current underlying price, using live price if date is current date."""
+        # Check if the specified date is the current date
+        current_date = datetime.now().date()
+        if date.date() == current_date:
+            # Use live price from DataRetriever if available
+            if hasattr(self, 'data_retriever') and self.data_retriever:
+                live_price = self.data_retriever.get_live_price()
+                if live_price is not None:
+                    return live_price
+            elif hasattr(self.options_handler, 'symbol'):
+                # Fallback: create a temporary DataRetriever for live price
+                from src.common.data_retriever import DataRetriever
+                temp_retriever = DataRetriever(symbol=self.options_handler.symbol, use_free_tier=True, quiet_mode=True)
+                temp_retriever.options_handler = self.options_handler
+                live_price = temp_retriever.get_live_price()
+                if live_price is not None:
+                    return live_price
+        
+        # Fallback to cached data if live price failed or date is not current
+        if self.data is None or self.data.empty or date not in self.data.index:
+            return None
+        try:
+            return float(self.data.loc[date]['Close'])
+        except Exception:
+            return None
 
     def get_current_volumes_for_position(self, position: Position, date: datetime) -> list[int]:
         """

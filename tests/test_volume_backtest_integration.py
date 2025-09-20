@@ -6,11 +6,11 @@ This module tests volume validation integration with BacktestEngine and Strategy
 
 import pytest
 from datetime import datetime
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 import pandas as pd
 
 from src.backtest.main import BacktestEngine
-from src.backtest.config import VolumeConfig, VolumeStats
+from src.backtest.config import VolumeConfig
 from src.backtest.models import Strategy, Position, StrategyType
 from src.common.models import Option, OptionType
 

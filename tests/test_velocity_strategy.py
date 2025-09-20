@@ -1,8 +1,7 @@
 import pytest
 import pandas as pd
-from datetime import datetime, timedelta
-from decimal import Decimal
-from unittest.mock import Mock, MagicMock
+from datetime import datetime
+from unittest.mock import Mock
 
 from src.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
 from src.backtest.models import Position, StrategyType
