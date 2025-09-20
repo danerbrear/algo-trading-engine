@@ -372,6 +372,7 @@ class VelocitySignalMomentumStrategy(Strategy):
 
     def _select_week_expiration(self, date: datetime, chain: OptionChain) -> Optional[str]:
         # Prefer expirations 5-10 days out, else nearest > 0 days, target 7
+        progress_print(f"🔍 _select_week_expiration called for {date.strftime('%Y-%m-%d')}")
         target_days = 7
         expirations = set(p.expiration for p in chain.puts) if chain and chain.puts else set()
         if not expirations:
@@ -394,7 +395,36 @@ class VelocitySignalMomentumStrategy(Strategy):
         else:
             progress_print("No expirations within window")
 
-            # TODO: Fetch list of contracts for specific window in case cached data doesn't contain valid expirations
+            # Fetch list of contracts for specific window in case cached data doesn't contain valid expirations
+            try:
+                progress_print("🔍 Fetching fresh expirations from API for 5-10 day window...")
+                fresh_expirations = self.options_handler.get_available_expirations(
+                    current_date=date, 
+                    min_days=5, 
+                    max_days=10
+                )
+                
+                progress_print(f"🔍 API returned {len(fresh_expirations) if fresh_expirations else 0} raw expirations: {fresh_expirations}")
+                
+                if fresh_expirations:
+                    # Calculate days out for fresh expirations and add them to candidates
+                    fresh_candidates = [(e, days_out(e)) for e in fresh_expirations]
+                    fresh_candidates = [(e, d) for e, d in fresh_candidates if d > 0]
+                    progress_print(f"🔍 After filtering: {len(fresh_candidates)} valid future expirations")
+                    
+                    if fresh_candidates:
+                        candidates = fresh_candidates
+                        progress_print(f"✅ Found {len(fresh_candidates)} fresh expirations in target window")
+                    else:
+                        progress_print("⚠️  Fresh expirations exist but none are in valid future range")
+                        candidates = valid  # Fall back to any valid future expirations
+                else:
+                    progress_print("⚠️  No fresh expirations found, using nearest available")
+                    candidates = valid  # Fall back to any valid future expirations
+                    
+            except Exception as e:
+                progress_print(f"❌ Error fetching fresh expirations: {str(e)}")
+                candidates = valid  # Fall back to any valid future expirations
 
         return min(candidates, key=lambda x: abs(x[1] - target_days))[0]
     
