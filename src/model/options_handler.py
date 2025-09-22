@@ -305,7 +305,7 @@ class OptionsHandler:
             progress_print(f"Found {len(calls_sorted)} calls and {len(puts_sorted)} puts for target expiry")
             
             # Process calls
-            for call in calls_sorted[:5]:  # Limit to 5 closest calls
+            for call in calls_sorted[:20]:  # Limit to 20 closest calls
                 try:
                     call_data = self._fetch_historical_contract_data(call, current_date)
                     if call_data:
@@ -324,7 +324,7 @@ class OptionsHandler:
                     raise
                     
             # Process puts
-            for put in puts_sorted[:5]:  # Limit to 5 closest puts
+            for put in puts_sorted[:20]:  # Limit to 20 closest puts
                 try:
                     put_data = self._fetch_historical_contract_data(put, current_date)
                     if put_data:
@@ -401,7 +401,7 @@ class OptionsHandler:
             def fetch_func():
                 try:                    
                     # Calculate strike price range
-                    price_range = current_price * 0.15
+                    price_range = current_price * 0.10
                     min_strike = current_price - price_range
                     max_strike = current_price + price_range
                     
@@ -409,7 +409,7 @@ class OptionsHandler:
                     min_expiry = current_date + timedelta(days=min_dte)
                     max_expiry = current_date + timedelta(days=max_dte)
                     
-                    progress_print(f"Filtering contracts: strikes ${min_strike:.0f}-${max_strike:.0f}, expiry {min_expiry.strftime('%Y-%m-%d')} to {max_expiry.strftime('%Y-%m-%d')} (targeting ~30 days)")
+                    progress_print(f"Filtering contracts: strikes ${min_strike:.0f}-${max_strike:.0f}, expiry {min_expiry.strftime('%Y-%m-%d')} to {max_expiry.strftime('%Y-%m-%d')}")
                     
                     contracts_response = self.client.list_options_contracts(
                         underlying_ticker=self.symbol,
@@ -488,7 +488,7 @@ class OptionsHandler:
             traceback.print_exc()
             return []
 
-    def _get_option_chain_with_cache(self, current_date: datetime, current_price: float) -> OptionChain:
+    def _get_option_chain_with_cache(self, current_date: datetime, current_price: float, min_dte: int = 24, max_dte: int = 36) -> OptionChain:
         """Get option chain data for a date, using cache if available"""
         try:
             # Try to get from cache first
@@ -506,7 +506,7 @@ class OptionsHandler:
 
             try:
                 # Get contracts (will use cache if available)
-                contracts = self._fetch_filtered_option_contracts(current_date, current_price)
+                contracts = self._fetch_filtered_option_contracts(current_date, current_price, min_dte, max_dte)
                 
                 if not contracts:
                     progress_print(f"No options data available for {current_date.date()}")

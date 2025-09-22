@@ -196,7 +196,14 @@ class Position:
         Get the number of days to expiration for a position from the given current_date.
         """
         if self.expiration_date is not None:
-            return (self.expiration_date - current_date).days
+            # Ensure both datetimes are timezone-naive for consistent comparison
+            if current_date.tzinfo is not None:
+                current_date = current_date.replace(tzinfo=None)
+            if self.expiration_date.tzinfo is not None:
+                expiration_date = self.expiration_date.replace(tzinfo=None)
+            else:
+                expiration_date = self.expiration_date
+            return (expiration_date - current_date).days
         else:
             raise ValueError("Expiration date is not set")
 
@@ -205,7 +212,14 @@ class Position:
         Get the number of days held for a position from the given current_date.
         """
         if self.entry_date is not None:
-            return (current_date - self.entry_date).days
+            # Ensure both datetimes are timezone-naive for consistent comparison
+            if current_date.tzinfo is not None:
+                current_date = current_date.replace(tzinfo=None)
+            if self.entry_date.tzinfo is not None:
+                entry_date = self.entry_date.replace(tzinfo=None)
+            else:
+                entry_date = self.entry_date
+            return (current_date - entry_date).days
         else:
             raise ValueError("Entry date is not set")
         

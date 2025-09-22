@@ -212,6 +212,7 @@ class VelocitySignalMomentumStrategy(Strategy):
         
         # Check if current velocity increased (positive velocity change)
         if current_idx < 1 or self.data['Velocity_Changes'].iloc[current_idx] <= 0:
+            progress_print(f"Velocity changes: {self.data['Velocity_Changes'].iloc[current_idx]}")
             return False
         
         # This is a velocity signal - now check if it leads to a successful trend
@@ -300,7 +301,7 @@ class VelocitySignalMomentumStrategy(Strategy):
     
     def _create_put_credit_spread(self, date: datetime, current_price: float, expiration: str) -> Optional[Position]:
         """
-        Create a test ATM/+10 put credit spread for Sharpe ratio calculation.
+        Create a test ATM/+10 put credit spread.
         
         Args:
             date: Current date
@@ -319,21 +320,29 @@ class VelocitySignalMomentumStrategy(Strategy):
             date_key = date.strftime('%Y-%m-%d')
             if date_key in self.options_data:
                 option_chain = self.options_data[date_key]
+
+                progress_print(f"Num puts: {len(option_chain.puts)}")
+                # Print range of strikes of puts
+                progress_print(f"Range of strikes of puts: {min(option_chain.puts, key=lambda x: x.strike).strike} to {max(option_chain.puts, key=lambda x: x.strike).strike}")
                 
                 # Find ATM put
                 for put in option_chain.puts:
                     if put.expiration == expiration and abs(put.strike - atm_strike) <= 5:
                         atm_put = put
+                        progress_print(f"Found ATM put: {atm_put.__str__()}")
                         break
                 
                 # Find OTM put (-10 strike)
                 otm_strike = atm_strike - 10
-                otm_put = None
                 
-                for put in option_chain.puts:
-                    if put.expiration == expiration and put.strike <= otm_strike:
-                        otm_put = put
-                        break
+                # Find put with closest strike to otm_strike
+                matching_puts = [put for put in option_chain.puts if put.expiration == expiration]
+                if matching_puts:
+                    otm_put = min(matching_puts, key=lambda put: abs(put.strike - otm_strike))
+                    min_difference = abs(otm_put.strike - otm_strike)
+                    progress_print(f"Found OTM put: {otm_put.__str__()} (strike difference: {min_difference})")
+                else:
+                    otm_put = None
                 
                 if atm_put and otm_put:
                     # Calculate net credit (sell ATM, buy OTM)
@@ -433,6 +442,33 @@ class VelocitySignalMomentumStrategy(Strategy):
 
     def _get_option_chain(self, date: datetime) -> Optional[OptionChain]:
         date_key = date.strftime('%Y-%m-%d')
+        
+        # Check if the date is today's date
+        current_date = datetime.now().date()
+        if date.date() == current_date:
+            progress_print(f"📅 Date is today ({date_key}), fetching live option chain data...")
+            
+            # Get current underlying price for live option chain
+            current_price = self._get_current_underlying_price(date)
+            if current_price is None:
+                progress_print(f"⚠️  Could not get current price for live option chain")
+                return None
+            
+            try:
+                # Fetch live option chain data using OptionsHandler
+                live_chain = self.options_handler._get_option_chain_with_cache(date, current_price, min_dte=5, max_dte=10)
+                if live_chain and (live_chain.calls or live_chain.puts):
+                    progress_print(f"✅ Successfully fetched live option chain with {len(live_chain.calls)} calls and {len(live_chain.puts)} puts")
+                    self.options_data[date_key] = live_chain
+                    return live_chain
+                else:
+                    progress_print(f"⚠️  Live option chain fetch returned empty data")
+            except Exception as e:
+                progress_print(f"⚠️  Error fetching live option chain: {e}")
+                import traceback
+                traceback.print_exc()
+        
+        # Fallback to cached data for historical dates
         if not self.options_data or date_key not in self.options_data:
             progress_print(f"⚠️  No options data available for {date_key}")
             return None
@@ -617,11 +653,13 @@ class VelocitySignalMomentumStrategy(Strategy):
             
         # Select expiration (target ~1 week)
         expiration_str = self._select_week_expiration(date, chain)
+        progress_print(f"Selected expiration: {expiration_str}")
         if not expiration_str:
             return None
             
         # Create the position using existing logic
         position = self._create_put_credit_spread(date, current_price, expiration_str)
+        progress_print(f"Created position: {position.__str__()}")
         if position is None:
             return None
             
