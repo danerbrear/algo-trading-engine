@@ -410,7 +410,7 @@ class OptionsHandler:
                     max_expiry = current_date + timedelta(days=max_dte)
                     
                     progress_print(f"Filtering contracts: strikes ${min_strike:.0f}-${max_strike:.0f}, expiry {min_expiry.strftime('%Y-%m-%d')} to {max_expiry.strftime('%Y-%m-%d')}")
-                    
+
                     contracts_response = self.client.list_options_contracts(
                         underlying_ticker=self.symbol,
                         as_of=current_date.strftime('%Y-%m-%d'),
@@ -427,7 +427,7 @@ class OptionsHandler:
                     contracts = []
                     page_count = 0
                     max_pages = 2  # Limit to 5 pages to stay under rate limits
-                    
+
                     if contracts_response:
                         try:
                             for contract in contracts_response:
@@ -442,11 +442,6 @@ class OptionsHandler:
                                     if page_count >= max_pages:
                                         progress_print(f"Reached max pages ({max_pages}), stopping to avoid rate limits")
                                         break
-                                    
-                                    # Rate limit between pages
-                                    if self.retry_handler.use_rate_limit:
-                                        progress_print("Rate limiting: waiting 13 seconds between paginated requests")
-                                        time.sleep(13)
                                     
                         except Exception as e:
                             print(f"Error iterating through contracts: {str(e)}")
@@ -1121,7 +1116,7 @@ class OptionsHandler:
         except Exception as e:
             print(f"⚠️ Warning: Could not update cache: {str(e)}")
 
-    def calculate_option_features(self, data: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, OptionChain]]:
+    def calculate_option_features(self, data: pd.DataFrame, min_dte: int = 24, max_dte: int = 36) -> Tuple[pd.DataFrame, Dict[str, OptionChain]]:
         """Calculate option-related features with multi-strike data for strategy modeling
         
         Returns:
@@ -1162,7 +1157,7 @@ class OptionsHandler:
                 progress_print(f"Current Price: {current_price}")
                 
                 # Get option chain with multiple strikes
-                chain_data = self._get_option_chain_with_cache(current_date, current_price)
+                chain_data = self._get_option_chain_with_cache(current_date, current_price, min_dte, max_dte)
                 
                 # Update progress with current status (before processing to show early)
                 progress.update(

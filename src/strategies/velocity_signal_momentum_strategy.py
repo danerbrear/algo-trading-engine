@@ -322,8 +322,8 @@ class VelocitySignalMomentumStrategy(Strategy):
                 option_chain = self.options_data[date_key]
 
                 progress_print(f"Num puts: {len(option_chain.puts)}")
-                # Print range of strikes of puts
                 progress_print(f"Range of strikes of puts: {min(option_chain.puts, key=lambda x: x.strike).strike} to {max(option_chain.puts, key=lambda x: x.strike).strike}")
+                progress_print(f"Range of expirations of puts: {min(option_chain.puts, key=lambda x: x.expiration).expiration} to {max(option_chain.puts, key=lambda x: x.expiration).expiration}")
                 
                 # Find ATM put
                 for put in option_chain.puts:
@@ -342,6 +342,7 @@ class VelocitySignalMomentumStrategy(Strategy):
                     min_difference = abs(otm_put.strike - otm_strike)
                     progress_print(f"Found OTM put: {otm_put.__str__()} (strike difference: {min_difference})")
                 else:
+                    progress_print(f"No OTM put found for expiration {expiration}")
                     otm_put = None
                 
                 if atm_put and otm_put:
@@ -472,6 +473,7 @@ class VelocitySignalMomentumStrategy(Strategy):
         if not self.options_data or date_key not in self.options_data:
             progress_print(f"⚠️  No options data available for {date_key}")
             return None
+        
         return self.options_data[date_key]
 
     def _select_week_expiration(self, date: datetime, chain: OptionChain) -> Optional[str]:

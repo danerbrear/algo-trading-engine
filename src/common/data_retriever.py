@@ -138,7 +138,7 @@ class DataRetriever:
         self.calculate_features_for_data(self.lstm_data)
 
         # Calculate option features for LSTM data
-        self.lstm_data, self.options_data = self.options_handler.calculate_option_features(self.lstm_data)
+        self.lstm_data, self.options_data = self.options_handler.calculate_option_features(self.lstm_data, min_dte=5, max_dte=10)
 
         print(f"\n🔮 Phase 2: Applying trained HMM to LSTM data")
         # Apply the trained HMM to the LSTM data
