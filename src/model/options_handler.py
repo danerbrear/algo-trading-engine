@@ -512,7 +512,7 @@ class OptionsHandler:
                 
                 # Cache the data if we got any contracts
                 if chain_data.calls or chain_data.puts:
-                    print(f"Caching option chain data for {current_date.date()}")
+                    progress_print(f"Caching option chain data for {current_date.date()}")
                     
                     # Load existing cache and merge (with deduplication)
                     existing_cache = self.cache_manager.load_date_from_cache(

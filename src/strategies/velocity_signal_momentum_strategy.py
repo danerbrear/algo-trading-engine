@@ -1,12 +1,18 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Callable, Optional, Dict
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
 from src.backtest.models import Strategy, Position, StrategyType, OptionChain, TreasuryRates
+from src.common.options_dtos import ExpirationRangeDTO, OptionsChainDTO
 from src.common.progress_tracker import progress_print
 from src.model.options_handler import OptionsHandler
+from src.common.options_handler import OptionsHandler as NewOptionsHandler
+from src.common.options_helpers import OptionsRetrieverHelper
+from src.common.models import OptionType
+from src.common.options_dtos import StrikeRangeDTO, StrikePrice
+from decimal import Decimal
 
 class VelocitySignalMomentumStrategy(Strategy):
     """
@@ -19,7 +25,10 @@ class VelocitySignalMomentumStrategy(Strategy):
 
     def __init__(self, options_handler: OptionsHandler, start_date_offset: int = 60):
         super().__init__(start_date_offset=start_date_offset)
+
         self.options_handler = options_handler
+        self.new_options_handler = NewOptionsHandler(symbol='SPY')
+        
         # Track position entries for plotting
         self._position_entries = []
     
@@ -306,65 +315,87 @@ class VelocitySignalMomentumStrategy(Strategy):
         Args:
             date: Current date
             current_price: Current underlying price
-            expiration: Expiration date string
+            expiration: Target expiration date string (YYYY-MM-DD)
             
         Returns:
             Position: Test position for evaluation, or None if creation fails
         """
         try:
+            # Get list of contracts for the date
+            expiration_range = ExpirationRangeDTO(min_days=5, max_days=10)
+            
+            # Add strike range filter to prevent super far ITM contracts
+            strike_range = StrikeRangeDTO(
+                min_strike=StrikePrice(Decimal(str(current_price - 11))),  # current_price - 11
+                max_strike=StrikePrice(Decimal(str(current_price + 1)))    # current_price + 1
+            )
+            
+            contracts = self.new_options_handler.get_contract_list_for_date(date, strike_range=strike_range, expiration_range=expiration_range)
+
+            if not contracts:
+                progress_print("⚠️  No contracts found for the date")
+                return None
+
             # Find ATM put option
             atm_strike = round(current_price)
-            atm_put = None
+            atm_call, atm_put = OptionsRetrieverHelper.find_atm_contracts(contracts, current_price)
             
-            # Look for ATM put in the options data
-            date_key = date.strftime('%Y-%m-%d')
-            if date_key in self.options_data:
-                option_chain = self.options_data[date_key]
-
-                progress_print(f"Num puts: {len(option_chain.puts)}")
-                progress_print(f"Range of strikes of puts: {min(option_chain.puts, key=lambda x: x.strike).strike} to {max(option_chain.puts, key=lambda x: x.strike).strike}")
-                progress_print(f"Range of expirations of puts: {min(option_chain.puts, key=lambda x: x.expiration).expiration} to {max(option_chain.puts, key=lambda x: x.expiration).expiration}")
+            if not atm_put:
+                progress_print("⚠️  No ATM put found")
+                return None
                 
-                # Find ATM put
-                for put in option_chain.puts:
-                    if put.expiration == expiration and abs(put.strike - atm_strike) <= 5:
-                        atm_put = put
-                        progress_print(f"Found ATM put: {atm_put.__str__()}")
-                        break
-                
-                # Find OTM put (-10 strike)
-                otm_strike = atm_strike - 10
-                
-                # Find put with closest strike to otm_strike
-                matching_puts = [put for put in option_chain.puts if put.expiration == expiration]
-                if matching_puts:
-                    otm_put = min(matching_puts, key=lambda put: abs(put.strike - otm_strike))
-                    min_difference = abs(otm_put.strike - otm_strike)
-                    progress_print(f"Found OTM put: {otm_put.__str__()} (strike difference: {min_difference})")
-                else:
-                    progress_print(f"No OTM put found for expiration {expiration}")
-                    otm_put = None
-                
-                if atm_put and otm_put:
-                    # Calculate net credit (sell ATM, buy OTM)
-                    net_credit = atm_put.last_price - otm_put.last_price
-                    
-                    if net_credit > 0:  # Only consider if we receive a credit
-                        # Create test position
-                        position = Position(
-                            symbol=self.data.index.name if self.data.index.name else 'SPY',
-                            expiration_date=datetime.strptime(expiration, '%Y-%m-%d'),
-                            strategy_type=StrategyType.PUT_CREDIT_SPREAD,
-                            strike_price=atm_strike,
-                            entry_date=date,
-                            entry_price=net_credit,
-                            spread_options=[atm_put, otm_put]
-                        )
-                        # Set quantity for test position (1 contract)
-                        position.set_quantity(1)
-                        return position
+            progress_print(f"Found ATM put: {atm_put.ticker} @ ${atm_put.strike_price.value}")
             
-            return None
+            # Find OTM put (-10 strike)
+            otm_strike = atm_strike - 10
+            
+            # Filter for puts with the specific expiration
+            puts_for_expiration = [
+                c for c in contracts 
+                if c.contract_type == OptionType.PUT and str(c.expiration_date) == expiration
+            ]
+            
+            if not puts_for_expiration:
+                progress_print(f"⚠️  No put contracts found for expiration {expiration}")
+                return None
+                
+            # Find the put with the closest strike to the target OTM strike
+            otm_put = min(
+                puts_for_expiration, 
+                key=lambda put: abs(float(put.strike_price.value) - otm_strike)
+            )
+            
+            min_difference = abs(float(otm_put.strike_price.value) - otm_strike)
+            progress_print(f"Found OTM put: {otm_put.ticker} @ ${otm_put.strike_price.value} (strike difference: {min_difference})")
+            
+            # Get bar data to calculate net credit
+            atm_bar = self.new_options_handler.get_option_bar(atm_put, date)
+            otm_bar = self.new_options_handler.get_option_bar(otm_put, date)
+            
+            if not atm_bar or not otm_bar:
+                progress_print("⚠️  No bar data available for credit calculation")
+                return None
+            
+            # Calculate net credit (sell ATM, buy OTM)
+            net_credit = float(atm_bar.close_price) - float(otm_bar.close_price)
+            
+            if net_credit > 0:  # Only consider if we receive a credit
+                # Create test position
+                position = Position(
+                    symbol=self.data.index.name if self.data.index.name else 'SPY',
+                    expiration_date=datetime.strptime(expiration, '%Y-%m-%d'),
+                    strategy_type=StrategyType.PUT_CREDIT_SPREAD,
+                    strike_price=atm_strike,
+                    entry_date=date,
+                    entry_price=net_credit,
+                    spread_options=[atm_put, otm_put]
+                )
+                # Set quantity for test position (1 contract)
+                position.set_quantity(1)
+                return position
+            else:
+                progress_print(f"⚠️  Negative credit: {net_credit:.2f}")
+                return None
             
         except Exception as e:
             progress_print(f"⚠️  Error creating test put credit spread: {e}")
@@ -392,19 +423,24 @@ class VelocitySignalMomentumStrategy(Strategy):
         if not self._has_buy_signal(date):
             return
         progress_print(f"📈 Buy signal detected for {date.strftime('%Y-%m-%d')}")
+
         current_price = self._get_current_underlying_price(date)
         if current_price is None:
             print("⚠️  Failed to get current price.")
             return
-        chain = self._get_option_chain(date)
+        
+        # Get option chain for the date
+        chain = self._get_option_chain(date, current_price)
         if chain is None:
-            progress_print("⚠️  Failed to get option chain for: {}", date.strftime('%Y-%m-%d'))
+            progress_print("⚠️  Failed to get option chain")
             return
+            
+        # Select expiration (target ~1 week)
         expiration_str = self._select_week_expiration(date, chain)
-        progress_print(f"Selected expiration: {expiration_str}")
         if not expiration_str:
-            progress_print("⚠️  Failed to get valid expiration date")
+            progress_print("⚠️  Failed to select expiration")
             return
+            
         position = self._create_put_credit_spread(date, current_price, expiration_str)
         if position is None:
             progress_print("⚠️  Failed to create put credit spread for selected expiration")
@@ -441,42 +477,26 @@ class VelocitySignalMomentumStrategy(Strategy):
         except Exception:
             return None
 
-    def _get_option_chain(self, date: datetime) -> Optional[OptionChain]:
+    def _get_option_chain(self, date: datetime, current_price: float) -> Optional[OptionsChainDTO]:
         date_key = date.strftime('%Y-%m-%d')
-        
-        # Check if the date is today's date
-        current_date = datetime.now().date()
-        if date.date() == current_date:
-            progress_print(f"📅 Date is today ({date_key}), fetching live option chain data...")
-            
-            # Get current underlying price for live option chain
-            current_price = self._get_current_underlying_price(date)
-            if current_price is None:
-                progress_print(f"⚠️  Could not get current price for live option chain")
-                return None
-            
-            try:
-                # Fetch live option chain data using OptionsHandler
-                live_chain = self.options_handler._get_option_chain_with_cache(date, current_price, min_dte=5, max_dte=10)
-                if live_chain and (live_chain.calls or live_chain.puts):
-                    progress_print(f"✅ Successfully fetched live option chain with {len(live_chain.calls)} calls and {len(live_chain.puts)} puts")
-                    self.options_data[date_key] = live_chain
-                    return live_chain
-                else:
-                    progress_print(f"⚠️  Live option chain fetch returned empty data")
-            except Exception as e:
-                progress_print(f"⚠️  Error fetching live option chain: {e}")
-                import traceback
-                traceback.print_exc()
-        
-        # Fallback to cached data for historical dates
-        if not self.options_data or date_key not in self.options_data:
-            progress_print(f"⚠️  No options data available for {date_key}")
-            return None
-        
-        return self.options_data[date_key]
 
-    def _select_week_expiration(self, date: datetime, chain: OptionChain) -> Optional[str]:
+        expiration_range = ExpirationRangeDTO(min_days=5, max_days=10)
+        
+        strike_range = StrikeRangeDTO(
+            min_strike=StrikePrice(Decimal(str(current_price - 11))),  # current_price - 11
+            max_strike=StrikePrice(Decimal(str(current_price + 1)))    # current_price + 1
+        )
+
+        live_chain = self.new_options_handler.get_options_chain(date, current_price, strike_range=strike_range, expiration_range=expiration_range)
+        if live_chain and (live_chain.calls or live_chain.puts):
+            progress_print(f"✅ Successfully fetched live option chain with {len(live_chain.calls)} calls and {len(live_chain.puts)} puts")
+            self.options_data[date_key] = live_chain
+            return live_chain
+        else:
+            progress_print(f"⚠️  Live option chain fetch returned empty data")
+            return None
+
+    def _select_week_expiration(self, date: datetime, chain: OptionsChainDTO) -> Optional[str]:
         # Prefer expirations 5-10 days out, else nearest > 0 days, target 7
         progress_print(f"🔍 _select_week_expiration called for {date.strftime('%Y-%m-%d')}")
         target_days = 7
@@ -649,7 +669,7 @@ class VelocitySignalMomentumStrategy(Strategy):
         confidence = 0.7  # Fixed confidence for rule-based strategy
         
         # Get option chain for the date
-        chain = self._get_option_chain(date)
+        chain = self._get_option_chain(date, current_price)
         if chain is None:
             return None
             
@@ -660,7 +680,7 @@ class VelocitySignalMomentumStrategy(Strategy):
             return None
             
         # Create the position using existing logic
-        position = self._create_put_credit_spread(date, current_price, expiration_str)
+        position = self._create_put_credit_spread(date, current_price)
         progress_print(f"Created position: {position.__str__()}")
         if position is None:
             return None

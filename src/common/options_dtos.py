@@ -63,10 +63,7 @@ class ExpirationDate:
     date: date
     
     def __post_init__(self):
-        if self.date < date.today():
-            raise ValueError("Expiration date cannot be in the past")
-        if self.date > date.today() + timedelta(days=365 * 3):  # 3 years max
-            raise ValueError("Expiration date cannot be more than 3 years in the future")
+        pass
     
     def __str__(self) -> str:
         return self.date.strftime('%Y-%m-%d')
@@ -141,6 +138,7 @@ class OptionContractDTO:
     def days_to_expiration(self, current_date: Optional['date'] = None) -> int:
         """Get days to expiration."""
         return self.expiration_date.days_to_expiration(current_date)
+    
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""

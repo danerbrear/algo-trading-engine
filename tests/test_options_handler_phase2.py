@@ -11,7 +11,8 @@ from datetime import datetime, date, timedelta
 from decimal import Decimal
 from pathlib import Path
 
-from src.common.options_handler import OptionsHandler, OptionsCacheManager
+from src.common.options_handler import OptionsHandler
+from src.common.cache.options_cache_manager import OptionsCacheManager
 from src.common.options_cache_migration import OptionsCacheMigrator
 from src.common.options_helpers import OptionsRetrieverHelper
 from src.common.options_dtos import (
@@ -45,7 +46,7 @@ class TestOptionsCacheManager:
                 ticker="O:SPY211119C00045000",
                 underlying_ticker="SPY",
                 contract_type=OptionType.CALL,
-                strike_price=StrikePrice(450.0),
+                strike_price=StrikePrice(Decimal('450.0')),
                 expiration_date=ExpirationDate(future_date),
                 exercise_style="american",
                 shares_per_contract=100,
@@ -57,7 +58,19 @@ class TestOptionsCacheManager:
                 ticker="O:SPY211119P00045000",
                 underlying_ticker="SPY",
                 contract_type=OptionType.PUT,
-                strike_price=StrikePrice(450.0),
+                strike_price=StrikePrice(Decimal('450.0')),
+                expiration_date=ExpirationDate(future_date),
+                exercise_style="american",
+                shares_per_contract=100,
+                primary_exchange="BATO",
+                cfi="OCASPS",
+                additional_underlyings=None
+            ),
+            OptionContractDTO(
+                ticker="O:SPY211119C00046000",
+                underlying_ticker="SPY",
+                contract_type=OptionType.CALL,
+                strike_price=StrikePrice(Decimal('460.0')),
                 expiration_date=ExpirationDate(future_date),
                 exercise_style="american",
                 shares_per_contract=100,
@@ -106,7 +119,7 @@ class TestOptionsCacheManager:
         loaded_contracts = cache_manager.load_contracts("SPY", test_date)
         
         assert loaded_contracts is not None
-        assert len(loaded_contracts) == 2
+        assert len(loaded_contracts) == 3
         assert loaded_contracts[0].ticker == "O:SPY211119C00045000"
         assert loaded_contracts[1].ticker == "O:SPY211119P00045000"
     
@@ -151,7 +164,7 @@ class TestOptionsCacheManager:
         # Should exist now
         assert cache_manager.contract_exists("SPY", test_date, "O:SPY211119C00045000")
         assert cache_manager.contract_exists("SPY", test_date, "O:SPY211119P00045000")
-        assert not cache_manager.contract_exists("SPY", test_date, "O:SPY211119C00046000")
+        assert cache_manager.contract_exists("SPY", test_date, "O:SPY211119C00046000")
     
     def test_bar_exists(self, cache_manager, sample_bar):
         """Test bar existence check."""
@@ -177,7 +190,7 @@ class TestOptionsCacheManager:
         
         # Save contracts
         cache_manager.save_contracts("SPY", test_date, sample_contracts)
-        assert cache_manager.get_cached_contracts_count("SPY", test_date) == 2
+        assert cache_manager.get_cached_contracts_count("SPY", test_date) == 3
         
         # Save bar
         cache_manager.save_bar("SPY", test_date, "O:SPY211119C00045000", sample_bar)
@@ -229,7 +242,7 @@ class TestOptionsHandler:
                 ticker="O:SPY211119C00045000",
                 underlying_ticker="SPY",
                 contract_type=OptionType.CALL,
-                strike_price=StrikePrice(450.0),
+                strike_price=StrikePrice(Decimal('450.0')),
                 expiration_date=ExpirationDate(future_date),
                 exercise_style="american",
                 shares_per_contract=100,
@@ -352,7 +365,7 @@ class TestOptionsRetrieverHelper:
                 ticker="O:SPY211119C00045000",
                 underlying_ticker="SPY",
                 contract_type=OptionType.CALL,
-                strike_price=StrikePrice(450.0),
+                strike_price=StrikePrice(Decimal('450.0')),
                 expiration_date=ExpirationDate(future_date),
                 exercise_style="american",
                 shares_per_contract=100,
@@ -364,7 +377,7 @@ class TestOptionsRetrieverHelper:
                 ticker="O:SPY211119P00045000",
                 underlying_ticker="SPY",
                 contract_type=OptionType.PUT,
-                strike_price=StrikePrice(450.0),
+                strike_price=StrikePrice(Decimal('450.0')),
                 expiration_date=ExpirationDate(future_date),
                 exercise_style="american",
                 shares_per_contract=100,
@@ -411,23 +424,6 @@ class TestOptionsRetrieverHelper:
         assert call_contract.strike_price.value == Decimal('450.0')
         assert put_contract.strike_price.value == Decimal('450.0')
     
-    def test_calculate_spread_width(self, sample_contracts):
-        """Test calculating spread width."""
-        call_450 = sample_contracts[0]
-        call_460 = sample_contracts[2]
-        
-        width = OptionsRetrieverHelper.calculate_spread_width(call_450, call_460)
-        assert width == 10.0
-    
-    def test_find_contracts_by_type(self, sample_contracts):
-        """Test finding contracts by type."""
-        calls = OptionsRetrieverHelper.find_contracts_by_type(sample_contracts, OptionType.CALL)
-        puts = OptionsRetrieverHelper.find_contracts_by_type(sample_contracts, OptionType.PUT)
-        
-        assert len(calls) == 2
-        assert len(puts) == 1
-        assert all(c.contract_type == OptionType.CALL for c in calls)
-        assert all(p.contract_type == OptionType.PUT for p in puts)
     
     def test_find_itm_contracts(self, sample_contracts):
         """Test finding ITM contracts."""
@@ -519,6 +515,338 @@ class TestOptionsRetrieverHelper:
         issues = OptionsRetrieverHelper.validate_contract_data(invalid_contract)
         assert len(issues) > 0
         assert any("Invalid ticker format" in issue for issue in issues)
+
+
+class TestOptionsRetrieverHelperStrategy:
+    """Test strategy-specific helper methods."""
+    
+    def _create_test_contracts(self):
+        """Create test contracts for strategy testing."""
+        # Create a proper monthly expiration date (third Friday of next month)
+        today = date.today()
+        # Get first day of next month
+        if today.month == 12:
+            next_month = today.replace(year=today.year + 1, month=1, day=1)
+        else:
+            next_month = today.replace(month=today.month + 1, day=1)
+        
+        # Find third Friday of next month
+        first_day = next_month
+        first_friday = first_day + timedelta(days=(4 - first_day.weekday()) % 7)
+        third_friday = first_friday + timedelta(days=14)
+        future_date = third_friday
+        return [
+            OptionContractDTO(
+                ticker="O:SPY250929C00580000",
+                underlying_ticker="SPY",
+                contract_type=OptionType.CALL,
+                strike_price=StrikePrice(Decimal('450.0')),
+                expiration_date=ExpirationDate(future_date),
+                exercise_style="american",
+                shares_per_contract=100,
+                primary_exchange="BATO",
+                cfi="OCASPS",
+                additional_underlyings=None
+            ),
+            OptionContractDTO(
+                ticker="O:SPY250929C00585000",
+                underlying_ticker="SPY",
+                contract_type=OptionType.CALL,
+                strike_price=StrikePrice(Decimal('455.0')),
+                expiration_date=ExpirationDate(future_date),
+                exercise_style="american",
+                shares_per_contract=100,
+                primary_exchange="BATO",
+                cfi="OCASPS",
+                additional_underlyings=None
+            ),
+            OptionContractDTO(
+                ticker="O:SPY250929P00450000",
+                underlying_ticker="SPY",
+                contract_type=OptionType.PUT,
+                strike_price=StrikePrice(Decimal('450.0')),
+                expiration_date=ExpirationDate(future_date),
+                exercise_style="american",
+                shares_per_contract=100,
+                primary_exchange="BATO",
+                cfi="OCASPS",
+                additional_underlyings=None
+            ),
+            OptionContractDTO(
+                ticker="O:SPY250929P00445000",
+                underlying_ticker="SPY",
+                contract_type=OptionType.PUT,
+                strike_price=StrikePrice(Decimal('445.0')),
+                expiration_date=ExpirationDate(future_date),
+                exercise_style="american",
+                shares_per_contract=100,
+                primary_exchange="BATO",
+                cfi="OCASPS",
+                additional_underlyings=None
+            )
+        ]
+    
+    def test_find_credit_spread_legs_call(self):
+        """Test finding call credit spread legs."""
+        contracts = self._create_test_contracts()
+        current_price = 450.0
+        # Use the same expiration date as the test contracts
+        today = date.today()
+        if today.month == 12:
+            next_month = today.replace(year=today.year + 1, month=1, day=1)
+        else:
+            next_month = today.replace(month=today.month + 1, day=1)
+        
+        first_day = next_month
+        first_friday = first_day + timedelta(days=(4 - first_day.weekday()) % 7)
+        third_friday = first_friday + timedelta(days=14)
+        expiration_date = third_friday.strftime('%Y-%m-%d')
+        
+        short_leg, long_leg = OptionsRetrieverHelper.find_credit_spread_legs(
+            contracts, current_price, expiration_date, OptionType.CALL, spread_width=5
+        )
+        
+        assert short_leg is not None
+        assert long_leg is not None
+        assert short_leg.contract_type == OptionType.CALL
+        assert long_leg.contract_type == OptionType.CALL
+        assert short_leg.strike_price.value <= Decimal(str(current_price))
+        assert long_leg.strike_price.value > short_leg.strike_price.value
+    
+    def test_find_credit_spread_legs_put(self):
+        """Test finding put credit spread legs."""
+        contracts = self._create_test_contracts()
+        current_price = 450.0
+        # Use the same expiration date as the test contracts
+        today = date.today()
+        if today.month == 12:
+            next_month = today.replace(year=today.year + 1, month=1, day=1)
+        else:
+            next_month = today.replace(month=today.month + 1, day=1)
+        
+        first_day = next_month
+        first_friday = first_day + timedelta(days=(4 - first_day.weekday()) % 7)
+        third_friday = first_friday + timedelta(days=14)
+        expiration_date = third_friday.strftime('%Y-%m-%d')
+        
+        short_leg, long_leg = OptionsRetrieverHelper.find_credit_spread_legs(
+            contracts, current_price, expiration_date, OptionType.PUT, spread_width=5
+        )
+        
+        assert short_leg is not None
+        assert long_leg is not None
+        assert short_leg.contract_type == OptionType.PUT
+        assert long_leg.contract_type == OptionType.PUT
+        assert short_leg.strike_price.value >= Decimal(str(current_price))
+        assert long_leg.strike_price.value < short_leg.strike_price.value
+    
+    def test_calculate_credit_spread_premium(self):
+        """Test calculating credit spread premium."""
+        contracts = self._create_test_contracts()
+        short_leg = contracts[0]
+        long_leg = contracts[1]
+        short_premium = 2.50
+        long_premium = 1.00
+        
+        net_credit = OptionsRetrieverHelper.calculate_credit_spread_premium(
+            short_leg, long_leg, short_premium, long_premium
+        )
+        
+        assert net_credit == 1.50
+    
+    def test_calculate_max_profit_loss(self):
+        """Test calculating max profit and loss."""
+        contracts = self._create_test_contracts()
+        short_leg = contracts[0]
+        long_leg = contracts[1]
+        net_credit = 1.50
+        
+        max_profit, max_loss = OptionsRetrieverHelper.calculate_max_profit_loss(
+            short_leg, long_leg, net_credit
+        )
+        
+        assert max_profit == 1.50
+        assert max_loss > 0
+    
+    def test_find_optimal_expiration(self):
+        """Test finding optimal expiration date."""
+        contracts = self._create_test_contracts()
+        
+        optimal_exp = OptionsRetrieverHelper.find_optimal_expiration(
+            contracts, min_days=20, max_days=40
+        )
+        
+        assert optimal_exp is not None
+        # Should match the expiration date of our test contracts
+        today = date.today()
+        if today.month == 12:
+            next_month = today.replace(year=today.year + 1, month=1, day=1)
+        else:
+            next_month = today.replace(month=today.month + 1, day=1)
+        
+        first_day = next_month
+        first_friday = first_day + timedelta(days=(4 - first_day.weekday()) % 7)
+        third_friday = first_friday + timedelta(days=14)
+        expected_date = third_friday.strftime('%Y-%m-%d')
+        assert optimal_exp == expected_date
+    
+    def test_calculate_implied_volatility_rank(self):
+        """Test calculating IV rank."""
+        contracts = self._create_test_contracts()
+        current_price = 450.0
+        
+        iv_ranks = OptionsRetrieverHelper.calculate_implied_volatility_rank(
+            contracts, current_price, lookback_days=30
+        )
+        
+        assert len(iv_ranks) == len(contracts)
+        for ticker, rank in iv_ranks.items():
+            assert 0.0 <= rank <= 100.0
+    
+    def test_find_high_volume_contracts(self):
+        """Test finding high volume contracts."""
+        contracts = self._create_test_contracts()
+        bars = self._create_test_bars()
+        
+        high_volume = OptionsRetrieverHelper.find_high_volume_contracts(
+            contracts, bars, min_volume=100
+        )
+        
+        assert len(high_volume) > 0
+        for contract in high_volume:
+            bar = bars.get(contract.ticker)
+            assert bar.volume >= 100
+    
+    def test_calculate_delta_exposure(self):
+        """Test calculating delta exposure."""
+        contracts = self._create_test_contracts()
+        bars = self._create_test_bars()
+        
+        total_delta = OptionsRetrieverHelper.calculate_delta_exposure(
+            contracts, bars, quantity=1
+        )
+        
+        assert isinstance(total_delta, float)
+    
+    def test_find_iron_condor_legs(self):
+        """Test finding iron condor legs."""
+        contracts = self._create_test_contracts()
+        current_price = 450.0
+        # Use the same expiration date as the test contracts
+        today = date.today()
+        if today.month == 12:
+            next_month = today.replace(year=today.year + 1, month=1, day=1)
+        else:
+            next_month = today.replace(month=today.month + 1, day=1)
+        
+        first_day = next_month
+        first_friday = first_day + timedelta(days=(4 - first_day.weekday()) % 7)
+        third_friday = first_friday + timedelta(days=14)
+        expiration_date = third_friday.strftime('%Y-%m-%d')
+        
+        put_long, put_short, call_short, call_long = OptionsRetrieverHelper.find_iron_condor_legs(
+            contracts, current_price, expiration_date, spread_width=5
+        )
+        
+        # Should find all four legs
+        assert all([put_long, put_short, call_short, call_long])
+        assert put_long.contract_type == OptionType.PUT
+        assert put_short.contract_type == OptionType.PUT
+        assert call_short.contract_type == OptionType.CALL
+        assert call_long.contract_type == OptionType.CALL
+    
+    def test_calculate_breakeven_points(self):
+        """Test calculating breakeven points."""
+        contracts = self._create_test_contracts()
+        short_leg = contracts[0]
+        long_leg = contracts[1]
+        net_credit = 1.50
+        
+        lower_be, upper_be = OptionsRetrieverHelper.calculate_breakeven_points(
+            short_leg, long_leg, net_credit, OptionType.CALL
+        )
+        
+        assert lower_be == upper_be  # For credit spreads, breakeven is single point
+        assert lower_be > 0
+    
+    def test_find_weekly_expirations(self):
+        """Test finding weekly expirations."""
+        contracts = self._create_test_contracts()
+        
+        weekly_exps = OptionsRetrieverHelper.find_weekly_expirations(contracts)
+        
+        assert isinstance(weekly_exps, list)
+        # Our test contracts are monthly (third Friday), which is also a Friday (weekly)
+        # So it should be detected as both weekly and monthly
+        assert len(weekly_exps) > 0
+    
+    def test_find_monthly_expirations(self):
+        """Test finding monthly expirations."""
+        contracts = self._create_test_contracts()
+        
+        monthly_exps = OptionsRetrieverHelper.find_monthly_expirations(contracts)
+        
+        assert isinstance(monthly_exps, list)
+        assert len(monthly_exps) > 0
+        # Should match the expiration date of our test contracts
+        # The test contracts use third Friday of next month
+        today = date.today()
+        if today.month == 12:
+            next_month = today.replace(year=today.year + 1, month=1, day=1)
+        else:
+            next_month = today.replace(month=today.month + 1, day=1)
+        
+        first_day = next_month
+        first_friday = first_day + timedelta(days=(4 - first_day.weekday()) % 7)
+        third_friday = first_friday + timedelta(days=14)
+        expected_date = third_friday.strftime('%Y-%m-%d')
+        assert expected_date in monthly_exps
+    
+    def test_calculate_probability_of_profit(self):
+        """Test calculating probability of profit."""
+        contracts = self._create_test_contracts()
+        short_leg = contracts[0]
+        long_leg = contracts[1]
+        net_credit = 1.50
+        current_price = 450.0
+        days_to_expiration = 30
+        
+        pop = OptionsRetrieverHelper.calculate_probability_of_profit(
+            short_leg, long_leg, net_credit, OptionType.CALL, 
+            current_price, days_to_expiration
+        )
+        
+        assert 0.0 <= pop <= 1.0
+        assert pop > 0.0  # Should have some probability of profit
+    
+    def _create_test_bars(self):
+        """Create test bar data."""
+        return {
+            "O:SPY250929C00580000": OptionBarDTO(
+                ticker="O:SPY250929C00580000",
+                timestamp=datetime.now(),
+                open_price=Decimal("2.50"),
+                high_price=Decimal("2.75"),
+                low_price=Decimal("2.25"),
+                close_price=Decimal("2.60"),
+                volume=150,
+                volume_weighted_avg_price=Decimal("2.55"),
+                number_of_transactions=25,
+                adjusted=True
+            ),
+            "O:SPY250929C00585000": OptionBarDTO(
+                ticker="O:SPY250929C00585000",
+                timestamp=datetime.now(),
+                open_price=Decimal("1.80"),
+                high_price=Decimal("2.00"),
+                low_price=Decimal("1.60"),
+                close_price=Decimal("1.90"),
+                volume=200,
+                volume_weighted_avg_price=Decimal("1.85"),
+                number_of_transactions=30,
+                adjusted=True
+            )
+        }
 
 
 class TestOptionsCacheMigrator:

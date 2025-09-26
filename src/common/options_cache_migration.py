@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 import pandas as pd
 
-from .options_handler import OptionsCacheManager
+from .cache.options_cache_manager import OptionsCacheManager
 from .options_dtos import OptionContractDTO, OptionBarDTO, StrikePrice, ExpirationDate
 from .models import OptionType, Option, OptionChain
 

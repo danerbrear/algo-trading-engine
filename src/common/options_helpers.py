@@ -2,13 +2,14 @@
 Helper classes for options data retrieval and processing.
 
 This module contains static utility methods for common options operations
-as specified in features/improved_data_fetching.md Phase 2.
+as specified in features/improved_data_fetching.md Phase 4.
 """
 
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict, Any
 from decimal import Decimal
+from datetime import date, datetime
 
-from .options_dtos import OptionContractDTO, StrikeRangeDTO, ExpirationRangeDTO
+from .options_dtos import OptionContractDTO, StrikeRangeDTO, ExpirationRangeDTO, OptionBarDTO, OptionsChainDTO
 from .models import OptionType
 
 
@@ -66,38 +67,23 @@ class OptionsRetrieverHelper:
             Tuple of (call_contract, put_contract) or (None, None) if not found
         """
         current_decimal = Decimal(str(current_price))
-        tolerance = Decimal('0.01')  # 1 cent tolerance
         
-        call_contract = None
-        put_contract = None
+        # Find call and put contracts with minimum distance from current price
+        call_contracts = [c for c in contracts if c.contract_type == OptionType.CALL]
+        put_contracts = [c for c in contracts if c.contract_type == OptionType.PUT]
         
-        for contract in contracts:
-            # Convert strike price to Decimal for comparison
-            strike_decimal = Decimal(str(contract.strike_price.value))
-            if abs(strike_decimal - current_decimal) <= tolerance:
-                if contract.contract_type == OptionType.CALL:
-                    call_contract = contract
-                elif contract.contract_type == OptionType.PUT:
-                    put_contract = contract
+        call_contract = (
+            min(call_contracts, key=lambda c: abs(Decimal(str(c.strike_price.value)) - current_decimal))
+            if call_contracts else None
+        )
+        
+        put_contract = (
+            min(put_contracts, key=lambda c: abs(Decimal(str(c.strike_price.value)) - current_decimal))
+            if put_contracts else None
+        )
         
         return call_contract, put_contract
     
-    @staticmethod
-    def calculate_spread_width(
-        short_leg: OptionContractDTO, 
-        long_leg: OptionContractDTO
-    ) -> float:
-        """
-        Calculate spread width between two contracts.
-        
-        Args:
-            short_leg: Short leg contract
-            long_leg: Long leg contract
-            
-        Returns:
-            Spread width in dollars
-        """
-        return float(abs(short_leg.strike_price.value - long_leg.strike_price.value))
     
     @staticmethod
     def find_contracts_by_expiration(
@@ -120,23 +106,6 @@ class OptionsRetrieverHelper:
                 filtered.append(contract)
         
         return filtered
-    
-    @staticmethod
-    def find_contracts_by_type(
-        contracts: List[OptionContractDTO], 
-        option_type: OptionType
-    ) -> List[OptionContractDTO]:
-        """
-        Find contracts of specific type (call or put).
-        
-        Args:
-            contracts: List of option contracts
-            option_type: Option type to filter for
-            
-        Returns:
-            List of contracts of specified type
-        """
-        return [contract for contract in contracts if contract.contract_type == option_type]
     
     @staticmethod
     def find_itm_contracts(
@@ -435,3 +404,442 @@ class OptionsRetrieverHelper:
             issues.append(f"Invalid shares per contract: {contract.shares_per_contract}")
         
         return issues
+    
+    # Strategy-specific helper methods
+    
+    @staticmethod
+    def find_credit_spread_legs(
+        contracts: List[OptionContractDTO], 
+        current_price: float, 
+        expiration_date: str,
+        option_type: OptionType,
+        spread_width: int = 5
+    ) -> Tuple[Optional[OptionContractDTO], Optional[OptionContractDTO]]:
+        """
+        Find short and long legs for a credit spread strategy.
+        
+        Args:
+            contracts: List of option contracts
+            current_price: Current underlying price
+            expiration_date: Target expiration date
+            option_type: Type of spread (CALL or PUT)
+            spread_width: Width of the spread in dollars
+            
+        Returns:
+            Tuple of (short_leg, long_leg) or (None, None) if not found
+        """
+        # Filter contracts by expiration and type
+        exp_contracts = OptionsRetrieverHelper.find_contracts_by_expiration(contracts, expiration_date)
+        type_contracts = OptionsRetrieverHelper.find_contracts_by_type(exp_contracts, option_type)
+        
+        if len(type_contracts) < 2:
+            return None, None
+        
+        # Sort by strike price
+        sorted_contracts = OptionsRetrieverHelper.sort_contracts_by_strike(type_contracts)
+        
+        current_decimal = Decimal(str(current_price))
+        
+        if option_type == OptionType.CALL:
+            # For call credit spread: short ATM, long OTM
+            # Find ATM call (short leg)
+            short_leg = None
+            for contract in sorted_contracts:
+                if contract.strike_price.value <= current_decimal:
+                    short_leg = contract
+                else:
+                    break
+            
+            if short_leg:
+                # Find long leg (spread_width above short leg)
+                target_long_strike = short_leg.strike_price.value + Decimal(str(spread_width))
+                long_leg = OptionsRetrieverHelper.find_closest_strike_contract(
+                    sorted_contracts, float(target_long_strike)
+                )
+                return short_leg, long_leg
+        
+        else:  # PUT
+            # For put credit spread: short ATM, long OTM
+            # Find ATM put (short leg)
+            short_leg = None
+            for contract in reversed(sorted_contracts):
+                if contract.strike_price.value >= current_decimal:
+                    short_leg = contract
+                else:
+                    break
+            
+            if short_leg:
+                # Find long leg (spread_width below short leg)
+                target_long_strike = short_leg.strike_price.value - Decimal(str(spread_width))
+                long_leg = OptionsRetrieverHelper.find_closest_strike_contract(
+                    sorted_contracts, float(target_long_strike)
+                )
+                return short_leg, long_leg
+        
+        return None, None
+    
+    @staticmethod
+    def calculate_credit_spread_premium(
+        short_leg: OptionContractDTO, 
+        long_leg: OptionContractDTO,
+        short_premium: float,
+        long_premium: float
+    ) -> float:
+        """
+        Calculate net credit received for a credit spread.
+        
+        Args:
+            short_leg: Short leg contract
+            long_leg: Long leg contract
+            short_premium: Premium received for short leg
+            long_premium: Premium paid for long leg
+            
+        Returns:
+            Net credit received
+        """
+        return short_premium - long_premium
+    
+    @staticmethod
+    def calculate_max_profit_loss(
+        short_leg: OptionContractDTO, 
+        long_leg: OptionContractDTO,
+        net_credit: float
+    ) -> Tuple[float, float]:
+        """
+        Calculate maximum profit and loss for a credit spread.
+        
+        Args:
+            short_leg: Short leg contract
+            long_leg: Long leg contract
+            net_credit: Net credit received
+            
+        Returns:
+            Tuple of (max_profit, max_loss)
+        """
+        spread_width = OptionsRetrieverHelper.calculate_spread_width(short_leg, long_leg)
+        max_profit = net_credit
+        max_loss = spread_width - net_credit
+        return max_profit, max_loss
+    
+    @staticmethod
+    def find_optimal_expiration(
+        contracts: List[OptionContractDTO], 
+        min_days: int = 20, 
+        max_days: int = 40,
+        current_date: Optional[date] = None
+    ) -> Optional[str]:
+        """
+        Find optimal expiration date for trading strategies.
+        
+        Args:
+            contracts: List of option contracts
+            min_days: Minimum days to expiration
+            max_days: Maximum days to expiration
+            current_date: Current date (defaults to today)
+            
+        Returns:
+            Optimal expiration date string or None if not found
+        """
+        if current_date is None:
+            current_date = date.today()
+        
+        # Group contracts by expiration
+        grouped = OptionsRetrieverHelper.group_contracts_by_expiration(contracts)
+        
+        # Find expiration with most contracts in the desired range
+        best_expiration = None
+        max_contracts = 0
+        
+        for exp_date_str, exp_contracts in grouped.items():
+            try:
+                exp_date = datetime.strptime(exp_date_str, '%Y-%m-%d').date()
+                days_to_exp = (exp_date - current_date).days
+                
+                if min_days <= days_to_exp <= max_days:
+                    if len(exp_contracts) > max_contracts:
+                        max_contracts = len(exp_contracts)
+                        best_expiration = exp_date_str
+            except ValueError:
+                continue
+        
+        return best_expiration
+    
+    @staticmethod
+    def calculate_implied_volatility_rank(
+        contracts: List[OptionContractDTO], 
+        current_price: float,
+        lookback_days: int = 30
+    ) -> Dict[str, float]:
+        """
+        Calculate implied volatility rank for contracts.
+        
+        Note: This is a simplified implementation. In practice, you would
+        need historical IV data to calculate proper IV rank.
+        
+        Args:
+            contracts: List of option contracts
+            current_price: Current underlying price
+            lookback_days: Days to look back for IV calculation
+            
+        Returns:
+            Dict mapping contract ticker to IV rank (0-100)
+        """
+        # This is a placeholder implementation
+        # In practice, you would need historical IV data
+        iv_ranks = {}
+        
+        for contract in contracts:
+            # Simplified IV rank calculation
+            # In practice, you would compare current IV to historical IV range
+            days_to_exp = contract.days_to_expiration()
+            
+            # Placeholder logic: shorter DTE = higher IV rank
+            if days_to_exp <= 7:
+                iv_rank = 80.0
+            elif days_to_exp <= 14:
+                iv_rank = 60.0
+            elif days_to_exp <= 30:
+                iv_rank = 40.0
+            else:
+                iv_rank = 20.0
+            
+            iv_ranks[contract.ticker] = iv_rank
+        
+        return iv_ranks
+    
+    @staticmethod
+    def find_high_volume_contracts(
+        contracts: List[OptionContractDTO], 
+        bars: Dict[str, OptionBarDTO],
+        min_volume: int = 100
+    ) -> List[OptionContractDTO]:
+        """
+        Find contracts with high volume based on bar data.
+        
+        Args:
+            contracts: List of option contracts
+            bars: Dict mapping ticker to bar data
+            min_volume: Minimum volume threshold
+            
+        Returns:
+            List of high volume contracts
+        """
+        high_volume_contracts = []
+        
+        for contract in contracts:
+            bar = bars.get(contract.ticker)
+            if bar and bar.volume >= min_volume:
+                high_volume_contracts.append(contract)
+        
+        return high_volume_contracts
+    
+    @staticmethod
+    def calculate_delta_exposure(
+        contracts: List[OptionContractDTO], 
+        bars: Dict[str, OptionBarDTO],
+        quantity: int = 1
+    ) -> float:
+        """
+        Calculate total delta exposure for a list of contracts.
+        
+        Note: This is a simplified implementation. In practice, you would
+        need actual delta values from the options data.
+        
+        Args:
+            contracts: List of option contracts
+            bars: Dict mapping ticker to bar data
+            quantity: Number of contracts
+            
+        Returns:
+            Total delta exposure
+        """
+        total_delta = 0.0
+        
+        for contract in contracts:
+            # Simplified delta calculation based on moneyness
+            # In practice, you would use actual delta values
+            current_price = 600.0  # This should be passed as parameter
+            strike = float(contract.strike_price.value)
+            
+            if contract.contract_type == OptionType.CALL:
+                # Simplified call delta: closer to ATM = higher delta
+                moneyness = strike / current_price
+                if moneyness < 0.95:
+                    delta = 0.8  # Deep ITM
+                elif moneyness < 1.05:
+                    delta = 0.5  # ATM
+                else:
+                    delta = 0.2  # OTM
+            else:  # PUT
+                # Simplified put delta: closer to ATM = higher negative delta
+                moneyness = strike / current_price
+                if moneyness > 1.05:
+                    delta = -0.8  # Deep ITM
+                elif moneyness > 0.95:
+                    delta = -0.5  # ATM
+                else:
+                    delta = -0.2  # OTM
+            
+            total_delta += delta * quantity
+        
+        return total_delta
+    
+    @staticmethod
+    def find_iron_condor_legs(
+        contracts: List[OptionContractDTO], 
+        current_price: float, 
+        expiration_date: str,
+        spread_width: int = 5
+    ) -> Tuple[Optional[OptionContractDTO], Optional[OptionContractDTO], 
+               Optional[OptionContractDTO], Optional[OptionContractDTO]]:
+        """
+        Find all four legs for an iron condor strategy.
+        
+        Args:
+            contracts: List of option contracts
+            current_price: Current underlying price
+            expiration_date: Target expiration date
+            spread_width: Width of each spread
+            
+        Returns:
+            Tuple of (put_long, put_short, call_short, call_long) or (None, None, None, None)
+        """
+        # Filter contracts by expiration
+        exp_contracts = OptionsRetrieverHelper.find_contracts_by_expiration(contracts, expiration_date)
+        
+        if len(exp_contracts) < 4:
+            return None, None, None, None
+        
+        # Find put credit spread legs
+        put_short, put_long = OptionsRetrieverHelper.find_credit_spread_legs(
+            exp_contracts, current_price, expiration_date, OptionType.PUT, spread_width
+        )
+        
+        # Find call credit spread legs
+        call_short, call_long = OptionsRetrieverHelper.find_credit_spread_legs(
+            exp_contracts, current_price, expiration_date, OptionType.CALL, spread_width
+        )
+        
+        if all([put_short, put_long, call_short, call_long]):
+            return put_long, put_short, call_short, call_long
+        
+        return None, None, None, None
+    
+    @staticmethod
+    def calculate_breakeven_points(
+        short_leg: OptionContractDTO, 
+        long_leg: OptionContractDTO,
+        net_credit: float,
+        option_type: OptionType
+    ) -> Tuple[float, float]:
+        """
+        Calculate breakeven points for a credit spread.
+        
+        Args:
+            short_leg: Short leg contract
+            long_leg: Long leg contract
+            net_credit: Net credit received
+            option_type: Type of spread (CALL or PUT)
+            
+        Returns:
+            Tuple of (lower_breakeven, upper_breakeven)
+        """
+        if option_type == OptionType.CALL:
+            # Call credit spread: breakeven at short_strike + net_credit
+            breakeven = float(short_leg.strike_price.value) + net_credit
+            return breakeven, breakeven
+        else:  # PUT
+            # Put credit spread: breakeven at short_strike - net_credit
+            breakeven = float(short_leg.strike_price.value) - net_credit
+            return breakeven, breakeven
+    
+    @staticmethod
+    def find_weekly_expirations(
+        contracts: List[OptionContractDTO]
+    ) -> List[str]:
+        """
+        Find all weekly expiration dates (Fridays).
+        
+        Args:
+            contracts: List of option contracts
+            
+        Returns:
+            List of weekly expiration date strings
+        """
+        weekly_expirations = []
+        
+        for contract in contracts:
+            if contract.expiration_date.is_weekly():
+                exp_str = str(contract.expiration_date)
+                if exp_str not in weekly_expirations:
+                    weekly_expirations.append(exp_str)
+        
+        return sorted(weekly_expirations)
+    
+    @staticmethod
+    def find_monthly_expirations(
+        contracts: List[OptionContractDTO]
+    ) -> List[str]:
+        """
+        Find all monthly expiration dates (third Friday of month).
+        
+        Args:
+            contracts: List of option contracts
+            
+        Returns:
+            List of monthly expiration date strings
+        """
+        monthly_expirations = []
+        
+        for contract in contracts:
+            if contract.expiration_date.is_monthly():
+                exp_str = str(contract.expiration_date)
+                if exp_str not in monthly_expirations:
+                    monthly_expirations.append(exp_str)
+        
+        return sorted(monthly_expirations)
+    
+    @staticmethod
+    def calculate_probability_of_profit(
+        short_leg: OptionContractDTO, 
+        long_leg: OptionContractDTO,
+        net_credit: float,
+        option_type: OptionType,
+        current_price: float,
+        days_to_expiration: int
+    ) -> float:
+        """
+        Calculate estimated probability of profit for a credit spread.
+        
+        Note: This is a simplified implementation. In practice, you would
+        use more sophisticated models like Black-Scholes or Monte Carlo.
+        
+        Args:
+            short_leg: Short leg contract
+            long_leg: Long leg contract
+            net_credit: Net credit received
+            option_type: Type of spread (CALL or PUT)
+            current_price: Current underlying price
+            days_to_expiration: Days until expiration
+            
+        Returns:
+            Estimated probability of profit (0.0 to 1.0)
+        """
+        # Simplified POP calculation based on distance from current price
+        if option_type == OptionType.CALL:
+            short_strike = float(short_leg.strike_price.value)
+            # POP decreases as current price approaches short strike
+            distance_ratio = (short_strike - current_price) / current_price
+        else:  # PUT
+            short_strike = float(short_leg.strike_price.value)
+            # POP decreases as current price approaches short strike
+            distance_ratio = (current_price - short_strike) / current_price
+        
+        # Base POP on distance from current price
+        base_pop = max(0.0, min(1.0, 0.5 + distance_ratio * 2))
+        
+        # Adjust for time decay (shorter DTE = higher POP for credit spreads)
+        time_factor = max(0.5, 1.0 - (days_to_expiration / 45.0))
+        
+        return min(0.95, base_pop * time_factor)
+    
