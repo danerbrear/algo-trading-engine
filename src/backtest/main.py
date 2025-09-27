@@ -53,8 +53,8 @@ class BacktestEngine:
         Run the backtest.
         """
         
-        # Validate the data first
-        if not self._validate_data(self.data):
+        # Validate the data using the strategy's validation method
+        if not self.strategy.validate_data(self.data):
             print("❌ Backtest aborted due to invalid data")
             return False
 
@@ -171,112 +171,6 @@ class BacktestEngine:
         print(f"   Total Return: ${final_return:+,.2f} ({final_return_pct:+.2f}%)")
         print(f"   Sharpe Ratio: {sharpe_ratio:.3f}")
 
-    def _validate_data(self, data: pd.DataFrame) -> bool:
-        """
-        Validate the data and filter it to the specified date range.
-        
-        Args:
-            data: DataFrame with market data and features
-            
-        Returns:
-            bool: True if data is valid, False otherwise
-        """
-        if self.progress_tracker:
-            progress_print(f"\n🔍 Validating data for backtest...", force=True)
-            progress_print(f"   Original data shape: {data.shape}", force=True)
-            progress_print(f"   Date range: {self.start_date} to {self.end_date}", force=True)
-        else:
-            print(f"\n🔍 Validating data for backtest...")
-            print(f"   Original data shape: {data.shape}")
-            print(f"   Date range: {self.start_date} to {self.end_date}")
-        
-        # Check if the data has the required columns
-        required_columns = [
-            'Open', 'High', 'Low', 'Close', 'Volume',  # Basic OHLCV data
-            'Returns', 'Log_Returns', 'Volatility',     # Basic technical features
-            'RSI', 'MACD_Hist', 'Volume_Ratio',         # Technical indicators
-            'Market_State',                             # HMM market state
-            'Put_Call_Ratio', 'Option_Volume_Ratio',    # Options features
-            'Days_Until_Next_CPI', 'Days_Since_Last_CPI',  # Calendar features
-            'Days_Until_Next_CC', 'Days_Since_Last_CC',
-            'Days_Until_Next_FFR', 'Days_Since_Last_FFR'
-        ]
-        
-        missing_columns = [col for col in required_columns if col not in data.columns]
-        if missing_columns:
-            if self.progress_tracker:
-                progress_print(f"⚠️  Warning: Missing columns: {missing_columns}", force=True)
-                progress_print(f"   Available columns: {list(data.columns)}", force=True)
-            else:
-                print(f"⚠️  Warning: Missing columns: {missing_columns}")
-                print(f"   Available columns: {list(data.columns)}")
-            return False
-        else:
-            if self.progress_tracker:
-                progress_print(f"✅ All required columns present", force=True)
-            else:
-                print(f"✅ All required columns present")
-        
-        # Check if data has datetime index
-        if not isinstance(data.index, pd.DatetimeIndex):
-            error_msg = "❌ Error: Data must have a datetime index for backtesting"
-            if self.progress_tracker:
-                progress_print(error_msg, force=True)
-            else:
-                print(error_msg)
-            return False
-        
-        # Filter data to the specified date range
-        if self.progress_tracker:
-            progress_print(f"   Data index range: {data.index.min()} to {data.index.max()}", force=True)
-        else:
-            print(f"   Data index range: {data.index.min()} to {data.index.max()}")
-
-        # Convert start_date and end_date to datetime if they're not already
-        if isinstance(self.start_date, datetime):
-            start_date = self.start_date
-        else:
-            start_date = pd.to_datetime(self.start_date)
-
-        if isinstance(self.end_date, datetime):
-            end_date = self.end_date
-        else:
-            end_date = pd.to_datetime(self.end_date)
-
-        # Filter data to the specified date range
-        mask = (data.index >= start_date) & (data.index <= end_date)
-        filtered_data = data[mask].copy()
-
-        if len(filtered_data) == 0:
-            print(f"❌ Error: No data available for the specified date range: {start_date} to {end_date}. ")
-            print(f"   Available data range: {data.index.min()} to {data.index.max()}")
-            print(f"   Requested start date: {start_date}")
-            print(f"   Requested end date: {end_date}")
-            print(f"   Total available data points: {len(data)}")
-
-            # Check if the issue is with the date range
-            if start_date > data.index.max():
-                print(f"   ⚠️  Start date {start_date} is after the latest available data {data.index.max()}")
-            if end_date < data.index.min():
-                print(f"   ⚠️  End date {end_date} is before the earliest available data {data.index.min()}")
-            
-            return False
-        
-        # Update the data attribute
-        self.data = filtered_data
-        
-        print(f"✅ Data validation complete:")
-        print(f"   Final data shape: {self.data.shape}")
-        print(f"   Date range: {self.data.index.min()} to {self.data.index.max()}")
-        print(f"   Trading days: {len(self.data)}")
-        
-        # Check for gaps in the data (missing trading days)
-        expected_business_days = len(pd.bdate_range(start=self.data.index.min(), end=self.data.index.max()))
-        actual_trading_days = len(self.data)
-        if actual_trading_days < expected_business_days * 0.9:  # Allow for some holidays
-            print(f"⚠️  Warning: Data may have gaps. Expected ~{expected_business_days} business days, got {actual_trading_days}")
-        
-        return True
 
     def _add_position(self, position: Position):
         """
@@ -589,7 +483,7 @@ def parse_arguments():
                        help='Strategy to use for backtesting')
     parser.add_argument('--start-date-offset', type=int, default=60,
                        help='Start date offset for strategy')
-    parser.add_argument('--stop-loss', type=float, default=0.6,
+    parser.add_argument('--stop-loss', type=float, default=None,
                        help='Stop loss percentage')
     parser.add_argument('--profit-target', type=float, default=None,
                        help='Profit target percentage')
@@ -623,7 +517,7 @@ if __name__ == "__main__":
     print(f"   Symbol: {args.symbol}")
     print(f"   Initial capital: ${args.initial_capital:,.2f}")
     print(f"   Max position size: {args.max_position_size * 100:.1f}%")
-    print(f"   Stop loss: {args.stop_loss * 100:.1f}%")
+    print(f"   Stop loss: {args.stop_loss * 100:.1f}%") if args.stop_loss else print("   Stop loss: None")
     if args.profit_target:
         print(f"   Profit target: {args.profit_target * 100:.1f}%")
     print()
@@ -650,7 +544,9 @@ if __name__ == "__main__":
         lstm_model, scaler = load_lstm_model(model_dir, return_lstm_instance=True)
 
         # Then prepare the data for LSTM
-        data, options_data = data_retriever.prepare_data_for_lstm(state_classifier=hmm_model)
+        # data, options_data = data_retriever.prepare_data_for_lstm(state_classifier=hmm_model)
+
+        data = data_retriever.fetch_data_for_period(start_date, 'backtest')
 
         # Create strategy using the builder pattern
         strategy = create_strategy_from_args(
@@ -667,7 +563,7 @@ if __name__ == "__main__":
             print("❌ Failed to create strategy")
             exit(1)
         
-        strategy.set_data(data, options_data, data_retriever.treasury_rates)
+        strategy.set_data(data, None, data_retriever.treasury_rates)
 
         backtester = BacktestEngine(
             data=data, 

@@ -105,6 +105,18 @@ class Strategy(ABC):
             Returns None if no position should be opened.
         """
 
+    @abstractmethod
+    def validate_data(self, data: pd.DataFrame) -> bool:
+        """
+        Validate the data for this specific strategy.
+        
+        Args:
+            data: DataFrame with market data and features
+            
+        Returns:
+            bool: True if data is valid for this strategy, False otherwise
+        """
+
     def set_profit_target(self, profit_target: float):
         """
         Set the profit target for the strategy.

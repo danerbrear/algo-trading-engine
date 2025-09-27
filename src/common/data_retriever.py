@@ -118,8 +118,6 @@ class DataRetriever:
         else:
             print("⚠️  Could not find any treasury rate files")
 
-
-
     def prepare_data_for_lstm(self, sequence_length=60, state_classifier=None):
         """Prepare data for LSTM model with enhanced features using separate date ranges
         

@@ -790,3 +790,80 @@ class CreditSpreadStrategy(Strategy):
                 current_volumes.append(None)
         
         return current_volumes
+
+    def validate_data(self, data: pd.DataFrame) -> bool:
+        """
+        Validate the data for the Credit Spread Strategy.
+        
+        This strategy requires:
+        - Basic OHLCV data
+        - LSTM model features (technical indicators, market state, calendar features)
+        - Options data for spread creation
+        
+        Args:
+            data: DataFrame with market data and features
+            
+        Returns:
+            bool: True if data is valid for this strategy, False otherwise
+        """
+        progress_print(f"\n🔍 Validating data for Credit Spread Strategy...")
+        progress_print(f"   Data shape: {data.shape}")
+        
+        # Check if the data has the required columns for credit spread strategy
+        required_columns = [
+            'Open', 'High', 'Low', 'Close', 'Volume',  # Basic OHLCV data
+            'Returns', 'Log_Returns', 'Volatility',     # Basic technical features
+            'RSI', 'MACD_Hist', 'Volume_Ratio',         # Technical indicators
+            'Market_State',                             # HMM market state
+            'Put_Call_Ratio', 'Option_Volume_Ratio',    # Options features
+            'Days_Until_Next_CPI', 'Days_Since_Last_CPI',  # Calendar features
+            'Days_Until_Next_CC', 'Days_Since_Last_CC',
+            'Days_Until_Next_FFR', 'Days_Since_Last_FFR'
+        ]
+        
+        missing_columns = [col for col in required_columns if col not in data.columns]
+        if missing_columns:
+            progress_print(f"⚠️  Warning: Missing required columns: {missing_columns}")
+            progress_print(f"   Available columns: {list(data.columns)}")
+            return False
+        else:
+            progress_print(f"✅ All required columns present")
+        
+        # Check if data has datetime index
+        if not isinstance(data.index, pd.DatetimeIndex):
+            progress_print("❌ Error: Data must have a datetime index for backtesting")
+            return False
+        
+        # Check if we have enough data for LSTM model (need at least sequence_length days)
+        if self.lstm_model and hasattr(self.lstm_model, 'sequence_length'):
+            min_required_days = self.lstm_model.sequence_length
+            if len(data) < min_required_days:
+                progress_print(f"⚠️  Warning: Not enough data for LSTM model. Need at least {min_required_days} days, got {len(data)}")
+                return False
+        else:
+            # Fallback: need at least 50 days for technical indicators
+            if len(data) < 50:
+                progress_print(f"⚠️  Warning: Not enough data for technical analysis. Need at least 50 days, got {len(data)}")
+                return False
+        
+        # Check for gaps in the data (missing trading days)
+        if len(data) > 1:
+            date_range = pd.bdate_range(start=data.index.min(), end=data.index.max())
+            expected_business_days = len(date_range)
+            actual_trading_days = len(data)
+            if actual_trading_days < expected_business_days * 0.9:  # Allow for some holidays
+                progress_print(f"⚠️  Warning: Data may have gaps. Expected ~{expected_business_days} business days, got {actual_trading_days}")
+        
+        # Check for missing values in critical columns
+        critical_columns = ['Close', 'Volume', 'Market_State']
+        for col in critical_columns:
+            if col in data.columns and data[col].isnull().any():
+                null_count = data[col].isnull().sum()
+                progress_print(f"⚠️  Warning: {null_count} missing values found in {col}")
+        
+        progress_print(f"✅ Data validation complete for Credit Spread Strategy")
+        progress_print(f"   Final data shape: {data.shape}")
+        progress_print(f"   Date range: {data.index.min()} to {data.index.max()}")
+        progress_print(f"   Trading days: {len(data)}")
+        
+        return True

@@ -433,15 +433,9 @@ class VelocitySignalMomentumStrategy(Strategy):
         if current_price is None:
             print("⚠️  Failed to get current price.")
             return
-        
-        # Get option chain for the date
-        chain = self._get_option_chain(date, current_price)
-        if chain is None:
-            progress_print("⚠️  Failed to get option chain")
-            return
             
         # Select expiration (target ~1 week)
-        expiration_str = self._select_week_expiration(date, chain)
+        expiration_str = self._select_week_expiration(date)
         if not expiration_str:
             progress_print("⚠️  Failed to select expiration")
             return
@@ -450,6 +444,7 @@ class VelocitySignalMomentumStrategy(Strategy):
         if position is None:
             progress_print("⚠️  Failed to create put credit spread for selected expiration")
             return
+
         print("Current underlying price", current_price)
         
         # Track position entry for plotting
@@ -503,63 +498,62 @@ class VelocitySignalMomentumStrategy(Strategy):
             progress_print(f"⚠️  Live option chain fetch returned empty data")
             return None
 
-    def _select_week_expiration(self, date: datetime, chain: OptionsChainDTO) -> Optional[str]:
-        # Prefer expirations 5-10 days out, else nearest > 0 days, target 7
+    def _select_week_expiration(self, date: datetime) -> Optional[str]:
+        """
+        Select the best expiration date for the strategy using new_options_handler.
+        Prefer expirations 5-10 days out, else nearest > 0 days, target 7 days.
+        """
         progress_print(f"🔍 _select_week_expiration called for {date.strftime('%Y-%m-%d')}")
         target_days = 7
-        expirations = set(str(p.expiration_date) for p in chain.get_puts()) if chain and chain.get_puts() else set()
-        if not expirations:
-            progress_print("⚠️  No put expirations found in option chain")
-            return None
+        
         def days_out(exp_str: str) -> int:
             try:
                 exp_dt = datetime.strptime(exp_str, '%Y-%m-%d')
                 return (exp_dt - date).days
             except Exception:
                 return -9999
-        valid = [(e, days_out(e)) for e in expirations]
-        valid = [(e, d) for e, d in valid if d > 0]
-        if not valid:
-            progress_print("⚠️  No future expirations available")
+        
+        # Try to get expirations from new_options_handler
+        try:
+            progress_print("🔍 Fetching expirations from new_options_handler for 5-10 day window...")
+            
+            # Use new_options_handler to get available expirations
+            from src.common.options_dtos import ExpirationRangeDTO
+            expiration_range = ExpirationRangeDTO(min_days=5, max_days=10)
+            
+            # Get contracts for the date (already filtered by expiration range)
+            contracts = self.new_options_handler.get_contract_list_for_date(date, expiration_range=expiration_range)
+            
+            if not contracts:
+                progress_print("⚠️  No contracts found for the date")
+                return None
+            
+            # Extract unique expiration dates from contracts
+            expirations = set(str(contract.expiration_date) for contract in contracts)
+            progress_print(f"🔍 Found {len(expirations)} expirations from contracts")
+            
+            if not expirations:
+                progress_print("⚠️  No expirations found in option chain")
+                return None
+                
+            # Calculate days out for each expiration and select closest to target (7 days)
+            valid_expirations = [(e, days_out(e)) for e in expirations]
+            valid_expirations = [(e, d) for e, d in valid_expirations if d > 0]
+            
+            if not valid_expirations:
+                progress_print("⚠️  No future expirations available")
+                return None
+                
+            # Select the expiration closest to target (7 days)
+            best_expiration = min(valid_expirations, key=lambda x: abs(x[1] - target_days))[0]
+            days_to_exp = days_out(best_expiration)
+            progress_print(f"✅ Selected expiration: {best_expiration} ({days_to_exp} days out)")
+            
+            return best_expiration
+            
+        except Exception as e:
+            progress_print(f"❌ Error fetching expirations from new_options_handler: {str(e)}")
             return None
-        window = [(e, d) for e, d in valid if 5 <= d <= 10]
-        if window:
-            candidates = window
-        else:
-            progress_print("No expirations within window")
-
-            # Fetch list of contracts for specific window in case cached data doesn't contain valid expirations
-            try:
-                progress_print("🔍 Fetching fresh expirations from API for 5-10 day window...")
-                fresh_expirations = self.options_handler.get_available_expirations(
-                    current_date=date, 
-                    min_days=5, 
-                    max_days=10
-                )
-                
-                progress_print(f"🔍 API returned {len(fresh_expirations) if fresh_expirations else 0} raw expirations: {fresh_expirations}")
-                
-                if fresh_expirations:
-                    # Calculate days out for fresh expirations and add them to candidates
-                    fresh_candidates = [(e, days_out(e)) for e in fresh_expirations]
-                    fresh_candidates = [(e, d) for e, d in fresh_candidates if d > 0]
-                    progress_print(f"🔍 After filtering: {len(fresh_candidates)} valid future expirations")
-                    
-                    if fresh_candidates:
-                        candidates = fresh_candidates
-                        progress_print(f"✅ Found {len(fresh_candidates)} fresh expirations in target window")
-                    else:
-                        progress_print("⚠️  Fresh expirations exist but none are in valid future range")
-                        candidates = valid  # Fall back to any valid future expirations
-                else:
-                    progress_print("⚠️  No fresh expirations found, using nearest available")
-                    candidates = valid  # Fall back to any valid future expirations
-                    
-            except Exception as e:
-                progress_print(f"❌ Error fetching fresh expirations: {str(e)}")
-                candidates = valid  # Fall back to any valid future expirations
-
-        return min(candidates, key=lambda x: abs(x[1] - target_days))[0]
     
 
     # ==== Helper methods (closing) ====
@@ -690,7 +684,7 @@ class VelocitySignalMomentumStrategy(Strategy):
             return None
             
         # Select expiration (target ~1 week)
-        expiration_str = self._select_week_expiration(date, chain)
+        expiration_str = self._select_week_expiration(date)
         progress_print(f"Selected expiration: {expiration_str}")
         if not expiration_str:
             return None
@@ -739,3 +733,59 @@ class VelocitySignalMomentumStrategy(Strategy):
                 progress_print(f"⚠️  Error fetching volume data for {option.symbol}: {e}")
                 current_volumes.append(None)
         return current_volumes
+
+    def validate_data(self, data: pd.DataFrame) -> bool:
+        """
+        Validate the data for the Velocity Signal Momentum Strategy.
+        
+        This strategy requires:
+        - Basic OHLCV data
+        - Moving averages (SMA_15, SMA_30) for velocity calculation
+        - Velocity changes data
+        
+        Args:
+            data: DataFrame with market data and features
+            
+        Returns:
+            bool: True if data is valid for this strategy, False otherwise
+        """        
+        progress_print(f"\n🔍 Validating data for Velocity Signal Momentum Strategy...")
+        progress_print(f"   Data shape: {data.shape}")
+        
+        # Check if the data has the required columns for velocity momentum strategy
+        required_columns = [
+            'Open', 'High', 'Low', 'Close', 'Volume',  # Basic OHLCV data
+        ]
+        
+        missing_columns = [col for col in required_columns if col not in data.columns]
+        if missing_columns:
+            progress_print(f"⚠️  Warning: Missing required columns: {missing_columns}")
+            progress_print(f"   Available columns: {list(data.columns)}")
+            return False
+        else:
+            progress_print(f"✅ All required columns present")
+        
+        # Check if data has datetime index
+        if not isinstance(data.index, pd.DatetimeIndex):
+            progress_print("❌ Error: Data must have a datetime index for backtesting")
+            return False
+        
+        # Check if we have enough data for moving averages (need at least 30 days for SMA 30)
+        if len(data) < 30:
+            progress_print(f"⚠️  Warning: Not enough data for velocity analysis. Need at least 30 days, got {len(data)}")
+            return False
+        
+        # Check for gaps in the data (missing trading days)
+        if len(data) > 1:
+            date_range = pd.bdate_range(start=data.index.min(), end=data.index.max())
+            expected_business_days = len(date_range)
+            actual_trading_days = len(data)
+            if actual_trading_days < expected_business_days * 0.9:  # Allow for some holidays
+                progress_print(f"⚠️  Warning: Data may have gaps. Expected ~{expected_business_days} business days, got {actual_trading_days}")
+        
+        progress_print(f"✅ Data validation complete for Velocity Signal Momentum Strategy")
+        progress_print(f"   Final data shape: {data.shape}")
+        progress_print(f"   Date range: {data.index.min()} to {data.index.max()}")
+        progress_print(f"   Trading days: {len(data)}")
+        
+        return True
