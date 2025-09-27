@@ -162,6 +162,35 @@ class Option:
                 f"expiration={self.expiration}, "
                 f"type={self.option_type.value}, price={self.last_price:.2f})")
 
+    @classmethod
+    def from_contract_and_bar(cls, contract, bar) -> 'Option':
+        """
+        Create an Option from an OptionContractDTO and OptionBarDTO.
+        
+        Args:
+            contract: The option contract metadata
+            bar: The option bar/price data
+            
+        Returns:
+            Option: Created Option instance
+        """
+        from src.common.options_dtos import OptionContractDTO, OptionBarDTO
+        
+        # Convert contract type from common.models.OptionType to the same module's OptionType
+        option_type = OptionType.CALL if contract.contract_type.value == 'call' else OptionType.PUT
+        
+        return cls(
+            ticker=contract.ticker,
+            symbol=contract.underlying_ticker,
+            strike=float(contract.strike_price.value),
+            expiration=str(contract.expiration_date),
+            option_type=option_type,
+            last_price=float(bar.close_price),
+            volume=bar.volume,
+            # Use VWAP as mid_price if available
+            mid_price=float(bar.volume_weighted_avg_price) if bar.volume_weighted_avg_price else None
+        )
+
 @dataclass(frozen=True)
 class OptionChain:
     """

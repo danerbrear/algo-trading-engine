@@ -35,7 +35,9 @@ class OptionsCacheManager(CacheManager):
     
     def get_bars_cache_path(self, symbol: str, date: date, ticker: str) -> Path:
         """Get the path for individual option bar cache file."""
-        return self.get_cache_path(f'{ticker}.pkl', 'options', symbol, date.strftime('%Y-%m-%d'), 'bars')
+        # Remove "O:" prefix from ticker for cleaner file names
+        clean_ticker = ticker[2:] if ticker.startswith('O:') else ticker
+        return self.get_cache_path(f'{clean_ticker}.pkl', 'options', symbol, date.strftime('%Y-%m-%d'), 'bars')
     
     def get_date_cache_dir(self, symbol: str, date: date) -> Path:
         """Get the cache directory for a specific date."""
@@ -90,10 +92,12 @@ class OptionsCacheManager(CacheManager):
         
         if bars_dir.exists():
             for bar_file in bars_dir.glob('*.pkl'):
-                ticker = bar_file.stem
-                bar = self.load_bar(symbol, date, ticker)
+                clean_ticker = bar_file.stem
+                # Add "O:" prefix back to ticker
+                full_ticker = f'O:{clean_ticker}' if not clean_ticker.startswith('O:') else clean_ticker
+                bar = self.load_bar(symbol, date, full_ticker)
                 if bar:
-                    bars[ticker] = bar
+                    bars[full_ticker] = bar
         
         return bars
     

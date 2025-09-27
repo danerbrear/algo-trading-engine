@@ -3,6 +3,7 @@ from datetime import datetime
 import pandas as pd
 from enum import Enum
 from src.common.models import OptionChain, Option, TreasuryRates
+from src.common.options_dtos import OptionBarDTO
 from abc import ABC, abstractmethod
 
 class Benchmark():
@@ -340,6 +341,104 @@ class Position:
             return current_net_credit
         else:
             raise ValueError(f"Invalid strategy type: {self.strategy_type}")
+    
+    def calculate_exit_price_from_bars(self, atm_bar: 'OptionBarDTO', otm_bar: 'OptionBarDTO') -> float:
+        """
+        Calculate the current exit price for a credit spread position using OptionBarDTO data.
+        
+        Args:
+            atm_bar: OptionBarDTO for the ATM option
+            otm_bar: OptionBarDTO for the OTM option
+            
+        Returns:
+            float: Current net credit/debit for the spread
+            
+        Raises:
+            ValueError: If the input options don't match the position's spread_options
+        """
+        if not self.spread_options or len(self.spread_options) != 2:
+            raise ValueError("Spread options are not set")
+            
+        atm_option, otm_option = self.spread_options
+        
+        # Verify the input bars match our spread options
+        # Check ATM option match - either ticker match OR (expiration, strike, type) match
+        if not self._options_match(atm_bar, atm_option):
+            raise ValueError(f"ATM bar doesn't match position ATM option. Expected: {atm_option.ticker} (strike: {atm_option.strike}, exp: {atm_option.expiration}, type: {atm_option.option_type.value}), Got: {atm_bar.ticker}")
+            
+        # Check OTM option match - either ticker match OR (expiration, strike, type) match
+        if not self._options_match(otm_bar, otm_option):
+            raise ValueError(f"OTM bar doesn't match position OTM option. Expected: {otm_option.ticker} (strike: {otm_option.strike}, exp: {otm_option.expiration}, type: {otm_option.option_type.value}), Got: {otm_bar.ticker}")
+
+        # Extract current prices from bar data
+        current_atm_price = float(atm_bar.close_price)
+        current_otm_price = float(otm_bar.close_price)
+
+        print(f"Current ATM price: {current_atm_price}, Current OTM price: {current_otm_price}")
+
+        # Calculate current net credit/debit based on strategy type
+        if self.strategy_type == StrategyType.CALL_CREDIT_SPREAD:
+            # For call credit spread: sell ATM call, buy OTM call
+            current_net_credit = current_atm_price - current_otm_price
+            return current_net_credit
+        elif self.strategy_type == StrategyType.PUT_CREDIT_SPREAD:
+            # For put credit spread: sell ATM put, buy OTM put
+            current_net_credit = current_atm_price - current_otm_price
+            return current_net_credit
+        else:
+            raise ValueError(f"Invalid strategy type: {self.strategy_type}")
+    
+    def _options_match(self, bar: OptionBarDTO, option: Option) -> bool:
+        """
+        Check if an OptionBarDTO matches an Option by either ticker match OR 
+        (expiration, strike, type) match.
+        
+        Args:
+            bar: OptionBarDTO to check
+            option: Option to match against
+            
+        Returns:
+            bool: True if options match, False otherwise
+        """
+        # Direct ticker match
+        if bar.ticker == option.ticker:
+            return True
+            
+        # Check expiration date match
+        bar_expiration = bar.timestamp.date()
+        option_expiration = datetime.strptime(option.expiration, '%Y-%m-%d').date()
+        if bar_expiration != option_expiration:
+            return False
+            
+        # Extract strike and type from bar ticker
+        # Format: O:SYMBOLyymmdd[C/P]strikeprice
+        try:
+            # Find the option type in the ticker
+            option_type_in_ticker = None
+            if 'C' in bar.ticker:
+                option_type_in_ticker = 'C'
+            elif 'P' in bar.ticker:
+                option_type_in_ticker = 'P'
+            
+            # Check option type match
+            if option_type_in_ticker != option.option_type.value:
+                return False
+            
+            # Extract strike price from ticker
+            # Find the position after the option type
+            type_pos = bar.ticker.find(option_type_in_ticker)
+            if type_pos == -1:
+                return False
+                
+            strike_str = bar.ticker[type_pos + 1:]
+            if len(strike_str) >= 8:
+                strike_from_ticker = float(strike_str[:8]) / 1000
+                return abs(strike_from_ticker - option.strike) < 0.001  # Allow small floating point differences
+                
+        except (ValueError, IndexError):
+            return False
+            
+        return False
     
     def get_max_risk(self):
         """

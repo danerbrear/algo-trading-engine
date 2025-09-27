@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Callable, Optional, Dict
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -21,10 +21,10 @@ class VelocitySignalMomentumStrategy(Strategy):
     """
 
     # Configurable holding period in trading days
-    holding_period = 5
+    holding_period = 4
 
-    def __init__(self, options_handler: OptionsHandler, start_date_offset: int = 60):
-        super().__init__(start_date_offset=start_date_offset)
+    def __init__(self, options_handler: OptionsHandler, start_date_offset: int = 60, stop_loss: float = None):
+        super().__init__(start_date_offset=start_date_offset, stop_loss=stop_loss)
 
         self.options_handler = options_handler
         self.new_options_handler = NewOptionsHandler(symbol='SPY')
@@ -380,6 +380,11 @@ class VelocitySignalMomentumStrategy(Strategy):
             net_credit = float(atm_bar.close_price) - float(otm_bar.close_price)
             
             if net_credit > 0:  # Only consider if we receive a credit
+                # Convert OptionContractDTO to Option using the new conversion method
+                from src.common.models import Option
+                atm_option = Option.from_contract_and_bar(atm_put, atm_bar)
+                otm_option = Option.from_contract_and_bar(otm_put, otm_bar)
+                
                 # Create test position
                 position = Position(
                     symbol=self.data.index.name if self.data.index.name else 'SPY',
@@ -388,7 +393,7 @@ class VelocitySignalMomentumStrategy(Strategy):
                     strike_price=atm_strike,
                     entry_date=date,
                     entry_price=net_credit,
-                    spread_options=[atm_put, otm_put]
+                    spread_options=[atm_option, otm_option]
                 )
                 # Set quantity for test position (1 contract)
                 position.set_quantity(1)
@@ -445,6 +450,7 @@ class VelocitySignalMomentumStrategy(Strategy):
         if position is None:
             progress_print("⚠️  Failed to create put credit spread for selected expiration")
             return
+        print("Current underlying price", current_price)
         
         # Track position entry for plotting
         self._position_entries.append(date)
@@ -471,6 +477,7 @@ class VelocitySignalMomentumStrategy(Strategy):
         
         # Fallback to cached data if live price failed or date is not current
         if self.data is None or self.data.empty or date not in self.data.index:
+            progress_print("⚠️  No underlying price data available for the date")
             return None
         try:
             return float(self.data.loc[date]['Close'])
@@ -488,8 +495,8 @@ class VelocitySignalMomentumStrategy(Strategy):
         )
 
         live_chain = self.new_options_handler.get_options_chain(date, current_price, strike_range=strike_range, expiration_range=expiration_range)
-        if live_chain and (live_chain.calls or live_chain.puts):
-            progress_print(f"✅ Successfully fetched live option chain with {len(live_chain.calls)} calls and {len(live_chain.puts)} puts")
+        if live_chain and (live_chain.get_calls() or live_chain.get_puts()):
+            progress_print(f"✅ Successfully fetched live option chain with {len(live_chain.get_calls())} calls and {len(live_chain.get_puts())} puts")
             self.options_data[date_key] = live_chain
             return live_chain
         else:
@@ -500,7 +507,7 @@ class VelocitySignalMomentumStrategy(Strategy):
         # Prefer expirations 5-10 days out, else nearest > 0 days, target 7
         progress_print(f"🔍 _select_week_expiration called for {date.strftime('%Y-%m-%d')}")
         target_days = 7
-        expirations = set(p.expiration for p in chain.puts) if chain and chain.puts else set()
+        expirations = set(str(p.expiration_date) for p in chain.get_puts()) if chain and chain.get_puts() else set()
         if not expirations:
             progress_print("⚠️  No put expirations found in option chain")
             return None
@@ -558,10 +565,17 @@ class VelocitySignalMomentumStrategy(Strategy):
     # ==== Helper methods (closing) ====
     def _try_close_positions(self, date: datetime, positions: tuple['Position', ...], remove_position: Callable[['Position'], None]):
         current_underlying_price = self._get_current_underlying_price(date)
+        progress_print(f"Current underlying price: {current_underlying_price}") 
+               
         for position in positions:
+            # Debug logging for position status
+            days_held = position.get_days_held(date) if hasattr(position, 'get_days_held') else 0
+            days_to_exp = position.get_days_to_expiration(date) if hasattr(position, 'get_days_to_expiration') else 0
+            progress_print(f"🔍 Position {position.__str__()} - Days held: {days_held}, Days to exp: {days_to_exp}")
+            
             # Assignment/expiration close
             if self._should_close_due_to_assignment(position, date):
-                progress_print(f"⏰ Position {position.__str__()} expired or near expiration")
+                print(f"⏰ Position {position.__str__()} expired or near expiration (days to exp: {days_to_exp})")
                 if current_underlying_price is not None:
                     current_volumes = self.get_current_volumes_for_position(position, date)
                     remove_position(date, position, 0.0, underlying_price=current_underlying_price, current_volumes=current_volumes)
@@ -573,10 +587,11 @@ class VelocitySignalMomentumStrategy(Strategy):
             exit_price, has_error = self._compute_exit_price(date, position)
             if not has_error and exit_price is not None:
                 exit_price = self._sanitize_exit_price(exit_price)
+                progress_print(f"💰 Calculated exit price for {position.__str__()}: {exit_price}")
 
             # Stop loss
             if self._should_close_due_to_stop(position, exit_price):
-                progress_print(f"🛑 Stop loss hit for {position.__str__()} at exit {exit_price}")
+                print(f"🛑 Stop loss hit for {position.__str__()} at exit {exit_price}")
                 current_volumes = self.get_current_volumes_for_position(position, date)
                 remove_position(date, position, exit_price if exit_price is not None else 0.0, current_volumes=current_volumes)
                 continue
@@ -584,44 +599,45 @@ class VelocitySignalMomentumStrategy(Strategy):
             # Holding period
             if self._should_close_due_to_holding(position, date, self.holding_period):
                 if exit_price is not None and not has_error:
-                    progress_print(f"📆 Holding period met for {position.__str__()} at exit {exit_price}")
+                    print(f"📆 Holding period met for {position.__str__()} at exit {exit_price} (held {days_held} days, target: {self.holding_period})")
                     current_volumes = self.get_current_volumes_for_position(position, date)
                     remove_position(date, position, exit_price, current_volumes=current_volumes)
                 else:
                     progress_print(f"⚠️  No exit price available for {position.__str__()} on {date}. Skipping holding-period close.")
+            else:
+                # Position not closed - show why
+                progress_print(f"📋 Position {position.__str__()} remains open - Days held: {days_held}/{self.holding_period}, Days to exp: {days_to_exp}")
 
     def _compute_exit_price(self, date: datetime, position: Position) -> tuple[Optional[float], bool]:
-        date_key = date.strftime('%Y-%m-%d')
-        option_chain = self.options_data.get(date_key) if self.options_data else None
-        has_error = False
-        exit_price = None
-        if option_chain is not None:
-            try:
-                exit_price = position.calculate_exit_price(option_chain)
-            except Exception as e:
-                progress_print(f"⚠️  Error calculating exit price: {e}")
-        if exit_price is None:
-            # Attempt to augment chain with missing contracts
-            if option_chain is None:
-                option_chain = OptionChain(calls=[], puts=[])
-            for option in position.spread_options:
-                try:
-                    contract = self.options_handler.get_specific_option_contract(option.strike, option.expiration, option.option_type.value, date)
-                except Exception as e:
-                    progress_print(f"⚠️  Error fetching contract for {option.strike} {option.expiration} {option.option_type.value}: {e}")
-                    contract = None
-                if contract is None:
-                    progress_print(f"⚠️  No contract found for {option.strike} {option.expiration} {option.option_type.value}")
-                    has_error = True
-                    continue
-                option_chain = option_chain.add_option(contract)
-            if not has_error:
-                try:
-                    exit_price = position.calculate_exit_price(option_chain)
-                except Exception as e:
-                    progress_print(f"⚠️  Error recalculating exit price: {e}")
-                    has_error = True
-        return exit_price, has_error
+        """Compute exit price using new_options_handler.get_option_bar and calculate_exit_price_from_bars"""
+        try:
+            if not position.spread_options or len(position.spread_options) != 2:
+                progress_print("⚠️  Position doesn't have valid spread options")
+                return None, True
+                
+            atm_option, otm_option = position.spread_options
+            progress_print(f"🔍 Attempting to get bar data for {date.strftime('%Y-%m-%d')} - ATM: {atm_option.ticker}, OTM: {otm_option.ticker}")
+            
+            # Get bar data for both options using new_options_handler
+            atm_bar = self.new_options_handler.get_option_bar(atm_option, date)
+            otm_bar = self.new_options_handler.get_option_bar(otm_option, date)
+            
+            progress_print(f"🔍 Bar data results - ATM bar: {atm_bar is not None}, OTM bar: {otm_bar is not None}")
+            
+            if not atm_bar or not otm_bar:
+                progress_print(f"⚠️  No bar data available for options on {date.strftime('%Y-%m-%d')} - ATM: {atm_bar is None}, OTM: {otm_bar is None}")
+                return None, True
+            
+            # Use the new calculate_exit_price_from_bars method
+            exit_price = position.calculate_exit_price_from_bars(atm_bar, otm_bar)
+            progress_print(f"💰 Calculated exit price: {exit_price}")
+            return exit_price, False
+            
+        except Exception as e:
+            progress_print(f"⚠️  Error calculating exit price: {e}")
+            import traceback
+            traceback.print_exc()
+            return None, True
 
     def _sanitize_exit_price(self, value: Optional[float]) -> Optional[float]:
         if value is None:

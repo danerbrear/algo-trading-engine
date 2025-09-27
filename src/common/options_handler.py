@@ -193,7 +193,6 @@ class OptionsHandler:
         # Try to load from cache first
         cached_bar = self.cache_manager.load_bar(self.symbol, date_obj, contract.ticker)
         if cached_bar:
-            progress_print(f"📁 Loaded bar data from cache for {contract.ticker} on {date_obj}")
             return cached_bar
         
         # If not in cache, fetch from API
@@ -462,7 +461,7 @@ class OptionsHandler:
                     timespan=timespan,
                     from_=date_obj.strftime('%Y-%m-%d'),
                     to=date_obj.strftime('%Y-%m-%d'),
-                    adjusted=True
+                    limit=1
                 )
                 # Convert generator to list to get actual data
                 bars_list = list(bars_response)

@@ -156,10 +156,9 @@ class VelocitySignalMomentumStrategyBuilder(StrategyBuilder):
         return self
     
     def set_stop_loss(self, stop_loss: float):
-        # Not used for this strategy but required by interface
         self._stop_loss = stop_loss
         return self
-    
+
     def set_profit_target(self, profit_target: float):
         # Not used for this strategy but required by interface
         self._profit_target = profit_target
@@ -173,7 +172,8 @@ class VelocitySignalMomentumStrategyBuilder(StrategyBuilder):
         
         strategy = VelocitySignalMomentumStrategy(
             options_handler=self._options_handler,
-            start_date_offset=self._start_date_offset
+            start_date_offset=self._start_date_offset,
+            stop_loss=self._stop_loss
         )
         
         self.reset()
@@ -210,7 +210,7 @@ class StrategyFactory:
         
         builder_class = cls._builders[strategy_name]
         builder = builder_class()
-        
+
         # Apply configuration from kwargs
         for key, value in kwargs.items():
             if hasattr(builder, f'set_{key}'):
@@ -255,7 +255,7 @@ def create_strategy_from_args(strategy_name: str, lstm_model, lstm_scaler, optio
             lstm_scaler=lstm_scaler,
             options_handler=options_handler,
             start_date_offset=kwargs.get('start_date_offset', 60),
-            stop_loss=kwargs.get('stop_loss', 0.6),
+            stop_loss=kwargs.get('stop_loss', None),
             profit_target=kwargs.get('profit_target', None)
         )
         return strategy

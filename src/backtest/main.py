@@ -310,7 +310,7 @@ class BacktestEngine:
             if self.capital < position.entry_price * position.quantity * 100:
                 raise ValueError("Not enough capital to add position")
 
-        print(f"Adding position: {position.__str__()}")
+        print(f"Adding position: {position.__str__()}\n")
         
         self.positions.append(position)
         self.total_positions += 1
@@ -403,7 +403,7 @@ class BacktestEngine:
         # Log the position closure
         print(f"   Position closed: {position.__str__()}")
         print(f"     Entry: ${position.entry_price:.2f} | Exit: ${final_exit_price:.2f}")
-        print(f"     Return: ${position_return:+.2f} | Capital: ${self.capital:.2f}")
+        print(f"     Return: ${position_return:+.2f} | Capital: ${self.capital:.2f}\n")
     
     # TODO: Only works for credit spreads since using max risk
     def _get_position_size(self, position: Position) -> int:
@@ -593,7 +593,7 @@ def parse_arguments():
                        help='Stop loss percentage')
     parser.add_argument('--profit-target', type=float, default=None,
                        help='Profit target percentage')
-    parser.add_argument('--initial-capital', type=float, default=2000,
+    parser.add_argument('--initial-capital', type=float, default=3000,
                        help='Initial capital for backtesting')
     parser.add_argument('--max-position-size', type=float, default=0.40,
                        help='Maximum position size as fraction of capital')
