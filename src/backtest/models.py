@@ -84,10 +84,12 @@ class Strategy(ABC):
         On end, execute strategy.
         """
 
-    @abstractmethod
     def recommend_open_position(self, date: datetime, current_price: float) -> Optional[Dict]:
         """
         Recommend opening a position for the given date and current price.
+        
+        This method uses the strategy's on_new_date logic to determine if a position
+        should be opened, then captures the position creation to return as a recommendation.
         
         Args:
             date: Current date
@@ -104,6 +106,48 @@ class Strategy(ABC):
                 - expiration_date: str, expiration in 'YYYY-MM-DD' format
             Returns None if no position should be opened.
         """
+        # Store the recommended position to return
+        recommended_position = None
+        
+        def capture_add_position(position: 'Position'):
+            """Capture the position created by the strategy's on_new_date logic"""
+            nonlocal recommended_position
+            recommended_position = position
+        
+        def dummy_remove_position(date: datetime, position: 'Position', exit_price: float, 
+                                 underlying_price: float = None, current_volumes: list[int] = None):
+            """Dummy remove_position function - not used in recommendation"""
+            pass
+        
+        # Use the strategy's on_new_date logic with no existing positions
+        # This will trigger the strategy to potentially create a new position
+        try:
+            self.on_new_date(date, (), capture_add_position, dummy_remove_position)
+        except Exception as e:
+            # If on_new_date fails, return None
+            return None
+        
+        # If no position was created, return None
+        if recommended_position is None:
+            return None
+        
+        # Extract the recommendation details from the created position
+        if not recommended_position.spread_options or len(recommended_position.spread_options) != 2:
+            return None
+        
+        atm_option, otm_option = recommended_position.spread_options
+        width = abs(atm_option.strike - otm_option.strike)
+        
+        return {
+            "strategy_type": recommended_position.strategy_type,
+            "legs": (atm_option, otm_option),
+            "credit": recommended_position.entry_price,
+            "width": width,
+            "probability_of_profit": 0.7,  # Default confidence for rule-based strategies
+            "confidence": 0.7,  # Default confidence for rule-based strategies
+            "expiration_date": recommended_position.expiration_date.strftime('%Y-%m-%d'),
+        }
+        
 
     @abstractmethod
     def validate_data(self, data: pd.DataFrame) -> bool:
@@ -223,16 +267,21 @@ class Position:
     def get_days_held(self, current_date: datetime) -> int:
         """
         Get the number of days held for a position from the given current_date.
+        Uses date-only comparison for trading day calculation.
         """
         if self.entry_date is not None:
-            # Ensure both datetimes are timezone-naive for consistent comparison
+            # Convert to date-only for trading day calculation
             if current_date.tzinfo is not None:
                 current_date = current_date.replace(tzinfo=None)
             if self.entry_date.tzinfo is not None:
                 entry_date = self.entry_date.replace(tzinfo=None)
             else:
                 entry_date = self.entry_date
-            return (current_date - entry_date).days
+            
+            # Use date-only comparison for trading days
+            current_date_only = current_date.date()
+            entry_date_only = entry_date.date()
+            return (current_date_only - entry_date_only).days
         else:
             raise ValueError("Entry date is not set")
         

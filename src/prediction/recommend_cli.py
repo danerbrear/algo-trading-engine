@@ -63,6 +63,7 @@ def main():
     store = JsonDecisionStore()
     open_records = store.get_open_positions(symbol=args.symbol)
     if open_records:
+        print(f"Open positions found: {len(open_records)}")
         options_handler = OptionsHandler(args.symbol, quiet_mode=not args.verbose, use_free_tier=args.free)
         strategy = build_strategy(args.strategy, options_handler, symbol=args.symbol)
         recommender = InteractiveStrategyRecommender(strategy, options_handler, store, auto_yes=args.yes)
@@ -82,6 +83,8 @@ def main():
 
         recommender.recommend_close_positions(run_date)
         return
+    
+    print(f"No open positions found, running open flow")
 
     # Prepare data around the run date to ensure the LSTM sequence/features exist
     lstm_start_date = (run_date.date() - timedelta(days=LOOKBACK_DAYS)).strftime("%Y-%m-%d")

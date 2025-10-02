@@ -301,34 +301,37 @@ class InteractiveStrategyRecommender:
         )
 
     def _compute_exit_price_with_fetch(self, position: Position, date: datetime) -> Optional[float]:
-        """Compute exit price using cached chain or by fetching missing contracts for legs."""
-        option_chain = None
-        date_key = date.strftime("%Y-%m-%d")
-        if getattr(self.strategy, "options_data", None) and date_key in self.strategy.options_data:
-            option_chain = self.strategy.options_data[date_key]
-
-        exit_price = None
-        if option_chain is not None:
-            try:
-                exit_price = position.calculate_exit_price(option_chain)
-            except Exception:
-                exit_price = None
-
-        if exit_price is None:
-            option_chain = option_chain or OptionChain()
-            for leg in position.spread_options:
-                contract = self.options_handler.get_specific_option_contract(
-                    leg.strike,
-                    leg.expiration,
-                    leg.option_type.value,
-                    date,
-                )
-                if contract:
-                    option_chain = option_chain.add_option(contract)
-            try:
-                exit_price = position.calculate_exit_price(option_chain)
-            except Exception:
-                exit_price = None
-        return exit_price
+        """Compute exit price using new_options_handler.get_option_bar and calculate_exit_price_from_bars."""
+        try:
+            if not position.spread_options or len(position.spread_options) != 2:
+                print("⚠️  Position doesn't have valid spread options")
+                return None
+                
+            atm_option, otm_option = position.spread_options
+            
+            # If the date is the current date, try to fetch previous day's close data
+            # since end-of-day data may not be available yet (processed after 4:30 PM ET)
+            fetch_date = date
+            current_date = datetime.now().date()
+            if date.date() == current_date:
+                from datetime import timedelta
+                fetch_date = date - timedelta(days=1)
+                print(f"📅 Current date detected, fetching previous day's data: {fetch_date.strftime('%Y-%m-%d')}")
+            
+            # Get bar data for both options using new_options_handler
+            atm_bar = self.strategy.new_options_handler.get_option_bar(atm_option, fetch_date)
+            otm_bar = self.strategy.new_options_handler.get_option_bar(otm_option, fetch_date)
+            
+            if not atm_bar or not otm_bar:
+                print(f"⚠️  No bar data available for options on {fetch_date.strftime('%Y-%m-%d')}")
+                return None
+            
+            # Use the new calculate_exit_price_from_bars method
+            exit_price = position.calculate_exit_price_from_bars(atm_bar, otm_bar)
+            return exit_price
+            
+        except Exception as e:
+            print(f"⚠️  Error calculating exit price: {e}")
+            return None
 
 

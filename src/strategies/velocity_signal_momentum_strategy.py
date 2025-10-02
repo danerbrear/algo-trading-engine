@@ -653,64 +653,6 @@ class VelocitySignalMomentumStrategy(Strategy):
         except Exception:
             return False
 
-    def recommend_open_position(self, date: datetime, current_price: float) -> Optional[dict]:
-        """
-        Recommend opening a position for the given date and current price.
-        
-        Args:
-            date: Current date
-            current_price: Current underlying price
-            
-        Returns:
-            dict or None: Position recommendation with required keys, None if no position should be opened
-        """
-
-        # Print price information for the last 10 days
-        print(f"🔍 Checking for buy signal for {date.strftime('%Y-%m-%d')}")
-        print(f"🔍 Current price: {current_price}")
-        print(f"🔍 Last 10 days prices: {self.data['Close'].tail(10)}")
-        
-        # Check for buy signal using velocity momentum logic
-        if not self._has_buy_signal(date):
-            return None
-            
-        # For velocity momentum, we prefer put credit spreads on buy signals
-        strategy_type = StrategyType.PUT_CREDIT_SPREAD
-        confidence = 0.7  # Fixed confidence for rule-based strategy
-        
-        # Get option chain for the date
-        chain = self._get_option_chain(date, current_price)
-        if chain is None:
-            return None
-            
-        # Select expiration (target ~1 week)
-        expiration_str = self._select_week_expiration(date)
-        progress_print(f"Selected expiration: {expiration_str}")
-        if not expiration_str:
-            return None
-            
-        # Create the position using existing logic
-        position = self._create_put_credit_spread(date, current_price)
-        progress_print(f"Created position: {position.__str__()}")
-        if position is None:
-            return None
-            
-        # Extract legs and other details
-        if not position.spread_options or len(position.spread_options) != 2:
-            return None
-            
-        atm_option, otm_option = position.spread_options
-        width = abs(atm_option.strike - otm_option.strike)
-        
-        return {
-            "strategy_type": strategy_type,
-            "legs": (atm_option, otm_option),
-            "credit": position.entry_price,
-            "width": width,
-            "probability_of_profit": confidence,
-            "confidence": confidence,
-            "expiration_date": expiration_str,
-        }
 
     def get_current_volumes_for_position(self, position: Position, date: datetime) -> list[int]:
         """
