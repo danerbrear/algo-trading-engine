@@ -433,7 +433,7 @@ class VelocitySignalMomentumStrategy(Strategy):
         if current_price is None:
             print("⚠️  Failed to get current price.")
             return
-            
+
         # Select expiration (target ~1 week)
         expiration_str = self._select_week_expiration(date)
         if not expiration_str:
@@ -566,7 +566,7 @@ class VelocitySignalMomentumStrategy(Strategy):
             days_held = position.get_days_held(date) if hasattr(position, 'get_days_held') else 0
             days_to_exp = position.get_days_to_expiration(date) if hasattr(position, 'get_days_to_expiration') else 0
             progress_print(f"🔍 Position {position.__str__()} - Days held: {days_held}, Days to exp: {days_to_exp}")
-            
+
             # Assignment/expiration close
             if self._should_close_due_to_assignment(position, date):
                 print(f"⏰ Position {position.__str__()} expired or near expiration (days to exp: {days_to_exp})")
@@ -714,23 +714,23 @@ class VelocitySignalMomentumStrategy(Strategy):
 
     def get_current_volumes_for_position(self, position: Position, date: datetime) -> list[int]:
         """
-        Fetch current date volume data for all options in a position.
+        Fetch current date volume data for all options in a position using new_options_handler.
         """
         current_volumes = []
         for option in position.spread_options:
             try:
-                fresh_option = self.options_handler.get_specific_option_contract(
-                    option.strike,
-                    option.expiration,
-                    option.option_type.value,
-                    date
-                )
-                if fresh_option and fresh_option.volume is not None:
-                    current_volumes.append(fresh_option.volume)
+                # Use new_options_handler.get_bar to get current volume data
+                bar_data = self.new_options_handler.get_option_bar(option, date)
+                
+                if bar_data and bar_data.volume is not None:
+                    current_volumes.append(bar_data.volume)
+                    progress_print(f"📡 Fetched volume data for {option.ticker} on {date.date()}: {bar_data.volume}")
                 else:
                     current_volumes.append(None)
+                    progress_print(f"⚠️  No volume data available for {option.ticker} on {date.date()}")
+                    
             except Exception as e:
-                progress_print(f"⚠️  Error fetching volume data for {option.symbol}: {e}")
+                progress_print(f"⚠️  Error fetching volume data for {option.ticker}: {e}")
                 current_volumes.append(None)
         return current_volumes
 

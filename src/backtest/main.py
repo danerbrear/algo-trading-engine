@@ -238,10 +238,11 @@ class BacktestEngine:
                 print(f"⚠️  Volume validation failed for position closure: {', '.join(failed_options)} have insufficient volume")
                 self.volume_stats = self.volume_stats.increment_rejected_closures()
                 
-                # Skip closing the position for this date due to insufficient volume
-                print(f"⚠️  Skipping position closure for {date.date()} due to insufficient volume")
-                return  # Skip closure and keep position open
-        
+                # Skip closing the position for this date due to insufficient volume unless expired
+                if position.get_days_to_expiration(date) > 0:
+                    print(f"⚠️  Skipping position closure for {date.date()} due to insufficient volume")
+                    return  # Skip closure and keep position open
+
         if position not in self.positions:
             print(f"⚠️  Warning: Position {position.__str__()} not found in positions list")
             return
@@ -491,7 +492,7 @@ def parse_arguments():
                        help='Initial capital for backtesting')
     parser.add_argument('--max-position-size', type=float, default=0.40,
                        help='Maximum position size as fraction of capital')
-    parser.add_argument('--start-date', type=str, default='2025-01-01',
+    parser.add_argument('--start-date', type=str, default='2024-08-01',
                        help='Start date for backtest (YYYY-MM-DD)')
     parser.add_argument('--end-date', type=str, default='2025-08-31',
                        help='End date for backtest (YYYY-MM-DD)')
