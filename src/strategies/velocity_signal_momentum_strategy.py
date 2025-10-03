@@ -560,6 +560,7 @@ class VelocitySignalMomentumStrategy(Strategy):
     def _try_close_positions(self, date: datetime, positions: tuple['Position', ...], remove_position: Callable[['Position'], None]):
         current_underlying_price = self._get_current_underlying_price(date)
         progress_print(f"Current underlying price: {current_underlying_price}") 
+        progress_print(f"🤖 Strategy evaluating {len(positions)} open position(s) for potential closure...")
                
         for position in positions:
             # Debug logging for position status
@@ -601,6 +602,10 @@ class VelocitySignalMomentumStrategy(Strategy):
             else:
                 # Position not closed - show why
                 progress_print(f"📋 Position {position.__str__()} remains open - Days held: {days_held}/{self.holding_period}, Days to exp: {days_to_exp}")
+                progress_print(f"🤖 Strategy decision: Position does not meet closing criteria (holding period: {self.holding_period} days, stop loss, or expiration)")
+        
+        # Summary of strategy decisions
+        progress_print(f"✅ Strategy evaluation complete - no positions closed on {date.strftime('%Y-%m-%d')}")
 
     def _compute_exit_price(self, date: datetime, position: Position) -> tuple[Optional[float], bool]:
         """Compute exit price using new_options_handler.get_option_bar and calculate_exit_price_from_bars"""

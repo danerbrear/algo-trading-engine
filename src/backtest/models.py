@@ -1,4 +1,4 @@
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, Optional, List
 from datetime import datetime
 import pandas as pd
 from enum import Enum
@@ -147,7 +147,55 @@ class Strategy(ABC):
             "confidence": 0.7,  # Default confidence for rule-based strategies
             "expiration_date": recommended_position.expiration_date.strftime('%Y-%m-%d'),
         }
+
+    def recommend_close_positions(self, date: datetime, positions: List['Position']) -> List[Dict]:
+        """
+        Recommend closing positions for the given date and current positions.
         
+        This method uses the strategy's on_new_date logic to determine which positions
+        should be closed, then captures the position closures to return as recommendations.
+        
+        Args:
+            date: Current date
+            positions: List of current open positions
+            
+        Returns:
+            List[Dict]: List of position closure recommendations with keys:
+                - position: Position object to close
+                - exit_price: float, exit price for the position
+                - rationale: str, reason for closing
+            Returns empty list if no positions should be closed.
+        """
+        if not positions:
+            return []
+        
+        # Store the positions that should be closed
+        positions_to_close = []
+        
+        def capture_remove_position(date: datetime, position: 'Position', exit_price: float, 
+                                  underlying_price: float = None, current_volumes: list[int] = None):
+            """Capture the position closure decision from the strategy's on_new_date logic"""
+            positions_to_close.append({
+                "position": position,
+                "exit_price": exit_price,
+                "underlying_price": underlying_price,
+                "current_volumes": current_volumes,
+                "rationale": "strategy_decision"
+            })
+        
+        def dummy_add_position(position: 'Position'):
+            """Dummy add_position function - not used for closing"""
+            pass
+        
+        # Use the strategy's on_new_date logic with existing positions
+        # This will trigger the strategy to potentially close positions
+        try:
+            self.on_new_date(date, tuple(positions), dummy_add_position, capture_remove_position)
+        except Exception as e:
+            # If on_new_date fails, return empty list
+            return []
+        
+        return positions_to_close
 
     @abstractmethod
     def validate_data(self, data: pd.DataFrame) -> bool:

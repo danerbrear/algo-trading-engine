@@ -49,6 +49,7 @@ def main():
     parser.add_argument("--date", help="Run date YYYY-MM-DD; defaults to today")
     parser.add_argument("--strategy", default="credit_spread", help="Strategy to run (default: credit_spread)")
     parser.add_argument("--yes", action="store_true", help="Auto-accept prompts (non-interactive)")
+    parser.add_argument("--auto-close", action="store_true", default=False, help="Automatically close any open positions recommended to close using previous day's prices")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose output (disable quiet mode)")
     parser.add_argument('-f', '--free', action='store_true', default=False,
                        help='Use free tier rate limiting (13 second timeout between API requests)')
@@ -81,7 +82,19 @@ def main():
                     f"P&L {pnl_dollars} ({pnl_pct}) | Held {s['days_held']}d  DTE {s['dte']}d"
                 )
 
-        recommender.recommend_close_positions(run_date)
+        if args.auto_close:
+            # Auto-close mode: use the existing logic but with auto_yes=True
+            print("\n🔄 Auto-close mode: Checking for positions to close...")
+            recommender.auto_yes = True  # Force auto-accept for all prompts
+            closed_records = recommender.recommend_close_positions(run_date)
+            
+            if closed_records:
+                print(f"✅ Auto-closed {len(closed_records)} position(s)")
+            else:
+                print("ℹ️  No open positions are recommended to be closed")
+        else:
+            # Normal interactive flow
+            recommender.recommend_close_positions(run_date)
         return
     
     print(f"No open positions found, running open flow")
