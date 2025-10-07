@@ -74,14 +74,56 @@ class TestVelocitySignalMomentumStrategy:
     def test_select_week_expiration_prefers_5_to_10_days(self):
         mock_options_handler = Mock()
         strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
-        date = datetime(2024, 1, 1)
-        puts = [
-            Option(ticker='SPY', symbol='S1', expiration='2024-01-03', strike=100.0, option_type=OptionType.PUT, last_price=1.0),  # 2 days
-            Option(ticker='SPY', symbol='S2', expiration='2024-01-08', strike=100.0, option_type=OptionType.PUT, last_price=1.0),  # 7 days
-            Option(ticker='SPY', symbol='S3', expiration='2024-01-20', strike=100.0, option_type=OptionType.PUT, last_price=1.0),  # 19 days
+        
+        # Mock the new_options_handler to return contracts with different expirations
+        strategy.new_options_handler = Mock()
+        from src.common.options_dtos import OptionContractDTO
+        from src.common.models import OptionType as CommonOptionType
+        
+        # Create mock contracts with different expiration dates
+        contracts = [
+            OptionContractDTO(
+                ticker='O:SPY240103P100',
+                underlying_ticker='SPY',
+                contract_type=CommonOptionType.PUT,
+                strike_price=100.0,
+                expiration_date='2024-01-03',  # 2 days
+                exercise_style='american',
+                shares_per_contract=100,
+                primary_exchange='BATO',
+                cfi='OCASPS',
+                additional_underlyings=None
+            ),
+            OptionContractDTO(
+                ticker='O:SPY240108P100',
+                underlying_ticker='SPY',
+                contract_type=CommonOptionType.PUT,
+                strike_price=100.0,
+                expiration_date='2024-01-08',  # 7 days (preferred)
+                exercise_style='american',
+                shares_per_contract=100,
+                primary_exchange='BATO',
+                cfi='OCASPS',
+                additional_underlyings=None
+            ),
+            OptionContractDTO(
+                ticker='O:SPY240120P100',
+                underlying_ticker='SPY',
+                contract_type=CommonOptionType.PUT,
+                strike_price=100.0,
+                expiration_date='2024-01-20',  # 19 days
+                exercise_style='american',
+                shares_per_contract=100,
+                primary_exchange='BATO',
+                cfi='OCASPS',
+                additional_underlyings=None
+            )
         ]
-        chain = OptionChain(calls=[], puts=puts)
-        picked = strategy._select_week_expiration(date, chain)
+        
+        strategy.new_options_handler.get_contract_list_for_date.return_value = contracts
+        
+        date = datetime(2024, 1, 1)
+        picked = strategy._select_week_expiration(date)
         assert picked == '2024-01-08'
 
     def test_get_current_underlying_price(self):
@@ -114,18 +156,45 @@ class TestVelocitySignalMomentumStrategy:
     def test_compute_exit_price_with_chain_and_missing_contracts(self):
         mock_options_handler = Mock()
         strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        
+        # Mock the new_options_handler to return bar data
+        strategy.new_options_handler = Mock()
+        from src.common.options_dtos import OptionBarDTO
+        
+        # Create mock bar data
+        from decimal import Decimal
+        atm_bar = OptionBarDTO(
+            ticker='O:SPY240115P100',
+            timestamp=datetime(2024, 1, 1),
+            open_price=Decimal('2.1'),
+            high_price=Decimal('2.2'),
+            low_price=Decimal('1.9'),
+            close_price=Decimal('2.0'),
+            volume=100,
+            volume_weighted_avg_price=Decimal('2.05'),
+            number_of_transactions=50
+        )
+        otm_bar = OptionBarDTO(
+            ticker='O:SPY240115P90',
+            timestamp=datetime(2024, 1, 1),
+            open_price=Decimal('1.1'),
+            high_price=Decimal('1.2'),
+            low_price=Decimal('0.9'),
+            close_price=Decimal('1.2'),
+            volume=100,
+            volume_weighted_avg_price=Decimal('1.15'),
+            number_of_transactions=50
+        )
+        
+        strategy.new_options_handler.get_option_bar.side_effect = lambda option, date: atm_bar if option.strike == 100.0 else otm_bar
+        
         date = datetime(2024, 1, 1)
-        # Chain initially missing the otm leg
-        atm = Option(ticker='SPY', symbol='A', expiration='2024-01-15', strike=100.0, option_type=OptionType.PUT, last_price=2.0)
-        chain = OptionChain(calls=[], puts=[atm])
-        strategy.set_data(pd.DataFrame({'Close':[100]}, index=[date]), {date.strftime('%Y-%m-%d'): chain})
-        # Position with both legs
-        otm = Option(ticker='SPY', symbol='B', expiration='2024-01-15', strike=90.0, option_type=OptionType.PUT, last_price=1.0)
+        # Position with both legs - use tickers that match the bar data
+        atm = Option(ticker='O:SPY240115P100', symbol='A', expiration='2024-01-15', strike=100.0, option_type=OptionType.PUT, last_price=2.0)
+        otm = Option(ticker='O:SPY240115P90', symbol='B', expiration='2024-01-15', strike=90.0, option_type=OptionType.PUT, last_price=1.0)
         pos = Position(symbol='SPY', expiration_date=datetime(2024,1,15), strategy_type=StrategyType.PUT_CREDIT_SPREAD, strike_price=100.0, entry_date=date, entry_price=1.0, spread_options=[atm, otm])
         pos.set_quantity(1)
-        # Mock contract fetch for missing leg
-        fetched_otm = Option(ticker='SPY', symbol='B', expiration='2024-01-15', strike=90.0, option_type=OptionType.PUT, last_price=1.2, volume=10)
-        mock_options_handler.get_specific_option_contract.return_value = fetched_otm
+        
         exit_price, has_error = strategy._compute_exit_price(date, pos)
         assert has_error is False
         # exit = atm(2.0) - otm(1.2) = 0.8
@@ -158,38 +227,48 @@ class TestVelocitySignalMomentumStrategy:
         mock_options_handler = Mock()
         strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
         
+        # Mock the new_options_handler to return contracts
+        strategy.new_options_handler = Mock()
+        from src.common.options_dtos import OptionContractDTO
+        from src.common.models import OptionType as CommonOptionType
+        
+        # Create mock contracts
+        from src.common.options_dtos import StrikePrice, ExpirationDate
+        
+        from datetime import date as date_type
+        
+        atm_contract = OptionContractDTO(
+            ticker='O:SPY240115P100',
+            underlying_ticker='SPY',
+            contract_type=CommonOptionType.PUT,
+            strike_price=StrikePrice(100.0),
+            expiration_date=ExpirationDate(date_type(2024, 1, 15)),
+            exercise_style='american',
+            shares_per_contract=100,
+            primary_exchange='BATO',
+            cfi='OCASPS',
+            additional_underlyings=None
+        )
+        
+        otm_contract = OptionContractDTO(
+            ticker='O:SPY240115P90',
+            underlying_ticker='SPY',
+            contract_type=CommonOptionType.PUT,
+            strike_price=StrikePrice(90.0),
+            expiration_date=ExpirationDate(date_type(2024, 1, 15)),
+            exercise_style='american',
+            shares_per_contract=100,
+            primary_exchange='BATO',
+            cfi='OCASPS',
+            additional_underlyings=None
+        )
+        
+        strategy.new_options_handler.get_contract_list_for_date.return_value = [atm_contract, otm_contract]
+        
         # Create mock data
         data = pd.DataFrame({
             'Close': [100, 101, 102]
         }, index=pd.date_range('2024-01-01', periods=3))
-        
-        # Create mock options data
-        atm_put = Option(
-            ticker='SPY',
-            symbol='SPY240115P100',
-            strike=100.0,
-            expiration='2024-01-15',
-            option_type=OptionType.PUT,
-            last_price=2.50,
-            volume=100
-        )
-        
-        otm_put = Option(
-            ticker='SPY',
-            symbol='SPY240115P90',
-            strike=90.0,
-            expiration='2024-01-15',
-            option_type=OptionType.PUT,
-            last_price=0.50,
-            volume=100
-        )
-        
-        option_chain = OptionChain(
-            calls=[],
-            puts=[atm_put, otm_put]
-        )
-        
-        options_data = {'2024-01-01': option_chain}
         
         # Create mock treasury data
         treasury_data = TreasuryRates(pd.DataFrame({
@@ -197,7 +276,7 @@ class TestVelocitySignalMomentumStrategy:
             'TNX_10Y': [0.04, 0.05, 0.06]
         }, index=pd.date_range('2024-01-01', periods=3)))
         
-        strategy.set_data(data, options_data, treasury_data)
+        strategy.set_data(data, {}, treasury_data)
         
         # Test creating test put credit spread
         position = strategy._create_put_credit_spread(

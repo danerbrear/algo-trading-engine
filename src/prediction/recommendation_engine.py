@@ -4,7 +4,6 @@ from datetime import datetime, timezone
 from typing import Optional, List
 
 from src.backtest.models import Position, StrategyType, Strategy
-from src.common.models import OptionChain
 from src.prediction.decision_store import (
     JsonDecisionStore,
     ProposedPositionRequest,
@@ -161,9 +160,10 @@ class InteractiveStrategyRecommender:
                 else:
                     print(f"⚠️  Could not compute exit price for position {position.__str__()}, using strategy-provided price")
             
-            # Find the corresponding decision record
+            # Find the corresponding decision record using Position equality
             for rec in open_records:
-                if self._position_from_decision(rec) == position:
+                rec_position = self._position_from_decision(rec)
+                if rec_position == position:
                     # Mark closed in the store
                     self.decision_store.mark_closed(rec.id, exit_price=exit_price, closed_at=date)
                     # Return an updated record instance for the caller

@@ -146,6 +146,25 @@ def test_recommender_close_accept(monkeypatch, tmp_path):
 
     options_handler.get_specific_option_contract.side_effect = _get_contract
 
+    # Mock strategy to recommend closing the position
+    from src.backtest.models import Position
+    mock_position = Position(
+        symbol='SPY',
+        expiration_date=datetime(2025, 9, 6),
+        strategy_type=StrategyType.CALL_CREDIT_SPREAD,
+        strike_price=500.0,
+        entry_date=datetime(2025, 7, 1),
+        entry_price=1.0,
+        spread_options=legs
+    )
+    mock_position.set_quantity(1)
+    
+    strategy.recommend_close_positions.return_value = [{
+        "position": mock_position,
+        "exit_price": 0.5,
+        "rationale": "test_close"
+    }]
+
     # Monkeypatch prompt to auto-yes
     rec_engine = InteractiveStrategyRecommender(strategy, options_handler, store, auto_yes=True)
     closed = rec_engine.recommend_close_positions(datetime(2025, 8, 8))

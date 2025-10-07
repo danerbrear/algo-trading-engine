@@ -154,6 +154,32 @@ class Option:
             moneyness=data.get('moneyness'),
         )
 
+    def __eq__(self, other) -> bool:
+        """
+        Check if two options are equal based on key attributes.
+        
+        Two options are considered equal if they have:
+        - Same ticker
+        - Same symbol
+        - Same strike price
+        - Same expiration date
+        - Same option type
+        
+        Args:
+            other: Another Option object to compare against
+            
+        Returns:
+            bool: True if options are equal, False otherwise
+        """
+        if not isinstance(other, Option):
+            return False
+            
+        return (self.ticker == other.ticker and
+                self.symbol == other.symbol and
+                self.strike == other.strike and
+                self.expiration == other.expiration and
+                self.option_type == other.option_type)
+
     def __str__(self) -> str:
         return f"{self.symbol} {self.option_type.value.upper()} {self.strike} @ {self.last_price:.2f}"
 

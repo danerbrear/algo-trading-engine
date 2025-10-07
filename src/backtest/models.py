@@ -558,6 +558,58 @@ class Position:
         net_credit = atm_option.last_price - otm_option.last_price
         return (width - net_credit) * 100
     
+    def __eq__(self, other) -> bool:
+        """
+        Check if two positions are equal based on key attributes.
+        
+        Two positions are considered equal if they have:
+        - Same symbol
+        - Same strategy type  
+        - Same strike price
+        - Same expiration date
+        - Same entry date
+        - Same exit date (if both have one)
+        - Same spread options (if both have them)
+        
+        Args:
+            other: Another Position object to compare against
+            
+        Returns:
+            bool: True if positions are equal, False otherwise
+        """
+        if not isinstance(other, Position):
+            return False
+            
+        # Compare basic attributes
+        if (self.symbol != other.symbol or
+            self.strategy_type != other.strategy_type or
+            self.strike_price != other.strike_price or
+            self.expiration_date != other.expiration_date or
+            self.entry_date != other.entry_date):
+            return False
+            
+        # Compare exit dates if both have them
+        if hasattr(self, 'exit_date') and hasattr(other, 'exit_date'):
+            if self.exit_date != other.exit_date:
+                return False
+        elif hasattr(self, 'exit_date') or hasattr(other, 'exit_date'):
+            # One has exit date, other doesn't
+            return False
+            
+        # Compare spread options if both have them
+        if self.spread_options and other.spread_options:
+            if len(self.spread_options) != len(other.spread_options):
+                return False
+            # Compare each spread option using Option's __eq__ method
+            for self_opt, other_opt in zip(self.spread_options, other.spread_options):
+                if self_opt != other_opt:
+                    return False
+        elif self.spread_options or other.spread_options:
+            # One has spread options, other doesn't
+            return False
+            
+        return True
+
     def __str__(self) -> str:
         return f"{self.strategy_type.value} {self.symbol} {self.strike_price} @ {self.entry_price:.2f} x{self.quantity} (Open, expires {self.expiration_date.strftime('%Y-%m-%d')})"
     

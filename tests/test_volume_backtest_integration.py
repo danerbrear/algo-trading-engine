@@ -81,6 +81,10 @@ class MockStrategy(Strategy):
     def on_end(self, positions, remove_position, date):
         """Mock strategy end method."""
         pass
+    
+    def validate_data(self, data):
+        """Mock validate_data method."""
+        return True
 
 
 class TestVolumeValidationIntegration:

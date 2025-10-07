@@ -108,6 +108,27 @@ class OptionsRetrieverHelper:
         return filtered
     
     @staticmethod
+    def find_contracts_by_type(
+        contracts: List[OptionContractDTO], 
+        option_type: OptionType
+    ) -> List[OptionContractDTO]:
+        """
+        Find contracts that match the given option type.
+        
+        Args:
+            contracts: List of option contracts
+            option_type: Target option type (CALL or PUT)
+            
+        Returns:
+            List[OptionContractDTO]: Filtered contracts matching option type
+        """
+        matching_contracts = []
+        for contract in contracts:
+            if contract.contract_type == option_type:
+                matching_contracts.append(contract)
+        return matching_contracts
+    
+    @staticmethod
     def find_itm_contracts(
         contracts: List[OptionContractDTO], 
         current_price: float
@@ -452,11 +473,18 @@ class OptionsRetrieverHelper:
             
             if short_leg:
                 # Find long leg (spread_width above short leg)
-                target_long_strike = short_leg.strike_price.value + Decimal(str(spread_width))
+                target_long_strike = Decimal(str(short_leg.strike_price.value)) + Decimal(str(spread_width))
                 long_leg = OptionsRetrieverHelper.find_closest_strike_contract(
                     sorted_contracts, float(target_long_strike)
                 )
-                return short_leg, long_leg
+                # Ensure long leg is different from short leg and has higher strike
+                if long_leg and long_leg != short_leg and long_leg.strike_price.value > short_leg.strike_price.value:
+                    return short_leg, long_leg
+                else:
+                    # If no suitable long leg found, try to find any contract with higher strike
+                    for contract in sorted_contracts:
+                        if contract != short_leg and contract.strike_price.value > short_leg.strike_price.value:
+                            return short_leg, contract
         
         else:  # PUT
             # For put credit spread: short ATM, long OTM
@@ -470,13 +498,48 @@ class OptionsRetrieverHelper:
             
             if short_leg:
                 # Find long leg (spread_width below short leg)
-                target_long_strike = short_leg.strike_price.value - Decimal(str(spread_width))
+                target_long_strike = Decimal(str(short_leg.strike_price.value)) - Decimal(str(spread_width))
                 long_leg = OptionsRetrieverHelper.find_closest_strike_contract(
                     sorted_contracts, float(target_long_strike)
                 )
-                return short_leg, long_leg
+                # Ensure long leg is different from short leg and has lower strike
+                if long_leg and long_leg != short_leg and long_leg.strike_price.value < short_leg.strike_price.value:
+                    return short_leg, long_leg
+                else:
+                    # If no suitable long leg found, try to find any contract with lower strike
+                    for contract in sorted_contracts:
+                        if contract != short_leg and contract.strike_price.value < short_leg.strike_price.value:
+                            return short_leg, contract
         
         return None, None
+    
+    @staticmethod
+    def calculate_max_profit_loss(
+        short_leg: OptionContractDTO,
+        long_leg: OptionContractDTO,
+        net_credit: float
+    ) -> Tuple[float, float]:
+        """
+        Calculate maximum profit and loss for a credit spread.
+        
+        Args:
+            short_leg: Short leg contract
+            long_leg: Long leg contract
+            net_credit: Net credit received
+            
+        Returns:
+            Tuple of (max_profit, max_loss)
+        """
+        # Calculate spread width
+        spread_width = abs(short_leg.strike_price.value - long_leg.strike_price.value)
+        
+        # Max profit = net credit received
+        max_profit = net_credit
+        
+        # Max loss = spread width - net credit
+        max_loss = spread_width - net_credit
+        
+        return max_profit, max_loss
     
     @staticmethod
     def calculate_credit_spread_premium(
@@ -516,9 +579,9 @@ class OptionsRetrieverHelper:
         Returns:
             Tuple of (max_profit, max_loss)
         """
-        spread_width = OptionsRetrieverHelper.calculate_spread_width(short_leg, long_leg)
+        spread_width = abs(short_leg.strike_price.value - long_leg.strike_price.value)
         max_profit = net_credit
-        max_loss = spread_width - net_credit
+        max_loss = float(spread_width) - net_credit
         return max_profit, max_loss
     
     @staticmethod
