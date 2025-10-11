@@ -1,13 +1,10 @@
 import tensorflow as tf
-import keras
 from keras import Sequential
 from keras.layers import LSTM, Dense, Dropout, Input, Bidirectional, LayerNormalization
 from keras.optimizers import Adam
-from keras.metrics import SparseCategoricalAccuracy
 from keras.callbacks import EarlyStopping
 from keras.regularizers import l2
 import numpy as np
-import pandas as pd
 from sklearn.preprocessing import StandardScaler
 from .config import (
     EPOCHS, BATCH_SIZE, VALIDATION_SPLIT, LSTM_UNITS, 

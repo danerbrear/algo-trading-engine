@@ -1,9 +1,9 @@
 from datetime import datetime
-from typing import Callable
+from typing import Callable, Optional
 import pandas as pd
 
 from src.backtest.models import Position, Strategy, StrategyType
-from src.common.models import Option, OptionType, OptionChain
+from src.common.models import Option, OptionType
 from src.model.options_handler import OptionsHandler
 from src.common.progress_tracker import progress_print
 
@@ -15,7 +15,7 @@ class CreditSpreadStrategy(Strategy):
     Stop Loss: 60%
     """
 
-    holding_period = 15
+    holding_period = 25
 
     def __init__(self, lstm_model, lstm_scaler, options_handler: OptionsHandler = None, start_date_offset: int = 0):
         super().__init__(stop_loss=0.6, start_date_offset=start_date_offset)
@@ -35,7 +35,7 @@ class CreditSpreadStrategy(Strategy):
         if date.date() < self.data.index[self.start_date_offset].date():
             return
         
-        super().on_new_date(date, positions, add_position, remove_position)
+        super().on_new_date(date, positions)
 
         has_error = False
 
@@ -109,9 +109,12 @@ class CreditSpreadStrategy(Strategy):
                 try:
                     if position.get_days_to_expiration(date) < 1:
                         print(f"Position {position.__str__()} expired or near expiration")
-                        underlying_price = self.data.loc[date]['Close']
-                        print(f"    Underlying price: {underlying_price}")
-                        remove_position(date, position, exit_price, underlying_price)
+                        underlying_price = self._get_current_underlying_price(date)
+                        if underlying_price is not None:
+                            print(f"    Underlying price: {underlying_price}")
+                            remove_position(date, position, exit_price, underlying_price)
+                        else:
+                            print("    Failed to get underlying price")
                     elif (self._profit_target_hit(position, exit_price) or self._stop_loss_hit(position, exit_price)):
                         print(f"Profit target or stop loss hit for {position.__str__()}")
                         print(f"    Exit price: {exit_price} for {position.__str__()}")
@@ -136,7 +139,6 @@ class CreditSpreadStrategy(Strategy):
         """
         On end, execute strategy with enhanced current date volume validation.
         """
-        super().on_end(positions, remove_position, date)
         for position in positions:
             try:
                 # Calculate the return for this position
@@ -164,33 +166,23 @@ class CreditSpreadStrategy(Strategy):
         
         print(f"   🔍 Evaluating spreads for {strategy_type.value} strategy...")
         
-        # Get available expirations from options handler
+        # Get available expirations from options handler (lightweight approach)
         if not self.options_handler:
             print("   ⚠️  No options handler available")
             raise Exception("No options handler available")
             
-        # Get the option chain for the current date to extract available expirations
+        # Get available expiration dates without fetching full option chains
         try:
-            chain_data = self.options_handler._get_option_chain_with_cache(date, current_price)
-            if not chain_data or (not chain_data.calls and not chain_data.puts):
-                print("   ⚠️  No option chain data available")
-                raise Exception("No option chain data available")
-                
-            # Extract unique expiration dates from the chain data
-            expirations = set()
-            for option in chain_data.calls:
-                expirations.add(option.expiration)
-            for option in chain_data.puts:
-                expirations.add(option.expiration)
-                        
+            expirations = self.options_handler.get_available_expirations(date, min_days, max_days)
+            
             if not expirations:
-                print("   ⚠️  No expiration dates found in option chain")
+                print("   ⚠️  No expiration dates found in target range")
                 return None
                 
             print(f"   📅 Available expirations: {len(expirations)} total")
             
         except Exception as e:
-            print(f"   ⚠️  Error getting option chain: {e}")
+            print(f"   ⚠️  Error getting expiration dates: {e}")
             raise e
         
         for expiry_str in expirations:
@@ -200,11 +192,7 @@ class CreditSpreadStrategy(Strategy):
                 continue
                 
             print(f"   📊 Evaluating {expiry_str} ({days_to_expiry} days)...")
-            
-            # Filter options for this expiration
-            calls = [opt for opt in chain_data.calls if opt.expiration == expiry_str]
-            puts = [opt for opt in chain_data.puts if opt.expiration == expiry_str]
-            
+
             for width in [5, 7, 8, 10, 12, 15]:
                 total_evaluated += 1
 
@@ -244,15 +232,21 @@ class CreditSpreadStrategy(Strategy):
                 if max_risk <= 0 or credit <= 0:
                     total_rejected += 1
                     continue
-                    
+
                 risk_reward = credit / max_risk
                 prob_profit = self._estimate_probability_of_profit(confidence, direction, width, atm_strike, otm_strike, current_price, days_to_expiry)
                 
-                # Calculate minimum required risk/reward ratio
-                min_risk_reward = (1 - prob_profit) / prob_profit if prob_profit > 0 else float('inf')
+                # Calculate expected value and minimum required risk/reward ratio
+                expected_value = (credit * prob_profit) - (max_risk * (1 - prob_profit))
                 
-                # Only include spreads that meet the minimum risk/reward requirement
-                if risk_reward >= min_risk_reward:
+                # Minimum R/R ratio based on probability of profit
+                # For credit spreads, we want at least 1:1 R/R for 50% probability
+                # Higher probability trades can accept lower R/R ratios
+                min_risk_reward = 1.0 / prob_profit if prob_profit > 0 else float('inf')
+                
+                # Only include spreads that are profitable (positive expected value)
+                # and meet minimum risk/reward requirements
+                if expected_value > 0 and risk_reward >= min_risk_reward:
                     candidates.append({
                         'expiry': expiry_date,
                         'width': width,
@@ -265,25 +259,26 @@ class CreditSpreadStrategy(Strategy):
                         'risk_reward': risk_reward,
                         'prob_profit': prob_profit,
                         'min_risk_reward': min_risk_reward,
+                        'expected_value': expected_value,
                         'days': days_to_expiry
                     })
-                    print(f"      ✅ {width}pt spread: R/R={risk_reward:.2f}, Prob={prob_profit:.1%}, Min={min_risk_reward:.2f}")
+                    print(f"      ✅ {width}pt spread: R/R={risk_reward:.2f}, Prob={prob_profit:.1%}, EV=${expected_value:.2f}, Min={min_risk_reward:.2f}")
                 else:
                     total_rejected += 1
-                    print(f"      ❌ {width}pt spread: R/R={risk_reward:.2f} < Min={min_risk_reward:.2f} (Prob={prob_profit:.1%})")
+                    print(f"      ❌ {width}pt spread: R/R={risk_reward:.2f} < Min={min_risk_reward:.2f} or EV=${expected_value:.2f} <= 0 (Prob={prob_profit:.1%})")
         
         print(f"   📈 Evaluation Summary:")
         print(f"      • Total spreads evaluated: {total_evaluated}")
         print(f"      • Spreads rejected: {total_rejected}")
         print(f"      • Spreads meeting criteria: {len(candidates)}")
         
-        # Sort by risk/reward ascending (minimize), then probability of profit descending (maximize)
+        # Sort by expected value descending (maximize), then risk/reward descending (maximize)
         if candidates:
-            candidates.sort(key=lambda x: (x['risk_reward'], -x['prob_profit']))
+            candidates.sort(key=lambda x: (-x.get('expected_value', 0), -x['risk_reward'], -x['prob_profit']))
             best = candidates[0]
             print(f"   🏆 Best spread selected:")
             print(f"      • {best['width']}pt spread expiring {best['expiry'].strftime('%Y-%m-%d')}")
-            print(f"      • Risk/Reward: 1:{best['risk_reward']:.2f}, Probability: {best['prob_profit']:.1%}")
+            print(f"      • Risk/Reward: 1:{best['risk_reward']:.2f}, Probability: {best['prob_profit']:.1%}, Expected Value: ${best['expected_value']:.2f}")
             return best
         else:
             print(f"   ❌ No spreads meet the minimum criteria")
@@ -468,6 +463,26 @@ class CreditSpreadStrategy(Strategy):
             print(f"Error making LSTM prediction: {e}")
             raise ValueError(f"Error making LSTM prediction: {e}")
 
+    def map_prediction_to_strategy_type(self, prediction: dict) -> Optional[StrategyType]:
+        """
+        Map prediction integer to StrategyType enum.
+        
+        Args:
+            prediction: Dictionary containing 'strategy' key with integer value
+            
+        Returns:
+            StrategyType or None: Mapped strategy type, None for hold (strategy=0)
+        """
+        strategy_int = prediction.get('strategy')
+        
+        if strategy_int == 1:
+            return StrategyType.CALL_CREDIT_SPREAD
+        elif strategy_int == 2:
+            return StrategyType.PUT_CREDIT_SPREAD
+        else:
+            # strategy_int == 0 or invalid values return None (no position to open)
+            return None
+
     def _create_call_credit_spread_from_chain(self, date: datetime, prediction: dict) -> Position:
         """Create a call credit spread using the options chain data"""
         if not self.options_data:
@@ -479,7 +494,10 @@ class CreditSpreadStrategy(Strategy):
             print(f"⚠️  No options data for {date_key}")
             return None
             
-        current_price = self.data.loc[date]['Close']
+        current_price = self._get_current_underlying_price(date)
+        if current_price is None:
+            print("⚠️  Failed to get current price")
+            return None
         
         confidence = prediction['confidence'] if prediction else 0.5
         
@@ -534,7 +552,10 @@ class CreditSpreadStrategy(Strategy):
             print(f"⚠️  No options data for {date_key}")
             return None
             
-        current_price = self.data.loc[date]['Close']
+        current_price = self._get_current_underlying_price(date)
+        if current_price is None:
+            print("⚠️  Failed to get current price")
+            return None
         
         if prediction['confidence'] is None:
             print("⚠️  No prediction available")
@@ -657,6 +678,83 @@ class CreditSpreadStrategy(Strategy):
             print(f"⚠️  No volume data available for {option.symbol}")
             return None
 
+    def recommend_open_position(self, date: datetime, current_price: float) -> Optional[dict]:
+        """
+        Recommend opening a position for the given date and current price.
+        
+        Args:
+            date: Current date
+            current_price: Current underlying price
+            
+        Returns:
+            dict or None: Position recommendation with required keys, None if no position should be opened
+        """
+        # Get model prediction
+        prediction = self._make_prediction(date)
+        if prediction is None:
+            return None
+            
+        # Map prediction to strategy type
+        strategy_type = self.map_prediction_to_strategy_type(prediction)
+        if strategy_type is None:
+            return None
+        print(f"****Strategy type: {strategy_type.value}****")
+            
+        confidence = float(prediction.get("confidence", 0.5))
+        
+        # Find best spread
+        best = self._find_best_spread(current_price, strategy_type, confidence, date)
+        if not best:
+            print("No suitable spread found")
+            return None
+
+        # Ensure volume for both legs
+        atm_option = best["atm_option"]
+        otm_option = best["otm_option"]
+        atm_option = self._ensure_volume_data(atm_option, date)
+        otm_option = self._ensure_volume_data(otm_option, date)
+        if atm_option is None or otm_option is None:
+            print("Could not fetch volume data for options")
+            return None
+
+        # Return standardized recommendation dict
+        return {
+            "strategy_type": strategy_type,
+            "legs": (atm_option, otm_option),
+            "credit": float(best["credit"]),
+            "width": float(best["width"]),
+            "probability_of_profit": float(best.get("prob_profit", confidence)),
+            "confidence": confidence,
+            "expiration_date": best["expiry"].strftime("%Y-%m-%d"),
+        }
+
+    def _get_current_underlying_price(self, date: datetime) -> Optional[float]:
+        """Get current underlying price, using live price if date is current date."""
+        # Check if the specified date is the current date
+        current_date = datetime.now().date()
+        if date.date() == current_date:
+            # Use live price from DataRetriever if available
+            if hasattr(self, 'data_retriever') and self.data_retriever:
+                live_price = self.data_retriever.get_live_price()
+                if live_price is not None:
+                    return live_price
+            elif hasattr(self.options_handler, 'symbol'):
+                # Fallback: create a temporary DataRetriever for live price
+                from src.common.data_retriever import DataRetriever
+                temp_retriever = DataRetriever(symbol=self.options_handler.symbol, use_free_tier=True, quiet_mode=True)
+                temp_retriever.options_handler = self.options_handler
+                live_price = temp_retriever.get_live_price()
+                if live_price is not None:
+                    return live_price
+        
+        # Fallback to cached data if live price failed or date is not current
+        if self.data is None or self.data.empty or date not in self.data.index:
+            return None
+        try:
+            return float(self.data.loc[date]['Close'])
+        except Exception:
+            return None
+
     def get_current_volumes_for_position(self, position: Position, date: datetime) -> list[int]:
         """
         Fetch current date volume data for all options in a position.
@@ -692,3 +790,80 @@ class CreditSpreadStrategy(Strategy):
                 current_volumes.append(None)
         
         return current_volumes
+
+    def validate_data(self, data: pd.DataFrame) -> bool:
+        """
+        Validate the data for the Credit Spread Strategy.
+        
+        This strategy requires:
+        - Basic OHLCV data
+        - LSTM model features (technical indicators, market state, calendar features)
+        - Options data for spread creation
+        
+        Args:
+            data: DataFrame with market data and features
+            
+        Returns:
+            bool: True if data is valid for this strategy, False otherwise
+        """
+        progress_print(f"\n🔍 Validating data for Credit Spread Strategy...")
+        progress_print(f"   Data shape: {data.shape}")
+        
+        # Check if the data has the required columns for credit spread strategy
+        required_columns = [
+            'Open', 'High', 'Low', 'Close', 'Volume',  # Basic OHLCV data
+            'Returns', 'Log_Returns', 'Volatility',     # Basic technical features
+            'RSI', 'MACD_Hist', 'Volume_Ratio',         # Technical indicators
+            'Market_State',                             # HMM market state
+            'Put_Call_Ratio', 'Option_Volume_Ratio',    # Options features
+            'Days_Until_Next_CPI', 'Days_Since_Last_CPI',  # Calendar features
+            'Days_Until_Next_CC', 'Days_Since_Last_CC',
+            'Days_Until_Next_FFR', 'Days_Since_Last_FFR'
+        ]
+        
+        missing_columns = [col for col in required_columns if col not in data.columns]
+        if missing_columns:
+            progress_print(f"⚠️  Warning: Missing required columns: {missing_columns}")
+            progress_print(f"   Available columns: {list(data.columns)}")
+            return False
+        else:
+            progress_print(f"✅ All required columns present")
+        
+        # Check if data has datetime index
+        if not isinstance(data.index, pd.DatetimeIndex):
+            progress_print("❌ Error: Data must have a datetime index for backtesting")
+            return False
+        
+        # Check if we have enough data for LSTM model (need at least sequence_length days)
+        if self.lstm_model and hasattr(self.lstm_model, 'sequence_length'):
+            min_required_days = self.lstm_model.sequence_length
+            if len(data) < min_required_days:
+                progress_print(f"⚠️  Warning: Not enough data for LSTM model. Need at least {min_required_days} days, got {len(data)}")
+                return False
+        else:
+            # Fallback: need at least 50 days for technical indicators
+            if len(data) < 50:
+                progress_print(f"⚠️  Warning: Not enough data for technical analysis. Need at least 50 days, got {len(data)}")
+                return False
+        
+        # Check for gaps in the data (missing trading days)
+        if len(data) > 1:
+            date_range = pd.bdate_range(start=data.index.min(), end=data.index.max())
+            expected_business_days = len(date_range)
+            actual_trading_days = len(data)
+            if actual_trading_days < expected_business_days * 0.9:  # Allow for some holidays
+                progress_print(f"⚠️  Warning: Data may have gaps. Expected ~{expected_business_days} business days, got {actual_trading_days}")
+        
+        # Check for missing values in critical columns
+        critical_columns = ['Close', 'Volume', 'Market_State']
+        for col in critical_columns:
+            if col in data.columns and data[col].isnull().any():
+                null_count = data[col].isnull().sum()
+                progress_print(f"⚠️  Warning: {null_count} missing values found in {col}")
+        
+        progress_print(f"✅ Data validation complete for Credit Spread Strategy")
+        progress_print(f"   Final data shape: {data.shape}")
+        progress_print(f"   Date range: {data.index.min()} to {data.index.max()}")
+        progress_print(f"   Trading days: {len(data)}")
+        
+        return True

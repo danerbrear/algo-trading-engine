@@ -2,9 +2,8 @@
 Tests for enhanced current date volume validation in strategy.
 """
 
-import pytest
 from datetime import datetime
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 from src.strategies.credit_spread_minimal import CreditSpreadStrategy
 from src.backtest.models import Position, StrategyType

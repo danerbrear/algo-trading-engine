@@ -1,18 +1,15 @@
 from __future__ import annotations
 
-from dataclasses import asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
 
-from src.backtest.models import Position, StrategyType
-from src.common.models import Option, OptionChain
+from src.backtest.models import Position, StrategyType, Strategy
 from src.prediction.decision_store import (
     JsonDecisionStore,
-    ProposedPositionDTO,
-    DecisionRecord,
+    ProposedPositionRequest,
+    DecisionResponse,
     generate_decision_id,
 )
-
 
 class InteractiveStrategyRecommender:
     """Produce open/close recommendations and capture user decisions.
@@ -23,7 +20,7 @@ class InteractiveStrategyRecommender:
     `get_current_volumes_for_position`).
     """
 
-    def __init__(self, strategy, options_handler, decision_store: JsonDecisionStore, auto_yes: bool = False):
+    def __init__(self, strategy: Strategy, options_handler, decision_store: JsonDecisionStore, auto_yes: bool = False):
         self.strategy = strategy
         self.options_handler = options_handler
         self.decision_store = decision_store
@@ -37,90 +34,90 @@ class InteractiveStrategyRecommender:
 
     # ---------- Open recommendation ----------
 
-    def recommend_open_position(self, date: datetime) -> Optional[DecisionRecord]:
+    def recommend_open_position(self, date: datetime) -> Optional[DecisionResponse]:
         """Use the strategy to propose an opening trade for the date and capture decision."""
         # Require strategy data
         if getattr(self.strategy, "data", None) is None:
+            print("No data found for strategy")
             return None
 
         # Determine current price
-        try:
-            current_price = float(self.strategy.data.loc[date]["Close"])
-        except Exception:
-            # try normalize date
+        current_price = None
+        
+        # Check if the specified date is the current date
+        current_date = datetime.now().date()
+        if date.date() == current_date:
+            # Use live price from Polygon API
+            print(f"📡 Fetching live price for {date.date()} (current date)")
+            if hasattr(self.strategy, 'data_retriever') and self.strategy.data_retriever:
+                current_price = self.strategy.data_retriever.get_live_price()
+            elif hasattr(self.options_handler, 'symbol'):
+                # Fallback: create a temporary DataRetriever for live price
+                from src.common.data_retriever import DataRetriever
+                temp_retriever = DataRetriever(symbol=self.options_handler.symbol, use_free_tier=True, quiet_mode=True)
+                temp_retriever.options_handler = self.options_handler
+                current_price = temp_retriever.get_live_price()
+            
+            if current_price is None:
+                print("⚠️ Could not fetch live price, falling back to cached data")
+        
+        # Fallback to cached data if live price failed or date is not current
+        if current_price is None:
             try:
-                current_price = float(self.strategy.data.loc[date.date()]["Close"])  # type: ignore[index]
+                current_price = float(self.strategy.data.loc[date]["Close"])
             except Exception:
-                return None
+                # try normalize date
+                try:
+                    current_price = float(self.strategy.data.loc[date.date()]["Close"])  # type: ignore[index]
+                except Exception:
+                    print(f"Could not find current price for date {date.date()}")
+                    if self.strategy.data is not None and len(self.strategy.data) > 0:
+                        print(f"Available data range: {self.strategy.data.index[0].date()} to {self.strategy.data.index[-1].date()}")
+                        print(f"Total data points: {len(self.strategy.data)}")
+                    else:
+                        print("Strategy data is empty or None")
+                    return None
 
-        # Get model prediction if available
-        strategy_type: Optional[StrategyType] = None
-        confidence: float = 0.5
-        if hasattr(self.strategy, "_make_prediction"):
-            pred = self.strategy._make_prediction(date)  # noqa: SLF001 (intentional use of internal method per design)
-            if pred is None:
-                return None
-            # Map integer label to StrategyType used by credit spreads
-            label = int(pred.get("strategy", 0))
-            confidence = float(pred.get("confidence", 0.5))
-            if label == 1:
-                strategy_type = StrategyType.CALL_CREDIT_SPREAD
-            elif label == 2:
-                strategy_type = StrategyType.PUT_CREDIT_SPREAD
-            else:
-                # Hold
-                return None
-        else:
-            # No prediction available; cannot propose
+        # Delegate to strategy's recommend_open_position method
+        recommendation = self.strategy.recommend_open_position(date, current_price)
+        if recommendation is None:
+            print("No recommendation found for strategy")
             return None
 
-        # Find best spread
-        if not hasattr(self.strategy, "_find_best_spread"):
-            return None
-
-        best = self.strategy._find_best_spread(  # noqa: SLF001
-            current_price,
-            strategy_type,
-            confidence,
-            date,
-        )
-        if not best:
-            return None
-
-        # Ensure volume for both legs
-        atm_option: Option = best["atm_option"]
-        otm_option: Option = best["otm_option"]
-        if hasattr(self.strategy, "_ensure_volume_data"):
-            atm_option = self.strategy._ensure_volume_data(atm_option, date)  # noqa: SLF001
-            otm_option = self.strategy._ensure_volume_data(otm_option, date)  # noqa: SLF001
-            if atm_option is None or otm_option is None:  # type: ignore[truthy-bool]
-                return None
+        # Extract recommendation details
+        strategy_type = recommendation["strategy_type"]
+        legs = recommendation["legs"]
+        credit = recommendation["credit"]
+        width = recommendation["width"]
+        probability_of_profit = recommendation["probability_of_profit"]
+        confidence = recommendation["confidence"]
+        expiration_date = recommendation["expiration_date"]
 
         # Build proposal DTO
-        proposal = ProposedPositionDTO(
+        proposal = ProposedPositionRequest(
             symbol=self.options_handler.symbol,
             strategy_type=strategy_type,
-            legs=(atm_option, otm_option),
-            credit=float(best["credit"]),
-            width=float(best["width"]),
-            probability_of_profit=float(best.get("prob_profit", confidence)),
-            confidence=confidence,
-            expiration_date=best["expiry"].strftime("%Y-%m-%d"),
-            created_at=datetime.utcnow().isoformat(),
+            legs=legs,
+            credit=float(credit),
+            width=float(width),
+            probability_of_profit=float(probability_of_profit),
+            confidence=float(confidence),
+            expiration_date=expiration_date,
+            created_at=datetime.now(timezone.utc).isoformat(),
         )
 
         # Prompt user
-        summary = self._format_open_summary(proposal, best)
+        summary = self._format_open_summary(proposal, recommendation)
         if not self.prompt(f"Open recommendation:\n{summary}\nOpen this position?"):
             return None
 
-        decided_at = datetime.utcnow().isoformat()
-        record = DecisionRecord(
+        decided_at = datetime.now(timezone.utc).isoformat()
+        record = DecisionResponse(
             id=generate_decision_id(proposal, decided_at),
             proposal=proposal,
             outcome="accepted",
             decided_at=decided_at,
-            rationale=f"model_confidence={proposal.confidence:.2f}; risk_reward={best.get('risk_reward')}",
+            rationale=f"strategy_confidence={proposal.confidence:.2f}",
             quantity=1,
             entry_price=proposal.credit,
         )
@@ -129,74 +126,60 @@ class InteractiveStrategyRecommender:
 
     # ---------- Close recommendation ----------
 
-    def recommend_close_positions(self, date: datetime) -> List[DecisionRecord]:
+    def recommend_close_positions(self, date: datetime) -> List[DecisionResponse]:
         """Check open decisions and recommend closure when rules trigger."""
         open_records = self.decision_store.get_open_positions()
-        closed_records: List[DecisionRecord] = []
+        closed_records: List[DecisionResponse] = []
 
+        if not open_records:
+            return closed_records
+
+        # Convert open records to Position objects
+        strategy_positions = []
         for rec in open_records:
             position = self._position_from_decision(rec)
+            strategy_positions.append(position)
 
-            # Calculate exit price
-            exit_price = self._compute_exit_price_with_fetch(position, date)
+        # Use the strategy's recommend_close_positions method
+        try:
+            close_recommendations = self.strategy.recommend_close_positions(date, strategy_positions)
+        except Exception as e:
+            print(f"Error in strategy recommend_close_positions: {e}")
+            raise e
 
-            if exit_price is None:
-                continue
-
-            # Evaluate rules
-            rationale_parts: List[str] = []
-            should_close = False
-
-            if position.get_days_to_expiration(date) < 1:
-                should_close = True
-                rationale_parts.append("expiration proximity")
-            elif hasattr(self.strategy, "_profit_target_hit") and self.strategy._profit_target_hit(position, exit_price):  # noqa: SLF001
-                should_close = True
-                rationale_parts.append("profit target hit")
-            elif hasattr(self.strategy, "_stop_loss_hit") and self.strategy._stop_loss_hit(position, exit_price):  # noqa: SLF001
-                should_close = True
-                rationale_parts.append("stop loss hit")
-            elif hasattr(self.strategy, "holding_period") and position.get_days_held(date) >= getattr(self.strategy, "holding_period", 15):
-                should_close = True
-                rationale_parts.append("holding period reached")
-
-            # Enhanced volume validation (optional): fetch and report
-            volume_note = None
-            if hasattr(self.strategy, "get_current_volumes_for_position"):
-                try:
-                    vols = self.strategy.get_current_volumes_for_position(position, date)
-                    if vols and any(v is None or v <= 0 for v in vols):
-                        volume_note = "volume: missing/low"
-                    else:
-                        volume_note = "volume: ok"
-                except Exception:
-                    volume_note = "volume: error"
-
-            if not should_close:
-                continue
-
-            rationale = "; ".join(rationale_parts + ([volume_note] if volume_note else []))
-
-            # Prompt user
-            msg = self._format_close_summary(position, exit_price, rationale)
-            if not self.prompt(f"Close recommendation:\n{msg}\nClose this position?"):
-                continue
-
-            # Mark closed in the store
-            self.decision_store.mark_closed(rec.id, exit_price=exit_price, closed_at=date)
-            # Return an updated record instance for the caller
-            updated = DecisionRecord(
-                id=rec.id,
-                proposal=rec.proposal,
-                outcome=rec.outcome,
-                decided_at=rec.decided_at,
-                rationale=rationale,
-                quantity=rec.quantity,
-                entry_price=rec.entry_price,
-                exit_price=exit_price,
-                closed_at=date.isoformat(),
-            )
-            closed_records.append(updated)
+        # Process the strategy's recommendations
+        for recommendation in close_recommendations:
+            position = recommendation["position"]
+            exit_price = recommendation["exit_price"]
+            
+            # If auto_yes is false, use _get_exit_price_from_user_prompts to get exit price from prompts
+            if not self.auto_yes:
+                computed_exit_price = self._get_exit_price_from_user_prompts(position, date)
+                if computed_exit_price is not None:
+                    exit_price = computed_exit_price
+                else:
+                    print(f"⚠️  Could not compute exit price for position {position.__str__()}, using strategy-provided price")
+            
+            # Find the corresponding decision record using Position equality
+            for rec in open_records:
+                rec_position = self._position_from_decision(rec)
+                if rec_position == position:
+                    # Mark closed in the store
+                    self.decision_store.mark_closed(rec.id, exit_price=exit_price, closed_at=date)
+                    # Return an updated record instance for the caller
+                    updated = DecisionResponse(
+                        id=rec.id,
+                        proposal=rec.proposal,
+                        outcome=rec.outcome,
+                        decided_at=rec.decided_at,
+                        rationale=recommendation.get("rationale", "strategy_decision"),
+                        quantity=rec.quantity,
+                        entry_price=rec.entry_price,
+                        exit_price=exit_price,
+                        closed_at=date.isoformat(),
+                    )
+                    closed_records.append(updated)
+                    break
 
         return closed_records
 
@@ -208,7 +191,8 @@ class InteractiveStrategyRecommender:
         statuses: List[dict] = []
         for rec in self.decision_store.get_open_positions():
             position = self._position_from_decision(rec)
-            exit_price = self._compute_exit_price_with_fetch(position, date)
+            # For status display, always use auto mode (no prompts)
+            exit_price = self._get_exit_price_for_status(position, date)
             if exit_price is None:
                 continue
             try:
@@ -248,7 +232,7 @@ class InteractiveStrategyRecommender:
         answer = input(f"{message} [y/N]: ").strip().lower()
         return answer in {"y", "yes"}
 
-    def _position_from_decision(self, rec: DecisionRecord) -> Position:
+    def _position_from_decision(self, rec: DecisionResponse) -> Position:
         # Determine representative strike for display based on strategy type
         legs = list(rec.proposal.legs)
         strike = legs[0].strike if legs else 0.0
@@ -271,7 +255,7 @@ class InteractiveStrategyRecommender:
         position.set_quantity(int(rec.quantity) if rec.quantity is not None else 1)
         return position
 
-    def _format_open_summary(self, proposal: ProposedPositionDTO, best: dict) -> str:
+    def _format_open_summary(self, proposal: ProposedPositionRequest, best: dict) -> str:
         legs_str = ", ".join(
             [f"{leg.option_type.value.upper()} {int(leg.strike)} exp {leg.expiration}" for leg in proposal.legs]
         )
@@ -302,35 +286,94 @@ class InteractiveStrategyRecommender:
             f"Rationale: {rationale}"
         )
 
-    def _compute_exit_price_with_fetch(self, position: Position, date: datetime) -> Optional[float]:
-        """Compute exit price using cached chain or by fetching missing contracts for legs."""
-        option_chain = None
-        date_key = date.strftime("%Y-%m-%d")
-        if getattr(self.strategy, "options_data", None) and date_key in self.strategy.options_data:
-            option_chain = self.strategy.options_data[date_key]
+    def _get_exit_price_from_user_prompts(self, position: Position, date: datetime) -> Optional[float]:
+        """Get exit price by prompting user for individual option prices."""
+        try:
+            if not position.spread_options or len(position.spread_options) != 2:
+                print("⚠️  Position doesn't have valid spread options")
+                return None
+                
+            atm_option, otm_option = position.spread_options
+            
+            # If the date is the current date, try to fetch previous day's close data
+            # since end-of-day data may not be available yet (processed after 4:30 PM ET)
+            fetch_date = date
+            current_date = datetime.now().date()
+            if date.date() == current_date:
+                from datetime import timedelta
+                fetch_date = date - timedelta(days=1)
+                print(f"📅 Current date detected, fetching previous day's data: {fetch_date.strftime('%Y-%m-%d')}")
+            
+            # Get bar data for both options using new_options_handler
+            atm_bar = self.strategy.new_options_handler.get_option_bar(atm_option, fetch_date)
+            otm_bar = self.strategy.new_options_handler.get_option_bar(otm_option, fetch_date)
+            
+            if not atm_bar or not otm_bar:
+                print(f"⚠️  No bar data available for options on {fetch_date.strftime('%Y-%m-%d')}")
+                return None
+            
+            # Interactive mode: prompt user for exit prices and calculate manually
+            print(f"\n💬 Interactive mode: Please provide exit prices for position {position.__str__()}")
+            
+            # Prompt for ATM option exit price
+            atm_price_input = input(f"Enter exit price for {atm_option.ticker} (current: ${atm_bar.close_price}): ").strip()
+            if atm_price_input:
+                atm_price = float(atm_price_input)
+                print(f"✅ Using custom ATM price: ${atm_price}")
+            else:
+                atm_price = float(atm_bar.close_price)
+                print(f"✅ Using current ATM price: ${atm_price}")
+            
+            # Prompt for OTM option exit price
+            otm_price_input = input(f"Enter exit price for {otm_option.ticker} (current: ${otm_bar.close_price}): ").strip()
+            if otm_price_input:
+                otm_price = float(otm_price_input)
+                print(f"✅ Using custom OTM price: ${otm_price}")
+            else:
+                otm_price = float(otm_bar.close_price)
+                print(f"✅ Using current OTM price: ${otm_price}")
+            
+            # Calculate exit price manually based on strategy type
+            if position.strategy_type.value == "put_credit_spread":
+                # For put credit spread: sell ATM put, buy OTM put
+                # Exit price = current ATM price - current OTM price
+                exit_price = atm_price - otm_price
+                print(f"💰 Calculated exit price: ${atm_price:.2f} - ${otm_price:.2f} = ${exit_price:.2f}")
+            else:
+                # This should not happen for credit spread strategies
+                raise ValueError(f"Unsupported strategy type for manual exit price calculation: {position.strategy_type.value}")
+            
+            return exit_price
+            
+        except Exception as e:
+            print(f"⚠️  Error calculating exit price: {e}")
+            return None
 
-        exit_price = None
-        if option_chain is not None:
-            try:
-                exit_price = position.calculate_exit_price(option_chain)
-            except Exception:
-                exit_price = None
-
-        if exit_price is None:
-            option_chain = option_chain or OptionChain()
-            for leg in position.spread_options:
-                contract = self.options_handler.get_specific_option_contract(
-                    leg.strike,
-                    leg.expiration,
-                    leg.option_type.value,
-                    date,
-                )
-                if contract:
-                    option_chain = option_chain.add_option(contract)
-            try:
-                exit_price = position.calculate_exit_price(option_chain)
-            except Exception:
-                exit_price = None
-        return exit_price
-
-
+    def _get_exit_price_for_status(self, position: Position, date: datetime) -> Optional[float]:
+        """Get exit price for status display without prompting user."""
+        try:
+            if not position.spread_options or len(position.spread_options) != 2:
+                return None
+                
+            atm_option, otm_option = position.spread_options
+            
+            # If the date is the current date, try to fetch previous day's close data
+            fetch_date = date
+            current_date = datetime.now().date()
+            if date.date() == current_date:
+                from datetime import timedelta
+                fetch_date = date - timedelta(days=1)
+            
+            # Get bar data for both options using new_options_handler
+            atm_bar = self.strategy.new_options_handler.get_option_bar(atm_option, fetch_date)
+            otm_bar = self.strategy.new_options_handler.get_option_bar(otm_option, fetch_date)
+            
+            if not atm_bar or not otm_bar:
+                return None
+            
+            # Use the calculate_exit_price_from_bars method for status display
+            exit_price = position.calculate_exit_price_from_bars(atm_bar, otm_bar)
+            return exit_price
+    
+        except Exception:
+            return None

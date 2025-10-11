@@ -5,10 +5,9 @@ Handles loading and validating calendar event dates for CPI and CC features
 """
 
 import json
-import os
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional
 
 
 class CalendarConfigManager:

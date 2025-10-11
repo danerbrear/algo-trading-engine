@@ -6,11 +6,11 @@ This module tests volume validation integration with BacktestEngine and Strategy
 
 import pytest
 from datetime import datetime
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 import pandas as pd
 
 from src.backtest.main import BacktestEngine
-from src.backtest.config import VolumeConfig, VolumeStats
+from src.backtest.config import VolumeConfig
 from src.backtest.models import Strategy, Position, StrategyType
 from src.common.models import Option, OptionType
 
@@ -77,6 +77,14 @@ class MockStrategy(Strategy):
             )
             
             add_position(position)
+    
+    def on_end(self, positions, remove_position, date):
+        """Mock strategy end method."""
+        pass
+    
+    def validate_data(self, data):
+        """Mock validate_data method."""
+        return True
 
 
 class TestVolumeValidationIntegration:
@@ -164,6 +172,10 @@ class TestVolumeValidationIntegration:
                     
                     add_position(position)
         
+        def on_end(self, positions, remove_position, date):
+            """Mock strategy end method."""
+            pass
+        
         strategy = MockStrategyWithLowVolume()
         data = strategy.data
         
@@ -220,6 +232,10 @@ class TestVolumeValidationIntegration:
                     )
                     
                     add_position(position)
+        
+        def on_end(self, positions, remove_position, date):
+            """Mock strategy end method."""
+            pass
         
         strategy = MockStrategyWithMissingVolume()
         data = strategy.data
@@ -278,6 +294,10 @@ class TestVolumeValidationIntegration:
                     
                     add_position(position)
         
+        def on_end(self, positions, remove_position, date):
+            """Mock strategy end method."""
+            pass
+        
         strategy = MockStrategyWithCustomVolume()
         data = strategy.data
         
@@ -327,7 +347,7 @@ class TestVolumeValidationIntegration:
         summary = engine.volume_stats.get_summary()
         assert summary['positions_rejected_volume'] == 0
         assert summary['options_checked'] == 2
-        assert summary['volume_rejection_rate'] == 0.0  # 0/2 * 100
+        assert summary['rejection_rate'] == 0.0  # 0/2 * 100
     
     def test_backtest_engine_with_position_without_spread_options(self):
         """Test BacktestEngine handles positions without spread_options gracefully."""
@@ -348,6 +368,10 @@ class TestVolumeValidationIntegration:
                     )
                     
                     add_position(position)
+        
+        def on_end(self, positions, remove_position, date):
+            """Mock strategy end method."""
+            pass
         
         strategy = MockStrategyWithoutSpreadOptions()
         data = strategy.data

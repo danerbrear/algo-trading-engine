@@ -10,23 +10,35 @@ from src.model.options_handler import OptionsHandler
 from src.prediction.decision_store import JsonDecisionStore
 from src.prediction.recommendation_engine import InteractiveStrategyRecommender
 from src.strategies.credit_spread_minimal import CreditSpreadStrategy
+from src.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
 
 LOOKBACK_DAYS = 120
 
 STRATEGY_REGISTRY = {
     "credit_spread": CreditSpreadStrategy,
+    "velocity_momentum": VelocitySignalMomentumStrategy
 }
-
 
 def build_strategy(name: str, options_handler: OptionsHandler, symbol: str):
     if name not in STRATEGY_REGISTRY:
         raise ValueError(f"Unknown strategy: {name}")
 
-    # Load trained LSTM model and scaler for prediction use inside the strategy
+    StrategyClass = STRATEGY_REGISTRY[name]
+
+    # Load trained LSTM model and scaler for strategies that need prediction support
     model_dir = get_model_directory(symbol=symbol)
     lstm_model, lstm_scaler = load_lstm_model(model_dir, return_lstm_instance=True)
 
-    StrategyClass = STRATEGY_REGISTRY[name]
+    # VelocitySignalMomentumStrategy expects only options_handler in its constructor,
+    # but it still uses lstm_model/lstm_scaler internally for predictions.
+    if StrategyClass is VelocitySignalMomentumStrategy:
+        strategy = StrategyClass(options_handler=options_handler)
+        # Attach LSTM artifacts for internal prediction usage
+        strategy.lstm_model = lstm_model
+        strategy.lstm_scaler = lstm_scaler
+        return strategy
+
+    # Default path: strategies that take LSTM artifacts in the constructor
     strategy = StrategyClass(lstm_model, lstm_scaler, options_handler=options_handler)
     return strategy
 
@@ -37,6 +49,10 @@ def main():
     parser.add_argument("--date", help="Run date YYYY-MM-DD; defaults to today")
     parser.add_argument("--strategy", default="credit_spread", help="Strategy to run (default: credit_spread)")
     parser.add_argument("--yes", action="store_true", help="Auto-accept prompts (non-interactive)")
+    parser.add_argument("--auto-close", action="store_true", default=False, help="Automatically close any open positions recommended to close using previous day's prices")
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose output (disable quiet mode)")
+    parser.add_argument('-f', '--free', action='store_true', default=False,
+                       help='Use free tier rate limiting (13 second timeout between API requests)')
     args = parser.parse_args()
 
     # Resolve date
@@ -48,7 +64,8 @@ def main():
     store = JsonDecisionStore()
     open_records = store.get_open_positions(symbol=args.symbol)
     if open_records:
-        options_handler = OptionsHandler(args.symbol, quiet_mode=True)
+        print(f"Open positions found: {len(open_records)}")
+        options_handler = OptionsHandler(args.symbol, quiet_mode=not args.verbose, use_free_tier=args.free)
         strategy = build_strategy(args.strategy, options_handler, symbol=args.symbol)
         recommender = InteractiveStrategyRecommender(strategy, options_handler, store, auto_yes=args.yes)
 
@@ -65,12 +82,26 @@ def main():
                     f"P&L {pnl_dollars} ({pnl_pct}) | Held {s['days_held']}d  DTE {s['dte']}d"
                 )
 
-        recommender.recommend_close_positions(run_date)
+        if args.auto_close:
+            # Auto-close mode: use the existing logic but with auto_yes=True
+            print("\n🔄 Auto-close mode: Checking for positions to close...")
+            recommender.auto_yes = True  # Force auto-accept for all prompts
+            closed_records = recommender.recommend_close_positions(run_date)
+            
+            if closed_records:
+                print(f"✅ Auto-closed {len(closed_records)} position(s)")
+            else:
+                print("ℹ️  No open positions are recommended to be closed")
+        else:
+            # Normal interactive flow
+            recommender.recommend_close_positions(run_date)
         return
+    
+    print(f"No open positions found, running open flow")
 
     # Prepare data around the run date to ensure the LSTM sequence/features exist
     lstm_start_date = (run_date.date() - timedelta(days=LOOKBACK_DAYS)).strftime("%Y-%m-%d")
-    retriever = DataRetriever(symbol=args.symbol, lstm_start_date=lstm_start_date, quiet_mode=True)
+    retriever = DataRetriever(symbol=args.symbol, lstm_start_date=lstm_start_date, quiet_mode=not args.verbose, use_free_tier=args.free)
 
     # HMM is required for LSTM features; fail fast if unavailable
     try:
@@ -83,6 +114,13 @@ def main():
 
     data, options_data = retriever.prepare_data_for_lstm(state_classifier=hmm_model)
 
+    # Print date range information for the processed data
+    if data is not None and len(data) > 0:
+        start_date = data.index[0]
+        end_date = data.index[-1]
+        print(f"\nDate range: {start_date.date()} to {end_date.date()}")
+        print(f"Options data dates: {len(options_data)} days\n")
+
     # Wire options handler and strategy
     options_handler = retriever.options_handler
     strategy = build_strategy(args.strategy, options_handler, symbol=args.symbol)
@@ -92,8 +130,5 @@ def main():
     recommender = InteractiveStrategyRecommender(strategy, options_handler, store, auto_yes=args.yes)
     recommender.run(run_date, auto_yes=args.yes)
 
-
 if __name__ == "__main__":
     main()
-
-

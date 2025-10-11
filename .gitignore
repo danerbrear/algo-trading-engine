@@ -6,3 +6,4 @@ data_cache
 .vscode
 predictions
 .pytest_cache
+backup

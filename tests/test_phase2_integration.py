@@ -2,12 +2,11 @@
 Tests for Phase 2: Enhanced Current Date Volume Validation in BacktestEngine.
 """
 
-import pytest
 from datetime import datetime
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 from src.backtest.main import BacktestEngine
-from src.backtest.config import VolumeConfig, VolumeStats
+from src.backtest.config import VolumeConfig
 from src.strategies.credit_spread_minimal import CreditSpreadStrategy
 from src.backtest.models import Position, StrategyType
 from src.common.models import Option, OptionType

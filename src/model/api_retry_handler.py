@@ -34,6 +34,7 @@ class APIRetryHandler:
         # Rate limiting for free tier: 5 calls per minute = 12 seconds between calls
         # Adding 13 seconds to be safe and stay under the limit
         if self.use_rate_limit:
+            print(f"🕐 Free tier rate limiting: waiting {self.rate_limit_delay} seconds...")
             time.sleep(self.rate_limit_delay)
         
         for attempt in range(max_retries):

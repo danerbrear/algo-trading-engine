@@ -2,16 +2,11 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import StandardScaler
-from datetime import datetime, timedelta
-from concurrent.futures import ThreadPoolExecutor
-import multiprocessing
-from functools import partial
+from datetime import datetime
 import os
-import json
-import pickle
-from pathlib import Path
 import sys
 import os
+from typing import Optional
 # Add the src directory to the path for imports
 current_dir = os.path.dirname(os.path.abspath(__file__))
 src_dir = os.path.join(current_dir, '..')
@@ -30,6 +25,7 @@ except ImportError:
     from src.model.options_handler import OptionsHandler
     from src.model.calendar_features import CalendarFeatureProcessor
     from src.common.cache.cache_manager import CacheManager
+from src.common.models import TreasuryRates
 
 class DataRetriever:
     """Handles data retrieval, feature calculation, and preparation for LSTM and HMM models."""
@@ -58,6 +54,69 @@ class DataRetriever:
         self.options_handler = OptionsHandler(symbol, start_date=lstm_start_date, cache_dir=self.cache_manager.base_dir, use_free_tier=use_free_tier, quiet_mode=quiet_mode)
         self.calendar_processor = None  # Initialize lazily when needed
         self.options_data = {}  # Store OptionChain DTOs for each date
+        self.treasury_rates: Optional[TreasuryRates] = None  # Store treasury rates data
+
+    def load_treasury_rates(self, start_date: datetime, end_date: datetime = None):
+        """
+        Load treasury rates from cache for the specified date range.
+        
+        Args:
+            start_date: Start date for treasury data
+            end_date: End date for treasury data (optional, defaults to start_date)
+        """
+        if end_date is None:
+            end_date = start_date
+            
+        print(f"📈 Loading treasury rates for date range: {start_date.date()} to {end_date.date()}")
+        
+        # Try to load treasury rates for the start date
+        treasury_data = self.cache_manager.load_date_from_cache(
+            start_date, '_treasury_rates', 'treasury', 'rates'
+        )
+        
+        if treasury_data is not None:
+            self.treasury_rates = TreasuryRates(treasury_data)
+            print(f"✅ Loaded treasury rates for {start_date.date()}")
+        else:
+            # Fallback: try to find the closest available treasury data
+            self._find_closest_treasury_data(start_date)
+
+    def _find_closest_treasury_data(self, target_date: datetime):
+        """
+        Find the closest available treasury data file to the target date.
+        """
+        treasury_dir = self.cache_manager.get_cache_dir('treasury', 'rates')
+        available_files = list(treasury_dir.glob('*_treasury_rates.pkl'))
+        
+        if not available_files:
+            print("⚠️  No treasury rate files found in cache")
+            return
+            
+        # Parse dates from filenames and find the closest
+        closest_file = None
+        min_date_diff = float('inf')
+        
+        for file_path in available_files:
+            try:
+                date_str = file_path.stem.split('_')[0]  # Extract date from filename
+                file_date = datetime.strptime(date_str, '%Y-%m-%d')
+                date_diff = abs((target_date - file_date).days)
+                
+                if date_diff < min_date_diff:
+                    min_date_diff = date_diff
+                    closest_file = file_path
+            except (ValueError, IndexError):
+                continue
+        
+        if closest_file:
+            treasury_data = self.cache_manager.load_from_cache(
+                closest_file.name, 'treasury', 'rates'
+            )
+            if treasury_data is not None:
+                self.treasury_rates = TreasuryRates(treasury_data)
+                print(f"✅ Loaded closest treasury rates from {closest_file.name} (diff: {min_date_diff} days)")
+        else:
+            print("⚠️  Could not find any treasury rate files")
 
     def prepare_data_for_lstm(self, sequence_length=60, state_classifier=None):
         """Prepare data for LSTM model with enhanced features using separate date ranges
@@ -77,7 +136,7 @@ class DataRetriever:
         self.calculate_features_for_data(self.lstm_data)
 
         # Calculate option features for LSTM data
-        self.lstm_data, self.options_data = self.options_handler.calculate_option_features(self.lstm_data)
+        self.lstm_data, self.options_data = self.options_handler.calculate_option_features(self.lstm_data, min_dte=5, max_dte=10)
 
         print(f"\n🔮 Phase 2: Applying trained HMM to LSTM data")
         # Apply the trained HMM to the LSTM data
@@ -222,15 +281,7 @@ class DataRetriever:
         
         print(f"✅ Calculated features for {len(data)} samples")
 
-    def fetch_data(self):
-        """Legacy method for backward compatibility - uses LSTM start date"""
-        return self.fetch_data_for_period(self.lstm_start_date, 'lstm')
     
-    def prepare_data(self, sequence_length=60):
-        """Legacy method for backward compatibility - delegates to prepare_data_for_lstm"""
-        print("⚠️  prepare_data() is deprecated. Use prepare_data_for_lstm() instead.")
-        lstm_data, options_data = self.prepare_data_for_lstm(sequence_length)
-        return lstm_data  # Return only lstm_data for backward compatibility
 
     def _calculate_rsi(self, prices, window=14):
         """Calculate Relative Strength Index"""
@@ -269,4 +320,83 @@ class DataRetriever:
                 obv.iloc[i] = obv.iloc[i-1]
         
         return obv
+
+    def get_live_price(self, symbol: str = None) -> Optional[float]:
+        """Fetch live price for the current date.
+        
+        First tries Polygon API (if available), then falls back to yfinance.
+        
+        Args:
+            symbol: Stock symbol to fetch price for (defaults to self.symbol)
+            
+        Returns:
+            Optional[float]: Live price if successful, None otherwise
+        """
+        if symbol is None:
+            symbol = self.symbol
+            
+        # Try Polygon API first (if available and has paid plan)
+        if hasattr(self, 'options_handler') and self.options_handler:
+            try:
+                client = self.options_handler.client
+                
+                # Try snapshot endpoint first
+                try:
+                    snapshot = client.get_snapshot_ticker(ticker=symbol, market_type='stocks')
+                    if snapshot and hasattr(snapshot, 'last_quote') and snapshot.last_quote:
+                        # Use last quote bid/ask midpoint as live price
+                        bid = float(snapshot.last_quote.bid) if snapshot.last_quote.bid else 0
+                        ask = float(snapshot.last_quote.ask) if snapshot.last_quote.ask else 0
+                        if bid > 0 and ask > 0:
+                            live_price = (bid + ask) / 2
+                            print(f"✅ Live price for {symbol} (from Polygon quote): ${live_price:.2f}")
+                            return live_price
+                    elif snapshot and hasattr(snapshot, 'last_trade') and snapshot.last_trade:
+                        # Fallback to last trade price
+                        live_price = float(snapshot.last_trade.price)
+                        print(f"✅ Live price for {symbol} (from Polygon trade): ${live_price:.2f}")
+                        return live_price
+                except Exception as snapshot_error:
+                    print(f"⚠️ Polygon snapshot endpoint failed: {str(snapshot_error)}")
+                
+                # Fallback to last trade endpoint
+                try:
+                    last_trade = client.get_last_trade(symbol)
+                    if last_trade and hasattr(last_trade, 'price'):
+                        live_price = float(last_trade.price)
+                        print(f"✅ Live price for {symbol} (from Polygon last trade): ${live_price:.2f}")
+                        return live_price
+                except Exception as trade_error:
+                    print(f"⚠️ Polygon last trade endpoint failed: {str(trade_error)}")
+                    
+            except Exception as polygon_error:
+                print(f"⚠️ Polygon API error: {str(polygon_error)}")
+        
+        # Fallback to yfinance for live price (free)
+        try:
+            print(f"📡 Fetching live price for {symbol} using yfinance...")
+            ticker = yf.Ticker(symbol)
+            info = ticker.info
+            
+            # Try to get current price from info
+            if 'currentPrice' in info and info['currentPrice'] is not None:
+                live_price = float(info['currentPrice'])
+                print(f"✅ Live price for {symbol} (from yfinance): ${live_price:.2f}")
+                return live_price
+            elif 'regularMarketPrice' in info and info['regularMarketPrice'] is not None:
+                live_price = float(info['regularMarketPrice'])
+                print(f"✅ Live price for {symbol} (from yfinance regular market): ${live_price:.2f}")
+                return live_price
+            elif 'previousClose' in info and info['previousClose'] is not None:
+                # Use previous close as fallback
+                live_price = float(info['previousClose'])
+                print(f"⚠️ Using previous close for {symbol} (from yfinance): ${live_price:.2f}")
+                return live_price
+            else:
+                print(f"⚠️ No price data available from yfinance for {symbol}")
+                return None
+                
+        except Exception as yfinance_error:
+            print(f"❌ Error fetching live price from yfinance for {symbol}: {str(yfinance_error)}")
+            return None
  

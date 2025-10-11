@@ -9,9 +9,7 @@ class ProgressTracker:
     def __init__(self, start_date: datetime, end_date: datetime, total_dates: int, desc: str = "Processing", quiet_mode: bool = True):
         self.start_time = time()
         self.processed_dates = 0
-        self.successful_api_calls = 0
         self.total_dates = total_dates
-        self.total_api_calls = self.total_dates * 5  # 5 API calls per date
         self._lock = threading.Lock()
         self.quiet_mode = quiet_mode
         
@@ -58,12 +56,11 @@ class ProgressTracker:
             if current_date:
                 self.processed_dates += 1
                 
-                # Calculate progress percentages
+                # Calculate progress percentage
                 date_progress = (self.processed_dates / self.total_dates) * 100
-                api_progress = (self.successful_api_calls / self.total_api_calls) * 100
                 
                 # Update progress bar description with compact format
-                desc = f"Processing {current_date.date()} ({date_progress:.1f}% dates, {api_progress:.1f}% fetches)"
+                desc = f"Processing {current_date.date()} ({date_progress:.1f}% dates)"
                 self.pbar.set_description(desc)
                 
                 # Show summary info in postfix (key strike prices, etc.)
@@ -74,8 +71,7 @@ class ProgressTracker:
                     postfix_str = f"calls: {additional_info.get('calls', 0)}, puts: {additional_info.get('puts', 0)}"
                     self.pbar.set_postfix_str(postfix_str)
             
-            if increment_operations:
-                self.successful_api_calls += increment_operations
+            # API call tracking removed - only track dates
             
             # Update progress bar position
             self.pbar.n = self.processed_dates
@@ -90,9 +86,7 @@ class ProgressTracker:
             'elapsed_time': elapsed_time,
             'avg_time_per_date': avg_time_per_date,
             'processed_dates': self.processed_dates,
-            'total_dates': self.total_dates,
-            'successful_api_calls': self.successful_api_calls,
-            'total_api_calls': self.total_api_calls
+            'total_dates': self.total_dates
         }
     
     def close(self):
@@ -104,10 +98,10 @@ class ProgressTracker:
             self.pbar.close()
             
             # Print final summary
-            print(f"\n✅ Processing completed:")
+            print(f"\nProcessing completed:")
             print(f"   Total time: {timedelta(seconds=int(stats['elapsed_time']))}")
             print(f"   Average time per date: {stats['avg_time_per_date']:.2f} seconds")
-            print(f"   Total successful API calls: {stats['successful_api_calls']}")
+            # API call tracking removed from progress tracker
 
 # Global progress tracker instance for use across modules
 _global_progress_tracker: Optional[ProgressTracker] = None

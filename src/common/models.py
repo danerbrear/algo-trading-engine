@@ -2,11 +2,32 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 from dataclasses import dataclass, field
 from enum import Enum
+from decimal import Decimal
+import pandas as pd
 
 class OptionType(Enum):
     """Enum for option types."""
     CALL = "call"
     PUT = "put"
+
+class MarketStateType(Enum):
+    """Enum for market state types identified by HMM"""
+    LOW_VOLATILITY_UPTREND = "low_volatility_uptrend"
+    MOMENTUM_UPTREND = "momentum_uptrend"
+    CONSOLIDATION = "consolidation"
+    HIGH_VOLATILITY_DOWNTREND = "high_volatility_downtrend"
+    HIGH_VOLATILITY_RALLY = "high_volatility_rally"
+
+class SignalType(Enum):
+    """Enum for trading signal types"""
+    HOLD = "hold"
+    CALL_CREDIT_SPREAD = "call_credit_spread"
+    PUT_CREDIT_SPREAD = "put_credit_spread"
+    LONG_STOCK = "long_stock"
+    LONG_CALL = "long_call"
+    SHORT_CALL = "short_call"
+    LONG_PUT = "long_put"
+    SHORT_PUT = "short_put"
 
 @dataclass(frozen=True)
 class Option:
@@ -133,6 +154,32 @@ class Option:
             moneyness=data.get('moneyness'),
         )
 
+    def __eq__(self, other) -> bool:
+        """
+        Check if two options are equal based on key attributes.
+        
+        Two options are considered equal if they have:
+        - Same ticker
+        - Same symbol
+        - Same strike price
+        - Same expiration date
+        - Same option type
+        
+        Args:
+            other: Another Option object to compare against
+            
+        Returns:
+            bool: True if options are equal, False otherwise
+        """
+        if not isinstance(other, Option):
+            return False
+            
+        return (self.ticker == other.ticker and
+                self.symbol == other.symbol and
+                self.strike == other.strike and
+                self.expiration == other.expiration and
+                self.option_type == other.option_type)
+
     def __str__(self) -> str:
         return f"{self.symbol} {self.option_type.value.upper()} {self.strike} @ {self.last_price:.2f}"
 
@@ -140,6 +187,35 @@ class Option:
         return (f"Option(symbol='{self.symbol}', strike={self.strike}, "
                 f"expiration={self.expiration}, "
                 f"type={self.option_type.value}, price={self.last_price:.2f})")
+
+    @classmethod
+    def from_contract_and_bar(cls, contract, bar) -> 'Option':
+        """
+        Create an Option from an OptionContractDTO and OptionBarDTO.
+        
+        Args:
+            contract: The option contract metadata
+            bar: The option bar/price data
+            
+        Returns:
+            Option: Created Option instance
+        """
+        from src.common.options_dtos import OptionContractDTO, OptionBarDTO
+        
+        # Convert contract type from common.models.OptionType to the same module's OptionType
+        option_type = OptionType.CALL if contract.contract_type.value == 'call' else OptionType.PUT
+        
+        return cls(
+            ticker=contract.ticker,
+            symbol=contract.underlying_ticker,
+            strike=float(contract.strike_price.value),
+            expiration=str(contract.expiration_date),
+            option_type=option_type,
+            last_price=float(bar.close_price),
+            volume=bar.volume,
+            # Use VWAP as mid_price if available
+            mid_price=float(bar.volume_weighted_avg_price) if bar.volume_weighted_avg_price else None
+        )
 
 @dataclass(frozen=True)
 class OptionChain:
@@ -271,3 +347,219 @@ class OptionChain:
 
     def __repr__(self) -> str:
         return f"OptionChain(calls={self.total_calls}, puts={self.total_puts})"
+
+@dataclass(frozen=True)
+class TreasuryRates:
+    """
+    Value Object representing treasury rates data.
+    
+    This encapsulates treasury yield data and provides domain-specific
+    methods for accessing risk-free rates.
+    """
+    rates_data: pd.DataFrame  # The underlying treasury rates DataFrame
+    
+    def __post_init__(self):
+        """Validate treasury rates data"""
+        if self.rates_data is None or len(self.rates_data) == 0:
+            raise ValueError("Treasury rates data cannot be empty")
+        
+        # Validate required columns exist
+        required_columns = ['IRX_1Y', 'TNX_10Y']
+        missing_columns = [col for col in required_columns if col not in self.rates_data.columns]
+        if missing_columns:
+            raise ValueError(f"Missing required treasury rate columns: {missing_columns}")
+    
+    def __eq__(self, other):
+        """Value-based equality for TreasuryRates"""
+        if not isinstance(other, TreasuryRates):
+            return False
+        return self.rates_data.equals(other.rates_data)
+    
+    def __hash__(self):
+        """Hash based on the data content"""
+        # Convert DataFrame to a hashable format
+        data_hash = hash((
+            tuple(self.rates_data.index),
+            tuple(self.rates_data.columns),
+            tuple(self.rates_data.values.flatten())
+        ))
+        return hash((TreasuryRates, data_hash))
+    
+    def get_risk_free_rate(self, date: datetime) -> Decimal:
+        """
+        Get the risk-free rate for a specific date.
+        
+        Args:
+            date: The date to get the risk-free rate for
+            
+        Returns:
+            Decimal: Risk-free rate (1-year Treasury yield)
+        """
+        try:
+            # Try to get the 1-year rate (IRX_1Y) for the specific date
+            if date in self.rates_data.index:
+                rate = self.rates_data.loc[date, 'IRX_1Y']
+                return Decimal(str(rate))
+            
+            # If exact date not found, use the closest available date
+            available_dates = self.rates_data.index
+            if len(available_dates) > 0:
+                # Find the closest date
+                closest_date = min(available_dates, key=lambda x: abs((x - date).days))
+                rate = self.rates_data.loc[closest_date, 'IRX_1Y']
+                return Decimal(str(rate))
+                
+        except (KeyError, IndexError, ValueError):
+            pass
+            
+        return Decimal('0.0')  # Default fallback
+    
+    def get_10_year_rate(self, date: datetime) -> Decimal:
+        """
+        Get the 10-year Treasury rate for a specific date.
+        
+        Args:
+            date: The date to get the 10-year rate for
+            
+        Returns:
+            Decimal: 10-year Treasury yield
+        """
+        try:
+            if date in self.rates_data.index:
+                rate = self.rates_data.loc[date, 'TNX_10Y']
+                return Decimal(str(rate))
+            
+            available_dates = self.rates_data.index
+            if len(available_dates) > 0:
+                closest_date = min(available_dates, key=lambda x: abs((x - date).days))
+                rate = self.rates_data.loc[closest_date, 'TNX_10Y']
+                return Decimal(str(rate))
+                
+        except (KeyError, IndexError, ValueError):
+            pass
+            
+        return Decimal('0.0')
+    
+    def get_date_range(self) -> tuple[datetime, datetime]:
+        """
+        Get the date range covered by this treasury rates data.
+        
+        Returns:
+            tuple: (start_date, end_date)
+        """
+        return self.rates_data.index.min(), self.rates_data.index.max()
+    
+    def is_empty(self) -> bool:
+        """Check if treasury rates data is empty"""
+        return len(self.rates_data) == 0
+
+@dataclass(frozen=True)
+class MarketState:
+    """Represents a market state with characteristics"""
+    state_type: MarketStateType
+    volatility: Decimal
+    average_return: Decimal
+    confidence: Decimal
+    
+    def __post_init__(self):
+        if not 0 <= self.confidence <= 1:
+            raise ValueError("Confidence must be between 0 and 1")
+        if self.volatility < 0:
+            raise ValueError("Volatility cannot be negative")
+    
+    def is_bullish(self) -> bool:
+        """Check if this market state is generally bullish"""
+        return self.state_type in [
+            MarketStateType.LOW_VOLATILITY_UPTREND,
+            MarketStateType.MOMENTUM_UPTREND,
+            MarketStateType.HIGH_VOLATILITY_RALLY
+        ]
+    
+    def is_bearish(self) -> bool:
+        """Check if this market state is generally bearish"""
+        return self.state_type == MarketStateType.HIGH_VOLATILITY_DOWNTREND
+    
+    def is_consolidation(self) -> bool:
+        """Check if this market state represents consolidation"""
+        return self.state_type == MarketStateType.CONSOLIDATION
+
+@dataclass(frozen=True)
+class TradingSignal:
+    """Represents a trading signal with strategy and confidence"""
+    signal_type: SignalType
+    confidence: Decimal
+    ticker: str
+    expiration_date: Optional[str] = None
+    strike_prices: Optional[tuple[Decimal, Decimal]] = None
+    
+    def __post_init__(self):
+        if not 0 <= self.confidence <= 1:
+            raise ValueError("Confidence must be between 0 and 1")
+        if self.signal_type != SignalType.HOLD and not self.expiration_date:
+            raise ValueError("Expiration date required for option strategies")
+    
+    def is_option_strategy(self) -> bool:
+        """Check if this signal represents an option strategy"""
+        return self.signal_type in [
+            SignalType.CALL_CREDIT_SPREAD, 
+            SignalType.PUT_CREDIT_SPREAD,
+            SignalType.LONG_CALL,
+            SignalType.SHORT_CALL,
+            SignalType.LONG_PUT,
+            SignalType.SHORT_PUT
+        ]
+    
+    def is_credit_spread(self) -> bool:
+        """Check if this signal represents a credit spread strategy"""
+        return self.signal_type in [
+            SignalType.CALL_CREDIT_SPREAD,
+            SignalType.PUT_CREDIT_SPREAD
+        ]
+
+@dataclass(frozen=True)
+class PriceRange:
+    """Represents a price range with validation"""
+    low: Decimal
+    high: Decimal
+    
+    def __post_init__(self):
+        if self.low > self.high:
+            raise ValueError("Low price cannot be greater than high price")
+        if self.low < 0:
+            raise ValueError("Price cannot be negative")
+    
+    def contains(self, price: Decimal) -> bool:
+        """Check if a price falls within this range"""
+        return self.low <= price <= self.high
+    
+    def spread(self) -> Decimal:
+        """Calculate the spread between high and low prices"""
+        return self.high - self.low
+    
+    def midpoint(self) -> Decimal:
+        """Calculate the midpoint of the price range"""
+        return (self.low + self.high) / 2
+
+@dataclass(frozen=True)
+class Volatility:
+    """Represents volatility with validation"""
+    value: Decimal
+    period: int  # days
+    
+    def __post_init__(self):
+        if self.value < 0:
+            raise ValueError("Volatility cannot be negative")
+        if self.period <= 0:
+            raise ValueError("Period must be positive")
+    
+    def is_high(self) -> bool:
+        """Check if volatility is considered high (>30%)"""
+        return self.value > Decimal('0.3')
+    
+    def is_low(self) -> bool:
+        """Check if volatility is considered low (<10%)"""
+        return self.value < Decimal('0.1')
+    
+    def is_moderate(self) -> bool:
+        """Check if volatility is moderate (10-30%)"""
+        return not self.is_high() and not self.is_low()
