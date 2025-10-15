@@ -38,6 +38,7 @@ The system operates in two main stages:
 - **`src/analysis/`** - Market analysis tools
   - Moving average velocity analysis
   - Upward trend drawdown analysis
+  - Daily drawdown likelihood analysis
   - Independent statistical analyses
 
 ## 📁 Project Structure
@@ -72,8 +73,10 @@ lstm_poc/
 │   └── analysis/             # Market analysis tools
 │       ├── ma_velocity_analysis.py   # Moving average analysis
 │       ├── upward_trend_drawdown_analysis.py  # Drawdown analysis
+│       ├── daily_drawdown_likelihood_analysis.py  # Daily likelihood analysis
 │       ├── run_ma_analysis.py        # MA analysis entry point
-│       └── run_drawdown_analysis.py  # Drawdown analysis entry point
+│       ├── run_drawdown_analysis.py  # Drawdown analysis entry point
+│       └── run_daily_likelihood_analysis.py  # Daily likelihood entry point
 ├── data_cache/               # Cached market data
 │   ├── stocks/               # Stock price data
 │   ├── options/              # Options chain data
@@ -152,6 +155,9 @@ python -m src.analysis.run_ma_analysis
 
 # Upward trend drawdown analysis (default: 12 months)
 python -m src.analysis.run_drawdown_analysis
+
+# Daily drawdown likelihood analysis
+python -m src.analysis.run_daily_likelihood_analysis
 
 # Custom analysis period
 python -m src.analysis.run_drawdown_analysis --months 6
@@ -234,6 +240,11 @@ python -m pytest tests/test_velocity_strategy.py -v
   - Specification: `features/upward_trend_drawdown_analysis.md`
   - Implementation: `src/analysis/upward_trend_drawdown_analysis.py`
   - Summary: `docs/upward_trend_drawdown_analysis_implementation_summary.md`
+  
+- **Daily Drawdown Likelihood Analysis** - Analyzes likelihood of drawdowns on each day of upward trends
+  - Specification: `features/daily_drawdown_likelihood_analysis.md`
+  - Implementation: `src/analysis/daily_drawdown_likelihood_analysis.py`
+  - Summary: `docs/daily_drawdown_likelihood_analysis_summary.md`
 
 ## ⚠️ Limitations
 
