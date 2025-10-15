@@ -78,6 +78,10 @@ class InteractiveStrategyRecommender:
                         print("Strategy data is empty or None")
                     return None
 
+        # Display recent 5 days of underlying price for velocity_momentum strategy
+        if hasattr(self.strategy, '__class__') and 'velocity' in self.strategy.__class__.__name__.lower():
+            self._display_recent_underlying_prices(date)
+
         # Delegate to strategy's recommend_open_position method
         recommendation = self.strategy.recommend_open_position(date, current_price)
         if recommendation is None:
@@ -377,3 +381,44 @@ class InteractiveStrategyRecommender:
     
         except Exception:
             return None
+
+    def _display_recent_underlying_prices(self, date: datetime) -> None:
+        """Display the most recent 5 days of underlying price for velocity_momentum strategy."""
+        try:
+            if self.strategy.data is None or self.strategy.data.empty:
+                print("⚠️  No underlying price data available")
+                return
+            
+            # Get the most recent 5 days of data
+            recent_data = self.strategy.data.tail(5)
+            
+            print("\n📊 Recent 5 Days of Underlying Price:")
+            print("=" * 50)
+            
+            for idx, (date_idx, row) in enumerate(recent_data.iterrows()):
+                # Format the date
+                if hasattr(date_idx, 'date'):
+                    date_str = date_idx.date().strftime('%Y-%m-%d')
+                else:
+                    date_str = str(date_idx)
+                
+                # Get the close price
+                close_price = row.get('Close', 'N/A')
+                if isinstance(close_price, (int, float)):
+                    price_str = f"${close_price:.2f}"
+                else:
+                    price_str = str(close_price)
+                
+                # Add indicator for current date
+                current_date = datetime.now().date()
+                if hasattr(date_idx, 'date') and date_idx.date() == current_date:
+                    date_str += " (TODAY)"
+                elif idx == len(recent_data) - 1:
+                    date_str += " (LATEST)"
+                
+                print(f"  {date_str}: {price_str}")
+            
+            print("=" * 50)
+            
+        except Exception as e:
+            print(f"⚠️  Error displaying recent prices: {e}")
