@@ -1,12 +1,14 @@
 """
 Upward Trend Drawdown Analysis
 
-This module analyzes drawdowns that occur during upward trends in SPY.
+This module analyzes single-day trend-ending drawdowns in SPY.
 An upward trend is defined as 3-10 consecutive days of positive returns.
-A drawdown is a decline in price from a peak during the trend period.
+A trend ends immediately after one day of negative returns.
+A trend-ending drawdown is measured from the trend's end price to the close price
+on the day that ends the trend (the first day of negative returns).
 
-The analysis provides statistical insights into how frequently drawdowns occur
-during upward trends and their average magnitude.
+The analysis provides statistical insights into how frequently trend-ending drawdowns
+occur and their average magnitude.
 """
 
 import pandas as pd
@@ -36,9 +38,9 @@ class UpwardTrend:
     start_price: float
     end_price: float
     total_return: float  # Percentage return over the trend
-    peak_price: float  # Highest price during the trend
-    trough_price: float  # Lowest price after peak during the trend
-    drawdown_pct: float  # Maximum drawdown during the trend
+    peak_price: float  # Highest close price during the trend
+    trough_price: float  # Close price on the day that ends the trend
+    drawdown_pct: float  # Single-day trend-ending drawdown (close-to-close)
     has_drawdown: bool  # Whether a drawdown occurred
 
 
@@ -69,10 +71,11 @@ class DrawdownAnalysisResult:
 
 class UpwardTrendDrawdownAnalyzer:
     """
-    Analyzes drawdowns that occur during upward trends in SPY.
+    Analyzes single-day trend-ending drawdowns in SPY.
     
     This analyzer identifies periods of continuous positive returns (3-10 days)
-    and measures any price declines (drawdowns) that occur during these trends.
+    and measures the drawdown that occurs on the day that ends the trend.
+    A trend ends immediately after one day of negative returns.
     """
     
     def __init__(self, symbol: str = 'SPY', analysis_period_months: int = 12):
@@ -126,6 +129,7 @@ class UpwardTrendDrawdownAnalyzer:
     def identify_upward_trends(self, data: pd.DataFrame) -> List[UpwardTrend]:
         """
         Identify all upward trends (3-10 consecutive days of positive returns).
+        A trend ends immediately after one day of negative returns.
         
         Args:
             data: DataFrame with price data and returns
@@ -208,7 +212,7 @@ class UpwardTrendDrawdownAnalyzer:
         end_idx: int
     ) -> Tuple[float, float, float]:
         """
-        Calculate the maximum drawdown during a specific trend period.
+        Calculate the single-day trend-ending drawdown using close prices only.
         
         Args:
             data: DataFrame with price data
@@ -218,32 +222,23 @@ class UpwardTrendDrawdownAnalyzer:
         Returns:
             Tuple of (peak_price, trough_price, drawdown_pct)
         """
-        # Get high and low prices during the trend period
-        trend_highs = data['High'].iloc[start_idx:end_idx+1]
-        trend_lows = data['Low'].iloc[start_idx:end_idx+1]
+        # Get the trend's end price (last day of positive returns)
+        trend_end_price = data['Close'].iloc[end_idx]
         
-        # Track the running peak and maximum drawdown
-        peak_price = trend_highs.iloc[0]
-        max_drawdown_pct = 0.0
-        trough_price = peak_price
+        # Get the close price on the day that ends the trend (first day of negative returns)
+        trend_ending_day_idx = end_idx + 1
         
-        for i in range(len(trend_highs)):
-            current_high = trend_highs.iloc[i]
-            current_low = trend_lows.iloc[i]
-            
-            # Update peak if we've reached a new high
-            if current_high > peak_price:
-                peak_price = current_high
-            
-            # Calculate drawdown from peak to current low
-            drawdown = (current_low - peak_price) / peak_price
-            
-            # Update maximum drawdown if this is worse (more negative)
-            if drawdown < max_drawdown_pct:
-                max_drawdown_pct = drawdown
-                trough_price = current_low
+        if trend_ending_day_idx >= len(data):
+            # No data after trend ends
+            return trend_end_price, trend_end_price, 0.0
         
-        return peak_price, trough_price, max_drawdown_pct
+        # Get the close price on the day that ends the trend
+        trend_ending_close = data['Close'].iloc[trend_ending_day_idx]
+        
+        # Calculate drawdown from trend end to the close on the day that ends the trend
+        drawdown_pct = (trend_ending_close - trend_end_price) / trend_end_price
+        
+        return trend_end_price, trend_ending_close, drawdown_pct
     
     def calculate_statistics(self, trends: List[UpwardTrend]) -> DrawdownStatistics:
         """
@@ -389,43 +384,43 @@ class UpwardTrendDrawdownAnalyzer:
             report.append(f"    {duration} days: {count} trends")
         report.append("")
         
-        # Drawdown analysis
-        report.append("DRAWDOWN ANALYSIS:")
+        # Single-day trend-ending drawdown analysis
+        report.append("SINGLE-DAY TREND-ENDING DRAWDOWN ANALYSIS:")
         trends_without = stats.total_trends_analyzed - stats.trends_with_drawdowns
         pct_without = (trends_without / stats.total_trends_analyzed * 100) if stats.total_trends_analyzed > 0 else 0
-        report.append(f"  Trends with Drawdowns: {stats.trends_with_drawdowns} ({stats.drawdown_percentage:.1f}%)")
-        report.append(f"  Trends without Drawdowns: {trends_without} ({pct_without:.1f}%)")
+        report.append(f"  Trends with Trend-Ending Drawdowns: {stats.trends_with_drawdowns} ({stats.drawdown_percentage:.1f}%)")
+        report.append(f"  Trends without Trend-Ending Drawdowns: {trends_without} ({pct_without:.1f}%)")
         report.append("")
         
-        # Drawdown statistics (across all trends)
-        report.append("DRAWDOWN STATISTICS (across all trends):")
-        report.append(f"  Average Drawdown: {stats.average_drawdown*100:.3f}%")
-        report.append(f"  Median Drawdown: {stats.median_drawdown*100:.3f}%")
+        # Single-day trend-ending drawdown statistics (across all trends)
+        report.append("SINGLE-DAY TREND-ENDING DRAWDOWN STATISTICS (across all trends):")
+        report.append(f"  Average Trend-Ending Drawdown: {stats.average_drawdown*100:.3f}%")
+        report.append(f"  Median Trend-Ending Drawdown: {stats.median_drawdown*100:.3f}%")
         report.append(f"  Standard Deviation: {stats.std_drawdown*100:.3f}%")
-        report.append(f"  Maximum Drawdown: {stats.max_drawdown*100:.3f}%")
-        report.append(f"  Minimum Drawdown: {stats.min_drawdown*100:.3f}%")
+        report.append(f"  Maximum Trend-Ending Drawdown: {stats.max_drawdown*100:.3f}%")
+        report.append(f"  Minimum Trend-Ending Drawdown: {stats.min_drawdown*100:.3f}%")
         report.append("")
         
-        # Drawdown statistics (only trends with drawdowns)
+        # Single-day trend-ending drawdown statistics (only trends with drawdowns)
         if stats.trends_with_drawdowns > 0:
-            report.append("DRAWDOWN STATISTICS (only trends with drawdowns):")
-            report.append(f"  Average Drawdown: {stats.average_drawdown_with_dd*100:.3f}%")
+            report.append("SINGLE-DAY TREND-ENDING DRAWDOWN STATISTICS (only trends with drawdowns):")
+            report.append(f"  Average Trend-Ending Drawdown: {stats.average_drawdown_with_dd*100:.3f}%")
             report.append("")
         
-        # Average drawdown by trend duration
-        report.append("AVERAGE DRAWDOWN BY TREND DURATION:")
+        # Average single-day trend-ending drawdown by trend duration
+        report.append("AVERAGE SINGLE-DAY TREND-ENDING DRAWDOWN BY TREND DURATION:")
         for duration in range(3, 11):
             avg_dd = stats.drawdowns_by_duration.get(duration, 0.0)
             report.append(f"  {duration}-day trends: {avg_dd*100:.3f}%")
         report.append("")
         
-        # Top 5 largest drawdowns
+        # Top 5 largest single-day trend-ending drawdowns
         trends_with_dd = [t for t in trends if t.has_drawdown]
         if trends_with_dd:
             sorted_trends = sorted(trends_with_dd, key=lambda t: t.drawdown_pct)
             top_5 = sorted_trends[:5]
             
-            report.append("TOP 5 LARGEST DRAWDOWNS:")
+            report.append("TOP 5 LARGEST SINGLE-DAY TREND-ENDING DRAWDOWNS:")
             for i, trend in enumerate(top_5, 1):
                 report.append(
                     f"  {i}. {trend.start_date.strftime('%Y-%m-%d')}: "
@@ -493,38 +488,38 @@ class UpwardTrendDrawdownAnalyzer:
             ax.axvspan(trend.start_date, trend.end_date, 
                       alpha=0.2, color='green', label='_nolegend_')
         
-        # Mark drawdown trough points
+        # Mark trend-ending drawdown points
         trends_with_dd = [t for t in result.upward_trends if t.has_drawdown]
         if trends_with_dd:
-            # Find the date for each trough
+            # Find the date for each trend-ending drawdown
             for trend in trends_with_dd:
-                # Find the index where trough occurred
-                trend_data = self.data.loc[trend.start_date:trend.end_date]
-                trough_date = trend_data[trend_data['Low'] == trend.trough_price].index[0]
-                ax.scatter(trough_date, trend.trough_price, 
-                          color='red', s=50, zorder=5, alpha=0.7, label='_nolegend_')
+                # The trough price is the close price on the day that ends the trend
+                trend_ending_date = trend.end_date + pd.Timedelta(days=1)
+                if trend_ending_date in self.data.index:
+                    ax.scatter(trend_ending_date, trend.trough_price, 
+                              color='red', s=50, zorder=5, alpha=0.7, label='_nolegend_')
         
-        # Add annotations for significant drawdowns (> 2%)
-        significant_dd = [t for t in trends_with_dd if abs(t.drawdown_pct) > 0.02]
+        # Add annotations for significant drawdowns (> 1%)
+        significant_dd = [t for t in trends_with_dd if abs(t.drawdown_pct) > 0.01]
         for trend in significant_dd[:5]:  # Annotate top 5
-            trend_data = self.data.loc[trend.start_date:trend.end_date]
-            trough_date = trend_data[trend_data['Low'] == trend.trough_price].index[0]
-            ax.annotate(
-                f'{trend.drawdown_pct*100:.1f}%',
-                xy=(trough_date, trend.trough_price),
-                xytext=(10, -10),
-                textcoords='offset points',
-                fontsize=8,
-                color='red',
-                bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.7),
-                arrowprops=dict(arrowstyle='->', color='red', lw=0.5)
-            )
+            trend_ending_date = trend.end_date + pd.Timedelta(days=1)
+            if trend_ending_date in self.data.index:
+                ax.annotate(
+                    f'{trend.drawdown_pct*100:.1f}%',
+                    xy=(trend_ending_date, trend.trough_price),
+                    xytext=(10, -10),
+                    textcoords='offset points',
+                    fontsize=8,
+                    color='red',
+                    bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.7),
+                    arrowprops=dict(arrowstyle='->', color='red', lw=0.5)
+                )
         
         ax.set_xlabel('Date')
         ax.set_ylabel('Price ($)')
-        ax.set_title('SPY Price with Upward Trends (Green) and Drawdowns (Red)')
+        ax.set_title('SPY Price with Upward Trends (Green) and Single-Day Trend-Ending Drawdowns (Red)')
         ax.grid(True, alpha=0.3)
-        ax.legend(['SPY Close', 'Upward Trend', 'Drawdown Trough'], loc='best')
+        ax.legend(['SPY Close', 'Upward Trend', 'Trend-Ending Drawdown'], loc='best')
         
         # Format x-axis
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
