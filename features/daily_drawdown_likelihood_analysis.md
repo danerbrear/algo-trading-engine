@@ -27,9 +27,13 @@ A sequence of consecutive trading days where SPY experiences positive returns (c
 - **Requirement**: Each daily return must be > 0 for the entire trend period
 
 ### Drawdown (Daily)
-A decline in SPY price that occurs **on a specific day** during an upward trend:
-- **Definition**: For a given day within a trend, a drawdown occurs if Low[day] < Open[day] OR Low[day] < Close[day-1]
-- **Intraday Focus**: Measures whether the price dropped below the day's opening or previous close at any point during the day
+An intraday decline in SPY price that occurs **on a specific day** during an upward trend:
+- **Definition**: For a given day within a trend, a drawdown occurs if Low[day] < max(Open[day], Close[day-1])
+- **Reference Point**: The higher of the day's opening price or the previous day's close price
+- **Intraday Focus**: Measures whether the price dropped below the reference point at any point during the day
+- **Two Types**:
+  - **Intraday drawdown**: Low < Previous Close (but Open >= Previous Close)
+  - **Gap down drawdown**: Low < Previous Close (and Open < Previous Close)
 - **Binary Measure**: Each day either has a drawdown (True) or doesn't (False)
 
 ### Day Position
@@ -159,8 +163,7 @@ class DailyDrawdownLikelihoodAnalyzer:
         Check if a drawdown occurred on a specific day.
         
         A drawdown occurs if:
-        - Low < Open (intraday decline from open)
-        - Low < Previous Close (gap down or continued decline)
+        - Low < max(Open, Previous Close) (intraday decline from reference point)
         
         Args:
             data: DataFrame with OHLC data
@@ -309,7 +312,7 @@ def check_daily_drawdown(data: pd.DataFrame, day_idx: int) -> Tuple[bool, float,
     if low_price < reference_point:
         drawdown_magnitude = (reference_point - low_price) / reference_point
         
-        # Classify type
+        # Classify type based on opening vs previous close
         if low_price < prev_close and open_price >= prev_close:
             drawdown_type = 'intraday'  # Opened at/above prev close but fell below
         elif open_price < prev_close:
@@ -694,15 +697,17 @@ This analysis will answer questions such as:
 ## Key Differences from Previous Analysis
 
 ### Previous Analysis (Upward Trend Drawdown)
-- Focused on **overall** drawdown during entire trend
-- Peak-to-trough measurement across trend duration
-- Single statistic: average drawdown per trend
+- Focused on **single-day trend-ending** drawdowns
+- Close-to-close measurement on the day that ends the trend
+- Single statistic: average drawdown when trends end
 
 ### This Analysis (Daily Drawdown Likelihood)
-- Focused on **daily** drawdown occurrence
-- Day-by-day binary measurement (did drawdown occur?)
+- Focused on **intraday** drawdown occurrence during trends
+- Day-by-day binary measurement (did intraday drawdown occur?)
+- Uses High/Low prices to detect intraday declines
 - Multiple statistics: likelihood for each day position (1-10)
 - Reveals **temporal patterns** within trends
+- Measures drawdowns **during** trends, not when trends end
 
 ---
 

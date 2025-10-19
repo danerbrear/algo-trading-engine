@@ -5,7 +5,7 @@ This module analyzes the likelihood of drawdowns occurring on each specific day
 of an upward trend (days 1-10).
 
 An upward trend is defined as 3-10 consecutive days of positive returns.
-A daily drawdown is defined as an intraday decline where Low < Open or Low < Previous Close.
+A daily drawdown is defined as an intraday decline where Low < max(Open, Previous Close).
 
 The analysis provides insights into whether drawdowns are more likely to occur
 early in a trend, late in a trend, or uniformly distributed.
@@ -189,8 +189,7 @@ class DailyDrawdownLikelihoodAnalyzer:
         Check if a drawdown occurred on a specific day.
         
         A drawdown occurs if:
-        - Low < Open (intraday decline from open)
-        - Low < Previous Close (gap down or continued decline)
+        - Low < max(Open, Previous Close) (intraday decline from reference point)
         
         Args:
             data: DataFrame with OHLC data
@@ -215,13 +214,13 @@ class DailyDrawdownLikelihoodAnalyzer:
         if low_price < reference_point:
             drawdown_magnitude = (reference_point - low_price) / reference_point
             
-            # Classify type
+            # Classify type based on opening vs previous close
             if low_price < prev_close and open_price >= prev_close:
                 drawdown_type = 'intraday'  # Opened at/above prev close but fell below
             elif open_price < prev_close:
                 drawdown_type = 'gap_down'  # Opened below previous close
             else:
-                drawdown_type = 'intraday'
+                drawdown_type = 'intraday'  # Low < Open but Low >= Prev Close
             
             return True, drawdown_magnitude, drawdown_type
         else:
