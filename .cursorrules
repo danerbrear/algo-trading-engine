@@ -20,6 +20,22 @@
 - Any new libraries added should be added to requirements.txt and are compatible
 - Always make sure that all of the imports added are used
 
+### Test-Driven Development (TDD)
+- **Write tests first, then implement code to pass the tests**
+- Follow the Red-Green-Refactor cycle:
+  1. **Red**: Write a failing test that defines the desired behavior
+  2. **Green**: Write the minimum code necessary to make the test pass
+  3. **Refactor**: Improve the code while keeping tests passing
+- Tests should be written before any implementation code
+- Each new feature, function, or class should have corresponding tests written first
+- Tests define the contract and expected behavior before implementation
+- This ensures:
+  - Clear requirements and specifications
+  - Better code design through testability considerations
+  - Immediate feedback on implementation correctness
+  - Reduced debugging time
+  - Higher confidence in code changes
+
 ---
 
 ## Project Structure
