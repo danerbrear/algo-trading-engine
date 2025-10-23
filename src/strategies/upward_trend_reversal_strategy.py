@@ -20,7 +20,7 @@ from src.common.trend_detector import TrendDetector, TrendInfo
 from decimal import Decimal
 
 
-@dataclass
+@dataclass(frozen=True)
 class SpreadInfo:
     """Information about a put debit spread."""
     atm_put: Option
@@ -179,7 +179,7 @@ class UpwardTrendReversalStrategy(Strategy):
         self,
         date: datetime,
         current_price: float
-    ) -> Optional[Dict]:
+    ) -> Optional[SpreadInfo]:
         """
         Find a suitable put debit spread for the given date and price.
         
@@ -190,7 +190,7 @@ class UpwardTrendReversalStrategy(Strategy):
         - Sufficient volume on both legs
         
         Returns:
-            Dictionary with spread information, or None if no suitable spread found
+            SpreadInfo object with spread information, or None if no suitable spread found
         """
         try:
             # Define strike and expiration ranges
@@ -296,17 +296,17 @@ class UpwardTrendReversalStrategy(Strategy):
                     
                     dte = atm_contract.days_to_expiration(date.date())
                     
-                    return {
-                        'atm_put': atm_option,
-                        'otm_put': otm_option,
-                        'net_debit': net_debit,
-                        'width': width,
-                        'max_risk': max_risk,
-                        'max_reward': max_reward,
-                        'risk_reward': risk_reward,
-                        'dte': dte,
-                        'expiration': str(atm_contract.expiration_date)
-                    }
+                    # Return SpreadInfo object
+                    return SpreadInfo(
+                        atm_put=atm_option,
+                        otm_put=otm_option,
+                        net_debit=net_debit,
+                        width=width,
+                        max_risk=max_risk,
+                        max_reward=max_reward,
+                        risk_reward_ratio=risk_reward,
+                        dte=dte
+                    )
             
             return None
             
@@ -387,15 +387,15 @@ class UpwardTrendReversalStrategy(Strategy):
             if not spread_info:
                 return
             
-            # Create position
+            # Create position using SpreadInfo object
             position = Position(
                 symbol=self.options_handler.symbol,
-                expiration_date=datetime.strptime(spread_info['expiration'], '%Y-%m-%d'),
+                expiration_date=datetime.strptime(spread_info.atm_put.expiration, '%Y-%m-%d'),
                 strategy_type=StrategyType.PUT_DEBIT_SPREAD,
-                strike_price=spread_info['atm_put'].strike,
+                strike_price=spread_info.atm_put.strike,
                 entry_date=date,
-                entry_price=spread_info['net_debit'],
-                spread_options=[spread_info['atm_put'], spread_info['otm_put']]
+                entry_price=spread_info.net_debit,
+                spread_options=[spread_info.atm_put, spread_info.otm_put]
             )
             
             # Add position

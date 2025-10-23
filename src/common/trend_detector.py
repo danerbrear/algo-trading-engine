@@ -10,7 +10,7 @@ from typing import Tuple, List
 from datetime import datetime
 
 
-@dataclass
+@dataclass(frozen=True)
 class TrendInfo:
     """Information about a detected trend."""
     start_date: datetime
