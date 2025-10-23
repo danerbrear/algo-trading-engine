@@ -12,6 +12,7 @@ from src.common.options_handler import OptionsHandler as NewOptionsHandler
 from src.common.options_helpers import OptionsRetrieverHelper
 from src.common.models import OptionType
 from src.common.options_dtos import StrikeRangeDTO, StrikePrice
+from src.common.trend_detector import TrendDetector
 from decimal import Decimal
 
 class VelocitySignalMomentumStrategy(Strategy):
@@ -277,36 +278,23 @@ class VelocitySignalMomentumStrategy(Strategy):
         Returns:
             Tuple of (success, duration, return)
         """
-        current_price = data['Close'].iloc[signal_index]
+        # Only process upward trends for this strategy
+        if trend_type != 'up':
+            return False, 0, 0.0
         
-        # Look backward for trend continuation
-        for duration in range(min_duration, min(max_duration + 1, signal_index + 1)):
-            start_index = signal_index - duration
-            if start_index < 0:
-                break
-                
-            start_price = data['Close'].iloc[start_index]
-            total_return = (current_price - start_price) / start_price
-            
-            if trend_type == 'up':
-                progress_print(f"🔍 Backward up trend detected for {duration} days, total return: {total_return}")
-                if total_return > 0:
-                    # Check if this is a sustained upward trend
-                    # Look for any significant reversal within the trend period
-                    trend_sustained = True
-                    for j in range(start_index + 1, signal_index):
-                        current_price_in_trend = data['Close'].iloc[j]
-                        current_return = (current_price_in_trend - start_price) / start_price
-                        if current_return < -0.02:  # 2% reversal threshold
-                            trend_sustained = False
-                            break
-                    
-                    if trend_sustained:
-                        return True, duration, total_return
-            # Note: This strategy only considers upward trends for momentum trading
-            # Downward trends are not used as they don't align with the strategy's purpose
+        # Use TrendDetector for consistent trend checking
+        success, duration, total_return = TrendDetector.check_backward_trend(
+            data=data,
+            signal_index=signal_index,
+            min_duration=min_duration,
+            max_duration=max_duration,
+            reversal_threshold=0.02
+        )
         
-        return False, 0, 0.0
+        if success:
+            progress_print(f"🔍 Backward up trend detected for {duration} days, total return: {total_return}")
+        
+        return success, duration, total_return
     
     def _create_put_credit_spread(self, date: datetime, current_price: float, expiration: str) -> Optional[Position]:
         """
