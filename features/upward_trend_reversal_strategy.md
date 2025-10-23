@@ -567,7 +567,7 @@ class UpwardTrendReversalStrategy(Strategy):
 
 ### Market Regime Protection
 - **Momentum Filter**: Avoid positions during momentum uptrend regimes
-- **Volatility Consideration**: Monitor implied volatility for spread selection
+- **Regime identification**: Use the bullish_regime_drawdown_analysis.py to model the market states we want to train the HMM against
 
 ## Performance Metrics
 
