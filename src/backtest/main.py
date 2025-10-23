@@ -199,6 +199,13 @@ class BacktestEngine:
             credit_received = position.entry_price * position.quantity * 100
             self.capital += credit_received
             print(f"💰 Added net credit of ${credit_received:.2f} to capital")
+        elif position.strategy_type in [StrategyType.CALL_DEBIT_SPREAD, StrategyType.PUT_DEBIT_SPREAD]:
+            # For debit spreads: Deduct the net debit paid from capital
+            debit_paid = position.entry_price * position.quantity * 100
+            if self.capital < debit_paid:
+                raise ValueError("Not enough capital to add debit spread position")
+            self.capital -= debit_paid
+            print(f"💰 Deducted net debit of ${debit_paid:.2f} from capital")
         else:
             # For other position types, check if we have enough capital
             if self.capital < position.entry_price * position.quantity * 100:
@@ -269,6 +276,12 @@ class BacktestEngine:
             cost_to_close = final_exit_price * position.quantity * 100
             self.capital -= cost_to_close
             print(f"💰 Subtracted cost to close of ${cost_to_close:.2f} from capital")
+        elif position.strategy_type in [StrategyType.CALL_DEBIT_SPREAD, StrategyType.PUT_DEBIT_SPREAD]:
+            # For debit spreads: Add the credit received from closing
+            # The exit_price represents the credit received when closing
+            credit_received = final_exit_price * position.quantity * 100
+            self.capital += credit_received
+            print(f"💰 Added credit received of ${credit_received:.2f} to capital")
         else:
             # For other position types, add the return
             self.capital += position_return

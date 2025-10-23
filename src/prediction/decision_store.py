@@ -26,7 +26,7 @@ class ProposedPositionRequest:
     symbol: str
     strategy_type: StrategyType
     legs: Tuple[Option, ...]
-    credit: float
+    premium: float  # Positive for credit spreads, negative for debit spreads
     width: float
     probability_of_profit: float
     confidence: float
@@ -38,7 +38,7 @@ class ProposedPositionRequest:
             "symbol": self.symbol,
             "strategy_type": self.strategy_type.value,
             "legs": [leg.to_dict() for leg in self.legs],
-            "credit": self.credit,
+            "premium": self.premium,
             "width": self.width,
             "probability_of_profit": self.probability_of_profit,
             "confidence": self.confidence,
@@ -52,7 +52,7 @@ class ProposedPositionRequest:
             symbol=data["symbol"],
             strategy_type=StrategyType(data["strategy_type"]),
             legs=tuple(Option.from_dict(opt) for opt in data.get("legs", [])),
-            credit=float(data["credit"]),
+            premium=float(data["premium"]),
             width=float(data["width"]),
             probability_of_profit=float(data["probability_of_profit"]),
             confidence=float(data["confidence"]),
@@ -127,7 +127,7 @@ def generate_decision_id(proposal: ProposedPositionRequest, decided_at_iso: str)
             proposal.strategy_type.value,
             legs_signature,
             str(proposal.width),
-            str(proposal.credit),
+            str(proposal.premium),
             proposal.expiration_date,
             decided_at_iso,
         ]

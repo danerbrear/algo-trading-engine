@@ -32,7 +32,7 @@ def test_store_append_and_read(tmp_path):
         symbol='SPY',
         strategy_type=StrategyType.CALL_CREDIT_SPREAD,
         legs=legs,
-        credit=1.1,
+        premium=1.1,
         width=5.0,
         probability_of_profit=0.6,
         confidence=0.65,
@@ -47,7 +47,7 @@ def test_store_append_and_read(tmp_path):
         decided_at=date.isoformat(),
         rationale='test',
         quantity=1,
-        entry_price=proposal.credit,
+        entry_price=proposal.premium,
     )
 
     store.append_decision(record)
@@ -71,7 +71,7 @@ def test_recommender_open_accept(monkeypatch, tmp_path):
     strategy.recommend_open_position.return_value = {
         'strategy_type': StrategyType.PUT_CREDIT_SPREAD,
         'legs': [atm_option, otm_option],
-        'credit': 1.05,
+        'premium': 1.05,
         'width': 5,
         'probability_of_profit': 0.68,
         'confidence': 0.7,
@@ -111,7 +111,7 @@ def test_recommender_close_accept(monkeypatch, tmp_path):
         symbol='SPY',
         strategy_type=StrategyType.CALL_CREDIT_SPREAD,
         legs=legs,
-        credit=1.0,
+        premium=1.0,
         width=5.0,
         probability_of_profit=0.6,
         confidence=0.6,

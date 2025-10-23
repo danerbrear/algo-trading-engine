@@ -91,7 +91,7 @@ class InteractiveStrategyRecommender:
         # Extract recommendation details
         strategy_type = recommendation["strategy_type"]
         legs = recommendation["legs"]
-        credit = recommendation["credit"]
+        premium = recommendation["premium"]
         width = recommendation["width"]
         probability_of_profit = recommendation["probability_of_profit"]
         confidence = recommendation["confidence"]
@@ -102,7 +102,7 @@ class InteractiveStrategyRecommender:
             symbol=self.options_handler.symbol,
             strategy_type=strategy_type,
             legs=legs,
-            credit=float(credit),
+            premium=float(premium),
             width=float(width),
             probability_of_profit=float(probability_of_profit),
             confidence=float(confidence),
@@ -123,7 +123,7 @@ class InteractiveStrategyRecommender:
             decided_at=decided_at,
             rationale=f"strategy_confidence={proposal.confidence:.2f}",
             quantity=1,
-            entry_price=proposal.credit,
+            entry_price=proposal.premium,
         )
         self.decision_store.append_decision(record)
         return record
@@ -253,7 +253,7 @@ class InteractiveStrategyRecommender:
             strategy_type=rec.proposal.strategy_type,
             strike_price=strike,
             entry_date=datetime.fromisoformat(rec.decided_at),
-            entry_price=float(rec.entry_price if rec.entry_price is not None else rec.proposal.credit),
+            entry_price=float(rec.entry_price if rec.entry_price is not None else rec.proposal.premium),
             spread_options=list(rec.proposal.legs),
         )
         position.set_quantity(int(rec.quantity) if rec.quantity is not None else 1)
@@ -264,11 +264,20 @@ class InteractiveStrategyRecommender:
             [f"{leg.option_type.value.upper()} {int(leg.strike)} exp {leg.expiration}" for leg in proposal.legs]
         )
         rr = best.get("risk_reward")
+        
+        # Display "Credit" vs "Debit" based on premium sign
+        if proposal.premium < 0:
+            cost_label = "Debit"
+            cost_value = abs(proposal.premium)
+        else:
+            cost_label = "Credit"
+            cost_value = proposal.premium
+        
         return (
             f"Symbol: {proposal.symbol}\n"
             f"Strategy: {proposal.strategy_type.value}\n"
             f"Legs: {legs_str}\n"
-            f"Credit: ${proposal.credit:.2f}  Width: {proposal.width}  R/R: {rr}  Prob: {proposal.probability_of_profit:.0%}"
+            f"{cost_label}: ${cost_value:.2f}  Width: {proposal.width}  R/R: {rr}  Prob: {proposal.probability_of_profit:.0%}"
         )
 
     def _format_close_summary(self, position: Position, exit_price: float, rationale: str) -> str:

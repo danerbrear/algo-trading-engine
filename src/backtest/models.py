@@ -141,7 +141,7 @@ class Strategy(ABC):
         return {
             "strategy_type": recommended_position.strategy_type,
             "legs": (atm_option, otm_option),
-            "credit": recommended_position.entry_price,
+            "premium": recommended_position.entry_price,
             "width": width,
             "probability_of_profit": 0.7,  # Default confidence for rule-based strategies
             "confidence": 0.7,  # Default confidence for rule-based strategies
@@ -251,6 +251,8 @@ class StrategyType(Enum):
     """
     CALL_CREDIT_SPREAD = "call_credit_spread"
     PUT_CREDIT_SPREAD = "put_credit_spread"
+    CALL_DEBIT_SPREAD = "call_debit_spread"
+    PUT_DEBIT_SPREAD = "put_debit_spread"
     LONG_STOCK = "long_stock"
     LONG_CALL = "long_call"
     SHORT_CALL = "short_call"
@@ -335,12 +337,17 @@ class Position:
         
     def get_return_dollars_from_assignment(self, underlying_price: float) -> float:
         """
-        Get the return from assignment for a credit spread position at expiration.
+        Get the return from assignment for spread positions at expiration.
         
         For credit spreads:
         - Initial credit received is stored in entry_price
         - Maximum risk is the width of the spread minus the credit received
         - At expiration, we calculate the intrinsic value of our short and long legs
+        
+        For debit spreads:
+        - Initial debit paid is stored in entry_price
+        - Maximum risk is the debit paid
+        - At expiration, we calculate the intrinsic value of our long and short legs
         """
         if not self.spread_options or len(self.spread_options) != 2:
             raise ValueError("Spread options are not set")
@@ -372,6 +379,33 @@ class Position:
             # Net P&L = Initial credit - Short leg cost + Long leg value
             net_pnl = self.entry_price - short_intrinsic + long_intrinsic
             
+        elif self.strategy_type == StrategyType.PUT_DEBIT_SPREAD:
+            # Long ATM put, Short OTM put
+            long_strike = atm_option.strike  # ATM strike (higher)
+            short_strike = otm_option.strike  # OTM strike (lower)
+            
+            # Calculate intrinsic values at expiration
+            long_intrinsic = max(0, long_strike - underlying_price)
+            short_intrinsic = max(0, short_strike - underlying_price)
+            
+            # Net P&L = Long leg value - Short leg cost - Initial debit
+            net_pnl = long_intrinsic - short_intrinsic - self.entry_price
+            
+        elif self.strategy_type == StrategyType.CALL_DEBIT_SPREAD:
+            # Long OTM call, Short ATM call
+            # For call debit spread, we buy the lower strike (ATM) and sell the higher strike (OTM)
+            # But in our spread_options, atm_option is first, otm_option is second
+            # So: long_strike = atm_option.strike (lower), short_strike = otm_option.strike (higher)
+            long_strike = atm_option.strike  # ATM strike (lower)
+            short_strike = otm_option.strike  # OTM strike (higher)
+            
+            # Calculate intrinsic values at expiration
+            long_intrinsic = max(0, underlying_price - long_strike)
+            short_intrinsic = max(0, underlying_price - short_strike)
+            
+            # Net P&L = Long leg value - Short leg cost - Initial debit
+            net_pnl = long_intrinsic - short_intrinsic - self.entry_price
+            
         else:
             raise ValueError(f"Invalid strategy type: {self.strategy_type}")
         
@@ -390,6 +424,11 @@ class Position:
             # exit_price = cost to close the position
             # Return = Credit received - Cost to close
             return (self.entry_price * self.quantity * 100) - (exit_price * self.quantity * 100)
+        elif self.strategy_type in [StrategyType.CALL_DEBIT_SPREAD, StrategyType.PUT_DEBIT_SPREAD]:
+            # For debit spreads: entry_price = net debit paid when opening
+            # exit_price = credit received when closing
+            # Return = Credit received - Debit paid
+            return (exit_price * self.quantity * 100) - (self.entry_price * self.quantity * 100)
         else:
             # For other position types, use the standard calculation
             return (exit_price * self.quantity * 100) - (self.entry_price * self.quantity * 100)
@@ -404,6 +443,9 @@ class Position:
         # For credit spreads, calculate percentage return based on max risk
         if self.strategy_type in [StrategyType.CALL_CREDIT_SPREAD, StrategyType.PUT_CREDIT_SPREAD]:
             return ((self.entry_price * self.quantity * 100) - (exit_price * self.quantity * 100)) / (self.entry_price * self.quantity * 100)
+        elif self.strategy_type in [StrategyType.CALL_DEBIT_SPREAD, StrategyType.PUT_DEBIT_SPREAD]:
+            # For debit spreads, calculate percentage return based on initial debit paid
+            return ((exit_price * self.quantity * 100) - (self.entry_price * self.quantity * 100)) / (self.entry_price * self.quantity * 100)
         else:
             # For other position types, use the standard calculation
             return ((exit_price * self.quantity * 100) - (self.entry_price * self.quantity * 100)) / (self.entry_price * self.quantity * 100)
@@ -446,6 +488,18 @@ class Position:
             return current_net_credit
         elif self.strategy_type == StrategyType.PUT_CREDIT_SPREAD:
             # For put credit spread: sell ATM put, buy OTM put
+            current_net_credit = current_atm_price - current_otm_price
+            return current_net_credit
+        elif self.strategy_type == StrategyType.PUT_DEBIT_SPREAD:
+            # For put debit spread: buy ATM put (higher strike), sell OTM put (lower strike)
+            # To close: sell ATM put, buy OTM put
+            # Current net credit = ATM put price - OTM put price
+            current_net_credit = current_atm_price - current_otm_price
+            return current_net_credit
+        elif self.strategy_type == StrategyType.CALL_DEBIT_SPREAD:
+            # For call debit spread: buy ATM call (lower strike), sell OTM call (higher strike)
+            # To close: sell ATM call, buy OTM call
+            # Current net credit = ATM call price - OTM call price
             current_net_credit = current_atm_price - current_otm_price
             return current_net_credit
         else:
@@ -492,6 +546,16 @@ class Position:
             return current_net_credit
         elif self.strategy_type == StrategyType.PUT_CREDIT_SPREAD:
             # For put credit spread: sell ATM put, buy OTM put
+            current_net_credit = current_atm_price - current_otm_price
+            return current_net_credit
+        elif self.strategy_type == StrategyType.PUT_DEBIT_SPREAD:
+            # For put debit spread: buy ATM put, sell OTM put
+            # To close: sell ATM put, buy OTM put
+            current_net_credit = current_atm_price - current_otm_price
+            return current_net_credit
+        elif self.strategy_type == StrategyType.CALL_DEBIT_SPREAD:
+            # For call debit spread: buy ATM call, sell OTM call
+            # To close: sell ATM call, buy OTM call
             current_net_credit = current_atm_price - current_otm_price
             return current_net_credit
         else:
@@ -555,8 +619,19 @@ class Position:
         """
         atm_option, otm_option = self.spread_options
         width = abs(atm_option.strike - otm_option.strike)
-        net_credit = atm_option.last_price - otm_option.last_price
-        return (width - net_credit) * 100
+        
+        if self.strategy_type in [StrategyType.CALL_CREDIT_SPREAD, StrategyType.PUT_CREDIT_SPREAD]:
+            # Credit spread: Max risk = Width - Net Credit
+            net_credit = atm_option.last_price - otm_option.last_price
+            return (width - net_credit) * 100
+        elif self.strategy_type in [StrategyType.CALL_DEBIT_SPREAD, StrategyType.PUT_DEBIT_SPREAD]:
+            # Debit spread: Max risk = Net Debit paid
+            net_debit = abs(atm_option.last_price - otm_option.last_price)
+            return net_debit * 100
+        else:
+            # Fallback for other position types
+            net_credit = atm_option.last_price - otm_option.last_price
+            return (width - net_credit) * 100
     
     def __eq__(self, other) -> bool:
         """
