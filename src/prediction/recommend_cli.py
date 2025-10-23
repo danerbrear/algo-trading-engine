@@ -11,12 +11,14 @@ from src.prediction.decision_store import JsonDecisionStore
 from src.prediction.recommendation_engine import InteractiveStrategyRecommender
 from src.strategies.credit_spread_minimal import CreditSpreadStrategy
 from src.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
+from src.strategies.upward_trend_reversal_strategy import UpwardTrendReversalStrategy
 
 LOOKBACK_DAYS = 120
 
 STRATEGY_REGISTRY = {
     "credit_spread": CreditSpreadStrategy,
-    "velocity_momentum": VelocitySignalMomentumStrategy
+    "velocity_momentum": VelocitySignalMomentumStrategy,
+    "upward_trend_reversal": UpwardTrendReversalStrategy
 }
 
 def build_strategy(name: str, options_handler: OptionsHandler, symbol: str):
@@ -29,13 +31,14 @@ def build_strategy(name: str, options_handler: OptionsHandler, symbol: str):
     model_dir = get_model_directory(symbol=symbol)
     lstm_model, lstm_scaler = load_lstm_model(model_dir, return_lstm_instance=True)
 
-    # VelocitySignalMomentumStrategy expects only options_handler in its constructor,
-    # but it still uses lstm_model/lstm_scaler internally for predictions.
-    if StrategyClass is VelocitySignalMomentumStrategy:
+    # VelocitySignalMomentumStrategy and UpwardTrendReversalStrategy expect only 
+    # options_handler in their constructor (no LSTM dependency)
+    if StrategyClass in [VelocitySignalMomentumStrategy, UpwardTrendReversalStrategy]:
         strategy = StrategyClass(options_handler=options_handler)
-        # Attach LSTM artifacts for internal prediction usage
-        strategy.lstm_model = lstm_model
-        strategy.lstm_scaler = lstm_scaler
+        # Attach LSTM artifacts for internal prediction usage if needed
+        if StrategyClass is VelocitySignalMomentumStrategy:
+            strategy.lstm_model = lstm_model
+            strategy.lstm_scaler = lstm_scaler
         return strategy
 
     # Default path: strategies that take LSTM artifacts in the constructor

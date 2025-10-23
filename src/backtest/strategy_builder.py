@@ -180,12 +180,120 @@ class VelocitySignalMomentumStrategyBuilder(StrategyBuilder):
         return strategy
 
 
+class UpwardTrendReversalStrategyBuilder(StrategyBuilder):
+    """Builder for UpwardTrendReversalStrategy"""
+    
+    def reset(self):
+        self._options_handler = None
+        self._start_date_offset = 60
+        self._lstm_model = None  # Not used but required by interface
+        self._lstm_scaler = None  # Not used but required by interface
+        self._stop_loss = None
+        self._profit_target = None
+        # Strategy-specific parameters with defaults from feature document
+        self._min_trend_duration = 3
+        self._max_trend_duration = 4
+        self._max_spread_width = 6.0
+        self._min_dte = 5
+        self._max_dte = 10
+        self._max_risk_per_trade = 0.20
+        self._max_holding_days = 2
+    
+    def set_lstm_model(self, model):
+        # Not used for this strategy but required by interface
+        self._lstm_model = model
+        return self
+    
+    def set_lstm_scaler(self, scaler):
+        # Not used for this strategy but required by interface
+        self._lstm_scaler = scaler
+        return self
+    
+    def set_options_handler(self, handler: OptionsHandler):
+        self._options_handler = handler
+        return self
+    
+    def set_start_date_offset(self, offset: int):
+        self._start_date_offset = offset
+        return self
+    
+    def set_stop_loss(self, stop_loss: float):
+        self._stop_loss = stop_loss
+        return self
+    
+    def set_profit_target(self, profit_target: float):
+        self._profit_target = profit_target
+        return self
+    
+    def set_min_trend_duration(self, duration: int):
+        """Set minimum trend duration (default: 3)"""
+        self._min_trend_duration = duration
+        return self
+    
+    def set_max_trend_duration(self, duration: int):
+        """Set maximum trend duration (default: 4)"""
+        self._max_trend_duration = duration
+        return self
+    
+    def set_max_spread_width(self, width: float):
+        """Set maximum spread width (default: 6.0)"""
+        self._max_spread_width = width
+        return self
+    
+    def set_min_dte(self, days: int):
+        """Set minimum days to expiration (default: 5)"""
+        self._min_dte = days
+        return self
+    
+    def set_max_dte(self, days: int):
+        """Set maximum days to expiration (default: 10)"""
+        self._max_dte = days
+        return self
+    
+    def set_max_risk_per_trade(self, risk: float):
+        """Set maximum risk per trade as percentage (default: 0.20)"""
+        self._max_risk_per_trade = risk
+        return self
+    
+    def set_max_holding_days(self, days: int):
+        """Set maximum holding days (default: 2)"""
+        self._max_holding_days = days
+        return self
+    
+    def build(self) -> Strategy:
+        if not self._options_handler:
+            raise ValueError("Missing required parameter: options_handler")
+        
+        try:
+            from ..strategies.upward_trend_reversal_strategy import UpwardTrendReversalStrategy
+        except ImportError:
+            from src.strategies.upward_trend_reversal_strategy import UpwardTrendReversalStrategy
+        
+        strategy = UpwardTrendReversalStrategy(
+            options_handler=self._options_handler,
+            min_trend_duration=self._min_trend_duration,
+            max_trend_duration=self._max_trend_duration,
+            max_spread_width=self._max_spread_width,
+            min_dte=self._min_dte,
+            max_dte=self._max_dte,
+            max_risk_per_trade=self._max_risk_per_trade,
+            max_holding_days=self._max_holding_days,
+            profit_target=self._profit_target,
+            stop_loss=self._stop_loss,
+            start_date_offset=self._start_date_offset
+        )
+        
+        self.reset()
+        return strategy
+
+
 class StrategyFactory:
     """Factory for creating strategies using the builder pattern"""
     
     _builders: Dict[str, Type[StrategyBuilder]] = {
         'credit_spread': CreditSpreadStrategyBuilder,
         'velocity_momentum': VelocitySignalMomentumStrategyBuilder,
+        'upward_trend_reversal': UpwardTrendReversalStrategyBuilder,
     }
     
     @classmethod
