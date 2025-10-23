@@ -35,6 +35,12 @@ The system operates in two main stages:
   - JSON decision store
   - CLI for open/close flows
 
+- **`src/analysis/`** - Market analysis tools
+  - Moving average velocity analysis
+  - Upward trend drawdown analysis
+  - Daily drawdown likelihood analysis
+  - Independent statistical analyses
+
 ## 📁 Project Structure
 
 ```
@@ -59,11 +65,18 @@ lstm_poc/
 │   │   ├── models.py         # Value Objects
 │   │   ├── cache/            # Caching system
 │   │   └── ...
-│   └── prediction/           # Prediction pipeline
-│       ├── recommend_cli.py          # CLI entrypoint for recommendations
-│       ├── recommendation_engine.py  # InteractiveStrategyRecommender
-│       ├── decision_store.py         # JSON decision store
-│       └── ...
+│   ├── prediction/           # Prediction pipeline
+│   │   ├── recommend_cli.py          # CLI entrypoint for recommendations
+│   │   ├── recommendation_engine.py  # InteractiveStrategyRecommender
+│   │   ├── decision_store.py         # JSON decision store
+│   │   └── ...
+│   └── analysis/             # Market analysis tools
+│       ├── ma_velocity_analysis.py   # Moving average analysis
+│       ├── upward_trend_drawdown_analysis.py  # Drawdown analysis
+│       ├── daily_drawdown_likelihood_analysis.py  # Daily likelihood analysis
+│       ├── run_ma_analysis.py        # MA analysis entry point
+│       ├── run_drawdown_analysis.py  # Drawdown analysis entry point
+│       └── run_daily_likelihood_analysis.py  # Daily likelihood entry point
 ├── data_cache/               # Cached market data
 │   ├── stocks/               # Stock price data
 │   ├── options/              # Options chain data
@@ -135,6 +148,24 @@ Outputs:
 python -m src.backtest.main --strategy velocity_signal_momentum
 ```
 
+6. **Run market analysis:**
+```bash
+# Moving average velocity analysis
+python -m src.analysis.run_ma_analysis
+
+# Upward trend drawdown analysis (default: 12 months)
+python -m src.analysis.run_drawdown_analysis
+
+# Daily drawdown likelihood analysis
+python -m src.analysis.run_daily_likelihood_analysis
+
+# Custom analysis period
+python -m src.analysis.run_drawdown_analysis --months 6
+
+# Skip plotting (console output only)
+python -m src.analysis.run_drawdown_analysis --no-plot
+```
+
 ## 📊 Key Features
 
 ### Market State Classification
@@ -196,7 +227,24 @@ python -m pytest tests/test_velocity_strategy.py -v
 - **[Model Documentation](src/model/README.md)** - ML models, training, and evaluation
 - **[Strategy Documentation](src/strategies/README.md)** - Trading strategy implementations
 - **[Backtest Documentation](src/backtest/README.md)** - Backtesting framework and usage
+- **[Analysis Documentation](docs/upward_trend_drawdown_analysis_implementation_summary.md)** - Market analysis tools
 - **[API Documentation](docs/)** - Detailed API and usage guides
+
+### Analysis Tools
+
+- **Moving Average Velocity Analysis** - Identifies optimal MA combinations for trend signals
+  - Specification: `features/ma_analysis.md`
+  - Implementation: `src/analysis/ma_velocity_analysis.py`
+  
+- **Upward Trend Drawdown Analysis** - Analyzes drawdowns during 3-10 day upward trends
+  - Specification: `features/upward_trend_drawdown_analysis.md`
+  - Implementation: `src/analysis/upward_trend_drawdown_analysis.py`
+  - Summary: `docs/upward_trend_drawdown_analysis_implementation_summary.md`
+  
+- **Daily Drawdown Likelihood Analysis** - Analyzes likelihood of drawdowns on each day of upward trends
+  - Specification: `features/daily_drawdown_likelihood_analysis.md`
+  - Implementation: `src/analysis/daily_drawdown_likelihood_analysis.py`
+  - Summary: `docs/daily_drawdown_likelihood_analysis_summary.md`
 
 ## ⚠️ Limitations
 
