@@ -176,36 +176,53 @@ class VelocitySignalMomentumStrategy(Strategy):
             return False
         
         # Get the current date index in the data
-        try:
-            current_idx = self.data.index.get_loc(date)
-        except KeyError:
-            # If the date is not found in cached data, check if it's the current date
-            current_date = datetime.now().date()
-            if date.date() == current_date:
-                # For current date, fetch live price and append to data
-                live_price = self._get_current_underlying_price(date)
-                if live_price is not None:
+        current_date = datetime.now().date()
+        is_current_date = date.date() == current_date
+        
+        # If it's the current date, always fetch live price (even if date exists in cache)
+        # to ensure we're using the most recent data during market hours
+        if is_current_date:
+            live_price = self._get_current_underlying_price(date)
+            if live_price is not None:
+                # Check if current date already exists in data (from stale cache)
+                if date in self.data.index:
+                    # Update existing row with fresh live price
+                    self.data.loc[date, 'Close'] = live_price
+                    self.data.loc[date, 'Open'] = live_price
+                    self.data.loc[date, 'High'] = live_price
+                    self.data.loc[date, 'Low'] = live_price
+                    self.data.loc[date, 'Volume'] = 0
+                    progress_print(f"🔄 Updated current date {date.date()} with live price ${live_price:.2f}")
+                else:
                     # Create a new row with the live price
                     new_row = pd.DataFrame({
                         'Close': [live_price],
-                        'Open': [live_price],  # Use live price as open for current day
+                        'Open': [live_price],
                         'High': [live_price],
                         'Low': [live_price],
-                        'Volume': [0]  # Volume not available for live price
+                        'Volume': [0]
                     }, index=[date])
-                    
                     # Append to existing data
                     self.data = pd.concat([self.data, new_row])
-                    current_idx = len(self.data) - 1
-                    
-                    # Recalculate moving averages and velocity changes for the updated data
-                    self._recalculate_moving_averages()
                     progress_print(f"📅 Fetched live price ${live_price:.2f} for current date {date.date()} and appended to data")
-                else:
-                    # Fallback to last available data point if live price fetch fails
-                    current_idx = len(self.data) - 1
-                    progress_print(f"⚠️ Could not fetch live price for {date.date()}, using last available data point (index {current_idx})")
+                
+                # Recalculate moving averages and velocity changes for the updated data
+                self._recalculate_moving_averages()
+                current_idx = self.data.index.get_loc(date)
             else:
+                # Fallback: if live price fetch fails, try to use cached data if available
+                if date in self.data.index:
+                    current_idx = self.data.index.get_loc(date)
+                    progress_print(f"⚠️ Could not fetch live price for {date.date()}, using cached data")
+                else:
+                    # No cached data and no live price - use last available
+                    current_idx = len(self.data) - 1
+                    progress_print(f"⚠️ Could not fetch live price for {date.date()}, using last available data point")
+        else:
+            # For historical dates, use cached data
+            try:
+                current_idx = self.data.index.get_loc(date)
+            except KeyError:
                 progress_print("⚠️  Date not found in data")
                 return False
         
