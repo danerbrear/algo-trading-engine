@@ -343,7 +343,7 @@ class VelocitySignalMomentumStrategy(Strategy):
             
             # Add strike range filter to prevent super far ITM contracts
             strike_range = StrikeRangeDTO(
-                min_strike=StrikePrice(Decimal(str(current_price - 11))),  # current_price - 11
+                min_strike=StrikePrice(Decimal(str(current_price - 7))),  # current_price - 7 (width of 6 + buffer)
                 max_strike=StrikePrice(Decimal(str(current_price + 1)))    # current_price + 1
             )
             
@@ -363,8 +363,8 @@ class VelocitySignalMomentumStrategy(Strategy):
                 
             progress_print(f"Found ATM put: {atm_put.ticker} @ ${atm_put.strike_price.value}")
             
-            # Find OTM put (-10 strike)
-            otm_strike = atm_strike - 10
+            # Find OTM put (-6 strike for 6-point width)
+            otm_strike = atm_strike - 6
             
             # Filter for puts with the specific expiration
             puts_for_expiration = [
@@ -502,7 +502,7 @@ class VelocitySignalMomentumStrategy(Strategy):
         expiration_range = ExpirationRangeDTO(min_days=5, max_days=10)
         
         strike_range = StrikeRangeDTO(
-            min_strike=StrikePrice(Decimal(str(current_price - 11))),  # current_price - 11
+            min_strike=StrikePrice(Decimal(str(current_price - 7))),  # current_price - 7 (width of 6 + buffer)
             max_strike=StrikePrice(Decimal(str(current_price + 1)))    # current_price + 1
         )
 

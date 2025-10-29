@@ -494,7 +494,7 @@ def parse_arguments():
                        help='Maximum position size as fraction of capital')
     parser.add_argument('--start-date', type=str, default='2024-08-01',
                        help='Start date for backtest (YYYY-MM-DD)')
-    parser.add_argument('--end-date', type=str, default='2025-08-31',
+    parser.add_argument('--end-date', type=str, default='2025-10-15',
                        help='End date for backtest (YYYY-MM-DD)')
     parser.add_argument('--symbol', type=str, default='SPY',
                        help='Symbol to trade')
