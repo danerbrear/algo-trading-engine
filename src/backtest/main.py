@@ -516,6 +516,15 @@ def parse_arguments():
     parser.add_argument('-f', '--free', action='store_true', default=False,
                        help='Use free tier rate limiting (13 second timeout between API requests)')
     
+    # HMM training options
+    parser.add_argument('--train-hmm', action='store_true', 
+                       help='Train a new HMM model on 2 years of data prior to backtest start date. '
+                            'If not specified, loads pre-trained model from MODEL_SAVE_BASE_PATH.')
+    parser.add_argument('--hmm-training-years', type=int, default=2,
+                       help='Number of years of historical data to use for HMM training (default: 2)')
+    parser.add_argument('--save-trained-hmm', action='store_true',
+                       help='Save the newly trained HMM model. Only applies when --train-hmm is used.')
+    
     return parser.parse_args()
 
 if __name__ == "__main__":
@@ -554,20 +563,23 @@ if __name__ == "__main__":
     options_handler = data_retriever.options_handler
 
     try:
-        hmm_model = load_hmm_model(model_dir)
+        # Load LSTM model (still needed for some strategies)
         lstm_model, scaler = load_lstm_model(model_dir, return_lstm_instance=True)
 
-        # Then prepare the data for LSTM
-        # data, options_data = data_retriever.prepare_data_for_lstm(state_classifier=hmm_model)
-
+        # Fetch data for backtesting
         data = data_retriever.fetch_data_for_period(start_date, 'backtest')
 
         # Create strategy using the builder pattern
+        # HMM training is now handled by HMMStrategy base class if train_hmm=True
         strategy = create_strategy_from_args(
             strategy_name=args.strategy,
             lstm_model=lstm_model,
             lstm_scaler=scaler,
             options_handler=options_handler,
+            data_retriever=data_retriever,  # NEW: Pass data_retriever for HMM training
+            train_hmm=args.train_hmm,  # NEW: HMM training flag
+            hmm_training_years=args.hmm_training_years,  # NEW: Training period
+            save_trained_hmm=args.save_trained_hmm,  # NEW: Save trained model
             start_date_offset=args.start_date_offset,
             stop_loss=args.stop_loss,
             profit_target=args.profit_target

@@ -245,6 +245,7 @@ class Strategy(ABC):
             return False
         return position.stop_loss_hit(self.stop_loss, exit_price)
 
+
 class StrategyType(Enum):
     """
     Enum for strategy types.

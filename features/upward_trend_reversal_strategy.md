@@ -386,142 +386,506 @@ Drawdown = (Close_negative_day - Close_last_positive_day) / Close_last_positive_
    - Add strategy option to `recommend_cli.py`
    - Support for interactive recommendations
 
-### Phase 4: HMM Training Options for Backtest Engine
+### Phase 4: HMM-Enabled Strategy Base Class
 
-**Motivation**: To avoid look-ahead bias and ensure realistic market state classifications, add the ability to train the HMM model on data prior to the backtest period rather than always loading a pre-trained model.
+**Motivation**: To avoid look-ahead bias and ensure realistic market state classifications, create an `HMMStrategy` base class that provides HMM training capabilities. Strategies that need market regime filtering can inherit from this class, promoting code reuse and consistency.
 
-**Implementation**: `src/backtest/main.py`
+**Implementation**: 
+- New base class: `src/strategies/hmm_strategy.py` - `HMMStrategy` class
+- Strategy implementation: `src/strategies/upward_trend_reversal_strategy.py`
 
-**New Command-Line Arguments**:
+**Key Design Principles**:
+1. **Inheritance Hierarchy**: `HMMStrategy` inherits from `Strategy`, provides HMM capabilities
+2. **Code Reuse**: All HMM-related code lives in one place
+3. **Flexible Configuration**: Strategies can customize HMM training parameters
+4. **No Global Side Effects**: Each strategy instance has its own HMM
+5. **Backward Compatible**: Strategies that don't need HMM continue to inherit from `Strategy`
+
+**New Base Class** (`src/backtest/models.py`):
 ```python
-parser.add_argument('--train-hmm', action='store_true', 
-                   help='Train a new HMM model on 2 years of data prior to backtest start date. '
-                        'If not specified, loads pre-trained model from MODEL_SAVE_BASE_PATH.')
-
-parser.add_argument('--hmm-training-years', type=int, default=2,
-                   help='Number of years of historical data to use for HMM training (default: 2)')
-
-parser.add_argument('--save-trained-hmm', action='store_true',
-                   help='Save the newly trained HMM model. Only applies when --train-hmm is used.')
-```
-
-**Training Function** (follows existing pattern from `src/model/main.py:prepare_data()`):
-```python
-def train_hmm_for_backtest(data_retriever, start_date, training_years=2):
+class HMMStrategy(Strategy):
     """
-    Train a new HMM model on historical data prior to backtest start date.
+    Base class for strategies that use HMM for market regime classification.
     
-    Uses the same training pattern as StockPredictor.prepare_data() in src/model/main.py
+    Provides HMM training, prediction, and persistence capabilities.
+    Strategies that need market state filtering should inherit from this class.
+    """
     
-    Args:
-        data_retriever: DataRetriever instance
-        start_date: Backtest start date
-        training_years: Number of years of historical data to use
+    def __init__(
+        self,
+        data_retriever: DataRetriever = None,
+        train_hmm: bool = False,
+        hmm_training_years: int = 2,
+        save_trained_hmm: bool = False,
+        hmm_model_dir: str = None,
+        **kwargs
+    ):
+        """
+        Initialize HMM-enabled strategy.
         
-    Returns:
-        MarketStateClassifier: Trained HMM model
-    """
-    from datetime import timedelta
-    from src.model.market_state_classifier import MarketStateClassifier
+        Args:
+            data_retriever: DataRetriever for fetching historical data
+            train_hmm: Whether to train HMM on historical data
+            hmm_training_years: Number of years of historical data for training
+            save_trained_hmm: Whether to save trained HMM model
+            hmm_model_dir: Directory for saving/loading HMM models
+            **kwargs: Additional arguments passed to Strategy base class
+        """
+        super().__init__(**kwargs)
+        self.data_retriever = data_retriever
+        self.train_hmm = train_hmm
+        self.hmm_training_years = hmm_training_years
+        self.save_trained_hmm = save_trained_hmm
+        self.hmm_model_dir = hmm_model_dir
+        self.hmm_model = None  # Trained HMM instance
     
-    # Calculate training period: N years before backtest start
-    hmm_training_start = start_date - timedelta(days=training_years * 365)
+    def set_data(self, data: pd.DataFrame, hmm_model=None, treasury_rates=None):
+        """
+        Set data for strategy and optionally train HMM.
+        
+        Overrides base Strategy.set_data() to add HMM training capability.
+        """
+        self.data = data
+        self.treasury_rates = treasury_rates
+        
+        # Get first date from data
+        if not data.empty:
+            start_date = data.index[0]
+            
+            # Train HMM if requested (before validation)
+            self._train_hmm_if_requested(start_date)
     
-    print(f"\n📈 Preparing HMM training data from {hmm_training_start.date()} to {start_date.date()}")
+    def _train_hmm_if_requested(self, start_date: datetime):
+        """
+        Train HMM on historical data if training is enabled.
+        
+        Called during set_data() before data validation.
+        
+        Args:
+            start_date: First date in backtest data
+        """
+        if not self.train_hmm or not self.data_retriever:
+            return
+        
+        from datetime import timedelta
+        from src.model.market_state_classifier import MarketStateClassifier
+        
+        # Calculate training period: N years before backtest start
+        hmm_training_start = start_date - timedelta(days=self.hmm_training_years * 365)
+        
+        print(f"\n🎓 [{self.__class__.__name__}] Training HMM on {self.hmm_training_years} years of historical data")
+        print(f"   Training period: {hmm_training_start.date()} to {start_date.date()}")
+        
+        # Fetch historical data
+        hmm_data = self.data_retriever.fetch_data_for_period(hmm_training_start, 'hmm')
+        
+        # Filter to only include data before backtest start (avoid look-ahead bias)
+        hmm_data = hmm_data[hmm_data.index < start_date]
+        
+        # Calculate features
+        self.data_retriever.calculate_features_for_data(hmm_data)
+        
+        print(f"   Training on {len(hmm_data)} samples")
+        
+        # Train HMM model
+        self.hmm_model = MarketStateClassifier()
+        n_states = self.hmm_model.train_hmm_model(hmm_data)
+        
+        print(f"   ✅ HMM trained with {n_states} optimal states")
+        
+        # Apply trained HMM to backtest data
+        self._apply_hmm_to_data()
+        
+        # Save if requested
+        if self.save_trained_hmm:
+            self._save_hmm_model()
     
-    # Fetch historical data (same as StockPredictor.prepare_data)
-    hmm_data = data_retriever.fetch_data_for_period(hmm_training_start, 'hmm')
+    def _apply_hmm_to_data(self):
+        """Apply trained HMM to predict market states for backtest data."""
+        if self.data is None or self.hmm_model is None:
+            return
+        
+        # Get features needed for HMM
+        required_features = ['Returns', 'Volatility', 'Volume_Change']
+        
+        # Check if features exist
+        missing_features = [f for f in required_features if f not in self.data.columns]
+        if missing_features:
+            print(f"   ⚠️  Warning: Missing features {missing_features}, cannot apply HMM")
+            return
+        
+        features = self.hmm_model.scaler.transform(self.data[required_features])
+        
+        # Predict market states
+        market_states = self.hmm_model.hmm_model.predict(features)
+        
+        # Add to data
+        self.data['Market_State'] = market_states
+        
+        print(f"   ✅ Applied HMM predictions to {len(self.data)} backtest days")
     
-    # Filter to only include data before backtest start
-    hmm_data = hmm_data[hmm_data.index < start_date]
+    def _save_hmm_model(self):
+        """Save trained HMM model for future use."""
+        if self.hmm_model is None:
+            return
+        
+        import pickle
+        import os
+        from datetime import datetime
+        
+        base_dir = self.hmm_model_dir or os.environ.get('MODEL_SAVE_BASE_PATH', 'Trained_Models')
+        
+        # Use strategy class name for mode (e.g., 'upward_trend_reversal_hmm')
+        strategy_name = self.__class__.__name__.replace('Strategy', '').lower()
+        mode = f'{strategy_name}_hmm'
+        
+        # Get symbol from data_retriever or options_handler
+        symbol = getattr(self.data_retriever, 'symbol', 'SPY')
+        
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        timestamp_dir = os.path.join(base_dir, mode, symbol, timestamp)
+        latest_dir = os.path.join(base_dir, mode, symbol, 'latest')
+        os.makedirs(timestamp_dir, exist_ok=True)
+        os.makedirs(latest_dir, exist_ok=True)
+        
+        # Save HMM model and scaler with metadata
+        hmm_data = {
+            'hmm_model': self.hmm_model.hmm_model,
+            'scaler': self.hmm_model.scaler,
+            'n_states': self.hmm_model.n_states,
+            'max_states': self.hmm_model.max_states,
+            'training_years': self.hmm_training_years,
+            'strategy': self.__class__.__name__,
+            'timestamp': timestamp
+        }
+        
+        hmm_path = os.path.join(timestamp_dir, 'hmm_model.pkl')
+        hmm_latest_path = os.path.join(latest_dir, 'hmm_model.pkl')
+        
+        with open(hmm_path, 'wb') as f:
+            pickle.dump(hmm_data, f)
+        with open(hmm_latest_path, 'wb') as f:
+            pickle.dump(hmm_data, f)
+        
+        print(f"   ✅ HMM model saved to {latest_dir}")
     
-    # Calculate features (same as StockPredictor.prepare_data)
-    data_retriever.calculate_features_for_data(hmm_data)
-    
-    print(f"🎯 Training HMM on market data ({len(hmm_data)} samples)")
-    
-    # Train HMM model (same as StockPredictor.prepare_data)
-    hmm_model = MarketStateClassifier()
-    n_states = hmm_model.train_hmm_model(hmm_data)
-    
-    print(f"✅ HMM model trained with {n_states} optimal states")
-    
-    return hmm_model
+    def _get_hmm_mode_name(self) -> str:
+        """
+        Get the mode name for HMM model storage.
+        
+        Subclasses can override to customize storage location.
+        
+        Returns:
+            str: Mode name for model storage
+        """
+        strategy_name = self.__class__.__name__.replace('Strategy', '').lower()
+        return f'{strategy_name}_hmm'
 ```
 
-**Saving Function** (reuses existing `save_model()` from `src/model/main.py`):
+**Strategy Implementation** (`src/strategies/upward_trend_reversal_strategy.py`):
 ```python
-def save_hmm_only(hmm_model, mode='backtest_hmm', symbol='SPY'):
+class UpwardTrendReversalStrategy(HMMStrategy):  # Inherit from HMMStrategy
     """
-    Save just the HMM model using the existing save infrastructure.
+    Strategy that trades put debit spreads on upward trend reversals.
     
-    Follows the same pattern as save_model() in src/model/main.py but saves only HMM.
+    Inherits HMM training capabilities from HMMStrategy base class.
     """
-    import pickle
-    import os
-    from datetime import datetime
     
-    base_dir = os.environ.get('MODEL_SAVE_BASE_PATH', 'Trained_Models')
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    timestamp_dir = os.path.join(base_dir, mode, symbol, timestamp)
-    latest_dir = os.path.join(base_dir, mode, symbol, 'latest')
-    os.makedirs(timestamp_dir, exist_ok=True)
-    os.makedirs(latest_dir, exist_ok=True)
+    def __init__(
+        self,
+        options_handler: OptionsHandler,
+        data_retriever: DataRetriever = None,
+        train_hmm: bool = False,
+        hmm_training_years: int = 2,
+        save_trained_hmm: bool = False,
+        hmm_model_dir: str = None,
+        min_trend_duration: int = 3,
+        max_trend_duration: int = 4,
+        max_spread_width: float = 6.0,
+        min_dte: int = 5,
+        max_dte: int = 10,
+        max_risk_per_trade: float = 0.20,
+        max_holding_days: int = 2,
+        profit_target: float = None,
+        stop_loss: float = None,
+        start_date_offset: int = 60
+    ):
+        # Pass HMM parameters to base class
+        super().__init__(
+            data_retriever=data_retriever,
+            train_hmm=train_hmm,
+            hmm_training_years=hmm_training_years,
+            save_trained_hmm=save_trained_hmm,
+            hmm_model_dir=hmm_model_dir,
+            profit_target=profit_target,
+            stop_loss=stop_loss,
+            start_date_offset=start_date_offset
+        )
+        
+        # Strategy-specific parameters
+        self.options_handler = options_handler
+        self.min_trend_duration = min_trend_duration
+        self.max_trend_duration = max_trend_duration
+        self.max_spread_width = max_spread_width
+        self.min_dte = min_dte
+        self.max_dte = max_dte
+        self.max_risk_per_trade = max_risk_per_trade
+        self.max_holding_days = max_holding_days
+        
+        # Track detected trends for analysis
+        self.detected_trends: List[TrendInfo] = []
     
-    # Save HMM model and scaler (same format as save_model())
-    hmm_data = {
-        'hmm_model': hmm_model.hmm_model,
-        'scaler': hmm_model.scaler,
-        'n_states': hmm_model.n_states,
-        'max_states': hmm_model.max_states
-    }
-    
-    hmm_path = os.path.join(timestamp_dir, 'hmm_model.pkl')
-    hmm_latest_path = os.path.join(latest_dir, 'hmm_model.pkl')
-    
-    with open(hmm_path, 'wb') as f:
-        pickle.dump(hmm_data, f)
-    with open(hmm_latest_path, 'wb') as f:
-        pickle.dump(hmm_data, f)
-    
-    print(f"✅ HMM model saved to {hmm_path} and {hmm_latest_path}")
+    # Strategy-specific methods remain the same
+    # HMM training is handled by HMMStrategy base class
 ```
 
-**Updated Main Logic**:
+**HMM Strategy Builder Base** (`src/backtest/strategy_builder.py`):
 ```python
-if args.train_hmm:
-    # Train new HMM on data prior to backtest
-    hmm_model = train_hmm_for_backtest(data_retriever, start_date, args.hmm_training_years)
+class HMMStrategyBuilder(StrategyBuilder):
+    """
+    Base builder for HMM-enabled strategies.
     
-    if args.save_trained_hmm:
-        # Save using existing pattern from src/model/main.py:save_model()
-        save_hmm_only(hmm_model, mode='backtest_hmm', symbol=args.symbol)
-else:
-    # Load pre-trained HMM using existing loader from src/common/functions.py
-    hmm_model = load_hmm_model(model_dir)
+    Provides builder methods for HMM configuration.
+    Subclasses should call super().__init__() and use these methods.
+    """
+    
+    def __init__(self):
+        super().__init__()
+        self._data_retriever = None
+        self._train_hmm = False
+        self._hmm_training_years = 2
+        self._save_trained_hmm = False
+        self._hmm_model_dir = None
+    
+    def set_data_retriever(self, data_retriever: DataRetriever):
+        """Set DataRetriever for HMM training."""
+        self._data_retriever = data_retriever
+        return self
+    
+    def set_train_hmm(self, train_hmm: bool):
+        """Enable/disable HMM training."""
+        self._train_hmm = train_hmm
+        return self
+    
+    def set_hmm_training_years(self, years: int):
+        """Set number of years for HMM training."""
+        self._hmm_training_years = years
+        return self
+    
+    def set_save_trained_hmm(self, save: bool):
+        """Enable/disable saving trained HMM."""
+        self._save_trained_hmm = save
+        return self
+    
+    def set_hmm_model_dir(self, model_dir: str):
+        """Set directory for loading/saving HMM models."""
+        self._hmm_model_dir = model_dir
+        return self
+```
+
+**Upward Trend Reversal Strategy Builder**:
+```python
+class UpwardTrendReversalStrategyBuilder(HMMStrategyBuilder):
+    """Builder for UpwardTrendReversalStrategy."""
+    
+    def __init__(self):
+        super().__init__()  # Initialize HMM builder parameters
+        self._min_trend_duration = 3
+        self._max_trend_duration = 4
+        self._max_spread_width = 6.0
+        self._min_dte = 5
+        self._max_dte = 10
+        self._max_risk_per_trade = 0.20
+        self._max_holding_days = 2
+    
+    def set_min_trend_duration(self, duration: int):
+        """Set minimum trend duration in days."""
+        self._min_trend_duration = duration
+        return self
+    
+    def set_max_trend_duration(self, duration: int):
+        """Set maximum trend duration in days."""
+        self._max_trend_duration = duration
+        return self
+    
+    def set_max_spread_width(self, width: float):
+        """Set maximum spread width."""
+        self._max_spread_width = width
+        return self
+    
+    def set_min_dte(self, dte: int):
+        """Set minimum days to expiration."""
+        self._min_dte = dte
+        return self
+    
+    def set_max_dte(self, dte: int):
+        """Set maximum days to expiration."""
+        self._max_dte = dte
+        return self
+    
+    def set_max_risk_per_trade(self, risk: float):
+        """Set maximum risk per trade as fraction."""
+        self._max_risk_per_trade = risk
+        return self
+    
+    def set_max_holding_days(self, days: int):
+        """Set maximum holding days."""
+        self._max_holding_days = days
+        return self
+    
+    def build(self) -> Strategy:
+        """Build the strategy with all configured parameters."""
+        if self._options_handler is None:
+            raise ValueError("Missing required parameter: options_handler")
+        
+        strategy = UpwardTrendReversalStrategy(
+            options_handler=self._options_handler,
+            data_retriever=self._data_retriever,
+            train_hmm=self._train_hmm,
+            hmm_training_years=self._hmm_training_years,
+            save_trained_hmm=self._save_trained_hmm,
+            hmm_model_dir=self._hmm_model_dir,
+            min_trend_duration=self._min_trend_duration,
+            max_trend_duration=self._max_trend_duration,
+            max_spread_width=self._max_spread_width,
+            min_dte=self._min_dte,
+            max_dte=self._max_dte,
+            max_risk_per_trade=self._max_risk_per_trade,
+            max_holding_days=self._max_holding_days,
+            profit_target=self._profit_target,
+            stop_loss=self._stop_loss,
+            start_date_offset=self._start_date_offset
+        )
+        
+        self.reset()
+        return strategy
+```
+
+**Command-Line Integration** (`src/backtest/strategy_builder.py`):
+```python
+def create_strategy_from_args(
+    strategy_name: str,
+    data_retriever: DataRetriever,  # Pass data_retriever
+    **kwargs
+) -> Strategy:
+    """Create strategy with HMM training support."""
+    
+    # Extract HMM training arguments
+    train_hmm = kwargs.pop('train_hmm', False)
+    hmm_training_years = kwargs.pop('hmm_training_years', 2)
+    save_trained_hmm = kwargs.pop('save_trained_hmm', False)
+    hmm_model_dir = kwargs.pop('hmm_model_dir', None)
+    
+    # Build strategy with HMM training options
+    strategy = StrategyFactory.create_strategy(
+        strategy_name,
+        data_retriever=data_retriever,
+        train_hmm=train_hmm,
+        hmm_training_years=hmm_training_years,
+        save_trained_hmm=save_trained_hmm,
+        hmm_model_dir=hmm_model_dir,
+        **kwargs
+    )
+    
+    return strategy
+```
+
+**Updated Main Logic** (`src/backtest/main.py`):
+```python
+# Parse HMM training arguments
+parser.add_argument('--train-hmm', action='store_true',
+                   help='Train strategy-specific HMM on N years of prior data')
+parser.add_argument('--hmm-training-years', type=int, default=2,
+                   help='Years of historical data for HMM training (default: 2)')
+parser.add_argument('--save-trained-hmm', action='store_true',
+                   help='Save trained HMM model for future use')
+
+# Create strategy with HMM training options
+strategy = create_strategy_from_args(
+    strategy_name=args.strategy,
+    data_retriever=data_retriever,  # NEW: Pass data_retriever
+    options_handler=options_handler,
+    lstm_model=lstm_model,
+    lstm_scaler=scaler,
+    train_hmm=args.train_hmm,  # NEW
+    hmm_training_years=args.hmm_training_years,  # NEW
+    save_trained_hmm=args.save_trained_hmm,  # NEW
+    stop_loss=args.stop_loss,
+    profit_target=args.profit_target,
+    start_date_offset=args.start_date_offset
+)
+
+# Set data (strategy will train HMM if requested)
+strategy.set_data(data, hmm_model=None, treasury_rates=data_retriever.treasury_rates)
 ```
 
 **Usage Examples**:
 ```bash
-# Default: Load pre-trained HMM
+# Default: Use existing Market_State column from pre-trained HMM
 python -m src.backtest.main --strategy upward_trend_reversal \
     --start-date 2023-01-01 --end-date 2024-01-01
 
-# Train new HMM on 2 years of prior data
+# Train strategy-specific HMM on 2 years of prior data
 python -m src.backtest.main --strategy upward_trend_reversal \
-    --start-date 2023-01-01 --end-date 2024-01-01 --train-hmm
+    --start-date 2023-01-01 --end-date 2024-01-01 \
+    --train-hmm
 
-# Train on 3 years and save
+# Train on 3 years and save for future use
 python -m src.backtest.main --strategy upward_trend_reversal \
     --start-date 2023-01-01 --end-date 2024-01-01 \
     --train-hmm --hmm-training-years 3 --save-trained-hmm
 ```
 
 **Benefits**:
+- **Code Reuse**: All HMM logic in one base class, no duplication
+- **Clean Inheritance**: `Strategy` → `HMMStrategy` → `UpwardTrendReversalStrategy`
+- **Strategy Ownership**: Each strategy instance controls its HMM configuration
 - **Avoids Look-Ahead Bias**: HMM only sees data before backtest period
-- **Flexibility**: Easy experimentation with different training periods
-- **Reproducibility**: Clear separation of training/testing data
-- **Strategy-Specific**: Can train HMM specifically for reversal strategy testing
+- **Strategy-Specific Market Regimes**: Different strategies can define different regime criteria
+- **No Side Effects**: Training doesn't affect other strategies
+- **Flexible Configuration**: Easy per-strategy customization
+- **Future-Proof**: New strategies can easily inherit HMM capabilities
+- **Backward Compatible**: Non-HMM strategies continue to inherit from `Strategy`
+
+**Inheritance Hierarchy**:
+```
+Strategy (base)
+├── CreditSpreadStrategy (no HMM)
+├── VelocityMomentumStrategy (no HMM)
+└── HMMStrategy (HMM-enabled base)
+    └── UpwardTrendReversalStrategy (uses HMM)
+    └── Future HMM strategies...
+```
+
+**Testing Requirements**:
+1. **HMMStrategy Base Class Tests**:
+   - Test HMM training with various training periods
+   - Test data filtering to avoid look-ahead bias
+   - Test HMM application to backtest data
+   - Test HMM model saving/loading
+   - Test with missing features (error handling)
+   - Test with no data_retriever provided
+
+2. **UpwardTrendReversalStrategy Integration Tests**:
+   - Test strategy inherits HMM capabilities correctly
+   - Test strategy works with and without HMM training
+   - Test HMM training doesn't interfere with strategy logic
+   - Test strategy-specific HMM storage paths
+
+3. **Builder Tests**:
+   - Test HMMStrategyBuilder provides HMM configuration
+   - Test UpwardTrendReversalStrategyBuilder inherits HMM builder methods
+   - Test builder method chaining
+   - Test builder passes all parameters correctly
+
+**Migration Path for Existing Code**:
+1. Remove HMM training from `src/backtest/main.py`
+2. Create `HMMStrategy` base class in `src/strategies/hmm_strategy.py`
+3. Update `UpwardTrendReversalStrategy` to inherit from `HMMStrategy`
+4. Create `HMMStrategyBuilder` base class in `src/backtest/strategy_builder.py`
+5. Update `UpwardTrendReversalStrategyBuilder` to inherit from `HMMStrategyBuilder`
+6. Update `create_strategy_from_args()` to pass `data_retriever`
+7. Update tests to reflect new architecture
 
 ### Phase 5: Strategy Configuration and Testing
 

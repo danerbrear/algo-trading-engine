@@ -12,6 +12,7 @@ from dataclasses import dataclass
 import pandas as pd
 
 from src.backtest.models import Strategy, Position, StrategyType
+from src.strategies.hmm_strategy import HMMStrategy
 from src.common.models import Option, OptionType, OptionChain
 from src.common.options_handler import OptionsHandler
 from src.common.options_dtos import StrikeRangeDTO, ExpirationRangeDTO, StrikePrice, ExpirationDate
@@ -33,9 +34,11 @@ class SpreadInfo:
     dte: int
 
 
-class UpwardTrendReversalStrategy(Strategy):
+class UpwardTrendReversalStrategy(HMMStrategy):
     """
     Strategy that trades put debit spreads on upward trend reversals.
+    
+    Inherits HMM training capabilities from HMMStrategy base class.
     
     Entry Criteria:
     - 3-4 day upward trend detected
@@ -53,6 +56,11 @@ class UpwardTrendReversalStrategy(Strategy):
     def __init__(
         self,
         options_handler: OptionsHandler,
+        data_retriever=None,
+        train_hmm: bool = False,
+        hmm_training_years: int = 2,
+        save_trained_hmm: bool = False,
+        hmm_model_dir: str = None,
         min_trend_duration: int = 3,
         max_trend_duration: int = 4,
         max_spread_width: float = 6.0,
@@ -64,7 +72,19 @@ class UpwardTrendReversalStrategy(Strategy):
         stop_loss: float = None,
         start_date_offset: int = 60
     ):
-        super().__init__(profit_target=profit_target, stop_loss=stop_loss, start_date_offset=start_date_offset)
+        # Pass HMM parameters to base class
+        super().__init__(
+            data_retriever=data_retriever,
+            train_hmm=train_hmm,
+            hmm_training_years=hmm_training_years,
+            save_trained_hmm=save_trained_hmm,
+            hmm_model_dir=hmm_model_dir,
+            profit_target=profit_target,
+            stop_loss=stop_loss,
+            start_date_offset=start_date_offset
+        )
+        
+        # Strategy-specific parameters
         self.options_handler = options_handler
         self.min_trend_duration = min_trend_duration
         self.max_trend_duration = max_trend_duration
