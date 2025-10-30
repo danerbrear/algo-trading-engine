@@ -265,6 +265,36 @@ class TestVelocitySignalMomentumStrategy:
         
         strategy.new_options_handler.get_contract_list_for_date.return_value = [atm_contract, otm_contract]
         
+        # Mock get_option_bar to return OptionBarDTO with proper close_price
+        from src.common.options_dtos import OptionBarDTO
+        from decimal import Decimal
+        
+        atm_bar = OptionBarDTO(
+            ticker='O:SPY240115P100',
+            timestamp=datetime(2024, 1, 1),
+            open_price=Decimal('2.50'),
+            high_price=Decimal('2.60'),
+            low_price=Decimal('2.40'),
+            close_price=Decimal('2.50'),
+            volume=1000,
+            volume_weighted_avg_price=Decimal('2.50'),
+            number_of_transactions=100
+        )
+        
+        otm_bar = OptionBarDTO(
+            ticker='O:SPY240115P90',
+            timestamp=datetime(2024, 1, 1),
+            open_price=Decimal('0.50'),
+            high_price=Decimal('0.60'),
+            low_price=Decimal('0.40'),
+            close_price=Decimal('0.50'),
+            volume=800,
+            volume_weighted_avg_price=Decimal('0.50'),
+            number_of_transactions=80
+        )
+        
+        strategy.new_options_handler.get_option_bar = Mock(side_effect=lambda opt, date: atm_bar if '100' in opt.ticker else otm_bar)
+        
         # Create mock data
         data = pd.DataFrame({
             'Close': [100, 101, 102]

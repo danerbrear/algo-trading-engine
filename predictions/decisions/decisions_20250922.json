@@ -1,0 +1,62 @@
+[
+  {
+    "closed_at": "2025-10-06T19:20:54.553040",
+    "decided_at": "2025-09-22T17:06:46.176650+00:00",
+    "entry_price": 2.3499999999999996,
+    "exit_price": 0.0,
+    "id": "e8b7436cbfbf77c5",
+    "outcome": "accepted",
+    "proposal": {
+      "confidence": 0.7,
+      "created_at": "2025-09-22T17:04:48.781375+00:00",
+      "credit": 2.3499999999999996,
+      "expiration_date": "2025-09-30",
+      "legs": [
+        {
+          "ask": 5.9,
+          "bid": 3.8,
+          "delta": null,
+          "expiration": "2025-09-30",
+          "gamma": null,
+          "implied_volatility": null,
+          "last_price": 3.84,
+          "mid_price": 4.85,
+          "moneyness": 0.005765765765765766,
+          "open_interest": null,
+          "strike": 666.0,
+          "symbol": "O:SPY250930P00666000",
+          "theta": null,
+          "ticker": "O:SPY250930P00666000",
+          "type": "put",
+          "vega": null,
+          "volume": 444
+        },
+        {
+          "ask": 2.4,
+          "bid": 1.49,
+          "delta": null,
+          "expiration": "2025-09-30",
+          "gamma": null,
+          "implied_volatility": null,
+          "last_price": 1.49,
+          "mid_price": 1.9449999999999998,
+          "moneyness": 0.0022678843226788432,
+          "open_interest": null,
+          "strike": 657.0,
+          "symbol": "O:SPY250930P00657000",
+          "theta": null,
+          "ticker": "O:SPY250930P00657000",
+          "type": "put",
+          "vega": null,
+          "volume": 1490
+        }
+      ],
+      "probability_of_profit": 0.7,
+      "strategy_type": "put_credit_spread",
+      "symbol": "SPY",
+      "width": 9.0
+    },
+    "quantity": 1,
+    "rationale": "strategy_confidence=0.70"
+  }
+]

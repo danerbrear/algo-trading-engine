@@ -353,23 +353,36 @@ class VelocitySignalMomentumStrategy(Strategy):
                 progress_print("⚠️  No contracts found for the date")
                 return None
 
-            # Find ATM put option
+            # CRITICAL: Filter for contracts with the specific expiration FIRST
+            # This ensures both legs have the same expiration (vertical spread, not diagonal)
+            contracts_for_expiration = [
+                c for c in contracts 
+                if str(c.expiration_date) == expiration
+            ]
+            
+            if not contracts_for_expiration:
+                progress_print(f"⚠️  No contracts found for target expiration {expiration}")
+                return None
+            
+            progress_print(f"✅ Found {len(contracts_for_expiration)} contracts for expiration {expiration}")
+
+            # Find ATM put option from contracts with the target expiration
             atm_strike = round(current_price)
-            atm_call, atm_put = OptionsRetrieverHelper.find_atm_contracts(contracts, current_price)
+            atm_call, atm_put = OptionsRetrieverHelper.find_atm_contracts(contracts_for_expiration, current_price)
             
             if not atm_put:
-                progress_print("⚠️  No ATM put found")
+                progress_print(f"⚠️  No ATM put found for expiration {expiration}")
                 return None
                 
-            progress_print(f"Found ATM put: {atm_put.ticker} @ ${atm_put.strike_price.value}")
+            progress_print(f"Found ATM put: {atm_put.ticker} @ ${atm_put.strike_price.value} exp {atm_put.expiration_date}")
             
-            # Find OTM put (-6 strike for 6-point width)
+            # Find OTM put (-6 strike for 6-point width) from the same expiration
             otm_strike = atm_strike - 6
             
-            # Filter for puts with the specific expiration
+            # Filter for puts only (already filtered by expiration)
             puts_for_expiration = [
-                c for c in contracts 
-                if c.contract_type == OptionType.PUT and str(c.expiration_date) == expiration
+                c for c in contracts_for_expiration 
+                if c.contract_type == OptionType.PUT
             ]
             
             if not puts_for_expiration:
@@ -383,7 +396,15 @@ class VelocitySignalMomentumStrategy(Strategy):
             )
             
             min_difference = abs(float(otm_put.strike_price.value) - otm_strike)
-            progress_print(f"Found OTM put: {otm_put.ticker} @ ${otm_put.strike_price.value} (strike difference: {min_difference})")
+            progress_print(f"Found OTM put: {otm_put.ticker} @ ${otm_put.strike_price.value} exp {otm_put.expiration_date} (strike difference: {min_difference})")
+            
+            # Verify both legs have the same expiration (vertical spread check)
+            if str(atm_put.expiration_date) != str(otm_put.expiration_date):
+                progress_print(f"❌ ERROR: Expiration mismatch! ATM: {atm_put.expiration_date}, OTM: {otm_put.expiration_date}")
+                progress_print("❌ This would create a diagonal spread, not a vertical spread. Rejecting position.")
+                return None
+            
+            progress_print(f"✅ Verified: Both legs have same expiration {expiration} (vertical spread)")
             
             # Get bar data to calculate net credit
             atm_bar = self.new_options_handler.get_option_bar(atm_put, date)

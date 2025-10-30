@@ -4,6 +4,7 @@ data_cache
 .env
 .DS_Store
 .vscode
-predictions
+predictions/*
+!predictions/decisions/
 .pytest_cache
 backup
