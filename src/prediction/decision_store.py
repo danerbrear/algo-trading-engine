@@ -32,6 +32,7 @@ class ProposedPositionRequest:
     confidence: float
     expiration_date: str
     created_at: str  # ISO timestamp
+    strategy_name: str = "unknown"  # e.g., "velocity_momentum", "upward_trend_reversal"
 
     def to_dict(self) -> dict:
         return {
@@ -44,6 +45,7 @@ class ProposedPositionRequest:
             "confidence": self.confidence,
             "expiration_date": self.expiration_date,
             "created_at": self.created_at,
+            "strategy_name": self.strategy_name,
         }
 
     @staticmethod
@@ -58,6 +60,7 @@ class ProposedPositionRequest:
             confidence=float(data["confidence"]),
             expiration_date=str(data["expiration_date"]),
             created_at=str(data["created_at"]),
+            strategy_name=data.get("strategy_name", "unknown"),
         )
 
 

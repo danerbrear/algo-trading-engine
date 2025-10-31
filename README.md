@@ -34,6 +34,8 @@ The system operates in two main stages:
   - Interactive recommendations and decision capture
   - JSON decision store
   - CLI for open/close flows
+  - Equity curve visualization
+  - See [Prediction Documentation](src/prediction/README.md) for details
 
 ## 📁 Project Structure
 
@@ -135,6 +137,12 @@ Outputs:
 python -m src.backtest.main --strategy velocity_signal_momentum
 ```
 
+6. **Analyze performance:**
+```bash
+# View equity curve and statistics
+python -m src.prediction.plot_equity_curve --summary-only
+```
+
 ## 📊 Key Features
 
 ### Market State Classification
@@ -195,6 +203,7 @@ python -m pytest tests/test_velocity_strategy.py -v
 
 - **[Model Documentation](src/model/README.md)** - ML models, training, and evaluation
 - **[Strategy Documentation](src/strategies/README.md)** - Trading strategy implementations
+- **[Prediction Documentation](src/prediction/README.md)** - Recommendation CLI and equity curve analysis
 - **[Backtest Documentation](src/backtest/README.md)** - Backtesting framework and usage
 - **[API Documentation](docs/)** - Detailed API and usage guides
 

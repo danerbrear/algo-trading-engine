@@ -97,6 +97,12 @@ class InteractiveStrategyRecommender:
         confidence = recommendation["confidence"]
         expiration_date = recommendation["expiration_date"]
 
+        # Get strategy name from class
+        strategy_name = self.strategy.__class__.__name__.replace("Strategy", "").lower()
+        # Convert from CamelCase to snake_case
+        import re
+        strategy_name = re.sub(r'(?<!^)(?=[A-Z])', '_', strategy_name).lower()
+
         # Build proposal DTO
         proposal = ProposedPositionRequest(
             symbol=self.options_handler.symbol,
@@ -108,6 +114,7 @@ class InteractiveStrategyRecommender:
             confidence=float(confidence),
             expiration_date=expiration_date,
             created_at=datetime.now(timezone.utc).isoformat(),
+            strategy_name=strategy_name,
         )
 
         # Prompt user
