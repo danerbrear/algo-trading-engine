@@ -123,19 +123,36 @@ class HMMStrategy(Strategy):
         if self.data is None or self.hmm_model is None:
             return
         
-        # Get features needed for HMM
-        required_features = ['Returns', 'Volatility', 'Volume_Change']
+        # Get features needed for HMM (must match MarketStateClassifier training features)
+        # From market_state_classifier.py: Returns, Volatility, Price_to_SMA20, SMA20_to_SMA50, Volume_Ratio
+        required_features = ['Returns', 'Volatility', 'Price_to_SMA20', 'SMA20_to_SMA50', 'Volume_Ratio']
         
         # Check if features exist
         missing_features = [f for f in required_features if f not in self.data.columns]
         if missing_features:
-            print(f"   ⚠️  Warning: Missing features {missing_features}, cannot apply HMM")
-            return
+            error_msg = f"Cannot apply HMM: Missing required features {missing_features}"
+            print(f"   ❌ {error_msg}")
+            print(f"   ")
+            print(f"   💡 Features should be calculated before HMM training.")
+            print(f"      Make sure data_retriever.calculate_features_for_data(data) is called.")
+            print(f"      Required HMM features: {required_features}")
+            raise ValueError(error_msg)
         
-        features = self.hmm_model.scaler.transform(self.data[required_features])
+        # Extract features in same order as training (numpy column_stack order)
+        import numpy as np
+        feature_matrix = np.column_stack([
+            self.data['Returns'],
+            self.data['Volatility'],
+            self.data['Price_to_SMA20'],
+            self.data['SMA20_to_SMA50'],
+            self.data['Volume_Ratio']
+        ])
+        
+        # Scale features using the trained scaler
+        scaled_features = self.hmm_model.scaler.transform(feature_matrix)
         
         # Predict market states
-        market_states = self.hmm_model.hmm_model.predict(features)
+        market_states = self.hmm_model.hmm_model.predict(scaled_features)
         
         # Add to data
         self.data['Market_State'] = market_states

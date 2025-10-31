@@ -15,16 +15,18 @@ sys.path.insert(0, src_dir)
 # Add try/except for linter compatibility
 try:
     from model.market_state_classifier import MarketStateClassifier
-    from model.options_handler import OptionsHandler
+    from model.options_handler import OptionsHandler as LegacyOptionsHandler
     from model.calendar_features import CalendarFeatureProcessor
     from common.cache.cache_manager import CacheManager
+    from common.options_handler import OptionsHandler
 except ImportError:
     # Fallback for direct script execution
     sys.path.insert(0, os.path.join(src_dir, '..'))
     from src.model.market_state_classifier import MarketStateClassifier
-    from src.model.options_handler import OptionsHandler
+    from src.model.options_handler import OptionsHandler as LegacyOptionsHandler
     from src.model.calendar_features import CalendarFeatureProcessor
     from src.common.cache.cache_manager import CacheManager
+    from src.common.options_handler import OptionsHandler
 from src.common.models import TreasuryRates
 
 class DataRetriever:
@@ -51,7 +53,15 @@ class DataRetriever:
         self.features = None
         self.ticker = None
         self.cache_manager = CacheManager()
-        self.options_handler = OptionsHandler(symbol, start_date=lstm_start_date, cache_dir=self.cache_manager.base_dir, use_free_tier=use_free_tier, quiet_mode=quiet_mode)
+        
+        # Create BOTH handlers:
+        # 1. Legacy handler for LSTM training (has calculate_option_features, calculate_option_signals)
+        self._lstm_options_handler = LegacyOptionsHandler(symbol, start_date=lstm_start_date, cache_dir=self.cache_manager.base_dir, use_free_tier=use_free_tier, quiet_mode=quiet_mode)
+        
+        # 2. Modern handler for backtesting strategies (has get_contract_list_for_date)
+        # Note: Modern handler doesn't need start_date or quiet_mode parameters
+        self.options_handler = OptionsHandler(symbol, cache_dir=self.cache_manager.base_dir, use_free_tier=use_free_tier)
+        
         self.calendar_processor = None  # Initialize lazily when needed
         self.options_data = {}  # Store OptionChain DTOs for each date
         self.treasury_rates: Optional[TreasuryRates] = None  # Store treasury rates data
@@ -136,7 +146,7 @@ class DataRetriever:
         self.calculate_features_for_data(self.lstm_data)
 
         # Calculate option features for LSTM data
-        self.lstm_data, self.options_data = self.options_handler.calculate_option_features(self.lstm_data, min_dte=5, max_dte=10)
+        self.lstm_data, self.options_data = self._lstm_options_handler.calculate_option_features(self.lstm_data, min_dte=5, max_dte=10)
 
         print(f"\n🔮 Phase 2: Applying trained HMM to LSTM data")
         # Apply the trained HMM to the LSTM data
@@ -148,7 +158,7 @@ class DataRetriever:
 
         print(f"\n💰 Phase 3: Generating option signals for LSTM data")
         # Calculate option trading signals for LSTM data
-        self.lstm_data = self.options_handler.calculate_option_signals(self.lstm_data)
+        self.lstm_data = self._lstm_options_handler.calculate_option_signals(self.lstm_data)
 
         print(f"\n📅 Phase 4: Adding economic calendar features")
         # Add all calendar features at once (CPI and CC)
@@ -261,6 +271,7 @@ class DataRetriever:
         data['RSI_Oversold'] = (data['RSI'] < 30).astype(int)
         
         # Volume features
+        data['Volume_Change'] = data['Volume'].pct_change()  # Required for HMM
         data['Volume_SMA'] = data['Volume'].rolling(window=window, min_periods=1).mean()
         data['Volume_Ratio'] = data['Volume'] / data['Volume_SMA']
         data['OBV'] = self._calculate_obv(data['Close'], data['Volume'])
@@ -336,9 +347,9 @@ class DataRetriever:
             symbol = self.symbol
             
         # Try Polygon API first (if available and has paid plan)
-        if hasattr(self, 'options_handler') and self.options_handler:
+        if hasattr(self, '_lstm_options_handler') and self._lstm_options_handler:
             try:
-                client = self.options_handler.client
+                client = self._lstm_options_handler.client
                 
                 # Try snapshot endpoint first
                 try:

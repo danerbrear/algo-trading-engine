@@ -560,6 +560,8 @@ if __name__ == "__main__":
     model_save_base_path = os.getenv('MODEL_SAVE_BASE_PATH', 'Trained_Models')
     model_dir = os.path.join(model_save_base_path, 'lstm_poc', args.symbol, 'latest')
 
+    # Use modern OptionsHandler from data_retriever for backtesting
+    # Note: data_retriever also has _lstm_options_handler for LSTM training
     options_handler = data_retriever.options_handler
 
     try:
@@ -568,6 +570,9 @@ if __name__ == "__main__":
 
         # Fetch data for backtesting
         data = data_retriever.fetch_data_for_period(start_date, 'backtest')
+        
+        # Calculate features for backtest data (required for HMM and strategies)
+        data_retriever.calculate_features_for_data(data)
 
         # Create strategy using the builder pattern
         # HMM training is now handled by HMMStrategy base class if train_hmm=True

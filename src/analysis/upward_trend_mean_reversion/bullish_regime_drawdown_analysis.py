@@ -207,22 +207,13 @@ class BullishRegimeDrawdownAnalyzer:
         return drawdown_pct, trend_ending_price
     
     def _map_state_id_to_regime(self, state_id: int) -> MarketStateType:
-        """Map HMM state ID to market regime type"""
-        # This mapping should be based on the actual HMM model characteristics
-        # For now, using a simple mapping - this could be enhanced with actual regime analysis
-        regime_mapping = {
-            0: MarketStateType.LOW_VOLATILITY_UPTREND,
-            1: MarketStateType.MOMENTUM_UPTREND,
-            2: MarketStateType.CONSOLIDATION,
-            3: MarketStateType.HIGH_VOLATILITY_DOWNTREND,
-            4: MarketStateType.HIGH_VOLATILITY_RALLY,
-        }
-        
-        # Handle cases where we have more or fewer states
-        if state_id in regime_mapping:
-            return regime_mapping[state_id]
+        """Map HMM state ID to market regime type based on actual characteristics"""
+        # Use the HMM model's dynamic mapping based on state characteristics
+        # This reflects the actual trained state characteristics rather than hardcoded assumptions
+        if self.hmm_model is not None:
+            return self.hmm_model.map_state_to_regime_type(state_id)
         else:
-            # Default to consolidation for unknown states
+            # Fallback to consolidation if HMM model is not available
             return MarketStateType.CONSOLIDATION
     
     def calculate_regime_statistics(self, trends: List[UpwardTrendWithRegime]) -> Dict[MarketStateType, RegimeDrawdownStatistics]:

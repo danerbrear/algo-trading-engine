@@ -144,6 +144,9 @@ class MarketStateClassifier:
             states = self.hmm_model.predict(scaled_features)
             state_characteristics = self._get_state_characteristics(data, states)
             
+            # Store state characteristics for later reference
+            self.state_characteristics = state_characteristics
+            
             for state in range(best_n_states):
                 print(f"\nState {state} characteristics:")
                 chars = state_characteristics[state]
@@ -206,4 +209,96 @@ class MarketStateClassifier:
         ma_trend = "Upward" if avg_sma_trend > 1 else "Downward"
         
         return (f"State {state_id}: {trend} with {volatility} volatility, {volume} volume, "
-                f"Price {price_trend}, Moving Averages trending {ma_trend}") 
+                f"Price {price_trend}, Moving Averages trending {ma_trend}")
+    
+    def get_state_summary(self, state_id):
+        """
+        Get a short summary description of a state by its ID.
+        
+        Dynamically determines regime type based on actual state characteristics.
+        
+        Args:
+            state_id: The state ID (0-N)
+            
+        Returns:
+            String description of the state with regime name and characteristics
+        """
+        if not hasattr(self, 'state_characteristics') or state_id not in self.state_characteristics:
+            return f"State {state_id}"
+        
+        chars = self.state_characteristics[state_id]
+        
+        # Get key characteristics
+        avg_return = chars['avg_return']
+        volatility = chars['volatility']
+        sma_trend = chars['sma_trend']
+        price_sma20 = chars['price_sma20']
+        
+        # Dynamically determine regime based on characteristics
+        # MOMENTUM_UPTREND: Strong positive returns (>0.3%) with elevated volatility
+        if avg_return > 0.003 and volatility > 0.009:
+            regime_name = "Momentum Uptrend"
+        
+        # LOW_VOLATILITY_UPTREND: Positive returns with low volatility and upward trend
+        elif avg_return > 0 and volatility < 0.008 and sma_trend > 1.0:
+            regime_name = "Low Volatility Uptrend"
+        
+        # HIGH_VOLATILITY_RALLY: Positive returns with high volatility
+        elif avg_return > 0 and volatility > 0.009:
+            regime_name = "High Volatility Rally"
+        
+        # HIGH_VOLATILITY_DOWNTREND: Negative returns with high volatility
+        elif avg_return < 0 and volatility > 0.012:
+            regime_name = "High Volatility Downtrend"
+        
+        # CONSOLIDATION: Low/flat returns with mixed characteristics
+        else:
+            regime_name = "Consolidation"
+        
+        # Create summary with dynamically assigned regime name and key stats
+        return f"{regime_name} (State {state_id}: avg return: {avg_return:.2%}, volatility: {volatility:.4f})"
+    
+    def map_state_to_regime_type(self, state_id: int):
+        """
+        Map a state ID to a semantic MarketStateType based on its characteristics.
+        
+        This provides a dynamic mapping that reflects actual state characteristics
+        rather than hardcoded assumptions.
+        
+        Args:
+            state_id: The HMM state ID
+            
+        Returns:
+            MarketStateType enum value
+        """
+        if not hasattr(self, 'state_characteristics') or state_id not in self.state_characteristics:
+            from src.common.models import MarketStateType
+            return MarketStateType.CONSOLIDATION
+        
+        from src.common.models import MarketStateType
+        
+        chars = self.state_characteristics[state_id]
+        avg_return = chars['avg_return']
+        volatility = chars['volatility']
+        sma_trend = chars['sma_trend']
+        
+        # Determine regime type based on characteristics
+        # MOMENTUM_UPTREND: Strong bullish with higher volatility
+        if avg_return > 0.003 and volatility > 0.009:
+            return MarketStateType.MOMENTUM_UPTREND
+        
+        # LOW_VOLATILITY_UPTREND: Bullish with low volatility
+        elif avg_return > 0 and volatility < 0.008 and sma_trend > 1.0:
+            return MarketStateType.LOW_VOLATILITY_UPTREND
+        
+        # HIGH_VOLATILITY_RALLY: Bullish with high volatility
+        elif avg_return > 0 and volatility > 0.009:
+            return MarketStateType.HIGH_VOLATILITY_RALLY
+        
+        # HIGH_VOLATILITY_DOWNTREND: Bearish with high volatility
+        elif avg_return < 0 and volatility > 0.012:
+            return MarketStateType.HIGH_VOLATILITY_DOWNTREND
+        
+        # CONSOLIDATION: Default for mixed or flat characteristics
+        else:
+            return MarketStateType.CONSOLIDATION 

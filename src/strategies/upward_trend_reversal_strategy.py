@@ -66,7 +66,7 @@ class UpwardTrendReversalStrategy(HMMStrategy):
         max_spread_width: float = 6.0,
         min_dte: int = 5,
         max_dte: int = 10,
-        max_risk_per_trade: float = 0.20,
+        max_risk_per_trade: float = 0.2,
         max_holding_days: int = 2,
         profit_target: float = None,
         stop_loss: float = None,
@@ -103,18 +103,40 @@ class UpwardTrendReversalStrategy(HMMStrategy):
         
         Required columns:
         - Close: Daily close prices
-        - Market_State: HMM market state classification
+        - Market_State: HMM market state classification (REQUIRED)
         """
-        required_columns = ['Close']
+        required_columns = ['Close', 'Market_State']
         
+        missing_columns = []
         for col in required_columns:
             if col not in data.columns:
-                print(f"❌ Missing required column: {col}")
-                return False
+                missing_columns.append(col)
         
-        # Market_State is optional but recommended
-        if 'Market_State' not in data.columns:
-            print("⚠️  Warning: Market_State column not found. Market regime filtering will be disabled.")
+        if missing_columns:
+            print(f"❌ Missing required column(s): {', '.join(missing_columns)}")
+            if 'Market_State' in missing_columns:
+                print("   ")
+                print("   ℹ️  Market_State is required for this strategy to filter market regimes.")
+                print("   ")
+                print("   This strategy only trades during bullish regimes:")
+                print("     ✅ LOW_VOLATILITY_UPTREND")
+                print("     ✅ HIGH_VOLATILITY_RALLY")
+                print("   ")
+                print("   Filtered regimes (no trades):")
+                print("     ❌ MOMENTUM_UPTREND (unsuitable for strategy)")
+                print("     ❌ HIGH_VOLATILITY_DOWNTREND (bearish)")
+                print("     ❌ CONSOLIDATION (neutral/flat)")
+                print("   ")
+                print("   To add Market_State, either:")
+                print("   1. Train HMM during backtest:")
+                print("      python -m src.backtest.main --strategy upward_trend_reversal \\")
+                print("        --train-hmm --hmm-training-years 2 --start-date YYYY-MM-DD")
+                print("   ")
+                print("   2. Pre-train HMM and load it:")
+                print("      python -m src.backtest.main --strategy upward_trend_reversal \\")
+                print("        --load-hmm --hmm-model-dir /path/to/model --start-date YYYY-MM-DD")
+                print("   ")
+            return False
         
         return True
     
@@ -176,11 +198,55 @@ class UpwardTrendReversalStrategy(HMMStrategy):
             require_reversal=True
         )
     
+    def _should_filter_regime(self, date: datetime) -> bool:
+        """
+        Check if the current market regime should be filtered (no trades).
+        
+        Filters out:
+        - MOMENTUM_UPTREND (bullish but unsuitable for strategy)
+        - HIGH_VOLATILITY_DOWNTREND (bearish)
+        - CONSOLIDATION (neutral/flat)
+        
+        Only trades on:
+        - LOW_VOLATILITY_UPTREND (bullish)
+        - HIGH_VOLATILITY_RALLY (bullish)
+        
+        Uses HMM market state classification with dynamic semantic mapping.
+        
+        Returns:
+            True if regime should be filtered (skip trade), False if can trade
+        """
+        if self.data is None or 'Market_State' not in self.data.columns:
+            return False
+        
+        if not hasattr(self, 'hmm_model') or self.hmm_model is None:
+            return False
+        
+        try:
+            from src.common.models import MarketStateType
+            
+            market_state_id = self.data.loc[date, 'Market_State']
+            
+            # Use dynamic semantic mapping to determine regime type
+            regime_type = self.hmm_model.map_state_to_regime_type(market_state_id)
+            
+            # Define filtered (excluded) regimes
+            filtered_regimes = [
+                MarketStateType.MOMENTUM_UPTREND,          # Bullish but unsuitable for strategy
+                MarketStateType.HIGH_VOLATILITY_DOWNTREND, # Bearish
+                MarketStateType.CONSOLIDATION              # Neutral/flat
+            ]
+            
+            return regime_type in filtered_regimes
+        except KeyError:
+            return False
+    
     def _is_momentum_uptrend_regime(self, date: datetime) -> bool:
         """
-        Check if the market is in momentum uptrend regime.
+        DEPRECATED: Use _should_filter_regime() instead.
         
-        Uses HMM market state classification (state 1 = MOMENTUM_UPTREND).
+        Check if the market is in momentum uptrend regime.
+        This method is kept for backward compatibility.
         
         Returns:
             True if in momentum uptrend regime, False otherwise
@@ -188,10 +254,16 @@ class UpwardTrendReversalStrategy(HMMStrategy):
         if self.data is None or 'Market_State' not in self.data.columns:
             return False
         
+        if not hasattr(self, 'hmm_model') or self.hmm_model is None:
+            return False
+        
         try:
-            market_state = self.data.loc[date, 'Market_State']
-            # State 1 = MOMENTUM_UPTREND (based on feature document)
-            return market_state == 1
+            from src.common.models import MarketStateType
+            
+            market_state_id = self.data.loc[date, 'Market_State']
+            regime_type = self.hmm_model.map_state_to_regime_type(market_state_id)
+            
+            return regime_type == MarketStateType.MOMENTUM_UPTREND
         except KeyError:
             return False
     
@@ -378,8 +450,8 @@ class UpwardTrendReversalStrategy(HMMStrategy):
             return
         
         try:
-            # Check if we're in momentum uptrend regime (filter out)
-            if self._is_momentum_uptrend_regime(date):
+            # Check if current regime should be filtered (only trade on bullish regimes)
+            if self._should_filter_regime(date):
                 return
             
             # Get current price
@@ -417,6 +489,18 @@ class UpwardTrendReversalStrategy(HMMStrategy):
                 entry_price=spread_info.net_debit,
                 spread_options=[spread_info.atm_put, spread_info.otm_put]
             )
+            
+            # Get and print HMM state description
+            if hasattr(self, 'hmm_model') and self.hmm_model is not None:
+                try:
+                    market_state = self.data.loc[date, 'Market_State']
+                    state_description = self.hmm_model.get_state_summary(market_state)
+                    print(f"📊 Market State: {state_description}")
+                except Exception as e:
+                    # Print error for debugging but don't fail position opening
+                    print(f"⚠️  Could not get HMM state description: {e}")
+            else:
+                print(f"⚠️  HMM model not available for state description")
             
             # Add position
             add_position(position)
@@ -496,12 +580,17 @@ class UpwardTrendReversalStrategy(HMMStrategy):
             
             atm_option, otm_option = position.spread_options
             
-            # Get current bar data for both legs
+            # Ensure we have the correct strikes (ATM > OTM for put debit spread)
+            if atm_option.strike <= otm_option.strike:
+                print(f"⚠️  Invalid spread configuration: ATM strike ({atm_option.strike}) <= OTM strike ({otm_option.strike})")
+                return None
+            
+            # Get current bar data for both legs - match by ticker for exact contract
             atm_contract_matches = self.options_handler.get_contract_list_for_date(
                 date=date,
                 strike_range=StrikeRangeDTO(
-                    min_strike=StrikePrice(Decimal(str(atm_option.strike - 0.5))),
-                    max_strike=StrikePrice(Decimal(str(atm_option.strike + 0.5)))
+                    min_strike=StrikePrice(Decimal(str(atm_option.strike))),
+                    max_strike=StrikePrice(Decimal(str(atm_option.strike)))
                 ),
                 expiration_range=ExpirationRangeDTO(
                     target_date=ExpirationDate(datetime.strptime(atm_option.expiration, '%Y-%m-%d').date()),
@@ -509,17 +598,36 @@ class UpwardTrendReversalStrategy(HMMStrategy):
                 )
             )
             
-            if not atm_contract_matches:
+            # **CRITICAL**: Filter for PUTs only
+            atm_put_contracts = OptionsRetrieverHelper.find_contracts_by_type(
+                atm_contract_matches, OptionType.PUT
+            )
+            
+            if not atm_put_contracts:
+                print(f"⚠️  No ATM PUT contract found for strike {atm_option.strike} on {date.date()}")
+                print(f"    Found {len(atm_contract_matches)} contracts total:")
+                for c in atm_contract_matches[:3]:  # Show first 3
+                    print(f"      {c.ticker} - {c.contract_type.value} @ {c.strike_price.value}")
                 return None
             
-            atm_contract = atm_contract_matches[0]
+            # Find exact match by strike
+            atm_contract = None
+            for contract in atm_put_contracts:
+                if abs(float(contract.strike_price.value) - atm_option.strike) < 0.01:
+                    atm_contract = contract
+                    break
+            
+            if not atm_contract:
+                print(f"⚠️  No exact ATM PUT contract match for strike {atm_option.strike}")
+                return None
+            
             atm_bar = self.options_handler.get_option_bar(atm_contract, date)
             
             otm_contract_matches = self.options_handler.get_contract_list_for_date(
                 date=date,
                 strike_range=StrikeRangeDTO(
-                    min_strike=StrikePrice(Decimal(str(otm_option.strike - 0.5))),
-                    max_strike=StrikePrice(Decimal(str(otm_option.strike + 0.5)))
+                    min_strike=StrikePrice(Decimal(str(otm_option.strike))),
+                    max_strike=StrikePrice(Decimal(str(otm_option.strike)))
                 ),
                 expiration_range=ExpirationRangeDTO(
                     target_date=ExpirationDate(datetime.strptime(otm_option.expiration, '%Y-%m-%d').date()),
@@ -527,22 +635,57 @@ class UpwardTrendReversalStrategy(HMMStrategy):
                 )
             )
             
-            if not otm_contract_matches:
+            # **CRITICAL**: Filter for PUTs only
+            otm_put_contracts = OptionsRetrieverHelper.find_contracts_by_type(
+                otm_contract_matches, OptionType.PUT
+            )
+            
+            if not otm_put_contracts:
+                print(f"⚠️  No OTM PUT contract found for strike {otm_option.strike} on {date.date()}")
                 return None
             
-            otm_contract = otm_contract_matches[0]
+            # Find exact match by strike
+            otm_contract = None
+            for contract in otm_put_contracts:
+                if abs(float(contract.strike_price.value) - otm_option.strike) < 0.01:
+                    otm_contract = contract
+                    break
+            
+            if not otm_contract:
+                print(f"⚠️  No exact OTM PUT contract match for strike {otm_option.strike}")
+                return None
+            
             otm_bar = self.options_handler.get_option_bar(otm_contract, date)
             
             if not atm_bar or not otm_bar:
+                print(f"⚠️  No bar data available - ATM: {atm_bar is not None}, OTM: {otm_bar is not None}")
                 return None
+            
+            atm_price = float(atm_bar.close_price)
+            otm_price = float(otm_bar.close_price)
+            
+            # Debug: Show contract details
+            print(f"📊 Exit Price Calculation:")
+            print(f"   ATM: {atm_contract.ticker} ({atm_contract.contract_type.value}) @ ${atm_contract.strike_price.value} = ${atm_price:.2f}")
+            print(f"   OTM: {otm_contract.ticker} ({otm_contract.contract_type.value}) @ ${otm_contract.strike_price.value} = ${otm_price:.2f}")
+            
+            # For put debit spread: ATM put should always be more expensive than OTM put
+            if atm_price < otm_price:
+                print(f"⚠️  WARNING: ATM put price ({atm_price}) < OTM put price ({otm_price})")
+                print(f"    ATM strike: {atm_option.strike}, OTM strike: {otm_option.strike}")
+                print(f"    ATM option from position: {atm_option.ticker} ({atm_option.option_type.value})")
+                print(f"    OTM option from position: {otm_option.ticker} ({otm_option.option_type.value})")
+                print(f"    This indicates reversed strikes or bad data!")
             
             # For put debit spread: we sell to close
             # Exit price = credit received = ATM price - OTM price
-            exit_price = float(atm_bar.close_price) - float(otm_bar.close_price)
+            exit_price = atm_price - otm_price
             
             return exit_price
             
         except Exception as e:
             print(f"⚠️  Error computing exit price: {e}")
+            import traceback
+            traceback.print_exc()
             return None
 
