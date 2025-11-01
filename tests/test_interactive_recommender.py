@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 
 from src.prediction.decision_store import JsonDecisionStore, ProposedPositionRequest, DecisionResponse, generate_decision_id
 from src.prediction.recommendation_engine import InteractiveStrategyRecommender
+from src.prediction.capital_manager import CapitalManager
 from src.backtest.models import StrategyType
 from src.common.models import Option
 
@@ -67,6 +68,9 @@ def test_recommender_open_accept(monkeypatch, tmp_path):
     strategy.data = MagicMock()
     date = datetime(2025, 8, 8)
     strategy.data.loc.__getitem__.return_value = {'Close': 500}
+    # Set proper class name for strategy name extraction
+    mock_class = type('CreditSpreadStrategy', (), {})
+    strategy.__class__ = mock_class
     strategy._make_prediction.return_value = {'strategy': 2, 'confidence': 0.7}
     strategy.recommend_open_position.return_value = {
         'strategy_type': StrategyType.PUT_CREDIT_SPREAD,
@@ -94,8 +98,19 @@ def test_recommender_open_accept(monkeypatch, tmp_path):
     options_handler = MagicMock()
     options_handler.symbol = 'SPY'
     store = JsonDecisionStore(base_dir=str(tmp_path))
+    
+    # Create capital manager with default config for testing
+    allocations_config = {
+        "strategies": {
+            "credit_spread": {
+                "allocated_capital": 10000.0,
+                "max_risk_percentage": 0.05
+            }
+        }
+    }
+    capital_manager = CapitalManager(allocations_config, store)
 
-    rec = InteractiveStrategyRecommender(strategy, options_handler, store, auto_yes=True).recommend_open_position(date)
+    rec = InteractiveStrategyRecommender(strategy, options_handler, store, capital_manager, auto_yes=True).recommend_open_position(date)
     assert rec is not None
     opens = store.get_open_positions()
     assert len(opens) == 1
@@ -165,8 +180,19 @@ def test_recommender_close_accept(monkeypatch, tmp_path):
         "rationale": "test_close"
     }]
 
+    # Create capital manager with default config for testing
+    allocations_config = {
+        "strategies": {
+            "credit_spread": {
+                "allocated_capital": 10000.0,
+                "max_risk_percentage": 0.05
+            }
+        }
+    }
+    capital_manager = CapitalManager(allocations_config, store)
+    
     # Monkeypatch prompt to auto-yes
-    rec_engine = InteractiveStrategyRecommender(strategy, options_handler, store, auto_yes=True)
+    rec_engine = InteractiveStrategyRecommender(strategy, options_handler, store, capital_manager, auto_yes=True)
     closed = rec_engine.recommend_close_positions(datetime(2025, 8, 8))
 
     assert len(closed) == 1

@@ -2,7 +2,7 @@
 Plot equity curves from closed trading positions.
 
 This script reads decision JSON files and generates equity curves showing
-cumulative P&L over time. Supports filtering by strategy name.
+capital remaining over time based on realized P&L. Supports filtering by strategy name.
 
 Usage:
     python -m src.prediction.plot_equity_curve                    # Plot all strategies
@@ -17,9 +17,9 @@ import os
 from datetime import datetime
 from typing import List, Dict, Optional
 from dataclasses import dataclass
+from pathlib import Path
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
-from pathlib import Path
 
 
 @dataclass
@@ -121,36 +121,90 @@ def load_closed_positions(decisions_dir: str = "predictions/decisions") -> List[
     return positions
 
 
+def _map_strategy_name(strategy_name: str) -> str:
+    """Map strategy name from decisions to config key.
+    
+    This handles cases where decision JSON has different names than config keys.
+    """
+    name_mapping = {
+        "velocity_signal_momentum": "velocity_momentum",
+        "credit_spread": "credit_spread",
+    }
+    return name_mapping.get(strategy_name, strategy_name)
+
+
+def load_capital_allocations(config_path: str = "config/strategies/capital_allocations.json") -> Dict[str, float]:
+    """Load capital allocations from config file.
+    
+    Returns:
+        Dictionary mapping strategy_name to allocated_capital
+    """
+    if not os.path.exists(config_path):
+        print(f"Warning: Capital allocation config not found: {config_path}")
+        return {}
+    
+    try:
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+        allocations = {}
+        for strategy_name, strategy_config in config.get("strategies", {}).items():
+            allocations[strategy_name] = float(strategy_config.get("allocated_capital", 0.0))
+        return allocations
+    except Exception as e:
+        print(f"Warning: Failed to load capital allocations: {e}")
+        return {}
+
+
 def calculate_equity_curve(
     positions: List[ClosedPosition],
     initial_capital: float = 0.0
 ) -> tuple[List[datetime], List[float]]:
     """
-    Calculate cumulative equity curve from closed positions.
+    Calculate capital remaining curve from closed positions based on realized P&L.
+    
+    Starts with allocated capital and applies realized P&L from closed positions.
+    Open positions do not affect the curve.
+    
+    The curve includes a starting point at the allocated capital before any trades,
+    then shows capital remaining after each position closes.
     
     Returns:
-        Tuple of (dates, equity_values)
+        Tuple of (dates, capital_remaining_values)
     """
     if not positions:
         return [], []
     
+    # Sort positions by closed date
+    sorted_positions = sorted(positions, key=lambda p: p.closed_at)
+    
     dates = []
-    equity_values = []
-    cumulative_pnl = initial_capital
+    capital_values = []
     
-    for position in positions:
-        cumulative_pnl += position.pnl
+    # Start with initial capital point (before any trades)
+    if sorted_positions:
+        # Use the earliest close date minus 1 day as the starting point
+        from datetime import timedelta
+        start_date = sorted_positions[0].closed_at - timedelta(days=1)
+        dates.append(start_date)
+        capital_values.append(initial_capital)
+    
+    # Track capital as positions close
+    capital_remaining = initial_capital
+    for position in sorted_positions:
+        # Apply realized P&L to capital
+        capital_remaining += position.pnl
         dates.append(position.closed_at)
-        equity_values.append(cumulative_pnl)
+        capital_values.append(capital_remaining)
     
-    return dates, equity_values
+    return dates, capital_values
 
 
 def plot_equity_curve(
     positions: List[ClosedPosition],
     strategy_filter: Optional[str] = None,
     output_file: Optional[str] = None,
-    show_plot: bool = True
+    show_plot: bool = True,
+    capital_allocations: Optional[Dict[str, float]] = None
 ):
     """
     Plot equity curve(s) from closed positions.
@@ -186,33 +240,39 @@ def plot_equity_curve(
     colors = plt.cm.tab10(range(len(strategy_groups)))
     
     for (strategy_name, strategy_positions), color in zip(strategy_groups.items(), colors):
-        dates, equity = calculate_equity_curve(strategy_positions)
+        # Map strategy name to config key
+        config_key = _map_strategy_name(strategy_name)
+        # Get initial capital from allocations or default to 0
+        initial_capital = capital_allocations.get(config_key, 0.0) if capital_allocations else 0.0
+        dates, capital = calculate_equity_curve(strategy_positions, initial_capital)
         
         if not dates:
             continue
         
         # Calculate statistics
-        final_pnl = equity[-1] if equity else 0
+        final_capital = capital[-1] if capital else initial_capital
+        total_pnl = final_capital - initial_capital
         num_positions = len(strategy_positions)
         wins = sum(1 for p in strategy_positions if p.pnl > 0)
         win_rate = (wins / num_positions * 100) if num_positions > 0 else 0
-        avg_pnl = final_pnl / num_positions if num_positions > 0 else 0
         
         # Plot line
         label = (f"{strategy_name.replace('_', ' ').title()}\n"
-                f"P&L: ${final_pnl:,.0f} | "
+                f"Capital: ${final_capital:,.0f} | "
+                f"P&L: ${total_pnl:+,.0f} | "
                 f"Trades: {num_positions} | "
                 f"Win Rate: {win_rate:.1f}%")
         
-        ax.plot(dates, equity, marker='o', linestyle='-', linewidth=2,
+        ax.plot(dates, capital, marker='o', linestyle='-', linewidth=2,
                 markersize=6, label=label, color=color, alpha=0.8)
         
-        # Add zero line for reference
-        ax.axhline(y=0, color='gray', linestyle='--', linewidth=1, alpha=0.5)
+        # Add initial capital line for reference
+        if initial_capital > 0:
+            ax.axhline(y=initial_capital, color='gray', linestyle='--', linewidth=1, alpha=0.5, label='Initial Capital' if strategy_name == list(strategy_groups.keys())[0] else "")
     
     # Format plot
     ax.set_xlabel('Date', fontsize=12, fontweight='bold')
-    ax.set_ylabel('Cumulative P&L ($)', fontsize=12, fontweight='bold')
+    ax.set_ylabel('Capital Remaining ($)', fontsize=12, fontweight='bold')
     
     if strategy_filter:
         title = f'Equity Curve - {strategy_filter.replace("_", " ").title()}'
@@ -252,7 +312,7 @@ def plot_equity_curve(
     plt.close()
 
 
-def print_summary(positions: List[ClosedPosition], strategy_filter: Optional[str] = None):
+def print_summary(positions: List[ClosedPosition], strategy_filter: Optional[str] = None, capital_allocations: Optional[Dict[str, float]] = None):
     """Print summary statistics for closed positions."""
     if not positions:
         print("\n📊 No closed positions found")
@@ -290,6 +350,22 @@ def print_summary(positions: List[ClosedPosition], strategy_filter: Optional[str
     print(f"  Win Rate: {win_rate:.1f}%")
     print(f"  Avg P&L per Trade: ${total_pnl / total_trades:,.2f}" if total_trades > 0 else "")
     
+    # Capital tracking summary if allocations available
+    if capital_allocations:
+        print(f"\nCapital Tracking:")
+        for strategy_name in set(p.strategy_name for p in positions):
+            # Map strategy name to config key
+            config_key = _map_strategy_name(strategy_name)
+            if config_key in capital_allocations:
+                allocated = capital_allocations[config_key]
+                strategy_positions = [p for p in positions if p.strategy_name == strategy_name]
+                strategy_pnl = sum(p.pnl for p in strategy_positions)
+                remaining = allocated + strategy_pnl
+                print(f"  {strategy_name.replace('_', ' ').title()}:")
+                print(f"    Allocated: ${allocated:,.2f}")
+                print(f"    Remaining: ${remaining:,.2f}")
+                print(f"    P&L: ${strategy_pnl:+,.2f}")
+    
     # Per-strategy stats
     print(f"\nBy Strategy:")
     for strategy_name in sorted(strategy_groups.keys()):
@@ -299,8 +375,16 @@ def print_summary(positions: List[ClosedPosition], strategy_filter: Optional[str
         strategy_wins = sum(1 for p in strategy_positions if p.pnl > 0)
         strategy_win_rate = (strategy_wins / strategy_trades * 100) if strategy_trades > 0 else 0
         
+        # Map strategy name to config key
+        config_key = _map_strategy_name(strategy_name)
+        allocated = capital_allocations.get(config_key, 0.0) if capital_allocations else 0.0
+        remaining = allocated + strategy_pnl
+        
         print(f"\n  {strategy_name.replace('_', ' ').title()}:")
-        print(f"    P&L: ${strategy_pnl:,.2f}")
+        if allocated > 0:
+            print(f"    Allocated Capital: ${allocated:,.2f}")
+            print(f"    Remaining Capital: ${remaining:,.2f}")
+        print(f"    P&L: ${strategy_pnl:+,.2f}")
         print(f"    Trades: {strategy_trades}")
         print(f"    Win Rate: {strategy_win_rate:.1f}%")
         print(f"    Avg P&L: ${strategy_pnl / strategy_trades:,.2f}" if strategy_trades > 0 else "")
@@ -371,8 +455,11 @@ Examples:
     
     print(f"✅ Loaded {len(positions)} closed positions")
     
+    # Load capital allocations
+    capital_allocations = load_capital_allocations()
+    
     # Print summary
-    print_summary(positions, args.strategy)
+    print_summary(positions, args.strategy, capital_allocations)
     
     # Plot unless summary-only
     if not args.summary_only:
@@ -381,7 +468,8 @@ Examples:
             positions,
             strategy_filter=args.strategy,
             output_file=args.output,
-            show_plot=not args.no_show
+            show_plot=not args.no_show,
+            capital_allocations=capital_allocations
         )
     
     return 0

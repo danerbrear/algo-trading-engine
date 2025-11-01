@@ -192,6 +192,31 @@ class JsonDecisionStore:
                 results.append(record)
         return results
 
+    def get_all_decisions(
+        self,
+        strategy_name: Optional[str] = None,
+        symbol: Optional[str] = None,
+    ) -> List[DecisionResponse]:
+        """Return all accepted decisions (both open and closed) across all files.
+        
+        Filter by strategy_name and/or symbol if provided.
+        """
+        results: List[DecisionResponse] = []
+        for path in self._list_decision_files():
+            for rec in self._read_records(path):
+                try:
+                    record = DecisionResponse.from_dict(rec)
+                except Exception:
+                    continue
+                if record.outcome != "accepted":
+                    continue
+                if strategy_name and record.proposal.strategy_name != strategy_name:
+                    continue
+                if symbol and record.proposal.symbol != symbol:
+                    continue
+                results.append(record)
+        return results
+
     def mark_closed(self, open_decision_id: str, exit_price: float, closed_at: datetime) -> None:
         """Mark a previously accepted decision as closed by setting exit values.
 

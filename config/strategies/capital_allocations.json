@@ -1,0 +1,13 @@
+{
+  "strategies": {
+    "credit_spread": {
+      "allocated_capital": 10000.0,
+      "max_risk_percentage": 0.05
+    },
+    "velocity_momentum": {
+      "allocated_capital": 2000.0,
+      "max_risk_percentage": 0.1
+    }
+  }
+}
+
