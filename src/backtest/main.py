@@ -257,7 +257,7 @@ class BacktestEngine:
             position_return = position.get_return_dollars_from_assignment(underlying_price)
             print(f"   Position closed by assignment: {position.__str__()}")
         else:
-            if not exit_price:
+            if exit_price is None: # Allows for exit price to be 0 - possible if ATM and OTM market price are equal
                 raise ValueError("Exit price not provided for the unexpired position")
             position_return = position.get_return_dollars(exit_price)
 

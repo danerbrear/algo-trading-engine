@@ -67,7 +67,7 @@ class VelocitySignalMomentumStrategy(Strategy):
 
         if len(positions) == 0:
             self._try_open_position(date, add_position)
-            return
+            
         self._try_close_positions(date, positions, remove_position)
 
     def on_end(self, positions: tuple['Position', ...], remove_position: Callable[['Position'], None], date: datetime):
@@ -589,7 +589,6 @@ class VelocitySignalMomentumStrategy(Strategy):
         progress_print(f"🤖 Strategy evaluating {len(positions)} open position(s) for potential closure...")
                
         for position in positions:
-            # Debug logging for position status
             days_held = position.get_days_held(date) if hasattr(position, 'get_days_held') else 0
             days_to_exp = position.get_days_to_expiration(date) if hasattr(position, 'get_days_to_expiration') else 0
             progress_print(f"🔍 Position {position.__str__()} - Days held: {days_held}, Days to exp: {days_to_exp}")
