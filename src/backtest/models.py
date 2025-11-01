@@ -59,7 +59,6 @@ class Strategy(ABC):
         self.profit_target = profit_target
         self.stop_loss = stop_loss
         self.data = None
-        self.options_data = None
         self.start_date_offset = start_date_offset
 
     @abstractmethod
@@ -221,12 +220,11 @@ class Strategy(ABC):
         """
         self.stop_loss = stop_loss
 
-    def set_data(self, data: pd.DataFrame, options_data: Dict[str, OptionChain], treasury_data: Optional[TreasuryRates] = None):
+    def set_data(self, data: pd.DataFrame, treasury_data: Optional[TreasuryRates] = None):
         """
         Set the data for the strategy.
         """
         self.data = data
-        self.options_data = options_data
         self.treasury_data = treasury_data
 
     def _profit_target_hit(self, position: 'Position', exit_price: float) -> bool:

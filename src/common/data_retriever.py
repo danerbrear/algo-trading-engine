@@ -51,7 +51,7 @@ class DataRetriever:
         self.features = None
         self.ticker = None
         self.cache_manager = CacheManager()
-        self.options_handler = OptionsHandler(symbol, start_date=lstm_start_date, cache_dir=self.cache_manager.base_dir, use_free_tier=use_free_tier, quiet_mode=quiet_mode)
+        # self.options_handler = OptionsHandler(symbol, start_date=lstm_start_date, cache_dir=self.cache_manager.base_dir, use_free_tier=use_free_tier, quiet_mode=quiet_mode)
         self.calendar_processor = None  # Initialize lazily when needed
         self.options_data = {}  # Store OptionChain DTOs for each date
         self.treasury_rates: Optional[TreasuryRates] = None  # Store treasury rates data

@@ -23,17 +23,16 @@ class VelocitySignalMomentumStrategy(Strategy):
     # Configurable holding period in trading days
     holding_period = 4
 
-    def __init__(self, options_handler: OptionsHandler, start_date_offset: int = 60, stop_loss: float = None):
+    def __init__(self, start_date_offset: int = 60, stop_loss: float = None):
         super().__init__(start_date_offset=start_date_offset, stop_loss=stop_loss)
 
-        self.options_handler = options_handler
         self.new_options_handler = NewOptionsHandler(symbol='SPY')
         
         # Track position entries for plotting
         self._position_entries = []
     
-    def set_data(self, data: pd.DataFrame, options_data: Dict[str, OptionChain], treasury_data: Optional[TreasuryRates] = None):
-        super().set_data(data, options_data, treasury_data)
+    def set_data(self, data: pd.DataFrame, treasury_data: Optional[TreasuryRates] = None):
+        super().set_data(data, treasury_data)
         
         # Reset position entries tracking for new backtest run
         self._position_entries = []
@@ -491,7 +490,9 @@ class VelocitySignalMomentumStrategy(Strategy):
         add_position(position)
 
     def _get_current_underlying_price(self, date: datetime) -> Optional[float]:
-        # Check if the specified date is the current date
+        """
+        Fetch and return the live price if the date is the current date, otherwise return last_price for the date
+        """
         current_date = datetime.now().date()
         if date.date() == current_date:
             # Use live price from DataRetriever if available
@@ -499,23 +500,10 @@ class VelocitySignalMomentumStrategy(Strategy):
                 live_price = self.data_retriever.get_live_price()
                 if live_price is not None:
                     return live_price
-            elif hasattr(self.options_handler, 'symbol'):
-                # Fallback: create a temporary DataRetriever for live price
-                from src.common.data_retriever import DataRetriever
-                temp_retriever = DataRetriever(symbol=self.options_handler.symbol, use_free_tier=True, quiet_mode=True)
-                temp_retriever.options_handler = self.options_handler
-                live_price = temp_retriever.get_live_price()
-                if live_price is not None:
-                    return live_price
-        
-        # Fallback to cached data if live price failed or date is not current
-        if self.data is None or self.data.empty or date not in self.data.index:
-            progress_print("⚠️  No underlying price data available for the date")
-            return None
-        try:
+            else:
+                raise ValueError("Data retriever is not initialized.")
+        else:
             return float(self.data.loc[date]['Close'])
-        except Exception:
-            return None
 
     def _get_option_chain(self, date: datetime, current_price: float) -> Optional[OptionsChainDTO]:
         date_key = date.strftime('%Y-%m-%d')

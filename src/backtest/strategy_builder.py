@@ -28,21 +28,6 @@ class StrategyBuilder(ABC):
         pass
     
     @abstractmethod
-    def set_lstm_model(self, model):
-        """Set the LSTM model"""
-        pass
-    
-    @abstractmethod
-    def set_lstm_scaler(self, scaler):
-        """Set the LSTM scaler"""
-        pass
-    
-    @abstractmethod
-    def set_options_handler(self, handler: OptionsHandler):
-        """Set the options handler"""
-        pass
-    
-    @abstractmethod
     def set_start_date_offset(self, offset: int):
         """Set the start date offset"""
         pass
@@ -99,9 +84,6 @@ class CreditSpreadStrategyBuilder(StrategyBuilder):
         return self
     
     def build(self) -> Strategy:
-        if not all([self._lstm_model, self._lstm_scaler, self._options_handler]):
-            raise ValueError("Missing required parameters: lstm_model, lstm_scaler, options_handler")
-        
         try:
             from ..strategies.credit_spread_minimal import CreditSpreadStrategy
         except ImportError:
@@ -127,9 +109,6 @@ class VelocitySignalMomentumStrategyBuilder(StrategyBuilder):
     def reset(self):
         self._symbol = 'SPY'
         self._start_date_offset = 60
-        self._lstm_model = None
-        self._lstm_scaler = None
-        self._options_handler = None
         self._stop_loss = None
         self._profit_target = None
     
@@ -139,20 +118,6 @@ class VelocitySignalMomentumStrategyBuilder(StrategyBuilder):
     
     def set_start_date_offset(self, offset: int):
         self._start_date_offset = offset
-        return self
-    
-    def set_lstm_model(self, model):
-        # Not used for this strategy but required by interface
-        self._lstm_model = model
-        return self
-    
-    def set_lstm_scaler(self, scaler):
-        # Not used for this strategy but required by interface
-        self._lstm_scaler = scaler
-        return self
-    
-    def set_options_handler(self, handler: OptionsHandler):
-        self._options_handler = handler
         return self
     
     def set_stop_loss(self, stop_loss: float):
@@ -171,7 +136,6 @@ class VelocitySignalMomentumStrategyBuilder(StrategyBuilder):
             from src.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
         
         strategy = VelocitySignalMomentumStrategy(
-            options_handler=self._options_handler,
             start_date_offset=self._start_date_offset,
             stop_loss=self._stop_loss
         )
@@ -234,15 +198,12 @@ class StrategyFactory:
         
         return cls._builders[strategy_name]()
 
-def create_strategy_from_args(strategy_name: str, lstm_model, lstm_scaler, options_handler, **kwargs):
+def create_strategy_from_args(strategy_name: str, **kwargs):
     """
     Create strategy based on command line argument or configuration
     
     Args:
         strategy_name: Name of the strategy to create
-        lstm_model: LSTM model instance
-        lstm_scaler: LSTM scaler instance
-        options_handler: Options handler instance
         **kwargs: Additional configuration parameters
         
     Returns:
@@ -251,9 +212,6 @@ def create_strategy_from_args(strategy_name: str, lstm_model, lstm_scaler, optio
     try:
         strategy = StrategyFactory.create_strategy(
             strategy_name=strategy_name,
-            lstm_model=lstm_model,
-            lstm_scaler=lstm_scaler,
-            options_handler=options_handler,
             start_date_offset=kwargs.get('start_date_offset', 60),
             stop_loss=kwargs.get('stop_loss', None),
             profit_target=kwargs.get('profit_target', None)
