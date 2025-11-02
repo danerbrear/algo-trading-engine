@@ -1,4 +1,4 @@
-# LSTM POC - Options Trading Strategy System
+# Options Trading System
 
 This project provides a comprehensive backtesting and prediction platform for options trading strategies. The system enables users to develop, test, and evaluate trading strategies using historical data, while also providing real-time predictions for current market conditions. It includes a robust backtesting framework with volume validation, risk management tools, and machine learning-powered strategy prediction capabilities.
 
