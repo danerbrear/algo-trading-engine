@@ -7,7 +7,7 @@ import matplotlib.dates as mdates
 from src.backtest.models import Strategy, Position, StrategyType, OptionChain, TreasuryRates
 from src.common.options_dtos import ExpirationRangeDTO, OptionsChainDTO
 from src.common.progress_tracker import progress_print
-from src.common.options_handler import OptionsHandler as NewOptionsHandler
+from src.common.options_handler import OptionsHandler
 from src.common.options_helpers import OptionsRetrieverHelper
 from src.common.models import OptionType
 from src.common.options_dtos import StrikeRangeDTO, StrikePrice
@@ -22,17 +22,13 @@ class VelocitySignalMomentumStrategy(Strategy):
     # Configurable holding period in trading days
     holding_period = 4
 
-    def __init__(self, start_date_offset: int = 60, stop_loss: float = None):
+    def __init__(self, options_handler: OptionsHandler, start_date_offset: int = 60, stop_loss: float = None):
         super().__init__(start_date_offset=start_date_offset, stop_loss=stop_loss)
 
-        self.new_options_handler = None  # Will be injected by backtest/recommendation engine
+        self.new_options_handler = options_handler
         
         # Track position entries for plotting
         self._position_entries = []
-    
-    def set_options_handler(self, options_handler):
-        """Inject the options handler from the backtest or recommendation engine"""
-        self.new_options_handler = options_handler
     
     def set_data(self, data: pd.DataFrame, treasury_data: Optional[TreasuryRates] = None):
         super().set_data(data, treasury_data)

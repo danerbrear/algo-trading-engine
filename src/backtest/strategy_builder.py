@@ -7,6 +7,8 @@ trading strategies with flexible parameter selection and validation.
 
 from abc import ABC, abstractmethod
 from typing import Dict, Type, List, Optional
+
+from src.common.options_handler import OptionsHandler
 try:
     from .models import Strategy
 except ImportError:
@@ -23,6 +25,11 @@ class StrategyBuilder(ABC):
     @abstractmethod
     def reset(self):
         """Reset the builder to initial state"""
+        pass
+
+    @abstractmethod
+    def set_options_handler(self, options_handler: OptionsHandler):
+        """Set the options handler"""
         pass
     
     @abstractmethod
@@ -112,15 +119,12 @@ class CreditSpreadStrategyBuilder(StrategyBuilder):
                 raise ValueError(f"Failed to load LSTM model for symbol {self._symbol}: {e}")
         
         strategy = CreditSpreadStrategy(
+            options_handler=self._options_handler,
             lstm_model=self._lstm_model,
             lstm_scaler=self._lstm_scaler,
             symbol=self._symbol,
             start_date_offset=self._start_date_offset
         )
-        
-        # Inject options handler if provided
-        if self._options_handler:
-            strategy.set_options_handler(self._options_handler)
         
         if self._profit_target:
             strategy.set_profit_target(self._profit_target)
@@ -138,10 +142,6 @@ class VelocitySignalMomentumStrategyBuilder(StrategyBuilder):
         self._start_date_offset = 60
         self._stop_loss = None
         self._profit_target = None
-    
-    def set_symbol(self, symbol: str):
-        self._symbol = symbol
-        return self
     
     def set_options_handler(self, options_handler):
         """Set the options handler to inject into the strategy"""
@@ -168,13 +168,10 @@ class VelocitySignalMomentumStrategyBuilder(StrategyBuilder):
             from src.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
         
         strategy = VelocitySignalMomentumStrategy(
+            options_handler=self._options_handler,
             start_date_offset=self._start_date_offset,
             stop_loss=self._stop_loss
         )
-        
-        # Inject options handler if provided
-        if self._options_handler:
-            strategy.set_options_handler(self._options_handler)
         
         self.reset()
         return strategy
@@ -254,8 +251,6 @@ def create_strategy_from_args(strategy_name: str, **kwargs):
         builder = StrategyFactory.get_builder(strategy_name)
         
         # Set common parameters
-        if 'symbol' in kwargs:
-            builder.set_symbol(kwargs['symbol'])
         if 'options_handler' in kwargs:
             builder.set_options_handler(kwargs['options_handler'])
         if 'start_date_offset' in kwargs:

@@ -4,6 +4,7 @@ import argparse
 from datetime import datetime, timedelta
 import sys
 
+from src.backtest.strategy_builder import create_strategy_from_args
 from src.common.data_retriever import DataRetriever
 from src.common.functions import get_model_directory, load_lstm_model, load_hmm_model
 from src.common.options_handler import OptionsHandler
@@ -31,29 +32,12 @@ def build_strategy(name: str, symbol: str, options_handler: OptionsHandler):
     Returns:
         Strategy instance with options_handler injected
     """
-    if name not in STRATEGY_REGISTRY:
-        raise ValueError(f"Unknown strategy: {name}")
+    strategy = create_strategy_from_args(
+        strategy_name=name,
+        symbol=symbol,
+        options_handler=options_handler,
+    )
 
-    StrategyClass = STRATEGY_REGISTRY[name]
-
-    # Load trained LSTM model and scaler for strategies that need prediction support
-    model_dir = get_model_directory(symbol=symbol)
-    lstm_model, lstm_scaler = load_lstm_model(model_dir, return_lstm_instance=True)
-
-    # VelocitySignalMomentumStrategy expects different constructor
-    if StrategyClass is VelocitySignalMomentumStrategy:
-        strategy = StrategyClass()
-        # Attach LSTM artifacts for internal prediction usage
-        strategy.lstm_model = lstm_model
-        strategy.lstm_scaler = lstm_scaler
-        # Inject options_handler
-        strategy.set_options_handler(options_handler)
-        return strategy
-
-    # CreditSpreadStrategy
-    strategy = StrategyClass(lstm_model, lstm_scaler, symbol=symbol)
-    # Inject options_handler
-    strategy.set_options_handler(options_handler)
     return strategy
 
 

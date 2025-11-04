@@ -123,8 +123,7 @@ class Strategy(ABC):
         try:
             self.on_new_date(date, (), capture_add_position, dummy_remove_position)
         except Exception as e:
-            # If on_new_date fails, return None
-            return None
+            raise e
         
         # If no position was created, return None
         if recommended_position is None:

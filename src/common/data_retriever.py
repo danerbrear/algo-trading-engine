@@ -325,45 +325,7 @@ class DataRetriever:
         """
         if symbol is None:
             symbol = self.symbol
-            
-        # Try Polygon API first (if available and has paid plan)
-        if hasattr(self, 'options_handler') and self.options_handler:
-            try:
-                client = self.options_handler.client
-                
-                # Try snapshot endpoint first
-                try:
-                    snapshot = client.get_snapshot_ticker(ticker=symbol, market_type='stocks')
-                    if snapshot and hasattr(snapshot, 'last_quote') and snapshot.last_quote:
-                        # Use last quote bid/ask midpoint as live price
-                        bid = float(snapshot.last_quote.bid) if snapshot.last_quote.bid else 0
-                        ask = float(snapshot.last_quote.ask) if snapshot.last_quote.ask else 0
-                        if bid > 0 and ask > 0:
-                            live_price = (bid + ask) / 2
-                            print(f"✅ Live price for {symbol} (from Polygon quote): ${live_price:.2f}")
-                            return live_price
-                    elif snapshot and hasattr(snapshot, 'last_trade') and snapshot.last_trade:
-                        # Fallback to last trade price
-                        live_price = float(snapshot.last_trade.price)
-                        print(f"✅ Live price for {symbol} (from Polygon trade): ${live_price:.2f}")
-                        return live_price
-                except Exception as snapshot_error:
-                    print(f"⚠️ Polygon snapshot endpoint failed: {str(snapshot_error)}")
-                
-                # Fallback to last trade endpoint
-                try:
-                    last_trade = client.get_last_trade(symbol)
-                    if last_trade and hasattr(last_trade, 'price'):
-                        live_price = float(last_trade.price)
-                        print(f"✅ Live price for {symbol} (from Polygon last trade): ${live_price:.2f}")
-                        return live_price
-                except Exception as trade_error:
-                    print(f"⚠️ Polygon last trade endpoint failed: {str(trade_error)}")
-                    
-            except Exception as polygon_error:
-                print(f"⚠️ Polygon API error: {str(polygon_error)}")
         
-        # Fallback to yfinance for live price (free)
         try:
             print(f"📡 Fetching live price for {symbol} using yfinance...")
             ticker = yf.Ticker(symbol)

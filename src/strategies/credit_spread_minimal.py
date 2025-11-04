@@ -19,19 +19,15 @@ class CreditSpreadStrategy(Strategy):
 
     holding_period = 25
 
-    def __init__(self, lstm_model, lstm_scaler, symbol: str = 'SPY', start_date_offset: int = 0):
+    def __init__(self, options_handler: OptionsHandler, lstm_model, lstm_scaler, symbol: str = 'SPY', start_date_offset: int = 0):
         super().__init__(stop_loss=0.6, start_date_offset=start_date_offset)
         self.lstm_model = lstm_model
         self.lstm_scaler = lstm_scaler
         self.symbol = symbol
         
-        self.options_handler = None  # Will be injected by backtest/recommendation engine
+        self.options_handler = options_handler
 
         self.error_count = 0
-    
-    def set_options_handler(self, options_handler: OptionsHandler):
-        """Inject the options handler from the backtest or recommendation engine"""
-        self.options_handler = options_handler
     
     def set_data(self, data: pd.DataFrame, treasury_data: Optional[TreasuryRates] = None):
         super().set_data(data, treasury_data)
