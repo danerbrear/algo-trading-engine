@@ -473,69 +473,6 @@ class BacktestEngine:
             print(f"⚠️  Proceeding with closure of position {position.__str__()} despite insufficient volume")
             return False  # Indicate that closure should proceed
 
-
-def initialize_credit_spread_minimal_strategy(
-    data_retriever: DataRetriever,
-    symbol: str,
-    start_date: datetime,
-    use_free_tier: bool,
-    quiet_mode: bool
-) -> tuple:
-    """
-    Initialize and prepare data for CreditSpreadStrategy.
-    
-    Args:
-        data_retriever: DataRetriever instance
-        symbol: Stock symbol
-        start_date: Start date for backtest
-        use_free_tier: Whether to use free tier rate limiting
-        quiet_mode: Whether to suppress detailed output
-        
-    Returns:
-        tuple: (data, options_handler, lstm_model, lstm_scaler, options_data)
-            - data: DataFrame with LSTM features prepared
-            - options_handler: Initialized OptionsHandler instance
-            - lstm_model: Loaded LSTM model instance
-            - lstm_scaler: Loaded LSTM scaler
-            - options_data: Dictionary of options data by date
-    """
-    # Initialize options_handler if not already initialized
-    if not hasattr(data_retriever, 'options_handler') or data_retriever.options_handler is None:
-        from src.model.options_handler import OptionsHandler as ModelOptionsHandler
-        data_retriever.options_handler = ModelOptionsHandler(
-            symbol=symbol,
-            start_date=start_date.strftime('%Y-%m-%d'),
-            cache_dir=data_retriever.cache_manager.base_dir,
-            use_free_tier=use_free_tier,
-            quiet_mode=not quiet_mode
-        )
-    
-    # Load HMM model for state classifier
-    model_save_base_path = os.getenv('MODEL_SAVE_BASE_PATH', 'Trained_Models')
-    model_dir = os.path.join(model_save_base_path, 'lstm_poc', symbol, 'latest')
-    try:
-        hmm_model = load_hmm_model(model_dir)
-    except Exception as e:
-        print(f"⚠️  Warning: Could not load HMM model: {e}")
-        print("   Continuing without HMM model (Market_State will be set to 0)")
-        hmm_model = None
-    
-    # Load LSTM model and scaler
-    try:
-        lstm_model, lstm_scaler = load_lstm_model(model_dir, return_lstm_instance=True)
-    except Exception as e:
-        print(f"❌ Error: Could not load LSTM model: {e}")
-        raise
-    
-    # Set lstm_start_date to match our backtest start_date so prepare_data_for_lstm uses correct range
-    data_retriever.lstm_start_date = start_date.strftime('%Y-%m-%d')
-    
-    # Prepare data with LSTM features
-    data, options_data = data_retriever.prepare_data_for_lstm(state_classifier=hmm_model)
-    
-    return data, data_retriever.options_handler, lstm_model, lstm_scaler, options_data
-
-
 def parse_arguments():
     """Parse command line arguments for backtest configuration"""
     parser = argparse.ArgumentParser(description='Run backtest with specified strategy')
@@ -598,10 +535,16 @@ if __name__ == "__main__":
     try:
         data = data_retriever.fetch_data_for_period(start_date, 'backtest')
 
-        # Create strategy using the builder pattern
+        # Create options handler to inject into strategy
+        options_handler = OptionsHandler(
+            symbol=args.symbol,
+            use_free_tier=args.free
+        )
+
         strategy = create_strategy_from_args(
             strategy_name=args.strategy,
             symbol=args.symbol,
+            options_handler=options_handler,
             start_date_offset=args.start_date_offset,
             stop_loss=args.stop_loss,
             profit_target=args.profit_target
@@ -611,26 +554,8 @@ if __name__ == "__main__":
             print("❌ Failed to create strategy")
             exit(1)
 
-        # TODO: Once we remove the legacy options handler dependency, we can remove this block of code and initialize lstm_model and lstm_scaler in the strategy builder.
-        # If strategy is of class type CreditSpreadStrategy, add required columns by calling prepare_data_for_lstm in DataRetriever
-        from src.strategies.credit_spread_minimal import CreditSpreadStrategy
-        if isinstance(strategy, CreditSpreadStrategy):
-            data, options_handler, lstm_model, lstm_scaler, options_data = initialize_credit_spread_minimal_strategy(
-                data_retriever=data_retriever,
-                symbol=args.symbol,
-                start_date=start_date,
-                use_free_tier=args.free,
-                quiet_mode=not args.verbose
-            )
-            
-            # Set models and handlers on strategy to avoid side effects
-            strategy.options_handler = options_handler
-            strategy.lstm_model = lstm_model
-            strategy.lstm_scaler = lstm_scaler
-            
-            # Update strategy with options_data if available
-            if options_data:
-                strategy.options_data = options_data
+        if (args.strategy == 'credit_spread'):
+            data = data_retriever.prepare_data_for_lstm()
         
         strategy.set_data(data, data_retriever.treasury_rates)
 

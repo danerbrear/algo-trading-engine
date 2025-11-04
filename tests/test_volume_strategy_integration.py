@@ -2,12 +2,14 @@
 Tests for enhanced current date volume validation in strategy.
 """
 
-from datetime import datetime
+from datetime import datetime, date
+from decimal import Decimal
 from unittest.mock import Mock
 
 from src.strategies.credit_spread_minimal import CreditSpreadStrategy
 from src.backtest.models import Position, StrategyType
 from src.common.models import Option, OptionType
+from src.common.options_dtos import OptionContractDTO, OptionBarDTO, StrikePrice, ExpirationDate
 
 
 class TestStrategyCurrentDateVolumeValidation:
@@ -61,17 +63,73 @@ class TestStrategyCurrentDateVolumeValidation:
     
     def test_get_current_volumes_for_position_success(self):
         """Test successful volume data fetching for position."""
-        # Mock the options handler to return fresh volume data
-        fresh_option1 = Mock()
-        fresh_option1.volume = 25
+        # Create mock contracts and bars for new API
+        from src.common.options_dtos import StrikeRangeDTO, ExpirationRangeDTO
         
-        fresh_option2 = Mock()
-        fresh_option2.volume = 12
+        contract1 = OptionContractDTO(
+            ticker='O:SPY240315C00500000',
+            underlying_ticker='SPY',
+            contract_type=OptionType.CALL,
+            strike_price=StrikePrice(Decimal('500.0')),
+            expiration_date=ExpirationDate(date(2024, 3, 15)),
+            exercise_style='american',
+            shares_per_contract=100
+        )
+        contract2 = OptionContractDTO(
+            ticker='O:SPY240315C00510000',
+            underlying_ticker='SPY',
+            contract_type=OptionType.CALL,
+            strike_price=StrikePrice(Decimal('510.0')),
+            expiration_date=ExpirationDate(date(2024, 3, 15)),
+            exercise_style='american',
+            shares_per_contract=100
+        )
         
-        self.mock_options_handler.get_specific_option_contract.side_effect = [
-            fresh_option1,  # For option1
-            fresh_option2   # For option2
-        ]
+        bar1 = OptionBarDTO(
+            ticker='O:SPY240315C00500000',
+            timestamp=self.test_date,
+            open_price=Decimal('1.50'),
+            high_price=Decimal('1.55'),
+            low_price=Decimal('1.45'),
+            close_price=Decimal('1.50'),
+            volume=25,
+            volume_weighted_avg_price=Decimal('1.50'),
+            number_of_transactions=100,
+            adjusted=True
+        )
+        bar2 = OptionBarDTO(
+            ticker='O:SPY240315C00510000',
+            timestamp=self.test_date,
+            open_price=Decimal('0.75'),
+            high_price=Decimal('0.80'),
+            low_price=Decimal('0.70'),
+            close_price=Decimal('0.75'),
+            volume=12,
+            volume_weighted_avg_price=Decimal('0.75'),
+            number_of_transactions=50,
+            adjusted=True
+        )
+        
+        # Mock get_contract_list_for_date to return contracts based on strike
+        def get_contracts_side_effect(*args, **kwargs):
+            strike_val = float(kwargs['strike_range'].min_strike.value)
+            if strike_val == 500.0:
+                return [contract1]
+            elif strike_val == 510.0:
+                return [contract2]
+            return []
+        
+        self.mock_options_handler.get_contract_list_for_date.side_effect = get_contracts_side_effect
+        
+        # Mock get_option_bar to return bars based on contract
+        def get_bar_side_effect(contract, date):
+            if contract.strike_price.value == Decimal('500.0'):
+                return bar1
+            elif contract.strike_price.value == Decimal('510.0'):
+                return bar2
+            return None
+        
+        self.mock_options_handler.get_option_bar.side_effect = get_bar_side_effect
         
         # Call the method
         current_volumes = self.strategy.get_current_volumes_for_position(
@@ -81,26 +139,43 @@ class TestStrategyCurrentDateVolumeValidation:
         
         # Verify results
         assert current_volumes == [25, 12]
-        assert self.mock_options_handler.get_specific_option_contract.call_count == 2
-        
-        # Verify the calls were made with correct parameters
-        calls = self.mock_options_handler.get_specific_option_contract.call_args_list
-        assert calls[0][0] == (500.0, "2024-03-15", "call", self.test_date)
-        assert calls[1][0] == (510.0, "2024-03-15", "call", self.test_date)
+        assert self.mock_options_handler.get_contract_list_for_date.call_count == 2
+        assert self.mock_options_handler.get_option_bar.call_count == 2
     
     def test_get_current_volumes_for_position_no_volume_data(self):
         """Test handling when no volume data is available."""
-        # Mock the options handler to return None for volume data
-        fresh_option1 = Mock()
-        fresh_option1.volume = None
+        # Mock contracts but return None for bars (no volume data)
+        from src.common.options_dtos import StrikeRangeDTO, ExpirationRangeDTO, StrikePrice, ExpirationDate
         
-        fresh_option2 = Mock()
-        fresh_option2.volume = None
+        contract1 = OptionContractDTO(
+            ticker='O:SPY240315C00500000',
+            underlying_ticker='SPY',
+            contract_type=OptionType.CALL,
+            strike_price=StrikePrice(Decimal('500.0')),
+            expiration_date=ExpirationDate(date(2024, 3, 15)),
+            exercise_style='american',
+            shares_per_contract=100
+        )
+        contract2 = OptionContractDTO(
+            ticker='O:SPY240315C00510000',
+            underlying_ticker='SPY',
+            contract_type=OptionType.CALL,
+            strike_price=StrikePrice(Decimal('510.0')),
+            expiration_date=ExpirationDate(date(2024, 3, 15)),
+            exercise_style='american',
+            shares_per_contract=100
+        )
         
-        self.mock_options_handler.get_specific_option_contract.side_effect = [
-            fresh_option1,  # For option1
-            fresh_option2   # For option2
-        ]
+        def get_contracts_side_effect(*args, **kwargs):
+            strike_val = float(kwargs['strike_range'].min_strike.value)
+            if strike_val == 500.0:
+                return [contract1]
+            elif strike_val == 510.0:
+                return [contract2]
+            return []
+        
+        self.mock_options_handler.get_contract_list_for_date.side_effect = get_contracts_side_effect
+        self.mock_options_handler.get_option_bar.return_value = None  # No bar data
         
         # Call the method
         current_volumes = self.strategy.get_current_volumes_for_position(
@@ -114,7 +189,7 @@ class TestStrategyCurrentDateVolumeValidation:
     def test_get_current_volumes_for_position_api_failure(self):
         """Test handling of API failures during volume data fetching."""
         # Mock the options handler to raise an exception
-        self.mock_options_handler.get_specific_option_contract.side_effect = Exception("API Error")
+        self.mock_options_handler.get_contract_list_for_date.side_effect = Exception("API Error")
         
         # Call the method
         current_volumes = self.strategy.get_current_volumes_for_position(
@@ -127,17 +202,58 @@ class TestStrategyCurrentDateVolumeValidation:
     
     def test_get_current_volumes_for_position_mixed_results(self):
         """Test handling of mixed results (some success, some failure)."""
-        # Mock the options handler to return mixed results
-        fresh_option1 = Mock()
-        fresh_option1.volume = 30
+        # Create mock contracts
+        from src.common.options_dtos import StrikeRangeDTO, ExpirationRangeDTO, StrikePrice, ExpirationDate
         
-        fresh_option2 = Mock()
-        fresh_option2.volume = None
+        contract1 = OptionContractDTO(
+            ticker='O:SPY240315C00500000',
+            underlying_ticker='SPY',
+            contract_type=OptionType.CALL,
+            strike_price=StrikePrice(Decimal('500.0')),
+            expiration_date=ExpirationDate(date(2024, 3, 15)),
+            exercise_style='american',
+            shares_per_contract=100
+        )
+        contract2 = OptionContractDTO(
+            ticker='O:SPY240315C00510000',
+            underlying_ticker='SPY',
+            contract_type=OptionType.CALL,
+            strike_price=StrikePrice(Decimal('510.0')),
+            expiration_date=ExpirationDate(date(2024, 3, 15)),
+            exercise_style='american',
+            shares_per_contract=100
+        )
         
-        self.mock_options_handler.get_specific_option_contract.side_effect = [
-            fresh_option1,  # For option1 - success
-            fresh_option2   # For option2 - no volume data
-        ]
+        bar1 = OptionBarDTO(
+            ticker='O:SPY240315C00500000',
+            timestamp=self.test_date,
+            open_price=Decimal('1.50'),
+            high_price=Decimal('1.55'),
+            low_price=Decimal('1.45'),
+            close_price=Decimal('1.50'),
+            volume=30,
+            volume_weighted_avg_price=Decimal('1.50'),
+            number_of_transactions=100,
+            adjusted=True
+        )
+        
+        def get_contracts_side_effect(*args, **kwargs):
+            strike_val = float(kwargs['strike_range'].min_strike.value)
+            if strike_val == 500.0:
+                return [contract1]
+            elif strike_val == 510.0:
+                return [contract2]
+            return []
+        
+        def get_bar_side_effect(contract, date):
+            if contract.strike_price.value == Decimal('500.0'):
+                return bar1  # Success
+            elif contract.strike_price.value == Decimal('510.0'):
+                return None  # No bar data
+            return None
+        
+        self.mock_options_handler.get_contract_list_for_date.side_effect = get_contracts_side_effect
+        self.mock_options_handler.get_option_bar.side_effect = get_bar_side_effect
         
         # Call the method
         current_volumes = self.strategy.get_current_volumes_for_position(
@@ -170,7 +286,8 @@ class TestStrategyCurrentDateVolumeValidation:
         # Verify results
         assert current_volumes == []
         # Verify no API calls were made
-        self.mock_options_handler.get_specific_option_contract.assert_not_called()
+        self.mock_options_handler.get_contract_list_for_date.assert_not_called()
+        self.mock_options_handler.get_option_bar.assert_not_called()
     
     def test_get_current_volumes_for_position_none_options_handler(self):
         """Test handling when options_handler is None."""

@@ -218,7 +218,7 @@ class TestVelocityLivePrice(unittest.TestCase):
         mock_retriever = Mock()
         mock_retriever.symbol = 'SPY'
         mock_retriever.get_live_price.return_value = self.live_price
-        mock_retriever.prepare_data_for_lstm.return_value = (self.test_data.copy(), {})
+        mock_retriever.prepare_data_for_lstm.return_value = self.test_data.copy()
         mock_retriever.options_handler = Mock()
         mock_retriever.options_handler.symbol = 'SPY'
         mock_data_retriever_class.return_value = mock_retriever
