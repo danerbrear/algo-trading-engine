@@ -163,14 +163,46 @@ class TestVolumeValidationPerformance:
         print("\n🧪 Testing Caching Effectiveness")
         
         # Mock the options handler to track API calls
+        # Note: The current implementation uses get_contract_list_for_date + get_option_bar
+        # This test is testing caching effectiveness, so we'll mock the new API
         api_call_count = 0
         
-        def mock_get_specific_option_contract(*args, **kwargs):
+        def mock_get_contract_list_for_date(*args, **kwargs):
             nonlocal api_call_count
             api_call_count += 1
-            return Mock(volume=25)
+            # Return mock contracts
+            from src.common.options_dtos import OptionContractDTO, StrikePrice, ExpirationDate
+            from src.common.models import OptionType as CommonOptionType
+            from decimal import Decimal
+            from datetime import date as date_type
+            
+            return [OptionContractDTO(
+                ticker='O:SPY240315C00500000',
+                underlying_ticker='SPY',
+                contract_type=CommonOptionType.CALL,
+                strike_price=StrikePrice(Decimal('500.0')),
+                expiration_date=ExpirationDate(date_type(2024, 3, 15)),
+                exercise_style='american',
+                shares_per_contract=100
+            )]
         
-        self.strategy.options_handler.get_specific_option_contract = mock_get_specific_option_contract
+        def mock_get_option_bar(contract, date):
+            from src.common.options_dtos import OptionBarDTO
+            from decimal import Decimal
+            return OptionBarDTO(
+                ticker=contract.ticker,
+                timestamp=date,
+                open_price=Decimal('1.50'),
+                high_price=Decimal('1.55'),
+                low_price=Decimal('1.45'),
+                close_price=Decimal('1.50'),
+                volume=25,
+                volume_weighted_avg_price=Decimal('1.50'),
+                number_of_transactions=100
+            )
+        
+        self.strategy.options_handler.get_contract_list_for_date = mock_get_contract_list_for_date
+        self.strategy.options_handler.get_option_bar = mock_get_option_bar
         
         # Test without caching (multiple calls for same data)
         api_call_count = 0
