@@ -11,6 +11,7 @@ from src.common.options_handler import OptionsHandler
 from src.common.options_helpers import OptionsRetrieverHelper
 from src.common.models import OptionType
 from src.common.options_dtos import StrikeRangeDTO, StrikePrice
+from src.common.data_retriever import DataRetriever
 from decimal import Decimal
 
 class VelocitySignalMomentumStrategy(Strategy):
@@ -494,13 +495,28 @@ class VelocitySignalMomentumStrategy(Strategy):
         """
         current_date = datetime.now().date()
         if date.date() == current_date:
-            # Use live price from DataRetriever if available
-            if hasattr(self, 'data_retriever') and self.data_retriever:
-                live_price = self.data_retriever.get_live_price()
-                if live_price is not None:
-                    return live_price
+            # Initialize DataRetriever when needed
+            # Try to get symbol from options handler first, then data index name, then default to SPY
+            symbol = None
+            
+            # Try options handler first (most reliable)
+            if hasattr(self, 'new_options_handler') and hasattr(self.new_options_handler, 'symbol'):
+                symbol = self.new_options_handler.symbol
+            
+            # Default to SPY if symbol not found
+            if symbol is None:
+                raise ValueError("Symbol not found in options handler or data index name.")
+            
+            try:
+                data_retriever = DataRetriever(symbol=symbol, use_free_tier=True, quiet_mode=True)
+                live_price = data_retriever.get_live_price()
+            except Exception as e:
+                raise ValueError(f"Failed to fetch live price from DataRetriever: {e}")
+
+            if live_price is not None:
+                return live_price
             else:
-                raise ValueError("Data retriever is not initialized.")
+                raise ValueError("Failed to fetch live price from DataRetriever.")
         else:
             return float(self.data.loc[date]['Close'])
 
