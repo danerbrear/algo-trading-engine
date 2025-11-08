@@ -91,7 +91,7 @@ class TestVelocityLivePrice(unittest.TestCase):
         mock_options_handler.symbol = 'SPY'
         
         strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
-        strategy.set_data(self.test_data.copy(), {})
+        strategy.set_data(self.test_data.copy())
         
         # Store original data length
         original_length = len(strategy.data)
@@ -120,7 +120,7 @@ class TestVelocityLivePrice(unittest.TestCase):
         mock_options_handler.symbol = 'SPY'
         
         strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
-        strategy.set_data(self.test_data.copy(), {})
+        strategy.set_data(self.test_data.copy())
         
         # Get velocity before adding live data
         last_date_before = strategy.data.index[-1]
@@ -148,24 +148,33 @@ class TestVelocityLivePrice(unittest.TestCase):
             print(f"   Velocity change: {velocity_change:.6f}")
 
     def test_live_price_fetch_integration_with_data_retriever(self):
-        """Test that live price fetch integrates correctly with DataRetriever."""
+        """Test that live price fetch integrates correctly with DataRetriever.
+        
+        Note: The strategy now creates DataRetriever on demand when needed,
+        rather than using a pre-initialized data_retriever attribute.
+        This test verifies that the on-demand creation works correctly.
+        """
         mock_options_handler = Mock()
         mock_options_handler.symbol = 'SPY'
         
-        # Create a mock DataRetriever
-        mock_data_retriever = Mock()
-        mock_data_retriever.get_live_price.return_value = self.live_price
-        
         strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
-        strategy.set_data(self.test_data.copy(), {})
-        strategy.data_retriever = mock_data_retriever
+        strategy.set_data(self.test_data.copy())
         
-        # Call _get_current_underlying_price for current date
-        price = strategy._get_current_underlying_price(self.current_date)
-        
-        # Verify it used the DataRetriever's live price
-        mock_data_retriever.get_live_price.assert_called_once()
-        self.assertEqual(price, self.live_price)
+        # Mock DataRetriever creation and get_live_price
+        with patch('src.strategies.velocity_signal_momentum_strategy.DataRetriever') as mock_data_retriever_class:
+            mock_data_retriever = Mock()
+            mock_data_retriever.get_live_price.return_value = self.live_price
+            mock_data_retriever_class.return_value = mock_data_retriever
+            
+            # Call _get_current_underlying_price for current date
+            price = strategy._get_current_underlying_price(self.current_date)
+            
+            # Verify DataRetriever was created with correct symbol
+            mock_data_retriever_class.assert_called_once_with(symbol='SPY', use_free_tier=True, quiet_mode=True)
+            
+            # Verify it used the DataRetriever's live price
+            mock_data_retriever.get_live_price.assert_called_once()
+            self.assertEqual(price, self.live_price)
         
         print(f"✅ DataRetriever integration working correctly")
 
@@ -179,7 +188,7 @@ class TestVelocityLivePrice(unittest.TestCase):
         mock_data_retriever.get_live_price.return_value = None
         
         strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
-        strategy.set_data(self.test_data.copy(), {})
+        strategy.set_data(self.test_data.copy())
         strategy.data_retriever = mock_data_retriever
         
         # Use a date that exists in cached data
@@ -218,7 +227,7 @@ class TestVelocityLivePrice(unittest.TestCase):
         mock_retriever = Mock()
         mock_retriever.symbol = 'SPY'
         mock_retriever.get_live_price.return_value = self.live_price
-        mock_retriever.prepare_data_for_lstm.return_value = self.test_data.copy()
+        mock_retriever.fetch_data_for_period.return_value = self.test_data.copy()
         mock_retriever.options_handler = Mock()
         mock_retriever.options_handler.symbol = 'SPY'
         mock_data_retriever_class.return_value = mock_retriever
@@ -255,7 +264,7 @@ class TestVelocityLivePrice(unittest.TestCase):
         mock_options_handler.symbol = 'SPY'
         
         strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
-        strategy.set_data(self.test_data.copy(), {})
+        strategy.set_data(self.test_data.copy())
         
         # Use a date from the past (not current date)
         past_date = self.test_data.index[-2]
@@ -294,7 +303,7 @@ class TestVelocityLivePrice(unittest.TestCase):
             'Volume': np.random.uniform(10000000, 20000000, len(dates))
         }, index=dates)
         
-        strategy.set_data(test_data, {})
+        strategy.set_data(test_data)
         
         # Set live price higher to continue the upward trend
         live_price = 605.0
@@ -322,7 +331,7 @@ class TestVelocityLivePrice(unittest.TestCase):
         mock_options_handler.symbol = 'SPY'
         
         strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
-        strategy.set_data(self.test_data.copy(), {})
+        strategy.set_data(self.test_data.copy())
         
         original_length = len(strategy.data)
         
