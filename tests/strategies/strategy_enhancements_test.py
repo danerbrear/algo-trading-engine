@@ -32,7 +32,7 @@ class TestVelocitySignalMomentumStrategyEnhancements:
             'Volume': [1000000] * 100
         }, index=dates)
         
-        self.strategy.set_data(self.sample_data, {})
+        self.strategy.set_data(self.sample_data)
     
     def test_get_current_underlying_price_historical_date(self):
         """Test _get_current_underlying_price with historical date"""
@@ -44,16 +44,17 @@ class TestVelocitySignalMomentumStrategyEnhancements:
         assert price == expected_price
     
     @patch('src.strategies.velocity_signal_momentum_strategy.datetime')
-    def test_get_current_underlying_price_current_date_with_live_price(self, mock_datetime):
+    @patch('src.strategies.velocity_signal_momentum_strategy.DataRetriever')
+    def test_get_current_underlying_price_current_date_with_live_price(self, mock_data_retriever_class, mock_datetime):
         """Test _get_current_underlying_price with current date and live price available"""
         # Mock current date
         current_date = datetime(2024, 1, 20)
         mock_datetime.now.return_value = current_date
         
-        # Mock data retriever with live price
+        # Mock DataRetriever creation and get_live_price
         mock_data_retriever = Mock()
         mock_data_retriever.get_live_price.return_value = 150.0
-        self.strategy.data_retriever = mock_data_retriever
+        mock_data_retriever_class.return_value = mock_data_retriever
         
         price = self.strategy._get_current_underlying_price(current_date)
         
@@ -61,24 +62,25 @@ class TestVelocitySignalMomentumStrategyEnhancements:
         mock_data_retriever.get_live_price.assert_called_once()
     
     @patch('src.strategies.velocity_signal_momentum_strategy.datetime')
-    def test_get_current_underlying_price_current_date_fallback(self, mock_datetime):
-        """Test _get_current_underlying_price with current date but no live price"""
+    @patch('src.strategies.velocity_signal_momentum_strategy.DataRetriever')
+    def test_get_current_underlying_price_current_date_fallback(self, mock_data_retriever_class, mock_datetime):
+        """Test _get_current_underlying_price with current date but no live price available"""
         # Mock current date that's NOT in the sample data
         current_date = datetime(2024, 5, 1)  # This date is not in the sample data
         mock_datetime.now.return_value = current_date
         
-        # Mock data retriever without live price
+        # Mock options handler with symbol
+        self.strategy.new_options_handler.symbol = 'SPY'
+        
+        # Mock DataRetriever to return None for live price
         mock_data_retriever = Mock()
         mock_data_retriever.get_live_price.return_value = None
-        self.strategy.data_retriever = mock_data_retriever
+        mock_data_retriever_class.return_value = mock_data_retriever
         
-        # Also mock the options_handler to prevent fallback
-        self.strategy.options_handler = None
-        
-        price = self.strategy._get_current_underlying_price(current_date)
-        
-        # Should return None since no live price and date not in data
-        assert price is None
+        # The current implementation raises ValueError when live price is None
+        import pytest
+        with pytest.raises(ValueError, match="Failed to fetch live price from DataRetriever"):
+            self.strategy._get_current_underlying_price(current_date)
     
     def test_recalculate_moving_averages(self):
         """Test _recalculate_moving_averages method"""
@@ -187,7 +189,7 @@ class TestCreditSpreadStrategyEnhancements:
             'Volume': [1000000] * 100
         }, index=dates)
         
-        self.strategy.set_data(self.sample_data, {})
+        self.strategy.set_data(self.sample_data)
     
     def test_get_current_underlying_price_historical_date(self):
         """Test _get_current_underlying_price with historical date"""
@@ -199,16 +201,20 @@ class TestCreditSpreadStrategyEnhancements:
         assert price == expected_price
     
     @patch('src.strategies.credit_spread_minimal.datetime')
-    def test_get_current_underlying_price_current_date_with_live_price(self, mock_datetime):
+    @patch('src.common.data_retriever.DataRetriever')
+    def test_get_current_underlying_price_current_date_with_live_price(self, mock_data_retriever_class, mock_datetime):
         """Test _get_current_underlying_price with current date and live price available"""
         # Mock current date
         current_date = datetime(2024, 1, 20)
         mock_datetime.now.return_value = current_date
         
-        # Mock data retriever with live price
+        # Mock options handler symbol
+        self.strategy.options_handler.symbol = 'SPY'
+        
+        # Mock DataRetriever creation and get_live_price
         mock_data_retriever = Mock()
         mock_data_retriever.get_live_price.return_value = 150.0
-        self.strategy.data_retriever = mock_data_retriever
+        mock_data_retriever_class.return_value = mock_data_retriever
         
         price = self.strategy._get_current_underlying_price(current_date)
         
@@ -217,6 +223,10 @@ class TestCreditSpreadStrategyEnhancements:
     
     def test_get_current_volumes_for_position_success(self):
         """Test get_current_volumes_for_position with successful API calls"""
+        from src.common.options_dtos import OptionContractDTO, OptionBarDTO
+        from src.common.models import OptionType as CommonOptionType
+        from decimal import Decimal
+        
         # Create mock position with options
         option1 = Option(
             ticker='SPY',
@@ -247,33 +257,79 @@ class TestCreditSpreadStrategyEnhancements:
             spread_options=[option1, option2]
         )
         
-        # Mock options handler to return fresh option data
-        fresh_option1 = Option(
-            ticker='SPY',
-            symbol='SPY240119C00450000',
-            strike=450.0,
-            expiration='2024-01-19',
-            option_type=OptionType.CALL,
-            last_price=5.0,
-            volume=200  # Updated volume
+        # Mock contract DTOs
+        from src.common.options_dtos import StrikePrice, ExpirationDate
+        contract1 = OptionContractDTO(
+            ticker='O:SPY240119C00450000',
+            underlying_ticker='SPY',
+            contract_type=CommonOptionType.CALL,
+            strike_price=StrikePrice(Decimal('450.0')),
+            expiration_date=ExpirationDate(datetime(2024, 1, 19).date()),
+            exercise_style='american',
+            shares_per_contract=100
         )
-        fresh_option2 = Option(
-            ticker='SPY',
-            symbol='SPY240119C00455000',
-            strike=455.0,
-            expiration='2024-01-19',
-            option_type=OptionType.CALL,
-            last_price=3.0,
-            volume=250  # Updated volume
+        contract2 = OptionContractDTO(
+            ticker='O:SPY240119C00455000',
+            underlying_ticker='SPY',
+            contract_type=CommonOptionType.CALL,
+            strike_price=StrikePrice(Decimal('455.0')),
+            expiration_date=ExpirationDate(datetime(2024, 1, 19).date()),
+            exercise_style='american',
+            shares_per_contract=100
         )
         
-        self.options_handler.get_specific_option_contract.side_effect = [fresh_option1, fresh_option2]
+        # Mock bar DTOs with updated volumes
+        bar1 = OptionBarDTO(
+            ticker='O:SPY240119C00450000',
+            timestamp=datetime(2024, 1, 16),
+            open_price=Decimal('5.0'),
+            high_price=Decimal('5.1'),
+            low_price=Decimal('4.9'),
+            close_price=Decimal('5.0'),
+            volume=200,  # Updated volume
+            volume_weighted_avg_price=Decimal('5.0'),
+            number_of_transactions=100
+        )
+        bar2 = OptionBarDTO(
+            ticker='O:SPY240119C00455000',
+            timestamp=datetime(2024, 1, 16),
+            open_price=Decimal('3.0'),
+            high_price=Decimal('3.1'),
+            low_price=Decimal('2.9'),
+            close_price=Decimal('3.0'),
+            volume=250,  # Updated volume
+            volume_weighted_avg_price=Decimal('3.0'),
+            number_of_transactions=80
+        )
+        
+        # Mock the new API methods
+        def mock_get_contract_list_for_date(date, strike_range=None, expiration_range=None):
+            # Return contracts matching the strike prices
+            # StrikePrice uses .value attribute to get the Decimal value
+            if strike_range and hasattr(strike_range.min_strike, 'value'):
+                strike_val = strike_range.min_strike.value
+                if strike_val == Decimal('450.0'):
+                    return [contract1]
+                elif strike_val == Decimal('455.0'):
+                    return [contract2]
+            return []
+        
+        def mock_get_option_bar(contract, date):
+            if contract.ticker == 'O:SPY240119C00450000':
+                return bar1
+            elif contract.ticker == 'O:SPY240119C00455000':
+                return bar2
+            return None
+        
+        self.options_handler.get_contract_list_for_date = Mock(side_effect=mock_get_contract_list_for_date)
+        self.options_handler.get_option_bar = Mock(side_effect=mock_get_option_bar)
         
         test_date = datetime(2024, 1, 16)
         volumes = self.strategy.get_current_volumes_for_position(position, test_date)
         
         assert volumes == [200, 250]
-        assert self.options_handler.get_specific_option_contract.call_count == 2
+        assert self.options_handler.get_contract_list_for_date.call_count == 2
+        assert self.options_handler.get_option_bar.call_count == 2
     
     def test_get_current_volumes_for_position_api_failure(self):
         """Test get_current_volumes_for_position with API failures"""
@@ -299,7 +355,7 @@ class TestCreditSpreadStrategyEnhancements:
         )
         
         # Mock options handler to raise exception
-        self.options_handler.get_specific_option_contract.side_effect = Exception("API Error")
+        self.options_handler.get_contract_list_for_date.side_effect = Exception("API Error")
         
         test_date = datetime(2024, 1, 16)
         volumes = self.strategy.get_current_volumes_for_position(position, test_date)
@@ -308,6 +364,10 @@ class TestCreditSpreadStrategyEnhancements:
     
     def test_get_current_volumes_for_position_no_volume_data(self):
         """Test get_current_volumes_for_position when fresh option has no volume"""
+        from src.common.options_dtos import OptionContractDTO, OptionBarDTO
+        from src.common.models import OptionType as CommonOptionType
+        from decimal import Decimal
+        
         # Create mock position with options
         option1 = Option(
             ticker='SPY',
@@ -329,18 +389,22 @@ class TestCreditSpreadStrategyEnhancements:
             spread_options=[option1]
         )
         
-        # Mock options handler to return option without volume
-        fresh_option1 = Option(
-            ticker='SPY',
-            symbol='SPY240119C00450000',
-            strike=450.0,
-            expiration='2024-01-19',
-            option_type=OptionType.CALL,
-            last_price=5.0,
-            volume=None  # No volume data
+        # Mock contract DTO
+        from src.common.options_dtos import StrikePrice, ExpirationDate
+        contract1 = OptionContractDTO(
+            ticker='O:SPY240119C00450000',
+            underlying_ticker='SPY',
+            contract_type=CommonOptionType.CALL,
+            strike_price=StrikePrice(Decimal('450.0')),
+            expiration_date=ExpirationDate(datetime(2024, 1, 19).date()),
+            exercise_style='american',
+            shares_per_contract=100
         )
         
-        self.options_handler.get_specific_option_contract.return_value = fresh_option1
+        # Mock the new API methods
+        # When there's no volume data, get_option_bar should return None
+        self.options_handler.get_contract_list_for_date.return_value = [contract1]
+        self.options_handler.get_option_bar.return_value = None  # No bar data = no volume
         
         test_date = datetime(2024, 1, 16)
         volumes = self.strategy.get_current_volumes_for_position(position, test_date)

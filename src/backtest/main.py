@@ -4,6 +4,8 @@ from datetime import datetime
 from typing import List
 import argparse
 
+from src.common.options_handler import OptionsHandler
+
 from .models import Benchmark, Strategy, Position, StrategyType
 from src.common.data_retriever import DataRetriever
 from src.common.functions import load_hmm_model, load_lstm_model
@@ -174,7 +176,8 @@ class BacktestEngine:
 
     def _add_position(self, position: Position):
         """
-        Add a position to the positions list with volume validation.
+        Add a position to the positions. Rejects positions with insufficient volume and determines position size based
+        on capital provided to the backtest.
         """
         
         # Volume validation - check all options in the spread
@@ -244,15 +247,9 @@ class BacktestEngine:
                     return  # Skip closure and keep position open
 
         if position not in self.positions:
-            print(f"⚠️  Warning: Position {position.__str__()} not found in positions list")
-            return
-        
-        final_exit_price = exit_price
-        if not exit_price:
-            print(f"⚠️  Warning: Exit price not provided for position {position.__str__()}. Defaulting to 0.")
-            final_exit_price = 0
+            raise ValueError(f"Could not find position to close within open positions. {position.__str__()}")
 
-        # Calculate the return for this position
+        # Calculate the return for this position due to assignment
         if position.get_days_to_expiration(date) < 1:
             if underlying_price is None:
                 raise ValueError(f"Underlying price not provided for position {position.__str__()}")
@@ -260,13 +257,15 @@ class BacktestEngine:
             position_return = position.get_return_dollars_from_assignment(underlying_price)
             print(f"   Position closed by assignment: {position.__str__()}")
         else:
-            position_return = position.get_return_dollars(final_exit_price)
+            if exit_price is None: # Allows for exit price to be 0 - possible if ATM and OTM market price are equal
+                raise ValueError("Exit price not provided for the unexpired position")
+            position_return = position.get_return_dollars(exit_price)
 
         # Update capital based on position type
         if position.strategy_type in [StrategyType.CALL_CREDIT_SPREAD, StrategyType.PUT_CREDIT_SPREAD]:
             # For credit spreads: Subtract the cost to buy back the spread
             # The exit_price represents the cost to close the position
-            cost_to_close = final_exit_price * position.quantity * 100
+            cost_to_close = exit_price * position.quantity * 100
             self.capital -= cost_to_close
             print(f"💰 Subtracted cost to close of ${cost_to_close:.2f} from capital")
         else:
@@ -284,7 +283,7 @@ class BacktestEngine:
             'entry_date': position.entry_date,
             'exit_date': date,
             'entry_price': position.entry_price,
-            'exit_price': final_exit_price,
+            'exit_price': exit_price,
             'return_dollars': position_return,
             'return_percentage': (position_return / position.get_max_risk()) * 100 if position.quantity else 0,
             'days_held': position.get_days_held(date),
@@ -297,7 +296,7 @@ class BacktestEngine:
         
         # Log the position closure
         print(f"   Position closed: {position.__str__()}")
-        print(f"     Entry: ${position.entry_price:.2f} | Exit: ${final_exit_price:.2f}")
+        print(f"     Entry: ${position.entry_price:.2f} | Exit: ${exit_price:.2f}")
         print(f"     Return: ${position_return:+.2f} | Capital: ${self.capital:.2f}\n")
     
     # TODO: Only works for credit spreads since using max risk
@@ -474,7 +473,6 @@ class BacktestEngine:
             print(f"⚠️  Proceeding with closure of position {position.__str__()} despite insufficient volume")
             return False  # Indicate that closure should proceed
 
-
 def parse_arguments():
     """Parse command line arguments for backtest configuration"""
     parser = argparse.ArgumentParser(description='Run backtest with specified strategy')
@@ -534,26 +532,18 @@ if __name__ == "__main__":
     # Load treasury rates before starting backtest
     data_retriever.load_treasury_rates(start_date, end_date)
 
-    # Load model directory from environment variable
-    model_save_base_path = os.getenv('MODEL_SAVE_BASE_PATH', 'Trained_Models')
-    model_dir = os.path.join(model_save_base_path, 'lstm_poc', args.symbol, 'latest')
-
-    options_handler = data_retriever.options_handler
-
     try:
-        hmm_model = load_hmm_model(model_dir)
-        lstm_model, scaler = load_lstm_model(model_dir, return_lstm_instance=True)
-
-        # Then prepare the data for LSTM
-        # data, options_data = data_retriever.prepare_data_for_lstm(state_classifier=hmm_model)
-
         data = data_retriever.fetch_data_for_period(start_date, 'backtest')
 
-        # Create strategy using the builder pattern
+        # Create options handler to inject into strategy
+        options_handler = OptionsHandler(
+            symbol=args.symbol,
+            use_free_tier=args.free
+        )
+
         strategy = create_strategy_from_args(
             strategy_name=args.strategy,
-            lstm_model=lstm_model,
-            lstm_scaler=scaler,
+            symbol=args.symbol,
             options_handler=options_handler,
             start_date_offset=args.start_date_offset,
             stop_loss=args.stop_loss,
@@ -563,8 +553,11 @@ if __name__ == "__main__":
         if strategy is None:
             print("❌ Failed to create strategy")
             exit(1)
+
+        if (args.strategy == 'credit_spread'):
+            data = data_retriever.prepare_data_for_lstm()
         
-        strategy.set_data(data, None, data_retriever.treasury_rates)
+        strategy.set_data(data, data_retriever.treasury_rates)
 
         backtester = BacktestEngine(
             data=data, 

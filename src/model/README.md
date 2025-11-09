@@ -141,6 +141,7 @@ Processes options data and calculates strategy-specific features:
 
 ```python
 from src.model.options_handler import OptionsHandler
+from src.model.lstm_model import LSTMModel
 
 # Initialize handler
 handler = OptionsHandler(symbol='SPY')
@@ -148,8 +149,8 @@ handler = OptionsHandler(symbol='SPY')
 # Calculate options features
 data = handler.calculate_option_features(data)
 
-# Calculate strategy signals
-data = handler.calculate_option_signals(data)
+# Calculate strategy signals (moved to LSTMModel)
+data = LSTMModel.calculate_option_signals(data)
 ```
 
 ## Model Performance

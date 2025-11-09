@@ -49,13 +49,9 @@ class InteractiveStrategyRecommender:
         if date.date() == current_date:
             # Use live price from Polygon API
             print(f"📡 Fetching live price for {date.date()} (current date)")
-            if hasattr(self.strategy, 'data_retriever') and self.strategy.data_retriever:
-                current_price = self.strategy.data_retriever.get_live_price()
-            elif hasattr(self.options_handler, 'symbol'):
-                # Fallback: create a temporary DataRetriever for live price
+            if hasattr(self.options_handler, 'symbol'):
                 from src.common.data_retriever import DataRetriever
                 temp_retriever = DataRetriever(symbol=self.options_handler.symbol, use_free_tier=True, quiet_mode=True)
-                temp_retriever.options_handler = self.options_handler
                 current_price = temp_retriever.get_live_price()
             
             if current_price is None:

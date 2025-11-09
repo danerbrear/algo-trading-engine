@@ -133,8 +133,13 @@ class OptionsHandler:
         """
         date_obj = date.date() if isinstance(date, datetime) else date
         
-        # Try to load from cache first
-        cached_contracts = self.cache_manager.load_contracts(self.symbol, date_obj)
+        # Try to load from cache first (with graceful error handling)
+        cached_contracts = None
+        try:
+            cached_contracts = self.cache_manager.load_contracts(self.symbol, date_obj)
+        except Exception as e:
+            print(f"⚠️  Cache loading failed for {self.symbol} on {date_obj}: {e}. Falling back to API...")
+            cached_contracts = None
         
         if cached_contracts:
             progress_print(f"📁 Loaded {len(cached_contracts)} contracts from cache for {self.symbol} on {date_obj}")
@@ -159,8 +164,11 @@ class OptionsHandler:
             # Merge cached and API contracts (remove duplicates by ticker)
             all_contracts = self._merge_contracts(cached_contracts, api_contracts)
             
-            # Cache the merged contracts
-            self._cache_contracts(date, all_contracts)
+            # Cache the merged contracts (with graceful error handling)
+            try:
+                self._cache_contracts(date, all_contracts)
+            except Exception as e:
+                print(f"⚠️  Cache saving failed for {self.symbol} on {date_obj}: {e}. Continuing without caching...")
             
             cached_count = len(cached_contracts) if cached_contracts else 0
             progress_print(f"✅ Merged {cached_count} cached + {len(api_contracts)} API contracts, returning {len(all_contracts)} contracts")
@@ -190,8 +198,14 @@ class OptionsHandler:
         """
         date_obj = date.date() if isinstance(date, datetime) else date
         
-        # Try to load from cache first
-        cached_bar = self.cache_manager.load_bar(self.symbol, date_obj, contract.ticker)
+        # Try to load from cache first (with graceful error handling)
+        cached_bar = None
+        try:
+            cached_bar = self.cache_manager.load_bar(self.symbol, date_obj, contract.ticker)
+        except Exception as e:
+            print(f"⚠️  Cache loading failed for {contract.ticker} on {date_obj}: {e}. Falling back to API...")
+            cached_bar = None
+        
         if cached_bar:
             return cached_bar
         
@@ -200,8 +214,11 @@ class OptionsHandler:
         bar = self._fetch_bar_from_api(contract, date_obj, multiplier, timespan)
         
         if bar:
-            # Cache the fetched bar data
-            self._cache_bar(date, contract.ticker, bar)
+            # Cache the fetched bar data (with graceful error handling)
+            try:
+                self._cache_bar(date, contract.ticker, bar)
+            except Exception as e:
+                print(f"⚠️  Cache saving failed for {contract.ticker} on {date_obj}: {e}. Continuing without caching...")
             return bar
         
         progress_print(f"⚠️  No bar data received from API for {contract.ticker} on {date_obj}")
@@ -327,7 +344,10 @@ class OptionsHandler:
         External callers should not directly manipulate the cache.
         """
         date_obj = date.date() if isinstance(date, datetime) else date
-        self.cache_manager.save_contracts(self.symbol, date_obj, contracts)
+        try:
+            self.cache_manager.save_contracts(self.symbol, date_obj, contracts)
+        except Exception as e:
+            print(f"⚠️  Cache saving failed for {self.symbol} on {date_obj}: {e}. Continuing without caching...")
     
     def _cache_bar(self, date: datetime, ticker: str, bar: OptionBarDTO) -> None:
         """
@@ -337,7 +357,10 @@ class OptionsHandler:
         External callers should not directly manipulate the cache.
         """
         date_obj = date.date() if isinstance(date, datetime) else date
-        self.cache_manager.save_bar(self.symbol, date_obj, ticker, bar)
+        try:
+            self.cache_manager.save_bar(self.symbol, date_obj, ticker, bar)
+        except Exception as e:
+            print(f"⚠️  Cache saving failed for {ticker} on {date_obj}: {e}. Continuing without caching...")
     
     def _get_cache_stats(self, date: datetime) -> Dict[str, int]:
         """
