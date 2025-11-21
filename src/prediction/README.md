@@ -136,6 +136,15 @@ python -m src.prediction.plot_equity_curve --summary-only
 
 # Save plot to file without displaying
 python -m src.prediction.plot_equity_curve --output equity_curve.png --no-show
+
+# Overlay SPY price on the equity curve
+python -m src.prediction.plot_equity_curve --overlay-spy
+
+# Overlay treasury interest rates on the equity curve
+python -m src.prediction.plot_equity_curve --overlay-rates
+
+# Overlay both SPY and interest rates
+python -m src.prediction.plot_equity_curve --overlay-spy --overlay-rates
 ```
 
 ### Command-Line Arguments
@@ -147,6 +156,8 @@ python -m src.prediction.plot_equity_curve --output equity_curve.png --no-show
 | `--no-show` | Don't display plot interactively (only save to file) |
 | `--summary-only` | Print statistics only, don't generate plot |
 | `--decisions-dir` | Directory containing decision JSON files (default: `predictions/decisions`) |
+| `--overlay-spy` | Overlay SPY price on the equity curve plot (secondary y-axis) |
+| `--overlay-rates` | Overlay 10-year treasury interest rates on the plot (secondary y-axis) |
 
 ### Features
 
@@ -156,6 +167,9 @@ python -m src.prediction.plot_equity_curve --output equity_curve.png --no-show
 - **Multi-strategy comparison** - Compare different strategies side-by-side
 - **Per-strategy filtering** - Focus on specific strategy performance
 - **Performance metrics** - Win rate, total P&L, trade count displayed in legend
+- **SPY overlay** - Compare strategy performance against SPY price movement
+- **Interest rate overlay** - View strategy performance in context of treasury rates
+- **Multiple overlays** - Combine SPY and interest rate overlays for comprehensive market context
 
 #### Summary Statistics
 
