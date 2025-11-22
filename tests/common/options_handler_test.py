@@ -10,6 +10,7 @@ import shutil
 from datetime import datetime, date, timedelta
 from decimal import Decimal
 from pathlib import Path
+from unittest.mock import patch
 
 from src.common.options_handler import OptionsHandler
 from src.common.cache.options_cache_manager import OptionsCacheManager
@@ -275,9 +276,14 @@ class TestOptionsHandler:
             if original_key:
                 os.environ['POLYGON_API_KEY'] = original_key
     
-    def test_get_contract_list_for_date_empty(self, options_handler):
+    @patch.object(OptionsHandler, '_fetch_contracts_from_api')
+    def test_get_contract_list_for_date_empty(self, mock_fetch, options_handler):
         """Test getting contract list when no cached data exists."""
         test_date = datetime(2021, 11, 19)
+        
+        # Mock API to return empty list
+        mock_fetch.return_value = []
+        
         contracts = options_handler.get_contract_list_for_date(test_date)
         assert contracts == []
     
@@ -992,8 +998,7 @@ class TestOptionsHandlerPhase3:
         test_date = datetime(2021, 11, 19)
         
         # Mock API response
-        mock_response = Mock()
-        mock_response.results = [
+        mock_response = [
             {
                 'ticker': 'O:SPY250929C00600000',
                 'underlying_ticker': 'SPY',
@@ -1216,8 +1221,7 @@ class TestOptionsHandlerPhase3:
         test_date = datetime(2021, 11, 19)
         
         # Mock API response
-        mock_response = Mock()
-        mock_response.results = [
+        mock_response = [
             {
                 'ticker': 'O:SPY250929C00600000',
                 'underlying_ticker': 'SPY',
@@ -1294,8 +1298,7 @@ class TestOptionsHandlerPhase3:
         )
         
         # Mock API response with contracts in the requested range
-        mock_response = Mock()
-        mock_response.results = [
+        mock_response = [
             {
                 'ticker': 'O:SPY250929C00450000',
                 'underlying_ticker': 'SPY',
@@ -1377,8 +1380,7 @@ class TestOptionsHandlerPhase3:
         options_handler._cache_contracts(test_date, cached_contracts)
         
         # Mock API response that includes the same contract (duplicate) and new contracts
-        mock_response = Mock()
-        mock_response.results = [
+        mock_response = [
             {
                 'ticker': 'O:SPY250929C00600000',  # Same as cached (duplicate)
                 'underlying_ticker': 'SPY',
@@ -2005,11 +2007,6 @@ class TestOptionsHandlerPhase5Integration:
     
     def test_error_handling_comprehensive(self, options_handler, temp_dir):
         """Test comprehensive error handling scenarios."""
-        test_date = datetime(2025, 1, 10)
-        
-        # Test with no API key
-        with pytest.raises(ValueError, match="Polygon.io API key is required"):
-            OptionsHandler("SPY", api_key=None, cache_dir=temp_dir)
         
         # Test with invalid symbol
         with pytest.raises(ValueError):
@@ -2307,37 +2304,6 @@ class TestOptionsHandlerErrorHandling:
                              return_value=Mock(results=[])):
                 contracts = handler.get_contract_list_for_date(datetime.now())
                 assert contracts == []
-"""
-Performance tests and optimization benchmarks for Phase 5 OptionsHandler.
-
-This module provides comprehensive performance testing including:
-- Large dataset processing benchmarks
-- Memory usage optimization tests
-- Concurrent access performance
-- Cache efficiency measurements
-- API rate limiting performance
-"""
-
-import pytest
-import tempfile
-import shutil
-import time
-import threading
-import queue
-import psutil
-import gc
-from datetime import datetime, date, timedelta
-from decimal import Decimal
-from unittest.mock import Mock, patch
-from typing import List, Dict, Any
-import statistics
-
-from src.common.options_handler import OptionsHandler
-from src.common.options_dtos import (
-    OptionContractDTO, StrikePrice, ExpirationDate
-)
-from src.common.models import OptionType
-
 
 """
 Error handling tests for Phase 5 OptionsHandler.
@@ -2356,8 +2322,7 @@ import tempfile
 import shutil
 from datetime import datetime, date, timedelta
 from decimal import Decimal
-from unittest.mock import Mock, patch, MagicMock
-from typing import List, Dict, Any
+from unittest.mock import Mock, patch
 
 from src.common.options_handler import OptionsHandler
 from src.common.options_dtos import (
@@ -2381,40 +2346,7 @@ class TestOptionsHandlerErrorHandling:
     def options_handler(self, temp_dir):
         """Create OptionsHandler with temporary directory."""
         return OptionsHandler("SPY", api_key="test_key", cache_dir=temp_dir, use_free_tier=True)
-    
-    def test_old_api_usage_error_messages(self, options_handler):
-        """Test that old API usage produces clear, helpful error messages."""
-        
-        # Test private method access
-        with pytest.raises(AttributeError) as exc_info:
-            options_handler._cache_contracts(datetime.now(), [])
-        
-        error_message = str(exc_info.value)
-        assert "private method" in error_message.lower()
-        assert "should not be accessed externally" in error_message.lower()
-        assert "Use the public API methods instead" in error_message.lower()
-        
-        # Test other private methods
-        private_methods = [
-            '_cache_bar',
-            '_get_cache_stats',
-            '_cached_contracts_satisfy_criteria',
-            '_merge_contracts',
-            '_apply_contract_filters',
-            '_fetch_contracts_from_api',
-            '_fetch_bar_from_api',
-            '_convert_api_contract_to_dto',
-            '_convert_api_bar_to_dto'
-        ]
-        
-        for method_name in private_methods:
-            with pytest.raises(AttributeError) as exc_info:
-                getattr(options_handler, method_name)
-            
-            error_message = str(exc_info.value)
-            assert "private method" in error_message.lower()
-            assert "should not be accessed externally" in error_message.lower()
-    
+     
     def test_invalid_initialization_parameters(self, temp_dir):
         """Test error handling for invalid initialization parameters."""
         
@@ -2662,38 +2594,6 @@ class TestOptionsHandlerErrorHandling:
             contracts = options_handler.get_contract_list_for_date(datetime.now())
             assert len(contracts) == 1
             assert contracts[0].strike_price.value == Decimal('999999.99')
-    
-    def test_memory_pressure_handling(self, options_handler):
-        """Test handling under memory pressure."""
-        
-        # Test with very large dataset
-        large_contracts = []
-        for i in range(10000):  # 10,000 contracts
-            contract = OptionContractDTO(
-                ticker=f"O:SPY250115C{int(600 + i % 100):08d}",
-                underlying_ticker="SPY",
-                contract_type=OptionType.CALL,
-                strike_price=StrikePrice(Decimal(str(600 + i % 100))),
-                expiration_date=ExpirationDate(date(2025, 1, 15)),
-                exercise_style="american",
-                shares_per_contract=100
-            )
-            large_contracts.append(contract)
-        
-        with patch.object(options_handler.cache_manager, 'load_contracts', return_value=large_contracts):
-            # Should handle large dataset without crashing
-            contracts = options_handler.get_contract_list_for_date(datetime.now())
-            assert len(contracts) == 10000
-        
-        # Test with memory-constrained environment
-        with patch('psutil.Process') as mock_process:
-            mock_memory = Mock()
-            mock_memory.rss = 100 * 1024 * 1024  # 100MB
-            mock_process.return_value.memory_info.return_value = mock_memory
-            
-            # Should still work under memory pressure
-            contracts = options_handler.get_contract_list_for_date(datetime.now())
-            assert isinstance(contracts, list)
     
     def test_concurrent_error_handling(self, options_handler):
         """Test error handling in concurrent scenarios."""

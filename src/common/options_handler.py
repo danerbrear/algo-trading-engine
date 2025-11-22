@@ -170,9 +170,12 @@ class OptionsHandler:
             except Exception as e:
                 print(f"⚠️  Cache saving failed for {self.symbol} on {date_obj}: {e}. Continuing without caching...")
             
+            # Apply filters to merged contracts before returning
+            filtered_all = self._apply_contract_filters(all_contracts, strike_range, expiration_range, date_obj)
+            
             cached_count = len(cached_contracts) if cached_contracts else 0
-            progress_print(f"✅ Merged {cached_count} cached + {len(api_contracts)} API contracts, returning {len(all_contracts)} contracts")
-            return all_contracts
+            progress_print(f"✅ Merged {cached_count} cached + {len(api_contracts)} API contracts, returning {len(filtered_all)} contracts after filtering")
+            return filtered_all
         
         # If no API contracts, return what we have from cache
         return filtered_cached

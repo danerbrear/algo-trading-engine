@@ -141,18 +141,6 @@ class VelocitySignalMomentumStrategy(Strategy):
             # Show the plot
             plt.show()
             
-            # Save the plot to a file
-            import os
-            from datetime import datetime
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            plot_filename = f"velocity_strategy_positions_{timestamp}.png"
-            plot_path = os.path.join("predictions", plot_filename)
-            
-            # Create predictions directory if it doesn't exist
-            os.makedirs("predictions", exist_ok=True)
-            
-            plt.savefig(plot_path, dpi=300, bbox_inches='tight')
-            progress_print(f"📊 Position entry plot saved to: {plot_path}")
             progress_print("📊 Position entry plot generated successfully")
             
         except Exception as e:
