@@ -84,7 +84,7 @@ lstm_poc/
 
 ### Prerequisites
 
-- Python 3.9 or higher
+- Python version >3.9 and <3.12
 - Virtual environment (recommended)
 - Polygon.io API key
 
