@@ -26,7 +26,7 @@
           "strike": 684.0,
           "symbol": "SPY",
           "theta": null,
-          "ticker": "O:SPY251212P00680000",
+          "ticker": "O:SPY251212P00684000",
           "type": "put",
           "vega": null,
           "volume": 625
