@@ -1,4 +1,4 @@
-# LSTM POC - Options Trading Strategy System
+# Options Trading System
 
 This project provides a comprehensive backtesting and prediction platform for options trading strategies. The system enables users to develop, test, and evaluate trading strategies using historical data, while also providing real-time predictions for current market conditions. It includes a robust backtesting framework with volume validation, risk management tools, and machine learning-powered strategy prediction capabilities.
 
@@ -84,7 +84,7 @@ lstm_poc/
 
 ### Prerequisites
 
-- Python 3.9 or higher
+- Python version >3.9 and <3.12
 - Virtual environment (recommended)
 - Polygon.io API key
 
@@ -179,14 +179,6 @@ python -m src.prediction.plot_equity_curve --summary-only
 - Real-time volume checking for position entry/exit
 - Comprehensive volume statistics tracking
 
-## 📈 Performance
-
-The system achieves:
-- **Market Analysis**: Clear identification of market conditions
-- **Strategy Prediction Accuracy**: ~70-75% on test data
-- **Risk-Adjusted Returns**: Sharpe ratio optimization
-- **Volume Validation**: Realistic trading simulation
-
 ## 🧪 Testing
 
 Run the comprehensive test suite:
@@ -211,15 +203,7 @@ python -m pytest tests/test_velocity_strategy.py -v
 
 1. **Market Regime Stability**: States evolve over time
 2. **API Dependencies**: Requires Polygon.io access with rate limits
-3. **Computational Requirements**: GPU recommended for training
 4. **Trading Risk**: Educational/research purposes only
-
-## 🤝 Contributing
-
-1. Follow the established code patterns and Value Object rules
-2. Create unit tests for new functionality
-3. Update relevant documentation
-4. Use the virtual environment for development
 
 ## 📄 License
 

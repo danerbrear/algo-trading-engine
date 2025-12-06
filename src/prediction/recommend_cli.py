@@ -10,6 +10,7 @@ from src.common.functions import get_model_directory, load_lstm_model, load_hmm_
 from src.common.options_handler import OptionsHandler
 from src.prediction.decision_store import JsonDecisionStore
 from src.prediction.recommendation_engine import InteractiveStrategyRecommender
+from src.prediction.capital_manager import CapitalManager
 from src.strategies.credit_spread_minimal import CreditSpreadStrategy
 from src.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
 
@@ -58,14 +59,26 @@ def main():
     if args.date:
         run_date = datetime.fromisoformat(args.date)
 
+    # Load capital allocation configuration
+    config_path = "config/strategies/capital_allocations.json"
+    try:
+        store = JsonDecisionStore()
+        capital_manager = CapitalManager.from_config_file(config_path, store)
+    except FileNotFoundError:
+        print(f"❌ ERROR: Capital allocation config not found: {config_path}")
+        print("   Please create the config file before using this feature.")
+        sys.exit(1)
+    except Exception as e:
+        print(f"❌ ERROR: Failed to load capital allocation config: {e}")
+        sys.exit(1)
+
     # If there are open positions, skip historical fetch and only run close flow
-    store = JsonDecisionStore()
     open_records = store.get_open_positions(symbol=args.symbol)
     if open_records:
         print(f"Open positions found: {len(open_records)}")
-        options_handler = OptionsHandler(args.symbol, use_free_tier=args.free)
-        strategy = build_strategy(args.strategy, symbol=args.symbol, options_handler=options_handler)
-        recommender = InteractiveStrategyRecommender(strategy, options_handler, store, auto_yes=args.yes)
+        options_handler = OptionsHandler(args.symbol, quiet_mode=not args.verbose, use_free_tier=args.free)
+        strategy = build_strategy(args.strategy, options_handler, symbol=args.symbol)
+        recommender = InteractiveStrategyRecommender(strategy, options_handler, store, capital_manager, auto_yes=args.yes)
 
         # Print current status for open positions before prompting to close
         statuses = recommender.get_open_positions_status(run_date)
@@ -119,7 +132,12 @@ def main():
     strategy.set_data(data)
 
     # Store and recommender
-    recommender = InteractiveStrategyRecommender(strategy, options_handler, store, auto_yes=args.yes)
+    # Display capital status
+    strategy_name = args.strategy
+    print(capital_manager.get_status_summary(strategy_name))
+    print()
+    
+    recommender = InteractiveStrategyRecommender(strategy, options_handler, store, capital_manager, auto_yes=args.yes)
     recommender.run(run_date, auto_yes=args.yes)
 
 if __name__ == "__main__":

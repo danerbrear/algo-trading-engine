@@ -10,6 +10,7 @@ from src.prediction.decision_store import (
     DecisionResponse,
     generate_decision_id,
 )
+from src.prediction.capital_manager import CapitalManager
 
 class InteractiveStrategyRecommender:
     """Produce open/close recommendations and capture user decisions.
@@ -20,10 +21,11 @@ class InteractiveStrategyRecommender:
     `get_current_volumes_for_position`).
     """
 
-    def __init__(self, strategy: Strategy, options_handler, decision_store: JsonDecisionStore, auto_yes: bool = False):
+    def __init__(self, strategy: Strategy, options_handler, decision_store: JsonDecisionStore, capital_manager: CapitalManager, auto_yes: bool = False):
         self.strategy = strategy
         self.options_handler = options_handler
         self.decision_store = decision_store
+        self.capital_manager = capital_manager
         self.auto_yes = auto_yes
 
     def run(self, date: datetime, auto_yes: Optional[bool] = None) -> None:
@@ -93,11 +95,8 @@ class InteractiveStrategyRecommender:
         confidence = recommendation["confidence"]
         expiration_date = recommendation["expiration_date"]
 
-        # Get strategy name from class
-        strategy_name = self.strategy.__class__.__name__.replace("Strategy", "").lower()
-        # Convert from CamelCase to snake_case
-        import re
-        strategy_name = re.sub(r'(?<!^)(?=[A-Z])', '_', strategy_name).lower()
+        # Get strategy name from class and map to config key
+        strategy_name = self._get_strategy_name_from_class()
 
         # Build proposal DTO
         proposal = ProposedPositionRequest(
@@ -113,8 +112,24 @@ class InteractiveStrategyRecommender:
             strategy_name=strategy_name,
         )
 
+        # Calculate max risk
+        max_risk = self._calculate_max_risk(strategy_type, float(width), float(credit))
+        
+        # Check risk threshold
+        is_allowed, risk_message = self.capital_manager.check_risk_threshold(strategy_name, max_risk)
+        
+        if not is_allowed:
+            print(f"❌ Risk check failed: {risk_message}")
+            print("Position rejected due to risk threshold.")
+            return None
+        
+        # Determine if credit or debit strategy
+        is_credit = self.capital_manager.is_credit_strategy(strategy_type)
+        premium_amount = float(credit) * 100  # Convert to dollars per contract
+        premium_label = "Premium received" if is_credit else "Premium paid"
+
         # Prompt user
-        summary = self._format_open_summary(proposal, recommendation)
+        summary = self._format_open_summary(proposal, recommendation, max_risk, premium_amount, premium_label, risk_message)
         if not self.prompt(f"Open recommendation:\n{summary}\nOpen this position?"):
             return None
 
@@ -262,7 +277,7 @@ class InteractiveStrategyRecommender:
         position.set_quantity(int(rec.quantity) if rec.quantity is not None else 1)
         return position
 
-    def _format_open_summary(self, proposal: ProposedPositionRequest, best: dict) -> str:
+    def _format_open_summary(self, proposal: ProposedPositionRequest, best: dict, max_risk: float, premium_amount: float, premium_label: str, risk_message: str) -> str:
         legs_str = ", ".join(
             [f"{leg.option_type.value.upper()} {int(leg.strike)} exp {leg.expiration}" for leg in proposal.legs]
         )
@@ -271,8 +286,48 @@ class InteractiveStrategyRecommender:
             f"Symbol: {proposal.symbol}\n"
             f"Strategy: {proposal.strategy_type.value}\n"
             f"Legs: {legs_str}\n"
-            f"Credit: ${proposal.credit:.2f}  Width: {proposal.width}  R/R: {rr}  Prob: {proposal.probability_of_profit:.0%}"
+            f"Credit: ${proposal.credit:.2f}  Width: {proposal.width}  R/R: {rr}  Prob: {proposal.probability_of_profit:.0%}\n"
+            f"Max Risk: ${max_risk:.2f}\n"
+            f"{premium_label}: ${premium_amount:.2f} ({'credit' if 'received' in premium_label else 'debit'} strategy)\n"
+            f"✅ {risk_message}"
         )
+    
+    def _get_strategy_name_from_class(self) -> str:
+        """Get strategy name from class and map to config key."""
+        class_name = self.strategy.__class__.__name__.replace("Strategy", "")
+        # Convert from CamelCase to snake_case
+        import re
+        strategy_name = re.sub(r'(?<!^)(?=[A-Z])', '_', class_name).lower()
+        
+        # Map class names to config keys
+        name_mapping = {
+            "credit_spread": "credit_spread",
+            "velocity_signal_momentum": "velocity_momentum",
+        }
+        
+        return name_mapping.get(strategy_name, strategy_name)
+    
+    def _calculate_max_risk(self, strategy_type: StrategyType, width: float, credit: float) -> float:
+        """Calculate max risk for a position.
+        
+        Args:
+            strategy_type: The strategy type
+            width: Spread width
+            credit: Net credit/debit received/paid
+            
+        Returns:
+            Max risk in dollars (for 1 contract)
+        """
+        if strategy_type in (StrategyType.PUT_CREDIT_SPREAD, StrategyType.CALL_CREDIT_SPREAD):
+            # Credit spread: max risk = (width - credit) * 100
+            return (width - credit) * 100
+        elif strategy_type in (StrategyType.SHORT_CALL, StrategyType.SHORT_PUT):
+            # Naked options: max risk is variable, use credit as placeholder
+            # For now, estimate as strike difference if available
+            return abs(credit) * 100  # Placeholder - actual calculation would need strikes
+        else:
+            # Debit spreads and long options: max risk is the debit paid
+            return abs(credit) * 100
 
     def _format_close_summary(self, position: Position, exit_price: float, rationale: str) -> str:
         # Compute P&L
