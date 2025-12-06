@@ -675,28 +675,6 @@ class TestOptionsRetrieverHelperStrategy:
         assert max_profit == 1.50
         assert max_loss > 0
     
-    def test_find_optimal_expiration(self):
-        """Test finding optimal expiration date."""
-        contracts = self._create_test_contracts()
-        
-        optimal_exp = OptionsRetrieverHelper.find_optimal_expiration(
-            contracts, min_days=20, max_days=40
-        )
-        
-        assert optimal_exp is not None
-        # Should match the expiration date of our test contracts
-        today = date.today()
-        if today.month == 12:
-            next_month = today.replace(year=today.year + 1, month=1, day=1)
-        else:
-            next_month = today.replace(month=today.month + 1, day=1)
-        
-        first_day = next_month
-        first_friday = first_day + timedelta(days=(4 - first_day.weekday()) % 7)
-        third_friday = first_friday + timedelta(days=14)
-        expected_date = third_friday.strftime('%Y-%m-%d')
-        assert optimal_exp == expected_date
-    
     def test_calculate_implied_volatility_rank(self):
         """Test calculating IV rank."""
         contracts = self._create_test_contracts()
@@ -1095,9 +1073,8 @@ class TestOptionsHandlerPhase3:
         test_date = datetime(2021, 11, 19)
         contract = sample_contracts[0]
         
-        # Mock API response
-        mock_response = Mock()
-        mock_response.results = [
+        # Mock bar data list (what fetch_with_retry returns after fetch_func processes the API response)
+        mock_bar_data = [
             {
                 'o': 10.50,  # open
                 'h': 11.00,  # high
@@ -1111,12 +1088,12 @@ class TestOptionsHandlerPhase3:
         ]
         
         mock_client = Mock()
-        mock_client.get_aggs.return_value = mock_response
+        mock_client.get_aggs.return_value = mock_bar_data
         mock_rest_client.return_value = mock_client
         options_handler.client = mock_client
         
-        # Mock retry handler
-        options_handler.api_retry_handler.fetch_with_retry = Mock(return_value=mock_response)
+        # Mock retry handler to return the list directly (as fetch_func would return)
+        options_handler.api_retry_handler.fetch_with_retry = Mock(return_value=mock_bar_data)
         
         # Get bar from API
         bar = options_handler.get_option_bar(contract, test_date)

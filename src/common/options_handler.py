@@ -7,9 +7,8 @@ in features/improved_data_fetching.md Phase 2.
 
 import os
 from datetime import datetime, date, timedelta
-from typing import Dict, List, Optional, Set, Tuple, Any
+from typing import Dict, List, Optional
 from decimal import Decimal
-import pandas as pd
 from dotenv import load_dotenv
 
 from .cache.options_cache_manager import OptionsCacheManager
@@ -23,7 +22,6 @@ from .progress_tracker import progress_print
 
 # Load environment variables
 load_dotenv()
-
 
 
 class OptionsHandler:
@@ -42,6 +40,9 @@ class OptionsHandler:
     
     def __init__(self, symbol: str, api_key: Optional[str] = None, cache_dir: str = 'data_cache', use_free_tier: bool = False):
         """Initialize the OptionsHandler."""
+        if not symbol or not symbol.strip():
+            raise ValueError("Symbol is required and cannot be empty")
+        
         self.symbol = symbol.upper()
         self.api_key = api_key or os.getenv('POLYGON_API_KEY')
         self.use_free_tier = use_free_tier
@@ -130,7 +131,14 @@ class OptionsHandler:
             
         Returns:
             List of OptionContractDTO objects
+            
+        Raises:
+            TypeError: If date is not a datetime or date object
         """
+        from datetime import date as date_class
+        if not isinstance(date, (datetime, date_class)):
+            raise TypeError(f"date must be a datetime or date object, got {type(date).__name__}")
+        
         date_obj = date.date() if isinstance(date, datetime) else date
         
         # Try to load from cache first (with graceful error handling)
