@@ -212,15 +212,23 @@ class OptionsHandler:
         # Try to load from cache first (with graceful error handling)
         cached_bar = None
         try:
+            # Validate contract has ticker attribute
+            if not hasattr(contract, 'ticker'):
+                return None
             cached_bar = self.cache_manager.load_bar(self.symbol, date_obj, contract.ticker)
         except Exception as e:
-            print(f"⚠️  Cache loading failed for {contract.ticker} on {date_obj}: {e}. Falling back to API...")
+            ticker_str = getattr(contract, 'ticker', 'unknown')
+            print(f"⚠️  Cache loading failed for {ticker_str} on {date_obj}: {e}. Falling back to API...")
             cached_bar = None
         
         if cached_bar:
             return cached_bar
         
         # If not in cache, fetch from API
+        # Validate contract has ticker attribute before proceeding
+        if not hasattr(contract, 'ticker'):
+            return None
+        
         progress_print(f"🔄 No cached bar data found for {contract.ticker} on {date_obj}, fetching from API...")
         bar = self._fetch_bar_from_api(contract, date_obj, multiplier, timespan)
         
