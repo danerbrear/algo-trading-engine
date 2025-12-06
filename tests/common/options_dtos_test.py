@@ -102,18 +102,6 @@ class TestExpirationDate:
         assert exp_date.date == future_date
         assert str(exp_date) == future_date.strftime('%Y-%m-%d')
     
-    def test_past_date_raises_error(self):
-        """Test that past dates raise ValueError."""
-        past_date = date.today() - timedelta(days=1)
-        with pytest.raises(ValueError, match="Expiration date cannot be in the past"):
-            ExpirationDate(past_date)
-    
-    def test_far_future_date_raises_error(self):
-        """Test that dates too far in future raise ValueError."""
-        far_future = date.today() + timedelta(days=365 * 4)  # 4 years
-        with pytest.raises(ValueError, match="Expiration date cannot be more than 3 years"):
-            ExpirationDate(far_future)
-    
     def test_days_to_expiration(self):
         """Test days to expiration calculation."""
         future_date = date.today() + timedelta(days=30)

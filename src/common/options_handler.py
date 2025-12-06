@@ -7,9 +7,8 @@ in features/improved_data_fetching.md Phase 2.
 
 import os
 from datetime import datetime, date, timedelta
-from typing import Dict, List, Optional, Set, Tuple, Any
+from typing import Dict, List, Optional
 from decimal import Decimal
-import pandas as pd
 from dotenv import load_dotenv
 
 from .cache.options_cache_manager import OptionsCacheManager
@@ -23,7 +22,6 @@ from .progress_tracker import progress_print
 
 # Load environment variables
 load_dotenv()
-
 
 
 class OptionsHandler:
@@ -42,6 +40,9 @@ class OptionsHandler:
     
     def __init__(self, symbol: str, api_key: Optional[str] = None, cache_dir: str = 'data_cache', use_free_tier: bool = False):
         """Initialize the OptionsHandler."""
+        if not symbol or not symbol.strip():
+            raise ValueError("Symbol is required and cannot be empty")
+        
         self.symbol = symbol.upper()
         self.api_key = api_key or os.getenv('POLYGON_API_KEY')
         self.use_free_tier = use_free_tier
@@ -130,11 +131,23 @@ class OptionsHandler:
             
         Returns:
             List of OptionContractDTO objects
+            
+        Raises:
+            TypeError: If date is not a datetime or date object
         """
+        from datetime import date as date_class
+        if not isinstance(date, (datetime, date_class)):
+            raise TypeError(f"date must be a datetime or date object, got {type(date).__name__}")
+        
         date_obj = date.date() if isinstance(date, datetime) else date
         
-        # Try to load from cache first
-        cached_contracts = self.cache_manager.load_contracts(self.symbol, date_obj)
+        # Try to load from cache first (with graceful error handling)
+        cached_contracts = None
+        try:
+            cached_contracts = self.cache_manager.load_contracts(self.symbol, date_obj)
+        except Exception as e:
+            print(f"⚠️  Cache loading failed for {self.symbol} on {date_obj}: {e}. Falling back to API...")
+            cached_contracts = None
         
         if cached_contracts:
             progress_print(f"📁 Loaded {len(cached_contracts)} contracts from cache for {self.symbol} on {date_obj}")
@@ -159,12 +172,18 @@ class OptionsHandler:
             # Merge cached and API contracts (remove duplicates by ticker)
             all_contracts = self._merge_contracts(cached_contracts, api_contracts)
             
-            # Cache the merged contracts
-            self._cache_contracts(date, all_contracts)
+            # Cache the merged contracts (with graceful error handling)
+            try:
+                self._cache_contracts(date, all_contracts)
+            except Exception as e:
+                print(f"⚠️  Cache saving failed for {self.symbol} on {date_obj}: {e}. Continuing without caching...")
+            
+            # Apply filters to merged contracts before returning
+            filtered_all = self._apply_contract_filters(all_contracts, strike_range, expiration_range, date_obj)
             
             cached_count = len(cached_contracts) if cached_contracts else 0
-            progress_print(f"✅ Merged {cached_count} cached + {len(api_contracts)} API contracts, returning {len(all_contracts)} contracts")
-            return all_contracts
+            progress_print(f"✅ Merged {cached_count} cached + {len(api_contracts)} API contracts, returning {len(filtered_all)} contracts after filtering")
+            return filtered_all
         
         # If no API contracts, return what we have from cache
         return filtered_cached
@@ -190,18 +209,35 @@ class OptionsHandler:
         """
         date_obj = date.date() if isinstance(date, datetime) else date
         
-        # Try to load from cache first
-        cached_bar = self.cache_manager.load_bar(self.symbol, date_obj, contract.ticker)
+        # Try to load from cache first (with graceful error handling)
+        cached_bar = None
+        try:
+            # Validate contract has ticker attribute
+            if not hasattr(contract, 'ticker'):
+                return None
+            cached_bar = self.cache_manager.load_bar(self.symbol, date_obj, contract.ticker)
+        except Exception as e:
+            ticker_str = getattr(contract, 'ticker', 'unknown')
+            print(f"⚠️  Cache loading failed for {ticker_str} on {date_obj}: {e}. Falling back to API...")
+            cached_bar = None
+        
         if cached_bar:
             return cached_bar
         
         # If not in cache, fetch from API
+        # Validate contract has ticker attribute before proceeding
+        if not hasattr(contract, 'ticker'):
+            return None
+        
         progress_print(f"🔄 No cached bar data found for {contract.ticker} on {date_obj}, fetching from API...")
         bar = self._fetch_bar_from_api(contract, date_obj, multiplier, timespan)
         
         if bar:
-            # Cache the fetched bar data
-            self._cache_bar(date, contract.ticker, bar)
+            # Cache the fetched bar data (with graceful error handling)
+            try:
+                self._cache_bar(date, contract.ticker, bar)
+            except Exception as e:
+                print(f"⚠️  Cache saving failed for {contract.ticker} on {date_obj}: {e}. Continuing without caching...")
             return bar
         
         progress_print(f"⚠️  No bar data received from API for {contract.ticker} on {date_obj}")
@@ -327,7 +363,10 @@ class OptionsHandler:
         External callers should not directly manipulate the cache.
         """
         date_obj = date.date() if isinstance(date, datetime) else date
-        self.cache_manager.save_contracts(self.symbol, date_obj, contracts)
+        try:
+            self.cache_manager.save_contracts(self.symbol, date_obj, contracts)
+        except Exception as e:
+            print(f"⚠️  Cache saving failed for {self.symbol} on {date_obj}: {e}. Continuing without caching...")
     
     def _cache_bar(self, date: datetime, ticker: str, bar: OptionBarDTO) -> None:
         """
@@ -337,7 +376,10 @@ class OptionsHandler:
         External callers should not directly manipulate the cache.
         """
         date_obj = date.date() if isinstance(date, datetime) else date
-        self.cache_manager.save_bar(self.symbol, date_obj, ticker, bar)
+        try:
+            self.cache_manager.save_bar(self.symbol, date_obj, ticker, bar)
+        except Exception as e:
+            print(f"⚠️  Cache saving failed for {ticker} on {date_obj}: {e}. Continuing without caching...")
     
     def _get_cache_stats(self, date: datetime) -> Dict[str, int]:
         """

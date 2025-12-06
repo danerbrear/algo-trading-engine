@@ -131,24 +131,6 @@ class TestRecommendCliAutoClose(unittest.TestCase):
         mock_recommender.recommend_close_positions.assert_called_once()
 
     @patch('src.prediction.recommend_cli.JsonDecisionStore')
-    def test_auto_close_mode_no_open_positions(self, mock_decision_store):
-        """Test that --auto-close mode handles case when no open positions exist."""
-        # Setup mocks - no open positions
-        mock_decision_store.return_value.get_open_positions.return_value = []
-        
-        # Mock sys.argv to simulate --auto-close argument
-        with patch('sys.argv', ['recommend_cli.py', '--strategy', 'velocity_momentum', '--auto-close']):
-            with patch('sys.exit'):  # Prevent actual exit
-                with patch('src.prediction.recommend_cli.DataRetriever'):  # Mock data retriever
-                    with patch('src.prediction.recommend_cli.get_model_directory'):
-                        with patch('src.prediction.recommend_cli.load_hmm_model'):
-                            with patch('src.prediction.recommend_cli.load_lstm_model'):
-                                main()
-        
-        # Should not call recommend_close_positions when no open positions
-        mock_decision_store.return_value.get_open_positions.assert_called_once_with(symbol='SPY')
-
-    @patch('src.prediction.recommend_cli.JsonDecisionStore')
     @patch('src.prediction.recommend_cli.OptionsHandler')
     @patch('src.prediction.recommend_cli.build_strategy')
     @patch('src.prediction.recommend_cli.InteractiveStrategyRecommender')

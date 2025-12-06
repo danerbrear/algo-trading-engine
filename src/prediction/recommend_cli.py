@@ -4,9 +4,10 @@ import argparse
 from datetime import datetime, timedelta
 import sys
 
+from src.backtest.strategy_builder import create_strategy_from_args
 from src.common.data_retriever import DataRetriever
 from src.common.functions import get_model_directory, load_lstm_model, load_hmm_model
-from src.model.options_handler import OptionsHandler
+from src.common.options_handler import OptionsHandler
 from src.prediction.decision_store import JsonDecisionStore
 from src.prediction.recommendation_engine import InteractiveStrategyRecommender
 from src.prediction.capital_manager import CapitalManager
@@ -20,27 +21,24 @@ STRATEGY_REGISTRY = {
     "velocity_momentum": VelocitySignalMomentumStrategy
 }
 
-def build_strategy(name: str, options_handler: OptionsHandler, symbol: str):
-    if name not in STRATEGY_REGISTRY:
-        raise ValueError(f"Unknown strategy: {name}")
+def build_strategy(name: str, symbol: str, options_handler: OptionsHandler):
+    """
+    Build strategy and inject the options_handler.
+    
+    Args:
+        name: Strategy name
+        symbol: Symbol for the strategy
+        options_handler: OptionsHandler instance to inject
+    
+    Returns:
+        Strategy instance with options_handler injected
+    """
+    strategy = create_strategy_from_args(
+        strategy_name=name,
+        symbol=symbol,
+        options_handler=options_handler,
+    )
 
-    StrategyClass = STRATEGY_REGISTRY[name]
-
-    # Load trained LSTM model and scaler for strategies that need prediction support
-    model_dir = get_model_directory(symbol=symbol)
-    lstm_model, lstm_scaler = load_lstm_model(model_dir, return_lstm_instance=True)
-
-    # VelocitySignalMomentumStrategy expects only options_handler in its constructor,
-    # but it still uses lstm_model/lstm_scaler internally for predictions.
-    if StrategyClass is VelocitySignalMomentumStrategy:
-        strategy = StrategyClass(options_handler=options_handler)
-        # Attach LSTM artifacts for internal prediction usage
-        strategy.lstm_model = lstm_model
-        strategy.lstm_scaler = lstm_scaler
-        return strategy
-
-    # Default path: strategies that take LSTM artifacts in the constructor
-    strategy = StrategyClass(lstm_model, lstm_scaler, options_handler=options_handler)
     return strategy
 
 
@@ -112,32 +110,26 @@ def main():
     
     print(f"No open positions found, running open flow")
 
+    # Create options_handler first
+    options_handler = OptionsHandler(args.symbol, use_free_tier=args.free)
+    
     # Prepare data around the run date to ensure the LSTM sequence/features exist
     lstm_start_date = (run_date.date() - timedelta(days=LOOKBACK_DAYS)).strftime("%Y-%m-%d")
     retriever = DataRetriever(symbol=args.symbol, lstm_start_date=lstm_start_date, quiet_mode=not args.verbose, use_free_tier=args.free)
 
-    # HMM is required for LSTM features; fail fast if unavailable
-    try:
-        model_dir = get_model_directory(symbol=args.symbol)
-        hmm_model = load_hmm_model(model_dir)
-    except Exception as e:
-        print(f"❌ ERROR: HMM model is required but could not be loaded: {e}")
-        print("   Ensure models are saved under the expected directory or set MODEL_SAVE_BASE_PATH.")
-        sys.exit(1)
-
-    data, options_data = retriever.prepare_data_for_lstm(state_classifier=hmm_model)
+    data = retriever.fetch_data_for_period(lstm_start_date, 'recommend')
 
     # Print date range information for the processed data
     if data is not None and len(data) > 0:
         start_date = data.index[0]
         end_date = data.index[-1]
-        print(f"\nDate range: {start_date.date()} to {end_date.date()}")
-        print(f"Options data dates: {len(options_data)} days\n")
+        print(f"\nDate range: {start_date.date()} to {end_date.date()}\n")
 
-    # Wire options handler and strategy
-    options_handler = retriever.options_handler
-    strategy = build_strategy(args.strategy, options_handler, symbol=args.symbol)
-    strategy.set_data(data, options_data)
+    # Build strategy and inject options_handler
+    strategy = build_strategy(args.strategy, symbol=args.symbol, options_handler=options_handler)
+    
+    # Prepare options data through the strategy
+    strategy.set_data(data)
 
     # Store and recommender
     # Display capital status

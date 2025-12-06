@@ -13,9 +13,9 @@ import sys
 import os
 
 # Add src to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 
-from analysis.ma_velocity_analysis import MAVelocityAnalyzer, TrendSignal, MAVelocityResult
+from src.analysis.ma_velocity_analysis import MAVelocityAnalyzer, TrendSignal, MAVelocityResult
 
 
 class TestMAVelocityAnalysis:

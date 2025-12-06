@@ -1,12 +1,14 @@
-from datetime import datetime
+from datetime import datetime, date
 from typing import Callable, Optional
 import pandas as pd
 
 from src.backtest.models import Position, Strategy, StrategyType
-from src.common.models import Option, OptionType
-from src.model.options_handler import OptionsHandler
+from src.common.models import Option, OptionType, TreasuryRates
 from src.common.progress_tracker import progress_print
-
+from src.common.options_dtos import ExpirationRangeDTO, StrikeRangeDTO, StrikePrice, ExpirationDate
+from src.model.lstm_model import LSTMModel
+from decimal import Decimal
+from src.common.options_handler import OptionsHandler
 
 class CreditSpreadStrategy(Strategy):
     """
@@ -17,13 +19,91 @@ class CreditSpreadStrategy(Strategy):
 
     holding_period = 25
 
-    def __init__(self, lstm_model, lstm_scaler, options_handler: OptionsHandler = None, start_date_offset: int = 0):
+    def __init__(self, options_handler: OptionsHandler, lstm_model, lstm_scaler, symbol: str = 'SPY', start_date_offset: int = 0):
         super().__init__(stop_loss=0.6, start_date_offset=start_date_offset)
         self.lstm_model = lstm_model
         self.lstm_scaler = lstm_scaler
+        self.symbol = symbol
+        
         self.options_handler = options_handler
 
         self.error_count = 0
+    
+    def set_data(self, data: pd.DataFrame, treasury_data: Optional[TreasuryRates] = None):
+        super().set_data(data, treasury_data)
+
+        # Use LSTMModel static methods with options_handler
+        self.data = LSTMModel.calculate_option_features(
+            self.data, 
+            self.options_handler
+        )
+        self.data = LSTMModel.calculate_option_signals(self.data)
+
+    def _get_options_chain_for_date(self, date: datetime, min_dte: int = None, max_dte: int = None, 
+                                     strike_min: float = None, strike_max: float = None):
+        """
+        Get options chain for a specific date using OptionsHandler.
+        
+        Args:
+            date: The date to get options for
+            min_dte: Minimum days to expiration (default: 0 - all expirations)
+            max_dte: Maximum days to expiration (default: 60 - up to 2 months out)
+            strike_min: Minimum strike price (default: current_price - 30)
+            strike_max: Maximum strike price (default: current_price + 30)
+            
+        Returns:
+            OptionChain: Options chain with calls and puts, or empty chain if error
+        """
+        try:
+            from src.common.models import OptionChain, Option
+            
+            # Get current price
+            current_price = self.data.loc[date]['Close']
+            
+            # Define strike range around current price
+            # Use wider range to ensure we capture position strikes that may be OTM
+            atm_strike = round(current_price)
+            min_strike = strike_min if strike_min is not None else atm_strike - 30
+            max_strike = strike_max if strike_max is not None else atm_strike + 30
+            
+            strike_range = StrikeRangeDTO(
+                min_strike=StrikePrice(Decimal(str(min_strike))),
+                max_strike=StrikePrice(Decimal(str(max_strike)))
+            )
+            
+            # Define expiration range
+            # Default to 0-60 days to catch positions at any stage of their lifecycle
+            min_days = min_dte if min_dte is not None else 0
+            max_days = max_dte if max_dte is not None else 60
+            expiration_range = ExpirationRangeDTO(min_days=min_days, max_days=max_days)
+            
+            # Fetch options chain using options_handler
+            chain_dto = self.options_handler.get_options_chain(
+                date=date,
+                current_price=current_price,
+                strike_range=strike_range,
+                expiration_range=expiration_range
+            )
+            
+            # Convert OptionsChainDTO to OptionChain
+            calls = []
+            puts = []
+            
+            for contract in chain_dto.contracts:
+                bar = chain_dto.get_bar_for_contract(contract)
+                if bar:
+                    option = Option.from_contract_and_bar(contract, bar)
+                    if option.is_call:
+                        calls.append(option)
+                    else:
+                        puts.append(option)
+            
+            return OptionChain(calls=tuple(calls), puts=tuple(puts))
+            
+        except Exception as e:
+            print(f"⚠️  Error getting options chain for {date}: {e}")
+            from src.common.models import OptionChain
+            return OptionChain()
 
     def on_new_date(self, date: datetime, positions: tuple['Position', ...],
                     add_position: Callable[['Position'], None], 
@@ -73,16 +153,27 @@ class CreditSpreadStrategy(Strategy):
             for position in positions:
                 # Calculate exit price for the position
                 date_key = date.strftime('%Y-%m-%d')
-                if date_key in self.options_data:
-                    option_chain = self.options_data[date_key]
-                    exit_price = position.calculate_exit_price(option_chain)
-                else:
-                    exit_price = None
+                exit_price = None
+                
+                # Get option chain using OptionsHandler
+                option_chain = self._get_options_chain_for_date(date)
+                exit_price = position.calculate_exit_price(option_chain)
 
-                # Fetch missing contract
+                # Fetch missing contract using new API
                 if exit_price is None:
+                    # Initialize empty option_chain if not already set
+                    if option_chain is None:
+                        from src.common.models import OptionChain
+                        option_chain = OptionChain()
+                    
                     for option in position.spread_options:
-                        contract = self.options_handler.get_specific_option_contract(option.strike, option.expiration, option.option_type.value, date)
+                        # Get contract with bar data using new API
+                        contract = self._get_option_with_bar(
+                            option.strike,
+                            datetime.strptime(option.expiration, '%Y-%m-%d').date(),
+                            option.option_type,
+                            date
+                        )
                         if contract is None:
                             print(f"Error: No contract found for {option.strike} {option.expiration} {option.option_type.value}")
                             has_error = True
@@ -141,8 +232,9 @@ class CreditSpreadStrategy(Strategy):
         """
         for position in positions:
             try:
-                # Calculate the return for this position
-                exit_price = position.calculate_exit_price(self.options_data[date.strftime('%Y-%m-%d')])
+                # Calculate the return for this position using OptionsHandler
+                option_chain = self._get_options_chain_for_date(date)
+                exit_price = position.calculate_exit_price(option_chain)
 
                 # Fetch current date volume data for enhanced validation
                 current_volumes = self.get_current_volumes_for_position(position, date)
@@ -166,14 +258,16 @@ class CreditSpreadStrategy(Strategy):
         
         print(f"   🔍 Evaluating spreads for {strategy_type.value} strategy...")
         
-        # Get available expirations from options handler (lightweight approach)
+        # Get available expirations from options handler using new API
         if not self.options_handler:
             print("   ⚠️  No options handler available")
             raise Exception("No options handler available")
             
-        # Get available expiration dates without fetching full option chains
+        # Get available expiration dates using get_contract_list_for_date with ExpirationRangeDTO
         try:
-            expirations = self.options_handler.get_available_expirations(date, min_days, max_days)
+            expiration_range = ExpirationRangeDTO(min_days=min_days, max_days=max_days)
+            contracts = self.options_handler.get_contract_list_for_date(date, expiration_range=expiration_range)
+            expirations = sorted(set(str(contract.expiration_date) for contract in contracts))
             
             if not expirations:
                 print("   ⚠️  No expiration dates found in target range")
@@ -200,9 +294,9 @@ class CreditSpreadStrategy(Strategy):
                     atm_strike = round(current_price)
                     otm_strike = atm_strike + width
                     
-                    # Find ATM and OTM call options
-                    atm_call = self.options_handler.get_specific_option_contract(atm_strike, expiry_date, OptionType.CALL.value, date)
-                    otm_call = self.options_handler.get_specific_option_contract(otm_strike, expiry_date, OptionType.CALL.value, date)
+                    # Find ATM and OTM call options using new API
+                    atm_call = self._get_option_with_bar(atm_strike, expiry_date, OptionType.CALL, date)
+                    otm_call = self._get_option_with_bar(otm_strike, expiry_date, OptionType.CALL, date)
                     
                     if not atm_call or not otm_call:
                         progress_print(f"      ❌ No ATM or OTM call options found for {width}pt spread")
@@ -216,9 +310,9 @@ class CreditSpreadStrategy(Strategy):
                     atm_strike = round(current_price)
                     otm_strike = atm_strike - width
                     
-                    # Find ATM and OTM put options
-                    atm_put = self.options_handler.get_specific_option_contract(atm_strike, expiry_date, OptionType.PUT.value, date)
-                    otm_put = self.options_handler.get_specific_option_contract(otm_strike, expiry_date, OptionType.PUT.value, date)
+                    # Find ATM and OTM put options using new API
+                    atm_put = self._get_option_with_bar(atm_strike, expiry_date, OptionType.PUT, date)
+                    otm_put = self._get_option_with_bar(otm_strike, expiry_date, OptionType.PUT, date)
                     
                     if not atm_put or not otm_put:
                         print(f"      ❌ No ATM or OTM put options found for {width}pt spread")
@@ -282,6 +376,53 @@ class CreditSpreadStrategy(Strategy):
             return best
         else:
             print(f"   ❌ No spreads meet the minimum criteria")
+            return None
+
+    def _get_option_with_bar(self, strike: float, expiry_date: date, option_type: OptionType, date: datetime) -> Optional[Option]:
+        """
+        Get an Option object with price/volume data using new API.
+        
+        Args:
+            strike: Strike price
+            expiry_date: Expiration date (date object)
+            option_type: OptionType enum
+            date: Current date for data lookup
+            
+        Returns:
+            Option object if found, None otherwise
+        """
+        try:
+            # Get contract DTO (metadata only)
+            strike_price = StrikePrice(Decimal(str(strike)))
+            expiration_date = ExpirationDate(expiry_date)
+            strike_range = StrikeRangeDTO(min_strike=strike_price, max_strike=strike_price)
+            expiration_range = ExpirationRangeDTO(target_date=expiration_date, current_date=date.date())
+            
+            contracts = self.options_handler.get_contract_list_for_date(
+                date,
+                strike_range=strike_range,
+                expiration_range=expiration_range
+            )
+            
+            # Find matching contract by type
+            contract_dto = next(
+                (c for c in contracts if c.contract_type == option_type),
+                None
+            )
+            
+            if contract_dto is None:
+                return None
+            
+            # Get price/volume data using get_option_bar
+            bar = self.options_handler.get_option_bar(contract_dto, date)
+            if bar is None:
+                return None
+            
+            # Combine contract + bar into Option object
+            return Option.from_contract_and_bar(contract_dto, bar)
+            
+        except Exception as e:
+            print(f"⚠️  Error getting option with bar for strike {strike}, expiry {expiry_date}: {e}")
             return None
 
     def _estimate_probability_of_profit(self, confidence: float, direction: str, width: int = None, 
@@ -419,14 +560,18 @@ class CreditSpreadStrategy(Strategy):
         if missing_features:
             raise ValueError(f"Missing required features for LSTM prediction: {missing_features}. Available columns: {list(sequence_data.columns)}")
 
-        # Check for missing values
+        # Check for missing values in the sequence - these indicate missing options data
+        # Skip prediction if any values are missing in the sequence
         if sequence_data.isnull().any().any():
-            print(f"Warning: Missing values in feature data for prediction at {date}")
-            # Fill missing values with forward fill, then backward fill
-            sequence_data = sequence_data.fillna(method='ffill').fillna(method='bfill')
+            # Identify which features have missing values for debugging
+            missing_cols = sequence_data.columns[sequence_data.isnull().any()].tolist()
+            missing_count = sequence_data.isnull().sum().sum()
+            missing_dates = sequence_data[sequence_data.isnull().any(axis=1)].index.tolist()
             
-            # If still have missing values, fill with 0
-            sequence_data = sequence_data.fillna(0)
+            # Log but don't fail - just skip this prediction
+            print(f"⚠️  Skipping prediction for {date} - sequence has {missing_count} missing values in {len(missing_cols)} features")
+            print(f"   Dates in sequence with missing data: {[d.strftime('%Y-%m-%d') for d in missing_dates[:5]]}{'...' if len(missing_dates) > 5 else ''}")
+            return None
         
         # Scale the features using the model's scaler
         if self.lstm_scaler is None:
@@ -485,15 +630,6 @@ class CreditSpreadStrategy(Strategy):
 
     def _create_call_credit_spread_from_chain(self, date: datetime, prediction: dict) -> Position:
         """Create a call credit spread using the options chain data"""
-        if not self.options_data:
-            print("⚠️  No options data available")
-            return None
-            
-        date_key = date.strftime('%Y-%m-%d')
-        if date_key not in self.options_data:
-            print(f"⚠️  No options data for {date_key}")
-            return None
-            
         current_price = self._get_current_underlying_price(date)
         if current_price is None:
             print("⚠️  Failed to get current price")
@@ -543,14 +679,6 @@ class CreditSpreadStrategy(Strategy):
 
     def _create_put_credit_spread_from_chain(self, date: datetime, prediction: dict) -> Position:
         """Create a put credit spread using the options chain data"""
-        if not self.options_data:
-            print("⚠️  No options data available")
-            return None
-            
-        date_key = date.strftime('%Y-%m-%d')
-        if date_key not in self.options_data:
-            print(f"⚠️  No options data for {date_key}")
-            return None
             
         current_price = self._get_current_underlying_price(date)
         if current_price is None:
@@ -625,7 +753,12 @@ class CreditSpreadStrategy(Strategy):
         otm_calls = [call for call in calls if call.strike > strike]
         
         if not otm_calls:
-            contract = self.options_handler.get_specific_option_contract(strike, expiration, OptionType.CALL.value, current_date)
+            contract = self._get_option_with_bar(
+                strike,
+                datetime.strptime(expiration, '%Y-%m-%d').date(),
+                OptionType.CALL,
+                current_date
+            )
             if contract is None:
                 return None
             otm_calls = [contract]
@@ -641,7 +774,12 @@ class CreditSpreadStrategy(Strategy):
         otm_puts = [put for put in puts if put.strike < strike]
         
         if not otm_puts:
-            contract = self.options_handler.get_specific_option_contract(strike, expiration, OptionType.PUT.value, current_date)
+            contract = self._get_option_with_bar(
+                strike,
+                datetime.strptime(expiration, '%Y-%m-%d').date(),
+                OptionType.PUT,
+                current_date
+            )
             if contract is None:
                 return None
             otm_puts = [contract]
@@ -663,11 +801,11 @@ class CreditSpreadStrategy(Strategy):
         if option.volume is not None:
             return option
         
-        # Fetch fresh data from API
-        fresh_option = self.options_handler.get_specific_option_contract(
-            option.strike, 
-            option.expiration, 
-            option.option_type.value, 
+        # Fetch fresh data from API using new API
+        fresh_option = self._get_option_with_bar(
+            option.strike,
+            datetime.strptime(option.expiration, '%Y-%m-%d').date(),
+            option.option_type,
             date
         )
         
@@ -770,11 +908,11 @@ class CreditSpreadStrategy(Strategy):
         
         for option in position.spread_options:
             try:
-                # Fetch fresh data from API for the current date
-                fresh_option = self.options_handler.get_specific_option_contract(
-                    option.strike, 
-                    option.expiration, 
-                    option.option_type.value, 
+                # Fetch fresh data from API for the current date using new API
+                fresh_option = self._get_option_with_bar(
+                    option.strike,
+                    datetime.strptime(option.expiration, '%Y-%m-%d').date(),
+                    option.option_type,
                     date  # Use the current date for closure validation
                 )
                 
@@ -823,11 +961,35 @@ class CreditSpreadStrategy(Strategy):
         
         missing_columns = [col for col in required_columns if col not in data.columns]
         if missing_columns:
-            progress_print(f"⚠️  Warning: Missing required columns: {missing_columns}")
+            progress_print(f"❌ Missing required columns: {missing_columns}")
             progress_print(f"   Available columns: {list(data.columns)}")
             return False
         else:
             progress_print(f"✅ All required columns present")
+        
+        # Check for NaN values in critical option features
+        # Allow a small tolerance (< 10%) for missing data, but track it
+        option_features = ['Put_Call_Ratio', 'Option_Volume_Ratio']
+        max_missing_pct_allowed = 10.0  # Allow up to 10% missing data
+        
+        for feature in option_features:
+            nan_count = data[feature].isna().sum()
+            if nan_count > 0:
+                nan_pct = (nan_count / len(data)) * 100
+                
+                if nan_pct > max_missing_pct_allowed:
+                    progress_print(f"❌ Found {nan_count} ({nan_pct:.1f}%) missing values in '{feature}' (exceeds {max_missing_pct_allowed}% threshold)")
+                    progress_print(f"   This indicates options data is not available for too many dates.")
+                    progress_print(f"   Dates with missing data: {data[data[feature].isna()].index[:5].tolist()}")
+                    return False
+                else:
+                    progress_print(f"⚠️  Found {nan_count} ({nan_pct:.1f}%) missing values in '{feature}' (within {max_missing_pct_allowed}% tolerance)")
+                    progress_print(f"   Dates with missing data will be skipped during predictions: {data[data[feature].isna()].index.tolist()}")
+        
+        if all(data[feature].isna().sum() == 0 for feature in option_features):
+            progress_print(f"✅ No missing values in critical option features")
+        else:
+            progress_print(f"✅ Missing values within acceptable tolerance")
         
         # Check if data has datetime index
         if not isinstance(data.index, pd.DatetimeIndex):

@@ -6,14 +6,14 @@ trading strategies with flexible parameter selection and validation.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Type, List
+from typing import Dict, Type, List, Optional
+
+from src.common.options_handler import OptionsHandler
 try:
     from .models import Strategy
-    from ..model.options_handler import OptionsHandler
 except ImportError:
     # Fallback for direct execution
     from src.backtest.models import Strategy
-    from src.model.options_handler import OptionsHandler
 
 
 class StrategyBuilder(ABC):
@@ -26,19 +26,9 @@ class StrategyBuilder(ABC):
     def reset(self):
         """Reset the builder to initial state"""
         pass
-    
+
     @abstractmethod
-    def set_lstm_model(self, model):
-        """Set the LSTM model"""
-        pass
-    
-    @abstractmethod
-    def set_lstm_scaler(self, scaler):
-        """Set the LSTM scaler"""
-        pass
-    
-    @abstractmethod
-    def set_options_handler(self, handler: OptionsHandler):
+    def set_options_handler(self, options_handler: OptionsHandler):
         """Set the options handler"""
         pass
     
@@ -69,6 +59,7 @@ class CreditSpreadStrategyBuilder(StrategyBuilder):
     def reset(self):
         self._lstm_model = None
         self._lstm_scaler = None
+        self._symbol = None
         self._options_handler = None
         self._start_date_offset = 0
         self._stop_loss = 0.6
@@ -82,8 +73,14 @@ class CreditSpreadStrategyBuilder(StrategyBuilder):
         self._lstm_scaler = scaler
         return self
     
-    def set_options_handler(self, handler: OptionsHandler):
-        self._options_handler = handler
+    def set_symbol(self, symbol: str):
+        """Set the symbol for options data retrieval"""
+        self._symbol = symbol
+        return self
+    
+    def set_options_handler(self, options_handler):
+        """Set the options handler to inject into the strategy"""
+        self._options_handler = options_handler
         return self
     
     def set_start_date_offset(self, offset: int):
@@ -99,18 +96,33 @@ class CreditSpreadStrategyBuilder(StrategyBuilder):
         return self
     
     def build(self) -> Strategy:
-        if not all([self._lstm_model, self._lstm_scaler, self._options_handler]):
-            raise ValueError("Missing required parameters: lstm_model, lstm_scaler, options_handler")
-        
         try:
             from ..strategies.credit_spread_minimal import CreditSpreadStrategy
         except ImportError:
             from src.strategies.credit_spread_minimal import CreditSpreadStrategy
         
+        # Symbol is required for CreditSpreadStrategy
+        if not self._symbol:
+            raise ValueError("Symbol is required for CreditSpreadStrategy. Use set_symbol() to provide it.")
+        
+        # Load LSTM model and scaler if not already provided
+        if self._lstm_model is None or self._lstm_scaler is None:
+            try:
+                from ..common.functions import get_model_directory, load_lstm_model
+            except ImportError:
+                from src.common.functions import get_model_directory, load_lstm_model
+            
+            model_dir = get_model_directory(symbol=self._symbol)
+            try:
+                self._lstm_model, self._lstm_scaler = load_lstm_model(model_dir, return_lstm_instance=True)
+            except Exception as e:
+                raise ValueError(f"Failed to load LSTM model for symbol {self._symbol}: {e}")
+        
         strategy = CreditSpreadStrategy(
+            options_handler=self._options_handler,
             lstm_model=self._lstm_model,
             lstm_scaler=self._lstm_scaler,
-            options_handler=self._options_handler,
+            symbol=self._symbol,
             start_date_offset=self._start_date_offset
         )
         
@@ -126,33 +138,18 @@ class VelocitySignalMomentumStrategyBuilder(StrategyBuilder):
     
     def reset(self):
         self._symbol = 'SPY'
-        self._start_date_offset = 60
-        self._lstm_model = None
-        self._lstm_scaler = None
         self._options_handler = None
+        self._start_date_offset = 60
         self._stop_loss = None
         self._profit_target = None
     
-    def set_symbol(self, symbol: str):
-        self._symbol = symbol
+    def set_options_handler(self, options_handler):
+        """Set the options handler to inject into the strategy"""
+        self._options_handler = options_handler
         return self
     
     def set_start_date_offset(self, offset: int):
         self._start_date_offset = offset
-        return self
-    
-    def set_lstm_model(self, model):
-        # Not used for this strategy but required by interface
-        self._lstm_model = model
-        return self
-    
-    def set_lstm_scaler(self, scaler):
-        # Not used for this strategy but required by interface
-        self._lstm_scaler = scaler
-        return self
-    
-    def set_options_handler(self, handler: OptionsHandler):
-        self._options_handler = handler
         return self
     
     def set_stop_loss(self, stop_loss: float):
@@ -234,30 +231,36 @@ class StrategyFactory:
         
         return cls._builders[strategy_name]()
 
-def create_strategy_from_args(strategy_name: str, lstm_model, lstm_scaler, options_handler, **kwargs):
+def create_strategy_from_args(strategy_name: str, **kwargs):
     """
     Create strategy based on command line argument or configuration
     
     Args:
         strategy_name: Name of the strategy to create
-        lstm_model: LSTM model instance
-        lstm_scaler: LSTM scaler instance
-        options_handler: Options handler instance
         **kwargs: Additional configuration parameters
+            - symbol: Required for credit_spread strategy
+            - options_handler: Optional, options handler to inject
+            - start_date_offset: Optional, defaults to 60
+            - stop_loss: Optional
+            - profit_target: Optional
         
     Returns:
         Configured Strategy instance or None if creation fails
     """
     try:
-        strategy = StrategyFactory.create_strategy(
-            strategy_name=strategy_name,
-            lstm_model=lstm_model,
-            lstm_scaler=lstm_scaler,
-            options_handler=options_handler,
-            start_date_offset=kwargs.get('start_date_offset', 60),
-            stop_loss=kwargs.get('stop_loss', None),
-            profit_target=kwargs.get('profit_target', None)
-        )
+        builder = StrategyFactory.get_builder(strategy_name)
+        
+        # Set common parameters
+        if 'options_handler' in kwargs:
+            builder.set_options_handler(kwargs['options_handler'])
+        if 'start_date_offset' in kwargs:
+            builder.set_start_date_offset(kwargs['start_date_offset'])
+        if 'stop_loss' in kwargs and kwargs['stop_loss'] is not None:
+            builder.set_stop_loss(kwargs['stop_loss'])
+        if 'profit_target' in kwargs and kwargs['profit_target'] is not None:
+            builder.set_profit_target(kwargs['profit_target'])
+        
+        strategy = builder.build()
         return strategy
     except ValueError as e:
         print(f"❌ Strategy creation failed: {e}")

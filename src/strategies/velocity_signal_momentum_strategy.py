@@ -7,11 +7,11 @@ import matplotlib.dates as mdates
 from src.backtest.models import Strategy, Position, StrategyType, OptionChain, TreasuryRates
 from src.common.options_dtos import ExpirationRangeDTO, OptionsChainDTO
 from src.common.progress_tracker import progress_print
-from src.model.options_handler import OptionsHandler
-from src.common.options_handler import OptionsHandler as NewOptionsHandler
+from src.common.options_handler import OptionsHandler
 from src.common.options_helpers import OptionsRetrieverHelper
 from src.common.models import OptionType
 from src.common.options_dtos import StrikeRangeDTO, StrikePrice
+from src.common.data_retriever import DataRetriever
 from decimal import Decimal
 
 class VelocitySignalMomentumStrategy(Strategy):
@@ -26,14 +26,13 @@ class VelocitySignalMomentumStrategy(Strategy):
     def __init__(self, options_handler: OptionsHandler, start_date_offset: int = 60, stop_loss: float = None):
         super().__init__(start_date_offset=start_date_offset, stop_loss=stop_loss)
 
-        self.options_handler = options_handler
-        self.new_options_handler = NewOptionsHandler(symbol='SPY')
+        self.new_options_handler = options_handler
         
         # Track position entries for plotting
         self._position_entries = []
     
-    def set_data(self, data: pd.DataFrame, options_data: Dict[str, OptionChain], treasury_data: Optional[TreasuryRates] = None):
-        super().set_data(data, options_data, treasury_data)
+    def set_data(self, data: pd.DataFrame, treasury_data: Optional[TreasuryRates] = None):
+        super().set_data(data, treasury_data)
         
         # Reset position entries tracking for new backtest run
         self._position_entries = []
@@ -68,7 +67,7 @@ class VelocitySignalMomentumStrategy(Strategy):
 
         if len(positions) == 0:
             self._try_open_position(date, add_position)
-            return
+            
         self._try_close_positions(date, positions, remove_position)
 
     def on_end(self, positions: tuple['Position', ...], remove_position: Callable[['Position'], None], date: datetime):
@@ -142,18 +141,6 @@ class VelocitySignalMomentumStrategy(Strategy):
             # Show the plot
             plt.show()
             
-            # Save the plot to a file
-            import os
-            from datetime import datetime
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            plot_filename = f"velocity_strategy_positions_{timestamp}.png"
-            plot_path = os.path.join("predictions", plot_filename)
-            
-            # Create predictions directory if it doesn't exist
-            os.makedirs("predictions", exist_ok=True)
-            
-            plt.savefig(plot_path, dpi=300, bbox_inches='tight')
-            progress_print(f"📊 Position entry plot saved to: {plot_path}")
             progress_print("📊 Position entry plot generated successfully")
             
         except Exception as e:
@@ -491,31 +478,35 @@ class VelocitySignalMomentumStrategy(Strategy):
         add_position(position)
 
     def _get_current_underlying_price(self, date: datetime) -> Optional[float]:
-        # Check if the specified date is the current date
+        """
+        Fetch and return the live price if the date is the current date, otherwise return last_price for the date
+        """
         current_date = datetime.now().date()
         if date.date() == current_date:
-            # Use live price from DataRetriever if available
-            if hasattr(self, 'data_retriever') and self.data_retriever:
-                live_price = self.data_retriever.get_live_price()
-                if live_price is not None:
-                    return live_price
-            elif hasattr(self.options_handler, 'symbol'):
-                # Fallback: create a temporary DataRetriever for live price
-                from src.common.data_retriever import DataRetriever
-                temp_retriever = DataRetriever(symbol=self.options_handler.symbol, use_free_tier=True, quiet_mode=True)
-                temp_retriever.options_handler = self.options_handler
-                live_price = temp_retriever.get_live_price()
-                if live_price is not None:
-                    return live_price
-        
-        # Fallback to cached data if live price failed or date is not current
-        if self.data is None or self.data.empty or date not in self.data.index:
-            progress_print("⚠️  No underlying price data available for the date")
-            return None
-        try:
+            # Initialize DataRetriever when needed
+            # Try to get symbol from options handler first, then data index name, then default to SPY
+            symbol = None
+            
+            # Try options handler first (most reliable)
+            if hasattr(self, 'new_options_handler') and hasattr(self.new_options_handler, 'symbol'):
+                symbol = self.new_options_handler.symbol
+            
+            # Default to SPY if symbol not found
+            if symbol is None:
+                raise ValueError("Symbol not found in options handler or data index name.")
+            
+            try:
+                data_retriever = DataRetriever(symbol=symbol, use_free_tier=True, quiet_mode=True)
+                live_price = data_retriever.get_live_price()
+            except Exception as e:
+                raise ValueError(f"Failed to fetch live price from DataRetriever: {e}")
+
+            if live_price is not None:
+                return live_price
+            else:
+                raise ValueError("Failed to fetch live price from DataRetriever.")
+        else:
             return float(self.data.loc[date]['Close'])
-        except Exception:
-            return None
 
     def _get_option_chain(self, date: datetime, current_price: float) -> Optional[OptionsChainDTO]:
         date_key = date.strftime('%Y-%m-%d')
@@ -601,7 +592,6 @@ class VelocitySignalMomentumStrategy(Strategy):
         progress_print(f"🤖 Strategy evaluating {len(positions)} open position(s) for potential closure...")
                
         for position in positions:
-            # Debug logging for position status
             days_held = position.get_days_held(date) if hasattr(position, 'get_days_held') else 0
             days_to_exp = position.get_days_to_expiration(date) if hasattr(position, 'get_days_to_expiration') else 0
             progress_print(f"🔍 Position {position.__str__()} - Days held: {days_held}, Days to exp: {days_to_exp}")

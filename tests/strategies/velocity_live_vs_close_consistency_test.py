@@ -65,7 +65,7 @@ class TestVelocityLiveVsCloseConsistency(unittest.TestCase):
         mock_options_handler_1.symbol = 'SPY'
         
         strategy_live = VelocitySignalMomentumStrategy(options_handler=mock_options_handler_1)
-        strategy_live.set_data(self.historical_data.copy(), {})
+        strategy_live.set_data(self.historical_data.copy())
         
         print(f"Historical data ends: {strategy_live.data.index[-1].date()}")
         print(f"Current date: {self.current_date.date()}")
@@ -107,7 +107,7 @@ class TestVelocityLiveVsCloseConsistency(unittest.TestCase):
         }, index=[self.current_date])
         data_with_close = pd.concat([data_with_close, current_date_close])
         
-        strategy_close.set_data(data_with_close, {})
+        strategy_close.set_data(data_with_close)
         
         print(f"Historical data ends: {strategy_close.data.index[-1].date()}")
         print(f"Close price: ${self.close_price}")
@@ -177,7 +177,7 @@ class TestVelocityLiveVsCloseConsistency(unittest.TestCase):
         mock_options_handler.symbol = 'SPY'
         
         strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
-        strategy.set_data(data_with_stale_current, {})
+        strategy.set_data(data_with_stale_current)
         
         print(f"\nCurrent date: {self.current_date.date()}")
         print(f"Stale cached price for current date: ${stale_price}")

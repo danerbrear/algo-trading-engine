@@ -152,14 +152,10 @@ def test_recommender_close_accept(monkeypatch, tmp_path):
     strategy = MagicMock()
     strategy.options_data = {}
     options_handler = MagicMock()
-
-    # Mock options_handler to return contracts with prices via Option instances
-    def _get_contract(strike, exp, opt_type, date):
-        typ = 'call' if opt_type.lower().startswith('c') else 'put'
-        price = 0.6 if strike in (500, 505) else 0.5
-        return _make_option('X', strike, exp if isinstance(exp, str) else exp.strftime('%Y-%m-%d'), typ, price, 200)
-
-    options_handler.get_specific_option_contract.side_effect = _get_contract
+    
+    # Note: The recommendation engine uses strategy.new_options_handler.get_option_bar()
+    # which is mocked via strategy.recommend_close_positions.return_value
+    # The legacy get_specific_option_contract method is no longer used
 
     # Mock strategy to recommend closing the position
     from src.backtest.models import Position
