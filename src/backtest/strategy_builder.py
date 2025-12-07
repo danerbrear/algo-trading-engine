@@ -64,6 +64,7 @@ class CreditSpreadStrategyBuilder(StrategyBuilder):
         self._start_date_offset = 0
         self._stop_loss = 0.6
         self._profit_target = None
+        self._max_risk_per_trade = 0.08
     
     def set_lstm_model(self, model):
         self._lstm_model = model
@@ -95,6 +96,11 @@ class CreditSpreadStrategyBuilder(StrategyBuilder):
         self._profit_target = profit_target
         return self
     
+    def set_max_risk_per_trade(self, risk: float):
+        """Set maximum risk per trade as percentage (e.g., 0.08 for 8%)"""
+        self._max_risk_per_trade = risk
+        return self
+    
     def build(self) -> Strategy:
         try:
             from ..strategies.credit_spread_minimal import CreditSpreadStrategy
@@ -123,7 +129,8 @@ class CreditSpreadStrategyBuilder(StrategyBuilder):
             lstm_model=self._lstm_model,
             lstm_scaler=self._lstm_scaler,
             symbol=self._symbol,
-            start_date_offset=self._start_date_offset
+            start_date_offset=self._start_date_offset,
+            max_risk_per_trade=self._max_risk_per_trade
         )
         
         if self._profit_target:
@@ -142,6 +149,7 @@ class VelocitySignalMomentumStrategyBuilder(StrategyBuilder):
         self._start_date_offset = 60
         self._stop_loss = None
         self._profit_target = None
+        self._max_risk_per_trade = 0.08
     
     def set_options_handler(self, options_handler):
         """Set the options handler to inject into the strategy"""
@@ -161,6 +169,11 @@ class VelocitySignalMomentumStrategyBuilder(StrategyBuilder):
         self._profit_target = profit_target
         return self
     
+    def set_max_risk_per_trade(self, risk: float):
+        """Set maximum risk per trade as percentage (e.g., 0.08 for 8%)"""
+        self._max_risk_per_trade = risk
+        return self
+    
     def build(self) -> Strategy:
         try:
             from ..strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
@@ -170,7 +183,86 @@ class VelocitySignalMomentumStrategyBuilder(StrategyBuilder):
         strategy = VelocitySignalMomentumStrategy(
             options_handler=self._options_handler,
             start_date_offset=self._start_date_offset,
-            stop_loss=self._stop_loss
+            stop_loss=self._stop_loss,
+            max_risk_per_trade=self._max_risk_per_trade
+        )
+        
+        self.reset()
+        return strategy
+
+
+class BullMarketMeanReversionV2StrategyBuilder(StrategyBuilder):
+    """Builder for BullMarketMeanReversionV2Strategy"""
+    
+    def reset(self):
+        self._options_handler = None
+        self._start_date_offset = 60
+        self._stop_loss = None
+        self._profit_target = None
+        self._z_score_entry_threshold = 1.5
+        self._z_score_exit_threshold = 0.5
+        self._z_score_decrease_threshold = 0.7
+        self._max_risk_per_trade = 0.08
+        self._max_spread_width = 6.0
+    
+    def set_options_handler(self, options_handler):
+        """Set the options handler to inject into the strategy"""
+        self._options_handler = options_handler
+        return self
+    
+    def set_start_date_offset(self, offset: int):
+        self._start_date_offset = offset
+        return self
+    
+    def set_stop_loss(self, stop_loss: float):
+        self._stop_loss = stop_loss
+        return self
+    
+    def set_profit_target(self, profit_target: float):
+        self._profit_target = profit_target
+        return self
+    
+    def set_z_score_entry_threshold(self, threshold: float):
+        """Set Z-Score entry threshold"""
+        self._z_score_entry_threshold = threshold
+        return self
+    
+    def set_z_score_exit_threshold(self, threshold: float):
+        """Set Z-Score exit threshold"""
+        self._z_score_exit_threshold = threshold
+        return self
+    
+    def set_z_score_decrease_threshold(self, threshold: float):
+        """Set Z-Score decrease threshold for exit"""
+        self._z_score_decrease_threshold = threshold
+        return self
+    
+    def set_max_risk_per_trade(self, risk: float):
+        """Set maximum risk per trade as percentage (e.g., 0.08 for 8%)"""
+        self._max_risk_per_trade = risk
+        return self
+    
+    def set_max_spread_width(self, width: float):
+        """Set maximum spread width in dollars"""
+        self._max_spread_width = width
+        return self
+    
+    def build(self) -> Strategy:
+        try:
+            from ..strategies.bull_market_mean_reversion_v2_strategy import BullMarketMeanReversionV2Strategy
+        except ImportError:
+            from src.strategies.bull_market_mean_reversion_v2_strategy import BullMarketMeanReversionV2Strategy
+        
+        strategy = BullMarketMeanReversionV2Strategy(
+            options_handler=self._options_handler,
+            start_date_offset=self._start_date_offset,
+            stop_loss=self._stop_loss,
+            profit_target=self._profit_target,
+            z_score_entry_threshold=self._z_score_entry_threshold,
+            z_score_exit_threshold=self._z_score_exit_threshold,
+            z_score_decrease_threshold=self._z_score_decrease_threshold,
+            max_risk_per_trade=self._max_risk_per_trade,
+            max_spread_width=self._max_spread_width
         )
         
         self.reset()
@@ -183,6 +275,7 @@ class StrategyFactory:
     _builders: Dict[str, Type[StrategyBuilder]] = {
         'credit_spread': CreditSpreadStrategyBuilder,
         'velocity_momentum': VelocitySignalMomentumStrategyBuilder,
+        'bull_market_mean_reversion_v2': BullMarketMeanReversionV2StrategyBuilder,
     }
     
     @classmethod

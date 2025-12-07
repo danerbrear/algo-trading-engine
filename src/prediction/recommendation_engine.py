@@ -123,13 +123,19 @@ class InteractiveStrategyRecommender:
             print("Position rejected due to risk threshold.")
             return None
         
+        # Calculate quantity based on max_risk_per_trade if strategy has it
+        quantity = self._calculate_quantity(max_risk, strategy_name)
+        if quantity == 0:
+            print(f"⚠️  Calculated quantity is 0 based on max_risk_per_trade. Position rejected.")
+            return None
+        
         # Determine if credit or debit strategy
         is_credit = self.capital_manager.is_credit_strategy(strategy_type)
-        premium_amount = float(credit) * 100  # Convert to dollars per contract
+        premium_amount = float(credit) * 100 * quantity  # Convert to dollars for all contracts
         premium_label = "Premium received" if is_credit else "Premium paid"
 
         # Prompt user
-        summary = self._format_open_summary(proposal, recommendation, max_risk, premium_amount, premium_label, risk_message)
+        summary = self._format_open_summary(proposal, recommendation, max_risk, premium_amount, premium_label, risk_message, quantity)
         if not self.prompt(f"Open recommendation:\n{summary}\nOpen this position?"):
             return None
 
@@ -140,7 +146,7 @@ class InteractiveStrategyRecommender:
             outcome="accepted",
             decided_at=decided_at,
             rationale=f"strategy_confidence={proposal.confidence:.2f}",
-            quantity=1,
+            quantity=quantity,
             entry_price=proposal.credit,
         )
         self.decision_store.append_decision(record)
@@ -277,7 +283,7 @@ class InteractiveStrategyRecommender:
         position.set_quantity(int(rec.quantity) if rec.quantity is not None else 1)
         return position
 
-    def _format_open_summary(self, proposal: ProposedPositionRequest, best: dict, max_risk: float, premium_amount: float, premium_label: str, risk_message: str) -> str:
+    def _format_open_summary(self, proposal: ProposedPositionRequest, best: dict, max_risk: float, premium_amount: float, premium_label: str, risk_message: str, quantity: int = 1) -> str:
         legs_str = ", ".join(
             [f"{leg.option_type.value.upper()} {int(leg.strike)} exp {leg.expiration}" for leg in proposal.legs]
         )
@@ -286,8 +292,10 @@ class InteractiveStrategyRecommender:
             f"Symbol: {proposal.symbol}\n"
             f"Strategy: {proposal.strategy_type.value}\n"
             f"Legs: {legs_str}\n"
+            f"Quantity: {quantity} contract(s)\n"
             f"Credit: ${proposal.credit:.2f}  Width: {proposal.width}  R/R: {rr}  Prob: {proposal.probability_of_profit:.0%}\n"
-            f"Max Risk: ${max_risk:.2f}\n"
+            f"Max Risk per contract: ${max_risk:.2f}\n"
+            f"Total Max Risk: ${max_risk * quantity:.2f}\n"
             f"{premium_label}: ${premium_amount:.2f} ({'credit' if 'received' in premium_label else 'debit'} strategy)\n"
             f"✅ {risk_message}"
         )
@@ -328,6 +336,30 @@ class InteractiveStrategyRecommender:
         else:
             # Debit spreads and long options: max risk is the debit paid
             return abs(credit) * 100
+    
+    def _calculate_quantity(self, max_risk_per_contract: float, strategy_name: str) -> int:
+        """Calculate position quantity based on strategy's max_risk_per_trade.
+        
+        Args:
+            max_risk_per_contract: Max risk per contract in dollars
+            strategy_name: Strategy name for capital manager lookup
+            
+        Returns:
+            Quantity (number of contracts), or 0 if strategy doesn't have max_risk_per_trade
+        """
+        # Check if strategy has max_risk_per_trade
+        if not hasattr(self.strategy, 'max_risk_per_trade') or self.strategy.max_risk_per_trade is None:
+            return 1  # Default to 1 contract if not specified
+        
+        # Get allocated capital for this strategy
+        allocated_capital = self.capital_manager.get_allocated_capital(strategy_name)
+        
+        # Calculate max risk allowed: allocated_capital * max_risk_per_trade
+        max_risk_allowed = allocated_capital * self.strategy.max_risk_per_trade
+        
+        # Calculate quantity: max_risk_allowed / max_risk_per_contract
+        quantity = int(max_risk_allowed / max_risk_per_contract)
+        return quantity
 
     def _format_close_summary(self, position: Position, exit_price: float, rationale: str) -> str:
         # Compute P&L

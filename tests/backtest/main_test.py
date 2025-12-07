@@ -21,6 +21,7 @@ class MockStrategy(Strategy):
     def __init__(self, options_handler=None):
         super().__init__()
         self.options_handler = options_handler
+        self.max_risk_per_trade = 0.08  # 8% max risk per trade
         # Create comprehensive mock data with all required columns
         dates = pd.date_range('2024-01-01', periods=3)
         self.data = pd.DataFrame({
@@ -54,6 +55,7 @@ class MockStrategy(Strategy):
             option1.symbol = "SPY240315C00500000"
             option1.volume = 15
             option1.strike = 500.0
+            option1.last_price = 3.0  # Needed for get_max_risk calculation
             option1.expiration = "2024-03-15"
             option1.option_type = Mock()
             option1.option_type.value = "C"
@@ -62,6 +64,7 @@ class MockStrategy(Strategy):
             option2.symbol = "SPY240315C00510000"
             option2.volume = 20
             option2.strike = 510.0
+            option2.last_price = 0.5  # Needed for get_max_risk calculation
             option2.expiration = "2024-03-15"
             option2.option_type = Mock()
             option2.option_type.value = "C"
@@ -340,19 +343,28 @@ class TestVolumeValidationIntegration:
         assert success is True
         
         # Check that statistics are properly tracked
-        assert engine.volume_stats.options_checked == 2
+        # With max_risk_per_trade set, position is added on day 1, so volume validation only runs once (2 options)
+        assert engine.volume_stats.options_checked == 2  # Two options checked on day 1
         assert engine.volume_stats.positions_rejected_volume == 0
         
         # Check that summary statistics are calculated correctly
         summary = engine.volume_stats.get_summary()
         assert summary['positions_rejected_volume'] == 0
-        assert summary['options_checked'] == 2
+        assert summary['options_checked'] == 2  # Two options checked on day 1
         assert summary['rejection_rate'] == 0.0  # 0/2 * 100
     
     def test_backtest_engine_with_position_without_spread_options(self):
         """Test BacktestEngine handles positions without spread_options gracefully."""
         
         class MockStrategyWithoutSpreadOptions(MockStrategy):
+            def __init__(self, options_handler=None):
+                super().__init__(options_handler)
+                # For LONG_STOCK, we need higher max_risk_per_trade to allow position
+                # With entry_price=100.0, max_risk = 100.0 * 100 = 10000
+                # To get 1 contract: need max_risk_allowed >= 10000
+                # With capital=10000: max_risk_per_trade >= 1.0 (100%)
+                self.max_risk_per_trade = 1.0  # 100% to allow 1 share
+            
             def on_new_date(self, date, positions, add_position, remove_position):
                 """Mock strategy that creates positions without spread_options."""
                 if len(positions) == 0:

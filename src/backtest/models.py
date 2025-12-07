@@ -248,6 +248,7 @@ class StrategyType(Enum):
     """
     CALL_CREDIT_SPREAD = "call_credit_spread"
     PUT_CREDIT_SPREAD = "put_credit_spread"
+    PUT_DEBIT_SPREAD = "put_debit_spread"
     LONG_STOCK = "long_stock"
     LONG_CALL = "long_call"
     SHORT_CALL = "short_call"
@@ -332,22 +333,25 @@ class Position:
         
     def get_return_dollars_from_assignment(self, underlying_price: float) -> float:
         """
-        Get the return from assignment for a credit spread position at expiration.
+        Get the return from assignment for a spread position at expiration.
         
         For credit spreads:
         - Initial credit received is stored in entry_price
-        - Maximum risk is the width of the spread minus the credit received
         - At expiration, we calculate the intrinsic value of our short and long legs
+        
+        For debit spreads:
+        - Initial debit paid is stored as negative entry_price
+        - At expiration, we calculate the intrinsic value of our long and short legs
         """
         if not self.spread_options or len(self.spread_options) != 2:
             raise ValueError("Spread options are not set")
             
-        atm_option, otm_option = self.spread_options
+        higher_option, lower_option = self.spread_options
         
         if self.strategy_type == StrategyType.CALL_CREDIT_SPREAD:
             # Short ATM call, Long OTM call
-            short_strike = atm_option.strike  # ATM strike
-            long_strike = otm_option.strike   # OTM strike (higher)
+            short_strike = higher_option.strike  # ATM strike
+            long_strike = lower_option.strike   # OTM strike (higher)
             
             # Calculate intrinsic values at expiration
             short_intrinsic = max(0, underlying_price - short_strike)
@@ -359,8 +363,8 @@ class Position:
             
         elif self.strategy_type == StrategyType.PUT_CREDIT_SPREAD:
             # Short ATM put, Long OTM put
-            short_strike = atm_option.strike  # ATM strike
-            long_strike = otm_option.strike   # OTM strike (lower)
+            short_strike = higher_option.strike  # ATM strike
+            long_strike = lower_option.strike   # OTM strike (lower)
             
             # Calculate intrinsic values at expiration
             short_intrinsic = max(0, short_strike - underlying_price)
@@ -368,6 +372,19 @@ class Position:
             
             # Net P&L = Initial credit - Short leg cost + Long leg value
             net_pnl = self.entry_price - short_intrinsic + long_intrinsic
+            
+        elif self.strategy_type == StrategyType.PUT_DEBIT_SPREAD:
+            # Buy higher strike put, Sell lower strike put
+            higher_strike = higher_option.strike  # Higher strike (ATM)
+            lower_strike = lower_option.strike   # Lower strike (OTM)
+            
+            # Calculate intrinsic values at expiration
+            higher_intrinsic = max(0, higher_strike - underlying_price)
+            lower_intrinsic = max(0, lower_strike - underlying_price)
+            
+            # Net P&L = (Higher put value - Lower put value) - Net debit paid
+            # entry_price is negative (net debit), so: net_pnl = (higher - lower) + entry_price
+            net_pnl = (higher_intrinsic - lower_intrinsic) + self.entry_price
             
         else:
             raise ValueError(f"Invalid strategy type: {self.strategy_type}")
@@ -381,11 +398,14 @@ class Position:
         if self.quantity is None:
             raise ValueError("Quantity is not set")
         
-        # For credit spreads, the return is: Initial Credit - Cost to Close
-        if self.strategy_type in [StrategyType.CALL_CREDIT_SPREAD, StrategyType.PUT_CREDIT_SPREAD]:
-            # entry_price = net credit received when opening
-            # exit_price = cost to close the position
-            # Return = Credit received - Cost to close
+        # For credit spreads and debit spreads, use: entry_price - exit_price
+        # Credit spreads: entry_price = net credit (positive), exit_price = cost to close (positive)
+        # Debit spreads: entry_price = -net debit (negative), exit_price = -net credit to close (negative)
+        # Both formulas work: Return = entry_price - exit_price
+        if self.strategy_type in [StrategyType.CALL_CREDIT_SPREAD, StrategyType.PUT_CREDIT_SPREAD, StrategyType.PUT_DEBIT_SPREAD]:
+            # entry_price - exit_price works for both:
+            # Credit: (credit) - (cost) = credit - cost ✓
+            # Debit: (-debit) - (-credit) = -debit + credit = credit - debit ✓
             return (self.entry_price * self.quantity * 100) - (exit_price * self.quantity * 100)
         else:
             # For other position types, use the standard calculation
@@ -398,9 +418,14 @@ class Position:
         if self.quantity is None or exit_price is None:
             raise ValueError("Quantity is not set")
         
-        # For credit spreads, calculate percentage return based on max risk
-        if self.strategy_type in [StrategyType.CALL_CREDIT_SPREAD, StrategyType.PUT_CREDIT_SPREAD]:
-            return ((self.entry_price * self.quantity * 100) - (exit_price * self.quantity * 100)) / (self.entry_price * self.quantity * 100)
+        # For credit spreads and debit spreads, calculate percentage return based on max risk
+        if self.strategy_type in [StrategyType.CALL_CREDIT_SPREAD, StrategyType.PUT_CREDIT_SPREAD, StrategyType.PUT_DEBIT_SPREAD]:
+            # For credit spreads: use entry_price (net credit) as denominator
+            # For debit spreads: use abs(entry_price) (net debit) as denominator
+            denominator = abs(self.entry_price * self.quantity * 100)
+            if denominator == 0:
+                return 0.0
+            return ((self.entry_price * self.quantity * 100) - (exit_price * self.quantity * 100)) / denominator
         else:
             # For other position types, use the standard calculation
             return ((exit_price * self.quantity * 100) - (self.entry_price * self.quantity * 100)) / (self.entry_price * self.quantity * 100)
@@ -445,6 +470,12 @@ class Position:
             # For put credit spread: sell ATM put, buy OTM put
             current_net_credit = current_atm_price - current_otm_price
             return current_net_credit
+        elif self.strategy_type == StrategyType.PUT_DEBIT_SPREAD:
+            # For put debit spread: buy higher strike put, sell lower strike put
+            # To close: sell higher strike put, buy back lower strike put
+            # Exit price = lower_price - higher_price (net credit to close, stored as negative)
+            current_net_credit = current_otm_price - current_atm_price
+            return -current_net_credit  # Store as negative for debit spread
         else:
             raise ValueError(f"Invalid strategy type: {self.strategy_type}")
     
@@ -491,6 +522,12 @@ class Position:
             # For put credit spread: sell ATM put, buy OTM put
             current_net_credit = current_atm_price - current_otm_price
             return current_net_credit
+        elif self.strategy_type == StrategyType.PUT_DEBIT_SPREAD:
+            # For put debit spread: buy higher strike put, sell lower strike put
+            # To close: sell higher strike put, buy back lower strike put
+            # Exit price = lower_price - higher_price (net credit to close, stored as negative)
+            current_net_credit = current_otm_price - current_atm_price
+            return -current_net_credit  # Store as negative for debit spread
         else:
             raise ValueError(f"Invalid strategy type: {self.strategy_type}")
     
@@ -549,7 +586,20 @@ class Position:
     def get_max_risk(self):
         """
         Determine the max loss for a position.
+        
+        For credit spreads: max risk = (width - net_credit) * 100
+        For debit spreads: max risk = abs(entry_price) * 100 (entry_price is negative for debit spreads)
         """
+        # Check if this is a debit spread (entry_price is negative)
+        if self.entry_price < 0:
+            # Debit spread: max risk is the net debit paid
+            return abs(self.entry_price) * 100
+        
+        # Credit spread: calculate max risk as (width - net_credit) * 100
+        if not self.spread_options or len(self.spread_options) != 2:
+            # Fallback: use entry_price if spread_options not available
+            return abs(self.entry_price) * 100
+        
         atm_option, otm_option = self.spread_options
         width = abs(atm_option.strike - otm_option.strike)
         net_credit = atm_option.last_price - otm_option.last_price

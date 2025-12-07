@@ -23,10 +23,11 @@ class VelocitySignalMomentumStrategy(Strategy):
     # Configurable holding period in trading days
     holding_period = 4
 
-    def __init__(self, options_handler: OptionsHandler, start_date_offset: int = 60, stop_loss: float = None):
+    def __init__(self, options_handler: OptionsHandler, start_date_offset: int = 60, stop_loss: float = None, max_risk_per_trade: float = 0.08):
         super().__init__(start_date_offset=start_date_offset, stop_loss=stop_loss)
 
         self.new_options_handler = options_handler
+        self.max_risk_per_trade = max_risk_per_trade
         
         # Track position entries for plotting
         self._position_entries = []
