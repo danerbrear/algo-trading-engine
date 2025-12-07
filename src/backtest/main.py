@@ -195,17 +195,27 @@ class BacktestEngine:
         
         position.set_quantity(position_size)
 
-        # For credit spreads, we need to reserve the maximum risk amount
+        # Handle capital adjustment based on position type
         if position.strategy_type in [StrategyType.CALL_CREDIT_SPREAD, StrategyType.PUT_CREDIT_SPREAD]:
-            # For credit spreads: Add the net credit received to capital
-            # The net credit is already stored in position.entry_price
+            # Credit spread: Add the net credit received to capital
             credit_received = position.entry_price * position.quantity * 100
             self.capital += credit_received
             print(f"💰 Added net credit of ${credit_received:.2f} to capital")
+        elif position.strategy_type == StrategyType.PUT_DEBIT_SPREAD:
+            # Debit spread: Subtract the net debit paid from capital
+            # entry_price is negative for debit spreads, so use abs()
+            debit_paid = abs(position.entry_price) * position.quantity * 100
+            if self.capital < debit_paid:
+                print(f"⚠️  Warning: Not enough capital to add position. Need ${debit_paid:.2f}, have ${self.capital:.2f}")
+                return
+            self.capital -= debit_paid
+            print(f"💰 Deducted net debit of ${debit_paid:.2f} from capital")
         else:
             # For other position types, check if we have enough capital
-            if self.capital < position.entry_price * position.quantity * 100:
-                raise ValueError("Not enough capital to add position")
+            cost = abs(position.entry_price) * position.quantity * 100
+            if self.capital < cost:
+                raise ValueError(f"Not enough capital to add position. Need ${cost:.2f}, have ${self.capital:.2f}")
+            self.capital -= cost
 
         print(f"Adding position: {position.__str__()}\n")
         
@@ -263,11 +273,17 @@ class BacktestEngine:
 
         # Update capital based on position type
         if position.strategy_type in [StrategyType.CALL_CREDIT_SPREAD, StrategyType.PUT_CREDIT_SPREAD]:
-            # For credit spreads: Subtract the cost to buy back the spread
+            # Credit spread: Subtract the cost to buy back the spread
             # The exit_price represents the cost to close the position
             cost_to_close = exit_price * position.quantity * 100
             self.capital -= cost_to_close
             print(f"💰 Subtracted cost to close of ${cost_to_close:.2f} from capital")
+        elif position.strategy_type == StrategyType.PUT_DEBIT_SPREAD:
+            # Debit spread: Add the net credit received when closing
+            # exit_price is negative (net credit to close), so we add it
+            credit_received = abs(exit_price) * position.quantity * 100
+            self.capital += credit_received
+            print(f"💰 Added net credit received of ${credit_received:.2f} to capital")
         else:
             # For other position types, add the return
             self.capital += position_return
@@ -299,17 +315,31 @@ class BacktestEngine:
         print(f"     Entry: ${position.entry_price:.2f} | Exit: ${exit_price:.2f}")
         print(f"     Return: ${position_return:+.2f} | Capital: ${self.capital:.2f}\n")
     
-    # TODO: Only works for credit spreads since using max risk
     def _get_position_size(self, position: Position) -> int:
         """
-        Get the number of contracts to buy or sell for a position based on the max position size and the current capital.
-        """
-        if self.max_position_size is None:
-            return 1
+        Get the number of contracts to buy or sell for a position based on the strategy's max_risk_per_trade.
         
-        max_position_capital = self.capital * self.max_position_size
-
-        return int(max_position_capital / position.get_max_risk())
+        Uses: max_risk_allowed = capital * max_risk_per_trade
+              position_size = max_risk_allowed / position.get_max_risk()
+        
+        Returns 0 if strategy doesn't have max_risk_per_trade or if calculated size is 0.
+        """
+        # Check if strategy has max_risk_per_trade attribute
+        if not hasattr(self.strategy, 'max_risk_per_trade') or self.strategy.max_risk_per_trade is None:
+            return 0
+        
+        # Use strategy's max_risk_per_trade: max risk allowed = capital * max_risk_per_trade
+        max_risk_allowed = self.capital * self.strategy.max_risk_per_trade
+        max_risk_per_contract = position.get_max_risk()
+        position_size = int(max_risk_allowed / max_risk_per_contract)
+        
+        # Debug logging
+        if not self.quiet_mode:
+            print(f"📊 Position sizing: Capital=${self.capital:.2f}, MaxRisk%={self.strategy.max_risk_per_trade:.1%}, "
+                  f"MaxRiskAllowed=${max_risk_allowed:.2f}, MaxRiskPerContract=${max_risk_per_contract:.2f}, "
+                  f"Quantity={position_size}")
+        
+        return position_size
 
     def _calculate_sharpe_ratio(self) -> float:
         """

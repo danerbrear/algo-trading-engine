@@ -231,8 +231,19 @@ class TestOptionsRetrieverHelperPhase4:
     
     def test_find_optimal_expiration_no_match(self, sample_contracts):
         """Test finding optimal expiration with no matching dates."""
+        # Use a date far in the future to ensure no match
+        # The fixture uses next Friday, so we need a range that definitely excludes it
+        # Calculate days to next Friday
+        today = date.today()
+        days_until_friday = (4 - today.weekday()) % 7
+        if days_until_friday == 0:
+            days_until_friday = 7
+        future_date = today + timedelta(days=days_until_friday)
+        days_to_future = (future_date - today).days
+        
+        # Use a range that's definitely before the future date
         optimal_exp = OptionsRetrieverHelper.find_optimal_expiration(
-            sample_contracts, min_days=1, max_days=5  # Very short range
+            sample_contracts, min_days=days_to_future + 10, max_days=days_to_future + 20
         )
         
         assert optimal_exp is None
