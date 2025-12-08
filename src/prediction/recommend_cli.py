@@ -76,8 +76,8 @@ def main():
     open_records = store.get_open_positions(symbol=args.symbol)
     if open_records:
         print(f"Open positions found: {len(open_records)}")
-        options_handler = OptionsHandler(args.symbol, quiet_mode=not args.verbose, use_free_tier=args.free)
-        strategy = build_strategy(args.strategy, options_handler, symbol=args.symbol)
+        options_handler = OptionsHandler(args.symbol, use_free_tier=args.free)
+        strategy = build_strategy(args.strategy, args.symbol, options_handler)
         recommender = InteractiveStrategyRecommender(strategy, options_handler, store, capital_manager, auto_yes=args.yes)
 
         # Print current status for open positions before prompting to close

@@ -231,8 +231,26 @@ class TestOptionsRetrieverHelperPhase4:
     
     def test_find_optimal_expiration_no_match(self, sample_contracts):
         """Test finding optimal expiration with no matching dates."""
+        # Calculate days to the fixture's expiration date
+        from datetime import date
+        today = date.today()
+        fixture_exp_date = sample_contracts[0].expiration_date.date
+        days_to_fixture = (fixture_exp_date - today).days
+        
+        # Use a range that definitely excludes the fixture's date
+        # If fixture is within 1-5 days, use a range after it
+        # If fixture is far away, use a range before it
+        if 1 <= days_to_fixture <= 5:
+            # Fixture is in the 1-5 range, so use a range after it
+            min_days = days_to_fixture + 10
+            max_days = days_to_fixture + 20
+        else:
+            # Fixture is outside 1-5, so use 1-5 range (shouldn't match)
+            min_days = 1
+            max_days = 5
+        
         optimal_exp = OptionsRetrieverHelper.find_optimal_expiration(
-            sample_contracts, min_days=1, max_days=5  # Very short range
+            sample_contracts, min_days=min_days, max_days=max_days
         )
         
         assert optimal_exp is None

@@ -90,6 +90,8 @@ class TestRecommendCliAutoClose(unittest.TestCase):
         
         # Assertions
         mock_decision_store.return_value.get_open_positions.assert_called_once_with(symbol='SPY')
+        # Verify build_strategy was called with correct arguments
+        mock_build_strategy.assert_called_once_with('velocity_momentum', 'SPY', mock_options_handler.return_value)
         mock_recommender_class.assert_called_once()
         mock_recommender.auto_yes = True  # Should be set to True for auto-close
         mock_recommender.recommend_close_positions.assert_called_once()
@@ -128,6 +130,8 @@ class TestRecommendCliAutoClose(unittest.TestCase):
                 main()
         
         # Assertions
+        # Verify build_strategy was called with correct arguments
+        mock_build_strategy.assert_called_once_with('velocity_momentum', 'SPY', mock_options_handler.return_value)
         mock_recommender.recommend_close_positions.assert_called_once()
 
     @patch('src.prediction.recommend_cli.JsonDecisionStore')
@@ -179,6 +183,8 @@ class TestRecommendCliAutoClose(unittest.TestCase):
         
         # Assertions
         mock_decision_store.return_value.get_open_positions.assert_called_once_with(symbol='SPY')
+        # Verify build_strategy was called with correct arguments
+        mock_build_strategy.assert_called_once_with('velocity_momentum', 'SPY', mock_options_handler.return_value)
         mock_recommender_class.assert_called_once()
 
     @patch('src.prediction.recommend_cli.JsonDecisionStore')
@@ -204,6 +210,8 @@ class TestRecommendCliAutoClose(unittest.TestCase):
         
         # Assertions
         mock_decision_store.return_value.get_open_positions.assert_called_once_with(symbol='SPY')
+        # Verify build_strategy was called with correct arguments
+        mock_build_strategy.assert_called_once_with('velocity_momentum', 'SPY', mock_options_handler.return_value)
         mock_recommender_class.assert_called_once()
 
     def test_auto_close_argument_parsing(self):
@@ -246,6 +254,8 @@ class TestRecommendCliAutoClose(unittest.TestCase):
         
         # Assertions
         mock_decision_store.return_value.get_open_positions.assert_called_once_with(symbol='SPY')
+        # Verify build_strategy was called with correct arguments
+        mock_build_strategy.assert_called_once_with('velocity_momentum', 'SPY', mock_options_handler.return_value)
         mock_recommender_class.assert_called_once()
 
 
