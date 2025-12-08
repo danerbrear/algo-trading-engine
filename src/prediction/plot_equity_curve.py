@@ -464,6 +464,37 @@ def plot_equity_curve(
     plt.close()
 
 
+def calculate_drawdowns(capital_values: List[float]) -> List[float]:
+    """
+    Calculate drawdown percentages from equity curve.
+    
+    A drawdown is the percentage decline from a peak value.
+    Returns a list of all drawdown values (as percentages).
+    
+    Args:
+        capital_values: List of capital values over time
+        
+    Returns:
+        List of drawdown percentages (positive values representing declines)
+    """
+    if not capital_values or len(capital_values) < 2:
+        return []
+    
+    drawdowns = []
+    peak = capital_values[0]
+    
+    for current in capital_values:
+        if current > peak:
+            peak = current
+        elif peak > 0:
+            # Calculate drawdown as percentage decline from peak
+            drawdown = (peak - current) / peak * 100
+            if drawdown > 0:
+                drawdowns.append(drawdown)
+    
+    return drawdowns
+
+
 def print_summary(positions: List[ClosedPosition], strategy_filter: Optional[str] = None, capital_allocations: Optional[Dict[str, float]] = None):
     """Print summary statistics for closed positions."""
     if not positions:
@@ -488,6 +519,17 @@ def print_summary(positions: List[ClosedPosition], strategy_filter: Optional[str
             strategy_groups[position.strategy_name] = []
         strategy_groups[position.strategy_name].append(position)
     
+    # Calculate overall equity curve for drawdown analysis
+    overall_initial_capital = 0.0
+    if capital_allocations:
+        # Sum all allocated capital for overall analysis
+        overall_initial_capital = sum(capital_allocations.values())
+    
+    # Calculate overall equity curve
+    sorted_all_positions = sorted(positions, key=lambda p: p.closed_at)
+    _, overall_capital = calculate_equity_curve(sorted_all_positions, overall_initial_capital)
+    overall_drawdowns = calculate_drawdowns(overall_capital)
+    
     # Overall stats
     total_pnl = sum(p.pnl for p in positions)
     total_trades = len(positions)
@@ -501,6 +543,15 @@ def print_summary(positions: List[ClosedPosition], strategy_filter: Optional[str
     print(f"  Wins: {total_wins} | Losses: {total_losses}")
     print(f"  Win Rate: {win_rate:.1f}%")
     print(f"  Avg P&L per Trade: ${total_pnl / total_trades:,.2f}" if total_trades > 0 else "")
+    
+    # Overall drawdown stats
+    if overall_drawdowns:
+        min_dd = min(overall_drawdowns)
+        mean_dd = sum(overall_drawdowns) / len(overall_drawdowns)
+        max_dd = max(overall_drawdowns)
+        print(f"  Drawdowns: Min: {min_dd:.2f}% | Mean: {mean_dd:.2f}% | Max: {max_dd:.2f}%")
+    else:
+        print(f"  Drawdowns: No drawdowns detected")
     
     # Capital tracking summary if allocations available
     if capital_allocations:
@@ -530,6 +581,12 @@ def print_summary(positions: List[ClosedPosition], strategy_filter: Optional[str
         # Map strategy name to config key
         config_key = _map_strategy_name(strategy_name)
         allocated = capital_allocations.get(config_key, 0.0) if capital_allocations else 0.0
+        
+        # Calculate strategy equity curve for drawdown analysis
+        sorted_strategy_positions = sorted(strategy_positions, key=lambda p: p.closed_at)
+        _, strategy_capital = calculate_equity_curve(sorted_strategy_positions, allocated)
+        strategy_drawdowns = calculate_drawdowns(strategy_capital)
+        
         remaining = allocated + strategy_pnl
         
         print(f"\n  {strategy_name.replace('_', ' ').title()}:")
@@ -540,6 +597,15 @@ def print_summary(positions: List[ClosedPosition], strategy_filter: Optional[str
         print(f"    Trades: {strategy_trades}")
         print(f"    Win Rate: {strategy_win_rate:.1f}%")
         print(f"    Avg P&L: ${strategy_pnl / strategy_trades:,.2f}" if strategy_trades > 0 else "")
+        
+        # Strategy drawdown stats
+        if strategy_drawdowns:
+            min_dd = min(strategy_drawdowns)
+            mean_dd = sum(strategy_drawdowns) / len(strategy_drawdowns)
+            max_dd = max(strategy_drawdowns)
+            print(f"    Drawdowns: Min: {min_dd:.2f}% | Mean: {mean_dd:.2f}% | Max: {max_dd:.2f}%")
+        else:
+            print(f"    Drawdowns: No drawdowns detected")
     
     print(f"\n{'='*80}\n")
 
