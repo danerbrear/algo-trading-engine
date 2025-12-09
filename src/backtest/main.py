@@ -62,9 +62,20 @@ class BacktestEngine:
 
         # Use only dates that exist in the data (not pd.bdate_range which includes holidays)
         # Filter data to the specified date range and use the actual dates
-        date_range = self.data.index
+        # Filter by start_date and end_date to ensure we only process the requested range
+        start_date_ts = pd.Timestamp(self.start_date)
+        end_date_ts = pd.Timestamp(self.end_date)
+        mask = (self.data.index >= start_date_ts) & (self.data.index <= end_date_ts)
+        filtered_data = self.data[mask].copy()
+        date_range = filtered_data.index
+        
+        if len(date_range) == 0:
+            print(f"❌ No data available in the specified date range: {self.start_date.date()} to {self.end_date.date()}")
+            return False
 
-        self.benchmark.set_start_price(self.data.iloc[self.strategy.start_date_offset]['Close'])
+        # Use filtered_data for benchmark start price calculation
+        benchmark_start_idx = min(self.strategy.start_date_offset, len(filtered_data) - 1)
+        self.benchmark.set_start_price(filtered_data.iloc[benchmark_start_idx]['Close'])
         
         # Initialize progress tracker if enabled
         if self.enable_progress_tracking:
@@ -563,7 +574,12 @@ if __name__ == "__main__":
     data_retriever.load_treasury_rates(start_date, end_date)
 
     try:
-        data = data_retriever.fetch_data_for_period(start_date, 'backtest')
+        # Fetch data with enough history before start_date for strategy calculations
+        # The strategy needs start_date_offset days of history, so fetch from earlier
+        # Add a buffer of start_date_offset days before the start_date
+        from datetime import timedelta
+        fetch_start_date = (start_date - timedelta(days=args.start_date_offset + 30)).strftime('%Y-%m-%d')
+        data = data_retriever.fetch_data_for_period(fetch_start_date, end_date.strftime('%Y-%m-%d'), 'backtest')
 
         # Create options handler to inject into strategy
         options_handler = OptionsHandler(

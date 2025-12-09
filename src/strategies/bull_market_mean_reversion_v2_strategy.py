@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+import yfinance as yf
 
 from src.backtest.models import Strategy, Position, StrategyType
 from src.common.options_dtos import ExpirationRangeDTO, StrikeRangeDTO, StrikePrice
@@ -64,15 +65,24 @@ class BullMarketMeanReversionV2Strategy(Strategy):
         
         # Track position entries for plotting
         self._position_entries = []
+        # Track position exits for plotting
+        self._position_exits = []
         # Track Z-Score at entry for each position
         self._position_entry_z_scores = {}
+        # VIX data for overlay
+        self.vix_data = None
+        self.vix_z_score = None
     
     def set_data(self, data: pd.DataFrame, treasury_data: Optional = None):
         super().set_data(data, treasury_data)
         
-        # Reset position entries tracking for new backtest run
+        # Reset position entries and exits tracking for new backtest run
         self._position_entries = []
+        self._position_exits = []
         self._position_entry_z_scores = {}
+        
+        # Fetch and calculate VIX Z-Score
+        self._load_vix_data()
         
         # Pre-calculate moving averages and Z-Score for performance
         if self.data is not None and not self.data.empty:
@@ -92,6 +102,64 @@ class BullMarketMeanReversionV2Strategy(Strategy):
             self.data['Price_Mean'] = self.data['Close'].rolling(window=window).mean()
             self.data['Price_Std'] = self.data['Close'].rolling(window=window).std()
             self.data['Z_Score'] = (self.data['Close'] - self.data['Price_Mean']) / self.data['Price_Std']
+    
+    def _load_vix_data(self):
+        """Load VIX data and calculate Z-Score for overlay on plot."""
+        if self.data is None or self.data.empty:
+            self.vix_data = None
+            self.vix_z_score = None
+            return
+        
+        try:
+            # Get date range from SPY data (extend slightly to ensure we have enough data)
+            start_date = self.data.index[0] - pd.Timedelta(days=90)  # Extra days for rolling window
+            end_date = self.data.index[-1] + pd.Timedelta(days=1)
+            
+            # Fetch VIX data using yfinance
+            vix_ticker = yf.Ticker('^VIX')
+            vix_data = vix_ticker.history(start=start_date, end=end_date)
+            
+            if vix_data.empty:
+                progress_print("⚠️  No VIX data available")
+                self.vix_data = None
+                self.vix_z_score = None
+                return
+            
+            # Remove timezone from index if present
+            if vix_data.index.tz is not None:
+                vix_data.index = vix_data.index.tz_localize(None)
+            
+            # Align VIX data with SPY data dates using reindex with forward fill
+            # This ensures we have VIX data for each SPY trading day
+            aligned_vix = pd.DataFrame(index=self.data.index)
+            aligned_vix['Close'] = vix_data['Close'].reindex(self.data.index, method='ffill')
+            
+            # Drop rows where we couldn't align VIX data
+            aligned_vix = aligned_vix.dropna(subset=['Close'])
+            
+            if aligned_vix.empty:
+                progress_print("⚠️  Could not align VIX data with SPY dates")
+                self.vix_data = None
+                self.vix_z_score = None
+                return
+            
+            # Calculate VIX Z-Score using same 60-day window
+            window = 60
+            aligned_vix['VIX_Mean'] = aligned_vix['Close'].rolling(window=window).mean()
+            aligned_vix['VIX_Std'] = aligned_vix['Close'].rolling(window=window).std()
+            aligned_vix['VIX_Z_Score'] = (aligned_vix['Close'] - aligned_vix['VIX_Mean']) / aligned_vix['VIX_Std']
+            
+            self.vix_data = aligned_vix
+            self.vix_z_score = aligned_vix['VIX_Z_Score']
+            
+            progress_print(f"✅ VIX data loaded and Z-Score calculated ({len(aligned_vix)} aligned dates)")
+            
+        except Exception as e:
+            progress_print(f"⚠️  Error loading VIX data: {e}")
+            import traceback
+            traceback.print_exc()
+            self.vix_data = None
+            self.vix_z_score = None
     
     def _recalculate_indicators(self):
         """Recalculate moving averages, width, and Z-Score after data updates."""
@@ -162,6 +230,21 @@ class BullMarketMeanReversionV2Strategy(Strategy):
                                  label='Position Entry' if entry_date == entry_dates[0] else "", 
                                  zorder=5, alpha=0.8)
             
+            # Plot position exit indicators
+            if hasattr(self, '_position_exits'):
+                exit_dates = self._position_exits
+            else:
+                exit_dates = []
+            
+            if exit_dates:
+                for exit_date in exit_dates:
+                    if exit_date in self.data.index:
+                        exit_price = self.data.loc[exit_date, 'Close']
+                        ax1.scatter(exit_date, exit_price, 
+                                 color='blue', s=100, marker='o', 
+                                 label='Position Exit' if exit_date == exit_dates[0] else "", 
+                                 zorder=5, alpha=0.8)
+            
             # Format first subplot
             num_positions = len(entry_dates) if entry_dates else 0
             title = f'SPY Price with Position Entries - Bull Market Mean Reversion v2\nTotal Positions: {num_positions}'
@@ -173,12 +256,20 @@ class BullMarketMeanReversionV2Strategy(Strategy):
             # Plot Z-Score on second subplot
             if 'Z_Score' in self.data.columns:
                 ax2.plot(self.data.index, self.data['Z_Score'], 
-                        label='Z-Score', color='purple', alpha=0.7, linewidth=1)
+                        label='SPY Z-Score', color='purple', alpha=0.7, linewidth=1)
                 ax2.axhline(y=self.z_score_entry_threshold, color='green', linestyle='--', 
                            label=f'Entry Threshold ({self.z_score_entry_threshold})', alpha=0.5)
                 ax2.axhline(y=self.z_score_exit_threshold, color='red', linestyle='--', 
                            label=f'Exit Threshold ({self.z_score_exit_threshold})', alpha=0.5)
                 ax2.axhline(y=0, color='black', linestyle='-', alpha=0.3)
+            
+            # Plot VIX Z-Score overlay
+            if self.vix_z_score is not None and not self.vix_z_score.empty:
+                # Filter out NaN values for plotting
+                valid_vix = self.vix_z_score.dropna()
+                if not valid_vix.empty:
+                    ax2.plot(valid_vix.index, valid_vix.values, 
+                            label='VIX Z-Score', color='orange', alpha=0.9, linewidth=1, linestyle='-')
             
             ax2.set_xlabel('Date', fontsize=12)
             ax2.set_ylabel('Z-Score', fontsize=12)
@@ -601,10 +692,14 @@ class BullMarketMeanReversionV2Strategy(Strategy):
                 if not has_error and exit_price is not None:
                     exit_price = self._sanitize_exit_price(exit_price)
                     current_volumes = self.get_current_volumes_for_position(position, date)
+                    # Track exit for plotting
+                    self._position_exits.append(date)
                     remove_position(date, position, exit_price, underlying_price=current_underlying_price, current_volumes=current_volumes)
                 else:
                     progress_print(f"⚠️  Could not compute exit price for 2 DTE closure, using 0.0")
                     current_volumes = self.get_current_volumes_for_position(position, date)
+                    # Track exit for plotting
+                    self._position_exits.append(date)
                     remove_position(date, position, 0.0, underlying_price=current_underlying_price, current_volumes=current_volumes)
                 continue
             
@@ -623,6 +718,8 @@ class BullMarketMeanReversionV2Strategy(Strategy):
                         if not has_error and exit_price is not None:
                             exit_price = self._sanitize_exit_price(exit_price)
                             current_volumes = self.get_current_volumes_for_position(position, date)
+                            # Track exit for plotting
+                            self._position_exits.append(date)
                             remove_position(date, position, exit_price, current_volumes=current_volumes)
                             continue
                     
@@ -634,6 +731,8 @@ class BullMarketMeanReversionV2Strategy(Strategy):
                         if not has_error and exit_price is not None:
                             exit_price = self._sanitize_exit_price(exit_price)
                             current_volumes = self.get_current_volumes_for_position(position, date)
+                            # Track exit for plotting
+                            self._position_exits.append(date)
                             remove_position(date, position, exit_price, current_volumes=current_volumes)
                             continue
             
@@ -647,6 +746,8 @@ class BullMarketMeanReversionV2Strategy(Strategy):
                 if self._should_close_due_to_stop(position, exit_price):
                     progress_print(f"🛑 Stop loss hit for {position.__str__()} at exit {exit_price}")
                     current_volumes = self.get_current_volumes_for_position(position, date)
+                    # Track exit for plotting
+                    self._position_exits.append(date)
                     remove_position(date, position, exit_price, current_volumes=current_volumes)
                     continue
                 
@@ -654,6 +755,8 @@ class BullMarketMeanReversionV2Strategy(Strategy):
                 if self._should_close_due_to_profit(position, exit_price):
                     progress_print(f"🎯 Profit target hit for {position.__str__()} at exit {exit_price}")
                     current_volumes = self.get_current_volumes_for_position(position, date)
+                    # Track exit for plotting
+                    self._position_exits.append(date)
                     remove_position(date, position, exit_price, current_volumes=current_volumes)
                     continue
             

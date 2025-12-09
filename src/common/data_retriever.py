@@ -152,7 +152,7 @@ class DataRetriever:
 
         return self.lstm_data
 
-    def fetch_data_for_period(self, start_date: str, data_type: str = 'general'):
+    def fetch_data_for_period(self, start_date: str, end_date: str = None, data_type: str = 'general'):
         """Fetch data for a specific period with caching"""
         cache_suffix = f'_{data_type}_data'
         
@@ -166,9 +166,15 @@ class DataRetriever:
         
         if cached_data is not None:
             print(f"📋 Loading cached {data_type.upper()} data from {start_date} ({len(cached_data)} samples)")
+            # Filter by end_date if provided and data is cached
+            if end_date is not None:
+                end_date_ts = pd.Timestamp(end_date).tz_localize(None)
+                mask = cached_data.index <= end_date_ts
+                cached_data = cached_data[mask].copy()
+                print(f"✂️ Filtered cached {data_type} data to end date {end_date}: {cached_data.index[0]} to {cached_data.index[-1]} ({len(cached_data)} samples)")
             return cached_data
             
-        print(f"🌐 Fetching {data_type.upper()} data from {start_date} onwards...")
+        print(f"🌐 Fetching {data_type.upper()} data from {start_date}" + (f" to {end_date}" if end_date else " onwards") + "...")
         if self.ticker is None:
             self.ticker = yf.Ticker(self.symbol)
         
@@ -180,14 +186,18 @@ class DataRetriever:
         data.index = data.index.tz_localize(None)
         print(f"📊 Initial {data_type} data range: {data.index[0]} to {data.index[-1]}")
         
-        # Filter data to start from the specified date
+        # Filter data to the specified date range
         start_date_ts = pd.Timestamp(start_date).tz_localize(None)
         mask = data.index >= start_date_ts
+        if end_date is not None:
+            end_date_ts = pd.Timestamp(end_date).tz_localize(None)
+            mask = mask & (data.index <= end_date_ts)
         data = data[mask].copy()
         print(f"✂️ Filtered {data_type} data range: {data.index[0]} to {data.index[-1]} ({len(data)} samples)")
 
         if data.empty:
-            raise ValueError(f"No data available after filtering for dates >= {start_date}")
+            date_range_str = f"dates >= {start_date}" + (f" and <= {end_date}" if end_date else "")
+            raise ValueError(f"No data available after filtering for {date_range_str}")
 
         # Cache the filtered data
         self.cache_manager.save_date_to_cache(
