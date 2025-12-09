@@ -503,6 +503,120 @@ class TestVolumeValidationIntegration:
         assert volume_summary['skipped_closures'] == 1, "Should track skipped closure"
         assert volume_summary['options_checked'] >= 1, "Should have checked at least one option"
 
+    def test_get_position_size_raises_error_when_max_risk_per_trade_missing(self):
+        """Test that _get_position_size raises ValueError when max_risk_per_trade is missing."""
+        # Create mock data
+        data = pd.DataFrame({
+            'Close': [100, 101, 102],
+            'Volume': [1000, 1100, 1200],
+        }, index=pd.date_range('2024-01-01', periods=3))
+        
+        # Create strategy WITHOUT max_risk_per_trade
+        class StrategyWithoutMaxRisk(MockStrategy):
+            def __init__(self):
+                super().__init__()
+                # Remove max_risk_per_trade attribute
+                if hasattr(self, 'max_risk_per_trade'):
+                    delattr(self, 'max_risk_per_trade')
+        
+        strategy = StrategyWithoutMaxRisk()
+        
+        # Create backtest engine
+        engine = BacktestEngine(
+            data=data,
+            strategy=strategy,
+            initial_capital=10000,
+            start_date=datetime(2024, 1, 1),
+            end_date=datetime(2024, 1, 3)
+        )
+        
+        # Create a position
+        option1 = Mock(spec=Option)
+        option1.symbol = "SPY240315C00500000"
+        option1.strike = 500.0
+        option1.last_price = 3.0
+        option1.expiration = "2024-03-15"
+        option1.option_type = Mock()
+        option1.option_type.value = "C"
+        
+        option2 = Mock(spec=Option)
+        option2.symbol = "SPY240315C00510000"
+        option2.strike = 510.0
+        option2.last_price = 0.5
+        option2.expiration = "2024-03-15"
+        option2.option_type = Mock()
+        option2.option_type.value = "C"
+        
+        position = Position(
+            symbol="SPY",
+            expiration_date=datetime(2024, 3, 15),
+            strategy_type=StrategyType.CALL_CREDIT_SPREAD,
+            strike_price=500.0,
+            entry_date=datetime(2024, 1, 1),
+            entry_price=2.50,
+            spread_options=[option1, option2]
+        )
+        
+        # Verify that _get_position_size raises ValueError
+        with pytest.raises(ValueError, match="must have max_risk_per_trade attribute set"):
+            engine._get_position_size(position)
+    
+    def test_get_position_size_raises_error_when_max_risk_per_trade_is_none(self):
+        """Test that _get_position_size raises ValueError when max_risk_per_trade is None."""
+        # Create mock data
+        data = pd.DataFrame({
+            'Close': [100, 101, 102],
+            'Volume': [1000, 1100, 1200],
+        }, index=pd.date_range('2024-01-01', periods=3))
+        
+        # Create strategy with max_risk_per_trade set to None
+        class StrategyWithNoneMaxRisk(MockStrategy):
+            def __init__(self):
+                super().__init__()
+                self.max_risk_per_trade = None
+        
+        strategy = StrategyWithNoneMaxRisk()
+        
+        # Create backtest engine
+        engine = BacktestEngine(
+            data=data,
+            strategy=strategy,
+            initial_capital=10000,
+            start_date=datetime(2024, 1, 1),
+            end_date=datetime(2024, 1, 3)
+        )
+        
+        # Create a position
+        option1 = Mock(spec=Option)
+        option1.symbol = "SPY240315C00500000"
+        option1.strike = 500.0
+        option1.last_price = 3.0
+        option1.expiration = "2024-03-15"
+        option1.option_type = Mock()
+        option1.option_type.value = "C"
+        
+        option2 = Mock(spec=Option)
+        option2.symbol = "SPY240315C00510000"
+        option2.strike = 510.0
+        option2.last_price = 0.5
+        option2.expiration = "2024-03-15"
+        option2.option_type = Mock()
+        option2.option_type.value = "C"
+        
+        position = Position(
+            symbol="SPY",
+            expiration_date=datetime(2024, 3, 15),
+            strategy_type=StrategyType.CALL_CREDIT_SPREAD,
+            strike_price=500.0,
+            entry_date=datetime(2024, 1, 1),
+            entry_price=2.50,
+            spread_options=[option1, option2]
+        )
+        
+        # Verify that _get_position_size raises ValueError
+        with pytest.raises(ValueError, match="must have max_risk_per_trade attribute set"):
+            engine._get_position_size(position)
+
 
 if __name__ == "__main__":
     pytest.main([__file__]) 

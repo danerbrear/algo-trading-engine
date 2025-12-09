@@ -304,6 +304,7 @@ class BullMarketMeanReversionV2Strategy(Strategy):
         Check for entry signal:
         1. Upward trend: SMA15 > SMA30 and width between them is increasing
         2. Z-Score > entry threshold
+        3. Inverse Divergence: VIX Z-Score - SPY Z-Score > -2.0 (VIX not too negative relative to SPY = some fear present)
         """
         if self.data is None or self.data.empty:
             return False
@@ -386,7 +387,41 @@ class BullMarketMeanReversionV2Strategy(Strategy):
             progress_print(f"⚠️  Z-Score not above threshold: Z-Score={z_score:.2f}, threshold={self.z_score_entry_threshold}")
             return False
         
-        progress_print(f"✅ Entry signal detected: SMA15={sma15:.2f} > SMA30={sma30:.2f}, width increasing, Z-Score={z_score:.2f}")
+        # Check inverse divergence: VIX Z-Score - SPY Z-Score > -2.0 (VIX not too negative relative to SPY = some fear present)
+        # This is less restrictive - we want VIX to not be too low when SPY is high
+        # Example: If SPY Z = 1.6, we allow VIX Z > -0.4 (much more permissive)
+        inverse_divergence_threshold = -2.0
+        if self.vix_z_score is not None and not self.vix_z_score.empty:
+            try:
+                vix_z_score = self.vix_z_score.loc[date] if date in self.vix_z_score.index else None
+                if vix_z_score is not None and not pd.isna(vix_z_score):
+                    inverse_divergence = vix_z_score - z_score
+                    if inverse_divergence <= inverse_divergence_threshold:
+                        progress_print(f"⚠️  Insufficient inverse divergence: SPY Z-Score={z_score:.2f}, VIX Z-Score={vix_z_score:.2f}, inverse divergence={inverse_divergence:.2f} (entry requires > {inverse_divergence_threshold})")
+                        return False
+                else:
+                    # If VIX data not available for this date, skip the filter (backward compatibility)
+                    progress_print(f"⚠️  VIX Z-Score not available for {date.date()}, skipping inverse divergence filter")
+            except (KeyError, IndexError):
+                # If VIX data not available for this date, skip the filter (backward compatibility)
+                progress_print(f"⚠️  VIX Z-Score not available for {date.date()}, skipping inverse divergence filter")
+        else:
+            # If VIX data not loaded, skip the filter (backward compatibility)
+            progress_print("⚠️  VIX Z-Score data not loaded, skipping inverse divergence filter")
+        
+        vix_z_display = ""
+        inverse_divergence_display = ""
+        if self.vix_z_score is not None and not self.vix_z_score.empty:
+            try:
+                vix_z = self.vix_z_score.loc[date] if date in self.vix_z_score.index else None
+                if vix_z is not None and not pd.isna(vix_z):
+                    inverse_divergence = vix_z - z_score
+                    vix_z_display = f", VIX Z-Score={vix_z:.2f}"
+                    inverse_divergence_display = f", Inverse Divergence={inverse_divergence:.2f}"
+            except (KeyError, IndexError):
+                pass
+        
+        progress_print(f"✅ Entry signal detected: SMA15={sma15:.2f} > SMA30={sma30:.2f}, width increasing, Z-Score={z_score:.2f}{vix_z_display}{inverse_divergence_display}")
         return True
     
     def _get_current_underlying_price(self, date: datetime) -> Optional[float]:
