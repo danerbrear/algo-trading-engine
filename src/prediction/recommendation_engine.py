@@ -345,11 +345,17 @@ class InteractiveStrategyRecommender:
             strategy_name: Strategy name for capital manager lookup
             
         Returns:
-            Quantity (number of contracts), or 0 if strategy doesn't have max_risk_per_trade
+            Quantity (number of contracts), or 0 if calculated size is 0.
+            
+        Raises:
+            ValueError: If strategy doesn't have max_risk_per_trade attribute set.
         """
-        # Check if strategy has max_risk_per_trade
+        # Check if strategy has max_risk_per_trade attribute
         if not hasattr(self.strategy, 'max_risk_per_trade') or self.strategy.max_risk_per_trade is None:
-            return 1  # Default to 1 contract if not specified
+            raise ValueError(
+                f"Strategy {type(self.strategy).__name__} must have max_risk_per_trade attribute set. "
+                f"This is required for position sizing."
+            )
         
         # Get allocated capital for this strategy
         allocated_capital = self.capital_manager.get_allocated_capital(strategy_name)

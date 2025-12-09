@@ -333,11 +333,17 @@ class BacktestEngine:
         Uses: max_risk_allowed = capital * max_risk_per_trade
               position_size = max_risk_allowed / position.get_max_risk()
         
-        Returns 0 if strategy doesn't have max_risk_per_trade or if calculated size is 0.
+        Returns 0 if calculated size is 0.
+        
+        Raises:
+            ValueError: If strategy doesn't have max_risk_per_trade attribute set.
         """
         # Check if strategy has max_risk_per_trade attribute
         if not hasattr(self.strategy, 'max_risk_per_trade') or self.strategy.max_risk_per_trade is None:
-            return 0
+            raise ValueError(
+                f"Strategy {type(self.strategy).__name__} must have max_risk_per_trade attribute set. "
+                f"This is required for position sizing."
+            )
         
         # Use strategy's max_risk_per_trade: max risk allowed = capital * max_risk_per_trade
         max_risk_allowed = self.capital * self.strategy.max_risk_per_trade
