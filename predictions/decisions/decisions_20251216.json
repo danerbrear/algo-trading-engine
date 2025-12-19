@@ -52,7 +52,7 @@
         }
       ],
       "probability_of_profit": 0.7,
-      "strategy_name": "velocity_momentum",
+      "strategy_name": "velocity_signal_momentum",
       "strategy_type": "put_credit_spread",
       "symbol": "SPY",
       "width": 6.0
