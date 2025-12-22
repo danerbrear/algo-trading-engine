@@ -67,6 +67,53 @@ class TestClosedPosition:
         assert position.pnl == (2.00 - 1.00) * 2 * 100
         assert position.pnl == 200.0
 
+    def test_from_decision_dict_long_put(self):
+        """Test creating ClosedPosition from long put decision"""
+        decision = {
+            'closed_at': '2025-11-01T15:30:00+00:00',
+            'outcome': 'accepted',
+            'entry_price': 3.00,
+            'exit_price': 5.00,
+            'quantity': 1,
+            'proposal': {
+                'strategy_name': 'bull_market_mean_reversion_v2',
+                'strategy_type': 'long_put'
+            }
+        }
+
+        position = ClosedPosition.from_decision_dict(decision)
+
+        assert position is not None
+        assert position.entry_price == 3.00
+        assert position.exit_price == 5.00
+        assert position.quantity == 1
+        assert position.strategy_name == 'bull_market_mean_reversion_v2'
+        assert position.strategy_type == 'long_put'
+        # Long put: profit when exit > entry (buy at 3, sell at 5)
+        assert position.pnl == (5.00 - 3.00) * 1 * 100
+        assert position.pnl == 200.0
+    
+    def test_from_decision_dict_long_put_loss(self):
+        """Test creating ClosedPosition from losing long put decision"""
+        decision = {
+            'closed_at': '2025-11-01T15:30:00+00:00',
+            'outcome': 'accepted',
+            'entry_price': 3.00,
+            'exit_price': 1.00,
+            'quantity': 2,
+            'proposal': {
+                'strategy_name': 'bull_market_mean_reversion_v2',
+                'strategy_type': 'long_put'
+            }
+        }
+
+        position = ClosedPosition.from_decision_dict(decision)
+
+        assert position is not None
+        # Long put: loss when exit < entry (buy at 3, sell at 1)
+        assert position.pnl == (1.00 - 3.00) * 2 * 100
+        assert position.pnl == -400.0
+
     def test_from_decision_dict_not_closed(self):
         """Test that open positions return None"""
         decision = {

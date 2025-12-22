@@ -25,16 +25,13 @@ class BullMarketMeanReversionV2Strategy(Strategy):
     
     Entry Criteria:
     - Upward trend: SMA15 > SMA30 and width between them is increasing
-    - Z-Score of underlying price > 1.5
-    - Put debit spread (buy higher strike put, sell lower strike put)
-    - Width ≤ $6
+    - Z-Score of daily returns > 1.0 (measures deviation from expected return, accounting for market growth)
+    - Long put (buy ATM put)
     - 7-10 DTE
     
     Exit Criteria:
     - Stop loss hit
-    - Profit take hit
-    - Z-Score < 0.5
-    - Z-Score decreased by > 0.7 from entry
+    - Profit take hit (80%)
     - 2 DTE
     
     Position Management:
@@ -47,21 +44,15 @@ class BullMarketMeanReversionV2Strategy(Strategy):
         options_handler: OptionsHandler, 
         start_date_offset: int = 60,
         stop_loss: float = None,
-        profit_target: float = None,
-        z_score_entry_threshold: float = 1.5,
-        z_score_exit_threshold: float = 0.5,
-        z_score_decrease_threshold: float = 0.7,
-        max_risk_per_trade: float = 0.08,
-        max_spread_width: float = 6.0
+        profit_target: float = 0.8,
+        z_score_entry_threshold: float = 1.0,
+        max_risk_per_trade: float = 0.08
     ):
         super().__init__(start_date_offset=start_date_offset, stop_loss=stop_loss, profit_target=profit_target)
         
         self.options_handler = options_handler
         self.z_score_entry_threshold = z_score_entry_threshold
-        self.z_score_exit_threshold = z_score_exit_threshold
-        self.z_score_decrease_threshold = z_score_decrease_threshold
         self.max_risk_per_trade = max_risk_per_trade
-        self.max_spread_width = max_spread_width
         
         # Track position entries for plotting
         self._position_entries = []
@@ -96,12 +87,18 @@ class BullMarketMeanReversionV2Strategy(Strategy):
             # Calculate width change (to detect increasing width)
             self.data['SMA_Width_Change'] = self.data['SMA_Width'].diff()
             
-            # Calculate Z-Score: (price - mean) / std
-            # Use rolling window for mean and std (e.g., 60 days)
+            # Calculate Z-Score based on returns (not absolute prices) to account for market growth/trend
+            # This measures deviation from expected return, not deviation from absolute price level
+            # Formula: Z-Score = (current_return - mean_return) / std_return
+            # This better detects overvaluation relative to the trend, not just high absolute prices
             window = 60
-            self.data['Price_Mean'] = self.data['Close'].rolling(window=window).mean()
-            self.data['Price_Std'] = self.data['Close'].rolling(window=window).std()
-            self.data['Z_Score'] = (self.data['Close'] - self.data['Price_Mean']) / self.data['Price_Std']
+            # Calculate daily returns (percentage change)
+            self.data['Returns'] = self.data['Close'].pct_change()
+            # Calculate rolling mean and std of returns
+            self.data['Returns_Mean'] = self.data['Returns'].rolling(window=window).mean()
+            self.data['Returns_Std'] = self.data['Returns'].rolling(window=window).std()
+            # Z-Score of returns: how many std devs is current return from mean return
+            self.data['Z_Score'] = (self.data['Returns'] - self.data['Returns_Mean']) / self.data['Returns_Std']
     
     def _load_vix_data(self):
         """Load VIX data and calculate Z-Score for overlay on plot."""
@@ -174,11 +171,15 @@ class BullMarketMeanReversionV2Strategy(Strategy):
             # Calculate width change (to detect increasing width)
             self.data['SMA_Width_Change'] = self.data['SMA_Width'].diff()
             
-            # Calculate Z-Score
+            # Calculate Z-Score based on returns (not absolute prices) to account for market growth/trend
             window = 60
-            self.data['Price_Mean'] = self.data['Close'].rolling(window=window).mean()
-            self.data['Price_Std'] = self.data['Close'].rolling(window=window).std()
-            self.data['Z_Score'] = (self.data['Close'] - self.data['Price_Mean']) / self.data['Price_Std']
+            # Calculate daily returns (percentage change)
+            self.data['Returns'] = self.data['Close'].pct_change()
+            # Calculate rolling mean and std of returns
+            self.data['Returns_Mean'] = self.data['Returns'].rolling(window=window).mean()
+            self.data['Returns_Std'] = self.data['Returns'].rolling(window=window).std()
+            # Z-Score of returns: how many std devs is current return from mean return
+            self.data['Z_Score'] = (self.data['Returns'] - self.data['Returns_Mean']) / self.data['Returns_Std']
     
     def on_new_date(self, date: datetime, positions: tuple['Position', ...], add_position: Callable[['Position'], None], remove_position: Callable[['Position'], None]):
         super().on_new_date(date, positions)
@@ -247,7 +248,8 @@ class BullMarketMeanReversionV2Strategy(Strategy):
             
             # Format first subplot
             num_positions = len(entry_dates) if entry_dates else 0
-            title = f'SPY Price with Position Entries - Bull Market Mean Reversion v2\nTotal Positions: {num_positions}'
+            num_exits = len(exit_dates) if exit_dates else 0
+            title = f'SPY Price with Position Entries - Bull Market Mean Reversion v2\nTotal Positions: {num_positions} (Entries: {num_positions}, Exits: {num_exits})'
             ax1.set_title(title, fontsize=14, fontweight='bold')
             ax1.set_ylabel('SPY Price ($)', fontsize=12)
             ax1.legend(loc='upper left')
@@ -259,8 +261,6 @@ class BullMarketMeanReversionV2Strategy(Strategy):
                         label='SPY Z-Score', color='purple', alpha=0.7, linewidth=1)
                 ax2.axhline(y=self.z_score_entry_threshold, color='green', linestyle='--', 
                            label=f'Entry Threshold ({self.z_score_entry_threshold})', alpha=0.5)
-                ax2.axhline(y=self.z_score_exit_threshold, color='red', linestyle='--', 
-                           label=f'Exit Threshold ({self.z_score_exit_threshold})', alpha=0.5)
                 ax2.axhline(y=0, color='black', linestyle='-', alpha=0.3)
             
             # Plot VIX Z-Score overlay
@@ -277,7 +277,8 @@ class BullMarketMeanReversionV2Strategy(Strategy):
             ax2.grid(True, alpha=0.3)
             
             # Add text box with strategy info
-            strategy_info = f'Strategy: Bull Market Mean Reversion v2\nZ-Score Entry: >{self.z_score_entry_threshold}\nZ-Score Exit: <{self.z_score_exit_threshold}'
+            profit_target_str = f'{self.profit_target*100:.0f}%' if self.profit_target is not None else 'None'
+            strategy_info = f'Strategy: Bull Market Mean Reversion v2\nZ-Score Entry: >{self.z_score_entry_threshold}\nProfit Target: {profit_target_str}'
             ax1.text(0.02, 0.98, strategy_info, transform=ax1.transAxes, fontsize=10,
                    verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
             
@@ -288,6 +289,9 @@ class BullMarketMeanReversionV2Strategy(Strategy):
             
             # Adjust layout
             plt.tight_layout()
+            
+            # Debug: Print what will be plotted
+            progress_print(f"📊 Plotting {num_positions} entry markers and {num_exits} exit markers")
             
             # Show the plot
             plt.show()
@@ -303,7 +307,7 @@ class BullMarketMeanReversionV2Strategy(Strategy):
         """
         Check for entry signal:
         1. Upward trend: SMA15 > SMA30 and width between them is increasing
-        2. Z-Score > entry threshold
+        2. Z-Score of returns > entry threshold (measures deviation from expected return, accounting for market growth)
         3. Inverse Divergence: VIX Z-Score - SPY Z-Score > -2.0 (VIX not too negative relative to SPY = some fear present)
         """
         if self.data is None or self.data.empty:
@@ -351,9 +355,10 @@ class BullMarketMeanReversionV2Strategy(Strategy):
                 progress_print("⚠️  Date not found in data")
                 return False
         
-        # Check if we have enough data to analyze (need at least 60 days for Z-Score)
+        # Check if we have enough data to analyze (need at least 60 days for returns-based Z-Score rolling window)
+        # Note: Returns calculation needs 1 day, rolling window needs 60 days, so we need at least 61 rows total
         if current_idx < 60:
-            progress_print("⚠️  Not enough data to analyze (need at least 60 days)")
+            progress_print("⚠️  Not enough data to analyze (need at least 60 days for Z-Score calculation)")
             return False
         
         # Check if required columns exist
@@ -467,10 +472,9 @@ class BullMarketMeanReversionV2Strategy(Strategy):
         
         return None
     
-    def _create_put_debit_spread(self, date: datetime, current_price: float, expiration: str) -> Optional[Position]:
+    def _create_long_put(self, date: datetime, current_price: float, expiration: str) -> Optional[Position]:
         """
-        Create a put debit spread (buy higher strike put, sell lower strike put).
-        Width must be ≤ max_spread_width (default $6).
+        Create a long put position (buy ATM put).
         
         Args:
             date: Current date
@@ -478,17 +482,16 @@ class BullMarketMeanReversionV2Strategy(Strategy):
             expiration: Target expiration date string (YYYY-MM-DD)
             
         Returns:
-            Position: Put debit spread position, or None if creation fails
+            Position: Long put position, or None if creation fails
         """
         try:
             # Get list of contracts for the date
             expiration_range = ExpirationRangeDTO(min_days=7, max_days=10)
             
-            # Strike range: need strikes around current price for put debit spread
-            # For put debit spread: buy higher strike (closer to ATM), sell lower strike (OTM)
+            # Strike range: need strikes around current price for ATM put
             strike_range = StrikeRangeDTO(
-                min_strike=StrikePrice(Decimal(str(current_price - self.max_spread_width - 2))),
-                max_strike=StrikePrice(Decimal(str(current_price + 2)))
+                min_strike=StrikePrice(Decimal(str(current_price - 5))),
+                max_strike=StrikePrice(Decimal(str(current_price + 5)))
             )
             
             contracts = self.options_handler.get_contract_list_for_date(
@@ -522,89 +525,40 @@ class BullMarketMeanReversionV2Strategy(Strategy):
             
             progress_print(f"Found ATM put: {atm_put.ticker} @ ${atm_put.strike_price.value} exp {atm_put.expiration_date}")
             
-            # For put debit spread: buy higher strike (ATM or slightly ITM), sell lower strike (OTM)
-            # Higher strike = ATM or slightly above
-            higher_strike = round(current_price)
+            # Get bar data to get the premium (entry price)
+            put_bar = self.options_handler.get_option_bar(atm_put, date)
             
-            # Lower strike = higher_strike - width (≤ max_spread_width)
-            # Try to find a strike that gives us width ≤ max_spread_width
-            target_lower_strike = higher_strike - self.max_spread_width
-            
-            # Filter for puts only
-            puts_for_expiration = [
-                c for c in contracts_for_expiration 
-                if c.contract_type == OptionType.PUT
-            ]
-            
-            if not puts_for_expiration:
-                progress_print(f"⚠️  No put contracts found for expiration {expiration}")
+            if not put_bar:
+                progress_print("⚠️  No bar data available for put premium")
                 return None
             
-            # Find the put with strike closest to higher_strike (ATM)
-            higher_put = min(
-                puts_for_expiration,
-                key=lambda put: abs(float(put.strike_price.value) - higher_strike)
-            )
+            # For long put: we buy the put and pay premium
+            # entry_price = premium paid (positive, represents cost)
+            premium_paid = float(put_bar.close_price)
             
-            # Find the put with strike closest to target_lower_strike
-            lower_put = min(
-                puts_for_expiration,
-                key=lambda put: abs(float(put.strike_price.value) - target_lower_strike)
-            )
-            
-            # Verify width ≤ max_spread_width
-            actual_width = abs(float(higher_put.strike_price.value) - float(lower_put.strike_price.value))
-            if actual_width > self.max_spread_width:
-                progress_print(f"⚠️  Spread width {actual_width:.2f} exceeds max {self.max_spread_width}")
-                return None
-            
-            # Verify both legs have the same expiration
-            if str(higher_put.expiration_date) != str(lower_put.expiration_date):
-                progress_print(f"❌ ERROR: Expiration mismatch! Higher: {higher_put.expiration_date}, Lower: {lower_put.expiration_date}")
-                return None
-            
-            progress_print(f"✅ Verified: Both legs have same expiration {expiration} (vertical spread)")
-            progress_print(f"Higher strike put: {higher_put.ticker} @ ${higher_put.strike_price.value}")
-            progress_print(f"Lower strike put: {lower_put.ticker} @ ${lower_put.strike_price.value}")
-            progress_print(f"Spread width: ${actual_width:.2f}")
-            
-            # Get bar data to calculate net debit
-            higher_bar = self.options_handler.get_option_bar(higher_put, date)
-            lower_bar = self.options_handler.get_option_bar(lower_put, date)
-            
-            if not higher_bar or not lower_bar:
-                progress_print("⚠️  No bar data available for debit calculation")
-                return None
-            
-            # Calculate net debit (buy higher strike, sell lower strike)
-            # Net debit = price of higher strike put - price of lower strike put
-            net_debit = float(higher_bar.close_price) - float(lower_bar.close_price)
-            
-            if net_debit <= 0:
-                progress_print(f"⚠️  Invalid debit: {net_debit:.2f} (should be positive for debit spread)")
+            if premium_paid <= 0:
+                progress_print(f"⚠️  Invalid premium: {premium_paid:.2f} (should be positive)")
                 return None
             
             # Convert OptionContractDTO to Option using the conversion method
             from src.common.models import Option
-            higher_option = Option.from_contract_and_bar(higher_put, higher_bar)
-            lower_option = Option.from_contract_and_bar(lower_put, lower_bar)
+            put_option = Option.from_contract_and_bar(atm_put, put_bar)
             
-            # Create position (put debit spread)
-            # Put debit spread: Buy higher strike put, Sell lower strike put
+            # Create position (long put)
+            # Long put: Buy ATM put
             # This is a BEARISH position - profits when price goes down (mean reversion from high prices)
-            # Note: Position class uses credit spread formula: Return = entry_price - exit_price
-            # For debit spread to work correctly, we store:
-            # entry_price = -net_debit (negative) so that Return = entry_price - exit_price = -net_debit - exit_price
-            # exit_price = -net_credit_to_close (negative) so that Return = -net_debit - (-net_credit) = net_credit - net_debit
-            # This gives us the correct return: (H' - L') - (H - L)
+            # entry_price = premium paid (positive, represents cost)
+            # exit_price = premium received when selling (positive)
+            # Return = (exit_price - entry_price) / entry_price
+            # Profit when exit_price > entry_price (put gains value)
             position = Position(
                 symbol=self.data.index.name if self.data.index.name else 'SPY',
                 expiration_date=datetime.strptime(expiration, '%Y-%m-%d'),
-                strategy_type=StrategyType.PUT_DEBIT_SPREAD,  # Put debit spread for bearish mean reversion
-                strike_price=higher_strike,
+                strategy_type=StrategyType.LONG_PUT,
+                strike_price=float(atm_put.strike_price.value),
                 entry_date=date,
-                entry_price=-net_debit,  # Store as negative so Position calculation works for debit spread
-                spread_options=[higher_option, lower_option]  # [higher strike (buy), lower strike (sell)]
+                entry_price=premium_paid,  # Premium paid (positive, represents cost)
+                spread_options=[put_option]  # Single option in list
             )
             
             # Set quantity for position (will be calculated by backtest engine based on risk)
@@ -612,7 +566,7 @@ class BullMarketMeanReversionV2Strategy(Strategy):
             return position
             
         except Exception as e:
-            progress_print(f"⚠️  Error creating put debit spread: {e}")
+            progress_print(f"⚠️  Error creating long put: {e}")
             import traceback
             traceback.print_exc()
             return None
@@ -687,15 +641,12 @@ class BullMarketMeanReversionV2Strategy(Strategy):
             progress_print("⚠️  Failed to select expiration")
             return
         
-        position = self._create_put_debit_spread(date, current_price, expiration_str)
+        position = self._create_long_put(date, current_price, expiration_str)
         if position is None:
-            progress_print("⚠️  Failed to create put debit spread for selected expiration")
+            progress_print("⚠️  Failed to create long put for selected expiration")
             return
         
         progress_print(f"Current underlying price: {current_price:.2f}")
-        
-        # Track position entry for plotting
-        self._position_entries.append(date)
         
         # Track Z-Score at entry
         entry_z_score = self._get_z_score(date)
@@ -705,7 +656,14 @@ class BullMarketMeanReversionV2Strategy(Strategy):
             self._position_entry_z_scores[position_id] = entry_z_score
             progress_print(f"📊 Entry Z-Score: {entry_z_score:.2f}")
         
-        add_position(position)
+        # Add position to backtest engine
+        position_added = add_position(position)
+        
+        # Track position entry for plotting (only if successfully added)
+        if position_added:
+            self._position_entries.append(date)
+        else:
+            progress_print(f"⚠️  Position was not added by backtest engine (rejected due to capital/volume constraints)")
     
     def _try_close_positions(self, date: datetime, positions: tuple['Position', ...], remove_position: Callable[['Position'], None]):
         """Try to close positions if exit criteria are met."""
@@ -738,40 +696,7 @@ class BullMarketMeanReversionV2Strategy(Strategy):
                     remove_position(date, position, 0.0, underlying_price=current_underlying_price, current_volumes=current_volumes)
                 continue
             
-            # 2. Check Z-Score exit conditions
-            current_z_score = self._get_z_score(date)
-            if current_z_score is not None:
-                # Get entry Z-Score
-                position_id = f"{position.symbol}_{position.entry_date.strftime('%Y-%m-%d')}_{position.strike_price}"
-                entry_z_score = self._position_entry_z_scores.get(position_id)
-                
-                if entry_z_score is not None:
-                    # Check if Z-Score < exit threshold
-                    if current_z_score < self.z_score_exit_threshold:
-                        progress_print(f"📉 Z-Score exit: current={current_z_score:.2f} < threshold={self.z_score_exit_threshold}")
-                        exit_price, has_error = self._compute_exit_price(date, position)
-                        if not has_error and exit_price is not None:
-                            exit_price = self._sanitize_exit_price(exit_price)
-                            current_volumes = self.get_current_volumes_for_position(position, date)
-                            # Track exit for plotting
-                            self._position_exits.append(date)
-                            remove_position(date, position, exit_price, current_volumes=current_volumes)
-                            continue
-                    
-                    # Check if Z-Score decreased by > threshold from entry
-                    z_score_decrease = entry_z_score - current_z_score
-                    if z_score_decrease > self.z_score_decrease_threshold:
-                        progress_print(f"📉 Z-Score decrease exit: decrease={z_score_decrease:.2f} > threshold={self.z_score_decrease_threshold}")
-                        exit_price, has_error = self._compute_exit_price(date, position)
-                        if not has_error and exit_price is not None:
-                            exit_price = self._sanitize_exit_price(exit_price)
-                            current_volumes = self.get_current_volumes_for_position(position, date)
-                            # Track exit for plotting
-                            self._position_exits.append(date)
-                            remove_position(date, position, exit_price, current_volumes=current_volumes)
-                            continue
-            
-            # 3. Compute exit price for stop loss and profit target
+            # 2. Compute exit price for stop loss and profit target
             exit_price, has_error = self._compute_exit_price(date, position)
             if not has_error and exit_price is not None:
                 exit_price = self._sanitize_exit_price(exit_price)
@@ -802,38 +727,28 @@ class BullMarketMeanReversionV2Strategy(Strategy):
         progress_print(f"✅ Strategy evaluation complete for {date.strftime('%Y-%m-%d')}")
     
     def _compute_exit_price(self, date: datetime, position: Position) -> tuple[Optional[float], bool]:
-        """Compute exit price using options_handler.get_option_bar and calculate_exit_price_from_bars"""
+        """Compute exit price using options_handler.get_option_bar"""
         try:
-            if not position.spread_options or len(position.spread_options) != 2:
-                progress_print("⚠️  Position doesn't have valid spread options")
+            if not position.spread_options or len(position.spread_options) != 1:
+                progress_print("⚠️  Position doesn't have valid option")
                 return None, True
             
-            higher_option, lower_option = position.spread_options
-            progress_print(f"🔍 Attempting to get bar data for {date.strftime('%Y-%m-%d')} - Higher: {higher_option.ticker}, Lower: {lower_option.ticker}")
+            put_option = position.spread_options[0]
             
-            # Get bar data for both options
-            higher_bar = self.options_handler.get_option_bar(higher_option, date)
-            lower_bar = self.options_handler.get_option_bar(lower_option, date)
+            # Get bar data for the put option
+            put_bar = self.options_handler.get_option_bar(put_option, date)
             
-            progress_print(f"🔍 Bar data results - Higher bar: {higher_bar is not None}, Lower bar: {lower_bar is not None}")
-            
-            if not higher_bar or not lower_bar:
-                progress_print(f"⚠️  No bar data available for options on {date.strftime('%Y-%m-%d')}")
+            if not put_bar:
+                progress_print(f"⚠️  No bar data available for {put_option.ticker} on {date.strftime('%Y-%m-%d')}")
                 return None, True
             
-            # For put debit spread: 
-            # Entry: Buy higher strike put at H, Sell lower strike put at L
-            # Net debit paid = H - L (stored as entry_price = -(H - L), negative)
-            # Exit: Sell higher strike put at H', Buy back lower strike put at L'
-            # Net credit received = H' - L'
-            # 
-            # Position class uses credit spread formula: Return = entry_price - exit_price
-            # With entry_price = -(H - L) and exit_price = -(H' - L'):
-            # Return = -(H - L) - (-(H' - L')) = -(H - L) + (H' - L') = (H' - L') - (H - L) ✓
-            net_credit_to_close = float(higher_bar.close_price) - float(lower_bar.close_price)
-            # Store as negative so Position calculation works for debit spread
-            exit_price = -net_credit_to_close
-            progress_print(f"💰 Calculated exit price: {exit_price} (net credit to close: {net_credit_to_close})")
+            # For long put:
+            # Entry: Buy put and pay premium (entry_price = premium_paid, positive)
+            # Exit: Sell put and receive premium (exit_price = premium_received, positive)
+            # Return = (exit_price - entry_price) / entry_price
+            # Profit when exit_price > entry_price (put gains value)
+            exit_price = float(put_bar.close_price)
+            progress_print(f"💰 Calculated exit price: {exit_price} (premium received when selling long put)")
             return exit_price, False
             
         except Exception as e:
@@ -843,7 +758,7 @@ class BullMarketMeanReversionV2Strategy(Strategy):
             return None, True
     
     def _sanitize_exit_price(self, value: Optional[float]) -> Optional[float]:
-        """Sanitize exit price value. For debit spreads, exit_price can be negative."""
+        """Sanitize exit price value. For long puts, exit_price is always positive (premium received when selling)."""
         if value is None:
             return None
         return round(value, 2)
@@ -859,6 +774,7 @@ class BullMarketMeanReversionV2Strategy(Strategy):
     def get_current_volumes_for_position(self, position: Position, date: datetime) -> list[int]:
         """
         Fetch current date volume data for all options in a position using options_handler.
+        For naked puts, this returns a single volume value.
         """
         current_volumes = []
         for option in position.spread_options:
@@ -884,7 +800,7 @@ class BullMarketMeanReversionV2Strategy(Strategy):
         This strategy requires:
         - Basic OHLCV data
         - Moving averages (SMA_15, SMA_30) for trend detection
-        - Z-Score calculation (60-day rolling window)
+        - Z-Score calculation based on returns (60-day rolling window) to account for market growth
         
         Args:
             data: DataFrame with market data and features
@@ -913,7 +829,8 @@ class BullMarketMeanReversionV2Strategy(Strategy):
             progress_print("❌ Error: Data must have a datetime index for backtesting")
             return False
         
-        # Check if we have enough data for Z-Score calculation (need at least 60 days)
+        # Check if we have enough data for returns-based Z-Score calculation (need at least 60 days for rolling window)
+        # Note: Returns calculation needs 1 day, rolling window needs 60 days, so we need at least 61 rows total
         if len(data) < 60:
             progress_print(f"⚠️  Warning: Not enough data for Z-Score analysis. Need at least 60 days, got {len(data)}")
             return False

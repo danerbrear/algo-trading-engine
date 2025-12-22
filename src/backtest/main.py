@@ -185,10 +185,13 @@ class BacktestEngine:
         print(f"   Sharpe Ratio: {sharpe_ratio:.3f}")
 
 
-    def _add_position(self, position: Position):
+    def _add_position(self, position: Position) -> bool:
         """
         Add a position to the positions. Rejects positions with insufficient volume and determines position size based
         on capital provided to the backtest.
+        
+        Returns:
+            bool: True if position was successfully added, False if rejected
         """
         
         # Volume validation - check all options in the spread
@@ -197,12 +200,12 @@ class BacktestEngine:
                 if not self._validate_option_volume(option):
                     print(f"⚠️  Volume validation failed: {option.symbol} has insufficient volume")
                     self.volume_stats = self.volume_stats.increment_rejected_positions()
-                    return  # Reject the position
+                    return False  # Reject the position
 
         position_size = self._get_position_size(position)
         if position_size == 0:
             print(f"⚠️  Warning: Not enough capital to add position. Position size is 0.")
-            return
+            return False
         
         position.set_quantity(position_size)
 
@@ -218,7 +221,7 @@ class BacktestEngine:
             debit_paid = abs(position.entry_price) * position.quantity * 100
             if self.capital < debit_paid:
                 print(f"⚠️  Warning: Not enough capital to add position. Need ${debit_paid:.2f}, have ${self.capital:.2f}")
-                return
+                return False
             self.capital -= debit_paid
             print(f"💰 Deducted net debit of ${debit_paid:.2f} from capital")
         else:
@@ -232,6 +235,8 @@ class BacktestEngine:
         
         self.positions.append(position)
         self.total_positions += 1
+        
+        return True  # Position successfully added
 
     def _remove_position(self, date: datetime, position: Position, exit_price: float, underlying_price: float = None, current_volumes: list[int] = None):
         """

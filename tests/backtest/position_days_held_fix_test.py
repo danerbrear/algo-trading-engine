@@ -178,6 +178,164 @@ class TestPositionDaysHeldFix(unittest.TestCase):
         self.assertEqual(days_held, 0)
 
 
+class TestLongPutReturnCalculations(unittest.TestCase):
+    """Test cases for LONG_PUT return calculations."""
+    
+    def setUp(self):
+        """Set up test fixtures for long put positions."""
+        # Create a simple long put option
+        self.put_option = Option(
+            ticker="O:SPY250315P00500000",
+            symbol="SPY",
+            strike=500.0,
+            expiration="2025-03-15",
+            option_type=OptionType.PUT,
+            last_price=3.0
+        )
+        
+        # Create long put position
+        self.long_put_position = Position(
+            symbol="SPY",
+            expiration_date=datetime(2025, 3, 15),
+            strategy_type=StrategyType.LONG_PUT,
+            strike_price=500.0,
+            entry_date=datetime(2025, 3, 1),
+            entry_price=3.0,  # Buy put at $3.00
+            spread_options=[self.put_option]
+        )
+        self.long_put_position.set_quantity(2)  # 2 contracts
+    
+    def test_long_put_return_calculation_profit(self):
+        """Test that LONG_PUT returns are calculated correctly for profitable trades."""
+        # Buy put at $3.00, sell at $5.00 = 67% profit
+        exit_price = 5.0
+        return_pct = self.long_put_position._get_return(exit_price)
+        
+        # Expected: (5.00 - 3.00) / 3.00 = 0.6667 (67%)
+        expected_return = (5.0 - 3.0) / 3.0
+        self.assertAlmostEqual(return_pct, expected_return, places=4)
+        self.assertGreater(return_pct, 0, "Profitable long put should have positive return")
+    
+    def test_long_put_return_calculation_loss(self):
+        """Test that LONG_PUT returns are calculated correctly for losing trades."""
+        # Buy put at $3.00, sell at $1.00 = -67% loss
+        exit_price = 1.0
+        return_pct = self.long_put_position._get_return(exit_price)
+        
+        # Expected: (1.00 - 3.00) / 3.00 = -0.6667 (-67%)
+        expected_return = (1.0 - 3.0) / 3.0
+        self.assertAlmostEqual(return_pct, expected_return, places=4)
+        self.assertLess(return_pct, 0, "Losing long put should have negative return")
+    
+    def test_long_put_return_calculation_breakeven(self):
+        """Test that LONG_PUT returns are calculated correctly at breakeven."""
+        # Buy put at $3.00, sell at $3.00 = 0% return
+        exit_price = 3.0
+        return_pct = self.long_put_position._get_return(exit_price)
+        
+        # Expected: (3.00 - 3.00) / 3.00 = 0.0
+        self.assertAlmostEqual(return_pct, 0.0, places=4)
+    
+    def test_long_put_profit_target_hit_when_above_target(self):
+        """Test that profit_target_hit returns True when target is exceeded."""
+        profit_target = 0.5  # 50% profit target
+        exit_price = 4.5  # (4.5 - 3.0) / 3.0 = 50%
+        
+        hit = self.long_put_position.profit_target_hit(profit_target, exit_price)
+        self.assertTrue(hit, "Should hit profit target when return equals target")
+    
+    def test_long_put_profit_target_not_hit(self):
+        """Test that profit_target_hit returns False when target is not reached."""
+        profit_target = 0.5  # 50% profit target
+        exit_price = 4.0  # (4.0 - 3.0) / 3.0 = 33%
+        
+        hit = self.long_put_position.profit_target_hit(profit_target, exit_price)
+        self.assertFalse(hit, "Should not hit profit target when return is below target")
+    
+    def test_long_put_stop_loss_hit_when_below_stop(self):
+        """Test that stop_loss_hit returns True when stop loss is exceeded."""
+        stop_loss = 0.5  # 50% stop loss
+        exit_price = 1.5  # (1.5 - 3.0) / 3.0 = -50%
+        
+        hit = self.long_put_position.stop_loss_hit(stop_loss, exit_price)
+        self.assertTrue(hit, "Should hit stop loss when loss equals stop")
+    
+    def test_long_put_stop_loss_not_hit(self):
+        """Test that stop_loss_hit returns False when stop loss is not exceeded."""
+        stop_loss = 0.5  # 50% stop loss
+        exit_price = 2.0  # (2.0 - 3.0) / 3.0 = -33%
+        
+        hit = self.long_put_position.stop_loss_hit(stop_loss, exit_price)
+        self.assertFalse(hit, "Should not hit stop loss when loss is less than stop")
+    
+    def test_long_put_get_return_dollars_profit(self):
+        """Test dollar return calculation for profitable long put."""
+        exit_price = 5.0  # Buy at $3, sell at $5
+        return_dollars = self.long_put_position.get_return_dollars(exit_price)
+        
+        # Expected: (5.0 - 3.0) * 2 contracts * 100 = $400
+        expected_dollars = (5.0 - 3.0) * 2 * 100
+        self.assertAlmostEqual(return_dollars, expected_dollars, places=2)
+        self.assertEqual(return_dollars, 400.0)
+    
+    def test_long_put_get_return_dollars_loss(self):
+        """Test dollar return calculation for losing long put."""
+        exit_price = 1.0  # Buy at $3, sell at $1
+        return_dollars = self.long_put_position.get_return_dollars(exit_price)
+        
+        # Expected: (1.0 - 3.0) * 2 contracts * 100 = -$400
+        expected_dollars = (1.0 - 3.0) * 2 * 100
+        self.assertAlmostEqual(return_dollars, expected_dollars, places=2)
+        self.assertEqual(return_dollars, -400.0)
+    
+    def test_long_put_total_loss_scenario(self):
+        """Test long put when option expires worthless (100% loss)."""
+        exit_price = 0.0  # Option expires worthless
+        return_pct = self.long_put_position._get_return(exit_price)
+        
+        # Expected: (0.0 - 3.0) / 3.0 = -1.0 (-100%)
+        self.assertAlmostEqual(return_pct, -1.0, places=4)
+        
+        return_dollars = self.long_put_position.get_return_dollars(exit_price)
+        # Expected: (0.0 - 3.0) * 2 * 100 = -$600 (total premium paid)
+        self.assertEqual(return_dollars, -600.0)
+    
+    def test_long_put_large_profit_scenario(self):
+        """Test long put with large profit (e.g., stock crashes)."""
+        exit_price = 15.0  # Put gains significant value
+        return_pct = self.long_put_position._get_return(exit_price)
+        
+        # Expected: (15.0 - 3.0) / 3.0 = 4.0 (400% profit)
+        expected_return = (15.0 - 3.0) / 3.0
+        self.assertAlmostEqual(return_pct, expected_return, places=4)
+        self.assertGreater(return_pct, 3.0, "Large profit should exceed 300%")
+    
+    def test_long_put_vs_short_put_return_difference(self):
+        """Test that long put and short put have opposite return calculations."""
+        # Create a short put with same parameters
+        short_put_position = Position(
+            symbol="SPY",
+            expiration_date=datetime(2025, 3, 15),
+            strategy_type=StrategyType.SHORT_PUT,
+            strike_price=500.0,
+            entry_date=datetime(2025, 3, 1),
+            entry_price=3.0,  # Sell put at $3.00
+            spread_options=[self.put_option]
+        )
+        short_put_position.set_quantity(2)
+        
+        exit_price = 5.0
+        
+        # Long put: buy at $3, sell at $5 = profit
+        long_return = self.long_put_position._get_return(exit_price)
+        # Short put: sell at $3, buy back at $5 = loss
+        short_return = short_put_position._get_return(exit_price)
+        
+        # They should have opposite signs
+        self.assertGreater(long_return, 0, "Long put should profit when price increases")
+        self.assertLess(short_return, 0, "Short put should lose when price increases")
+
+
 if __name__ == '__main__':
     unittest.main()
 

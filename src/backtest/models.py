@@ -426,8 +426,16 @@ class Position:
             if denominator == 0:
                 return 0.0
             return ((self.entry_price * self.quantity * 100) - (exit_price * self.quantity * 100)) / denominator
+        elif self.strategy_type in [StrategyType.SHORT_PUT, StrategyType.SHORT_CALL]:
+            # For short options: you sell at entry (receive premium), buy at exit (pay premium)
+            # Profit = entry_price - exit_price (you receive more than you pay)
+            # Return = (entry_price - exit_price) / entry_price
+            denominator = self.entry_price * self.quantity * 100
+            if denominator == 0:
+                return 0.0
+            return ((self.entry_price * self.quantity * 100) - (exit_price * self.quantity * 100)) / denominator
         else:
-            # For other position types, use the standard calculation
+            # For long position types, use the standard calculation (buy low, sell high)
             return ((exit_price * self.quantity * 100) - (self.entry_price * self.quantity * 100)) / (self.entry_price * self.quantity * 100)
     
     def calculate_exit_price(self, current_option_chain: OptionChain) -> float:

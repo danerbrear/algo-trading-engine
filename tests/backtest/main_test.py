@@ -618,5 +618,159 @@ class TestVolumeValidationIntegration:
             engine._get_position_size(position)
 
 
+class TestLongPutIntegration:
+    """Integration tests for LONG_PUT positions in backtest engine."""
+    
+    def test_backtest_engine_with_long_put_position(self):
+        """Test BacktestEngine with a long put position."""
+        # This test verifies that the backtest engine can handle long put positions
+        # We're testing the Position class directly since integration with BacktestEngine
+        # requires more complex setup
+        from src.common.models import Option, OptionType
+        
+        put_option = Option(
+            ticker="O:SPY250315P00500000",
+            symbol="SPY",
+            strike=500.0,
+            expiration="2025-03-15",
+            option_type=OptionType.PUT,
+            last_price=3.0
+        )
+        
+        position = Position(
+            symbol="SPY",
+            expiration_date=datetime(2025, 3, 15),
+            strategy_type=StrategyType.LONG_PUT,
+            strike_price=500.0,
+            entry_date=datetime(2025, 3, 1),
+            entry_price=3.0,
+            spread_options=[put_option]
+        )
+        position.set_quantity(1)
+        
+        # Verify position was created correctly
+        assert position.strategy_type == StrategyType.LONG_PUT
+        assert position.entry_price == 3.0
+        assert len(position.spread_options) == 1
+    
+    def test_long_put_profit_calculation(self):
+        """Test that long put profit is calculated correctly."""
+        from src.common.models import Option, OptionType
+        
+        put_option = Option(
+            ticker="O:SPY250315P00500000",
+            symbol="SPY",
+            strike=500.0,
+            expiration="2025-03-15",
+            option_type=OptionType.PUT,
+            last_price=3.0
+        )
+        
+        position = Position(
+            symbol="SPY",
+            expiration_date=datetime(2025, 3, 15),
+            strategy_type=StrategyType.LONG_PUT,
+            strike_price=500.0,
+            entry_date=datetime(2025, 3, 1),
+            entry_price=3.0,  # Buy at $3.00
+            spread_options=[put_option]
+        )
+        position.set_quantity(2)
+        
+        # Exit at profit
+        exit_price = 5.0  # Sell at $5.00
+        return_dollars = position.get_return_dollars(exit_price)
+        
+        # Expected: (5.0 - 3.0) * 2 * 100 = $400
+        assert return_dollars == 400.0
+        
+        # Check percentage return
+        return_pct = position._get_return(exit_price)
+        expected_pct = (5.0 - 3.0) / 3.0  # 67%
+        assert abs(return_pct - expected_pct) < 0.01
+    
+    def test_long_put_loss_calculation(self):
+        """Test that long put loss is calculated correctly."""
+        from src.common.models import Option, OptionType
+        
+        put_option = Option(
+            ticker="O:SPY250315P00500000",
+            symbol="SPY",
+            strike=500.0,
+            expiration="2025-03-15",
+            option_type=OptionType.PUT,
+            last_price=3.0
+        )
+        
+        position = Position(
+            symbol="SPY",
+            expiration_date=datetime(2025, 3, 15),
+            strategy_type=StrategyType.LONG_PUT,
+            strike_price=500.0,
+            entry_date=datetime(2025, 3, 1),
+            entry_price=3.0,  # Buy at $3.00
+            spread_options=[put_option]
+        )
+        position.set_quantity(2)
+        
+        # Exit at loss
+        exit_price = 1.0  # Sell at $1.00
+        return_dollars = position.get_return_dollars(exit_price)
+        
+        # Expected: (1.0 - 3.0) * 2 * 100 = -$400
+        assert return_dollars == -400.0
+        
+        # Check percentage return
+        return_pct = position._get_return(exit_price)
+        expected_pct = (1.0 - 3.0) / 3.0  # -67%
+        assert abs(return_pct - expected_pct) < 0.01
+    
+    def test_long_put_volume_validation(self):
+        """Test that volume validation works for long put positions."""
+        from src.common.models import Option, OptionType
+        
+        # Create a long put with low volume
+        put_option = Mock(spec=Option)
+        put_option.symbol = "SPY240315P00500000"
+        put_option.volume = 5  # Below minimum of 10
+        put_option.strike = 500.0
+        put_option.last_price = 3.0
+        put_option.expiration = "2024-03-15"
+        put_option.option_type = Mock()
+        put_option.option_type.value = "P"
+        
+        position = Position(
+            symbol="SPY",
+            expiration_date=datetime(2024, 3, 15),
+            strategy_type=StrategyType.LONG_PUT,
+            strike_price=500.0,
+            entry_date=datetime(2024, 1, 1),
+            entry_price=3.0,
+            spread_options=[put_option]
+        )
+        
+        data = pd.DataFrame({
+            'Close': [100.0, 101.0, 102.0]
+        }, index=pd.date_range('2024-01-01', periods=3))
+        
+        strategy = Mock(spec=Strategy)
+        strategy.validate_data.return_value = True
+        
+        engine = BacktestEngine(
+            data=data,
+            strategy=strategy,
+            initial_capital=10000,
+            enable_progress_tracking=False,
+            volume_config=VolumeConfig(min_volume=10)
+        )
+        
+        # Try to add position - should be rejected due to low volume
+        initial_count = len(engine.positions)
+        engine._add_position(position)
+        
+        # Position should be rejected
+        assert len(engine.positions) == initial_count
+
+
 if __name__ == "__main__":
     pytest.main([__file__]) 

@@ -1084,8 +1084,8 @@ class TestOptionsHandlerPhase5Simple:
         """Create sample contracts for testing."""
         contracts = []
         
-        # Create contracts with future expiration dates
-        expirations = ["2025-12-15", "2025-12-17", "2025-12-24", "2026-01-21"]
+        # Create contracts with future expiration dates (relative to Dec 22, 2025)
+        expirations = ["2026-01-15", "2026-01-17", "2026-01-24", "2026-02-21"]
         strikes = [580.0, 585.0, 590.0, 595.0, 600.0, 605.0, 610.0, 615.0, 620.0]
         
         for exp_str in expirations:
@@ -1154,9 +1154,9 @@ class TestOptionsHandlerPhase5Simple:
     
     def test_get_contract_list_for_date_with_expiration_filter(self, options_handler, sample_contracts):
         """Test getting contracts with expiration filter."""
-        test_date = datetime(2025, 12, 10)
+        test_date = datetime(2025, 12, 22)  # Updated to match current date
         
-        expiration_range = ExpirationRangeDTO(min_days=1, max_days=30)
+        expiration_range = ExpirationRangeDTO(min_days=1, max_days=40)  # Updated to include 2026-01-15 (24 days away)
         
         with patch.object(options_handler.cache_manager, 'load_contracts', return_value=sample_contracts):
             contracts = options_handler.get_contract_list_for_date(test_date, expiration_range=expiration_range)
@@ -1192,11 +1192,30 @@ class TestOptionsHandlerPhase5Simple:
         test_date = datetime(2025, 12, 10)
         current_price = 600.0
         
-        with patch.object(options_handler.cache_manager, 'load_contracts', return_value=sample_contracts):
+        # Create a sample bar to return for all contract lookups
+        sample_bar = OptionBarDTO(
+            ticker="O:SPY250115C00600000",
+            timestamp=test_date,
+            open_price=Decimal('1.50'),
+            high_price=Decimal('1.60'),
+            low_price=Decimal('1.40'),
+            close_price=Decimal('1.55'),
+            volume=1000,
+            volume_weighted_avg_price=Decimal('1.52'),
+            number_of_transactions=100,
+            adjusted=True
+        )
+        
+        # Mock both load_contracts AND load_bar to avoid 72+ file I/O operations
+        with patch.object(options_handler.cache_manager, 'load_contracts', return_value=sample_contracts), \
+             patch.object(options_handler.cache_manager, 'load_bar', return_value=sample_bar):
             chain = options_handler.get_options_chain(test_date, current_price)
             assert chain.underlying_symbol == "SPY"
             assert chain.current_price == Decimal('600.0')
             assert len(chain.contracts) == len(sample_contracts)
+            # Note: Only 18 unique tickers in sample_contracts (9 strikes × 2 types)
+            # even though there are 72 total contracts with different expirations
+            assert len(chain.bars) > 0  # Verify bars are populated
     
     def test_error_handling_missing_api_key(self, temp_dir):
         """Test error handling for missing API key."""

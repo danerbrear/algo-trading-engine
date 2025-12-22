@@ -57,6 +57,17 @@ class TestPositionStatistics:
                 'return_percentage': 46.4,
                 'days_held': 15,
                 'max_risk': 280.0
+            },
+            {
+                'strategy_type': StrategyType.LONG_PUT,
+                'entry_date': datetime(2024, 3, 1),
+                'exit_date': datetime(2024, 3, 10),
+                'entry_price': 3.00,
+                'exit_price': 5.00,
+                'return_dollars': 200.0,
+                'return_percentage': 66.7,
+                'days_held': 9,
+                'max_risk': 300.0
             }
         ]
     
@@ -67,9 +78,10 @@ class TestPositionStatistics:
         
         # Check that statistics are printed
         assert "Position Performance Statistics" in captured.out
-        assert "Total closed positions: 3" in captured.out
-        assert "Overall win rate: 66.7%" in captured.out
-        assert "Total P&L: $+110.00" in captured.out
+        assert "Total closed positions: 4" in captured.out
+        assert "Long Put" in captured.out  # Verify LONG_PUT is included
+        assert "Overall win rate: 75.0%" in captured.out  # 3 wins out of 4 positions
+        assert "Total P&L: $+310.00" in captured.out  # Updated with LONG_PUT profit
         assert "Call Credit Spread" in captured.out
         assert "Put Credit Spread" in captured.out
     
