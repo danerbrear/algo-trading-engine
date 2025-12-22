@@ -1,4 +1,4 @@
-yfinance>=0.2.36
+yfinance>=0.2.36,<0.2.45  # Pin to version compatible with Python 3.9 (before | operator syntax)
 pandas>=2.2.0
 numpy>=1.24.0
 scikit-learn>=1.4.0
