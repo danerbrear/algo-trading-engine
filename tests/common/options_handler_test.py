@@ -1303,23 +1303,39 @@ class TestOptionsHandlerPhase5Simple:
         test_date = datetime(2025, 12, 10)
         current_price = 600.0
         
+        # Create a sample bar for mocking
+        sample_bar = OptionBarDTO(
+            ticker="O:SPY250115C00600000",
+            timestamp=test_date,
+            open_price=Decimal('1.50'),
+            high_price=Decimal('1.60'),
+            low_price=Decimal('1.40'),
+            close_price=Decimal('1.55'),
+            volume=1000,
+            volume_weighted_avg_price=Decimal('1.52'),
+            number_of_transactions=100,
+            adjusted=True
+        )
+        
         with patch.object(options_handler.cache_manager, 'load_contracts', return_value=sample_contracts):
             # Test complete workflow
             contracts = options_handler.get_contract_list_for_date(test_date)
             assert len(contracts) > 0
             
-            # Test individual bar
+            # Test individual bar - explicitly test None return
             contract = contracts[0]
-            with patch.object(options_handler.cache_manager, 'load_bar', return_value=None):
+            with patch.object(options_handler.cache_manager, 'load_bar', return_value=None), \
+                 patch.object(options_handler, '_fetch_bar_from_api', return_value=None):
                 bar = options_handler.get_option_bar(contract, test_date)
                 # Should return None when no bar data available
                 assert bar is None
             
-            # Test options chain
-            chain = options_handler.get_options_chain(test_date, current_price)
-            assert chain.underlying_symbol == "SPY"
-            assert chain.current_price == Decimal('600.0')
-            assert len(chain.contracts) == len(contracts)
+            # Test options chain - mock load_bar to avoid 72+ file I/O operations
+            with patch.object(options_handler.cache_manager, 'load_bar', return_value=sample_bar):
+                chain = options_handler.get_options_chain(test_date, current_price)
+                assert chain.underlying_symbol == "SPY"
+                assert chain.current_price == Decimal('600.0')
+                assert len(chain.contracts) == len(contracts)
 """
 Comprehensive integration tests for Phase 5 OptionsHandler API.
 

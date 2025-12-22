@@ -100,9 +100,47 @@ def test_get_max_risk_percentage(capital_manager):
 
 
 def test_get_max_allowed_risk(capital_manager):
-    """Test getting max allowed risk per position."""
+    """Test getting max allowed risk per position (based on remaining capital)."""
+    # With no open positions, remaining = allocated
     assert capital_manager.get_max_allowed_risk("credit_spread") == 500.0  # 10000 * 0.05
     assert capital_manager.get_max_allowed_risk("velocity_momentum") == 450.0  # 15000 * 0.03
+
+
+def test_get_max_allowed_risk_with_open_position(allocations_config, decision_store):
+    """Test max allowed risk adjusts based on remaining capital."""
+    manager = CapitalManager(allocations_config, decision_store)
+    
+    # Open a debit position that reduces remaining capital
+    legs = (
+        _make_option('OPT1', 500, '2025-09-06', 'call', 20.0),
+        _make_option('OPT2', 505, '2025-09-06', 'call', 1.0),
+    )
+    proposal = ProposedPositionRequest(
+        symbol='SPY',
+        strategy_type=StrategyType.LONG_CALL,
+        legs=legs,
+        credit=50.0,  # $5000 debit paid
+        width=5.0,
+        probability_of_profit=0.6,
+        confidence=0.65,
+        expiration_date='2025-09-06',
+        created_at=datetime.now().isoformat(),
+        strategy_name='credit_spread',
+    )
+    record = DecisionResponse(
+        id=generate_decision_id(proposal, datetime.now().isoformat()),
+        proposal=proposal,
+        outcome='accepted',
+        decided_at=datetime.now().isoformat(),
+        rationale='test',
+        quantity=1,
+        entry_price=50.0,
+    )
+    decision_store.append_decision(record)
+    
+    # Remaining capital: 10000 - 5000 = 5000
+    # Max allowed risk: 5000 * 0.05 = 250
+    assert manager.get_max_allowed_risk("credit_spread") == 250.0
 
 
 def test_is_credit_strategy(capital_manager):
@@ -354,19 +392,19 @@ def test_get_status_summary(capital_manager):
 
 
 def test_check_risk_threshold_insufficient_capital(allocations_config, decision_store):
-    """Test risk check when capital is insufficient due to open positions."""
+    """Test risk check when remaining capital is insufficient due to open positions."""
     manager = CapitalManager(allocations_config, decision_store)
     
-    # Create a large position that uses most capital
+    # Create a large debit position that uses most capital
     legs = (
-        _make_option('OPT1', 500, '2025-09-06', 'put', 95.0),
-        _make_option('OPT2', 495, '2025-09-06', 'put', 1.0),
+        _make_option('OPT1', 500, '2025-09-06', 'call', 95.0),
+        _make_option('OPT2', 505, '2025-09-06', 'call', 1.0),
     )
     proposal = ProposedPositionRequest(
         symbol='SPY',
-        strategy_type=StrategyType.PUT_CREDIT_SPREAD,
+        strategy_type=StrategyType.LONG_CALL,
         legs=legs,
-        credit=94.0,
+        credit=98.0,  # Large debit paid
         width=5.0,
         probability_of_profit=0.6,
         confidence=0.65,
@@ -381,14 +419,14 @@ def test_check_risk_threshold_insufficient_capital(allocations_config, decision_
         decided_at=datetime.now().isoformat(),
         rationale='test',
         quantity=1,
-        entry_price=94.0,
+        entry_price=98.0,
     )
     decision_store.append_decision(record)
     
-    # Remaining capital should be 10000 + 9400 = 19400
-    # But max allowed risk is 500, and a new position with max_risk 600 should fail
-    # Even though remaining capital is high, the max_risk_percentage limit applies
+    # Remaining capital should be 10000 - 9800 = 200
+    # Max allowed risk is now 5% of remaining = 0.05 * 200 = 10
+    # A new position with max_risk 600 should fail (exceeds both max allowed and remaining)
     is_allowed, message = manager.check_risk_threshold("credit_spread", 600.0)
     assert is_allowed is False
-    assert "exceeds maximum allowed risk" in message
+    assert "exceeds" in message
 
