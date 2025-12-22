@@ -1084,8 +1084,14 @@ class TestOptionsHandlerPhase5Simple:
         """Create sample contracts for testing."""
         contracts = []
         
-        # Create contracts with future expiration dates
-        expirations = ["2025-12-15", "2025-12-17", "2025-12-24", "2026-01-21"]
+        # Create contracts with future expiration dates (dynamically generated)
+        today = date.today()
+        expirations = [
+            (today + timedelta(days=10)).strftime('%Y-%m-%d'),
+            (today + timedelta(days=15)).strftime('%Y-%m-%d'),
+            (today + timedelta(days=20)).strftime('%Y-%m-%d'),
+            (today + timedelta(days=40)).strftime('%Y-%m-%d'),
+        ]
         strikes = [580.0, 585.0, 590.0, 595.0, 600.0, 605.0, 610.0, 615.0, 620.0]
         
         for exp_str in expirations:
@@ -1131,7 +1137,7 @@ class TestOptionsHandlerPhase5Simple:
     
     def test_get_contract_list_for_date_with_cache(self, options_handler, sample_contracts):
         """Test getting contracts from cache."""
-        test_date = datetime(2025, 12, 10)
+        test_date = datetime.now()
         
         with patch.object(options_handler.cache_manager, 'load_contracts', return_value=sample_contracts):
             contracts = options_handler.get_contract_list_for_date(test_date)
@@ -1140,7 +1146,7 @@ class TestOptionsHandlerPhase5Simple:
     
     def test_get_contract_list_for_date_with_strike_filter(self, options_handler, sample_contracts):
         """Test getting contracts with strike filter."""
-        test_date = datetime(2025, 12, 10)
+        test_date = datetime.now()
         
         strike_range = StrikeRangeDTO(
             min_strike=StrikePrice(Decimal('590.0')),
@@ -1154,9 +1160,9 @@ class TestOptionsHandlerPhase5Simple:
     
     def test_get_contract_list_for_date_with_expiration_filter(self, options_handler, sample_contracts):
         """Test getting contracts with expiration filter."""
-        test_date = datetime(2025, 12, 10)
+        test_date = datetime.now()  # Use current date - contracts are dynamically generated
         
-        expiration_range = ExpirationRangeDTO(min_days=1, max_days=30)
+        expiration_range = ExpirationRangeDTO(min_days=1, max_days=45)  # Include contracts up to 40 days out
         
         with patch.object(options_handler.cache_manager, 'load_contracts', return_value=sample_contracts):
             contracts = options_handler.get_contract_list_for_date(test_date, expiration_range=expiration_range)
@@ -1165,7 +1171,7 @@ class TestOptionsHandlerPhase5Simple:
     
     def test_get_option_bar_from_cache(self, options_handler, sample_contracts):
         """Test getting option bar from cache."""
-        test_date = datetime(2025, 12, 10)
+        test_date = datetime.now()
         contract = sample_contracts[0]
         
         sample_bar = OptionBarDTO(
@@ -1189,14 +1195,31 @@ class TestOptionsHandlerPhase5Simple:
     
     def test_get_options_chain(self, options_handler, sample_contracts):
         """Test getting complete options chain."""
-        test_date = datetime(2025, 12, 10)
+        test_date = datetime.now()
         current_price = 600.0
         
-        with patch.object(options_handler.cache_manager, 'load_contracts', return_value=sample_contracts):
+        # Create a sample bar to return for all contract lookups
+        sample_bar = OptionBarDTO(
+            ticker="O:SPY250115C00600000",
+            timestamp=test_date,
+            open_price=Decimal('1.50'),
+            high_price=Decimal('1.60'),
+            low_price=Decimal('1.40'),
+            close_price=Decimal('1.55'),
+            volume=1000,
+            volume_weighted_avg_price=Decimal('1.52'),
+            number_of_transactions=100,
+            adjusted=True
+        )
+        
+        # Mock both load_contracts AND load_bar to avoid 72+ file I/O operations
+        with patch.object(options_handler.cache_manager, 'load_contracts', return_value=sample_contracts), \
+             patch.object(options_handler.cache_manager, 'load_bar', return_value=sample_bar):
             chain = options_handler.get_options_chain(test_date, current_price)
             assert chain.underlying_symbol == "SPY"
             assert chain.current_price == Decimal('600.0')
             assert len(chain.contracts) == len(sample_contracts)
+            assert len(chain.bars) > 0  # Verify bars are populated
     
     def test_error_handling_missing_api_key(self, temp_dir):
         """Test error handling for missing API key."""
@@ -1227,7 +1250,7 @@ class TestOptionsHandlerPhase5Simple:
     
     def test_api_failure_handling(self, options_handler):
         """Test handling of API failures."""
-        test_date = datetime(2025, 12, 10)
+        test_date = datetime.now()
         
         with patch.object(options_handler.api_retry_handler, 'fetch_with_retry', 
                          side_effect=Exception("API failure")):
@@ -1236,7 +1259,7 @@ class TestOptionsHandlerPhase5Simple:
     
     def test_cache_failure_handling(self, options_handler):
         """Test handling of cache failures."""
-        test_date = datetime(2025, 12, 10)
+        test_date = datetime.now()
         
         with patch.object(options_handler.cache_manager, 'load_contracts', 
                          side_effect=Exception("Cache failure")):
@@ -1247,7 +1270,7 @@ class TestOptionsHandlerPhase5Simple:
     
     def test_performance_basic(self, options_handler, sample_contracts):
         """Test basic performance."""
-        test_date = datetime(2025, 12, 10)
+        test_date = datetime.now()
         
         with patch.object(options_handler.cache_manager, 'load_contracts', return_value=sample_contracts):
             import time
@@ -1262,7 +1285,7 @@ class TestOptionsHandlerPhase5Simple:
     
     def test_memory_usage_basic(self, options_handler, sample_contracts):
         """Test basic memory usage."""
-        test_date = datetime(2025, 12, 10)
+        test_date = datetime.now()
         
         with patch.object(options_handler.cache_manager, 'load_contracts', return_value=sample_contracts):
             import psutil
@@ -1285,7 +1308,7 @@ class TestOptionsHandlerPhase5Simple:
     
     def test_validation_basic(self, options_handler, sample_contracts):
         """Test basic validation."""
-        test_date = datetime(2025, 12, 10)
+        test_date = datetime.now()
         
         with patch.object(options_handler.cache_manager, 'load_contracts', return_value=sample_contracts):
             contracts = options_handler.get_contract_list_for_date(test_date)
@@ -1300,7 +1323,7 @@ class TestOptionsHandlerPhase5Simple:
     
     def test_integration_basic(self, options_handler, sample_contracts):
         """Test basic integration."""
-        test_date = datetime(2025, 12, 10)
+        test_date = datetime.now()
         current_price = 600.0
         
         # Create a sample bar for mocking
@@ -1370,6 +1393,21 @@ from src.common.cache.options_cache_manager import OptionsCacheManager
 class TestOptionsHandlerPhase5Integration:
     """Comprehensive integration tests for the complete OptionsHandler API."""
     
+    @pytest.fixture(autouse=True)
+    def mock_api_calls(self, request):
+        """Automatically mock all API calls for integration tests to prevent slow network calls.
+        
+        Skips mocking for tests that explicitly test API behavior (e.g., rate limiting).
+        """
+        # Skip mocking for tests that need real API behavior
+        if 'rate_limiting' in request.node.name:
+            yield
+            return
+            
+        with patch('src.common.options_handler.OptionsHandler._fetch_bar_from_api', return_value=None), \
+             patch('src.common.options_handler.OptionsHandler._fetch_contracts_from_api', return_value=[]):
+            yield
+    
     @pytest.fixture
     def temp_dir(self):
         """Create temporary directory for testing."""
@@ -1387,8 +1425,14 @@ class TestOptionsHandlerPhase5Integration:
         """Create comprehensive sample contracts for testing."""
         contracts = []
         
-        # Create contracts for different expirations and strikes (use future dates)
-        expirations = ["2025-12-15", "2025-12-17", "2025-12-24", "2026-01-21"]
+        # Create contracts for different expirations and strikes (dynamically generated)
+        today = date.today()
+        expirations = [
+            (today + timedelta(days=10)).strftime('%Y-%m-%d'),
+            (today + timedelta(days=15)).strftime('%Y-%m-%d'),
+            (today + timedelta(days=20)).strftime('%Y-%m-%d'),
+            (today + timedelta(days=40)).strftime('%Y-%m-%d'),
+        ]
         strikes = [580.0, 585.0, 590.0, 595.0, 600.0, 605.0, 610.0, 615.0, 620.0]
         
         for exp_str in expirations:
@@ -1427,21 +1471,22 @@ class TestOptionsHandlerPhase5Integration:
     
     @pytest.fixture
     def sample_bars(self, sample_contracts):
-        """Create sample bar data for contracts."""
+        """Create sample bar data for all contracts."""
         bars = {}
         base_time = datetime(2025, 1, 10, 16, 0, 0)
         
-        for i, contract in enumerate(sample_contracts[:10]):  # Limit to first 10 for performance
+        # Create bars for ALL contracts to ensure any filtered subset will have bar data
+        for i, contract in enumerate(sample_contracts):
             bar = OptionBarDTO(
                 ticker=contract.ticker,
-                timestamp=base_time + timedelta(minutes=i),
+                timestamp=base_time + timedelta(minutes=i % 60),  # Cycle minutes
                 open_price=Decimal('2.50'),
                 high_price=Decimal('2.75'),
                 low_price=Decimal('2.25'),
                 close_price=Decimal('2.60'),
-                volume=150 + i * 10,
+                volume=150 + (i % 50) * 10,  # Vary volume
                 volume_weighted_avg_price=Decimal('2.55'),
-                number_of_transactions=25 + i,
+                number_of_transactions=25 + (i % 20),
                 adjusted=True
             )
             bars[contract.ticker] = bar
@@ -1450,7 +1495,8 @@ class TestOptionsHandlerPhase5Integration:
     
     def test_complete_api_workflow(self, options_handler, sample_contracts, sample_bars):
         """Test complete API workflow from contracts to strategy analysis."""
-        test_date = datetime(2025, 12, 10)  # Use a date closer to the contract expirations
+        # Use today's date - contracts are dynamically generated to be in the future
+        test_date = datetime.now()
         
         # Mock the cache manager to return our sample data
         with patch.object(options_handler.cache_manager, 'load_contracts', return_value=sample_contracts):
@@ -1538,7 +1584,7 @@ class TestOptionsHandlerPhase5Integration:
             )
             large_contracts.append(contract)
         
-        test_date = datetime(2025, 1, 10)
+        test_date = datetime.now()
         
         # Mock cache to return large dataset
         with patch.object(options_handler.cache_manager, 'load_contracts', return_value=large_contracts):
@@ -1564,7 +1610,7 @@ class TestOptionsHandlerPhase5Integration:
     
     def test_cache_efficiency(self, options_handler, sample_contracts):
         """Test cache efficiency and behavior."""
-        test_date = datetime(2025, 1, 10)
+        test_date = datetime.now()
         
         # Mock cache manager
         cache_manager = Mock()
@@ -1621,7 +1667,7 @@ class TestOptionsHandlerPhase5Integration:
         # Create large dataset
         large_contracts = sample_contracts * 100  # 100x the sample size
         
-        test_date = datetime(2025, 1, 10)
+        test_date = datetime.now()
         
         with patch.object(options_handler.cache_manager, 'load_contracts', return_value=large_contracts):
             
@@ -1647,7 +1693,7 @@ class TestOptionsHandlerPhase5Integration:
         import threading
         import queue
         
-        test_date = datetime(2025, 1, 10)
+        test_date = datetime.now()
         results = queue.Queue()
         errors = queue.Queue()
         
@@ -1680,7 +1726,7 @@ class TestOptionsHandlerPhase5Integration:
     
     def test_strategy_integration_example(self, options_handler, sample_contracts, sample_bars):
         """Test integration with a realistic strategy scenario."""
-        test_date = datetime(2025, 1, 10)
+        test_date = datetime.now()
         current_price = 600.0
         
         # Mock cache with sample data
@@ -1733,7 +1779,7 @@ class TestOptionsHandlerPhase5Integration:
     
     def test_data_consistency(self, options_handler, sample_contracts):
         """Test data consistency across different API calls."""
-        test_date = datetime(2025, 1, 10)
+        test_date = datetime.now()
         
         with patch.object(options_handler.cache_manager, 'load_contracts', return_value=sample_contracts):
             
@@ -1761,7 +1807,7 @@ class TestOptionsHandlerPhase5Integration:
     
     def test_edge_cases(self, options_handler):
         """Test edge cases and boundary conditions."""
-        test_date = datetime(2025, 1, 10)
+        test_date = datetime.now()
         
         # Test with empty contract list
         with patch.object(options_handler.cache_manager, 'load_contracts', return_value=[]):
@@ -1783,7 +1829,7 @@ class TestOptionsHandlerPhase5Integration:
     
     def test_api_rate_limiting(self, options_handler):
         """Test API rate limiting behavior."""
-        test_date = datetime(2025, 1, 10)
+        test_date = datetime.now()
         
         # Mock API calls to test rate limiting
         api_call_count = 0
@@ -1805,7 +1851,7 @@ class TestOptionsHandlerPhase5Integration:
     
     def test_comprehensive_validation(self, options_handler, sample_contracts):
         """Test comprehensive data validation."""
-        test_date = datetime(2025, 1, 10)
+        test_date = datetime.now()
         
         with patch.object(options_handler.cache_manager, 'load_contracts', return_value=sample_contracts):
             

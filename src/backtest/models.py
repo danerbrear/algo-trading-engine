@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Callable, Dict, Optional, List
 from datetime import datetime
 import pandas as pd
