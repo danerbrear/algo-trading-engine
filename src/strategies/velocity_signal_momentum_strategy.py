@@ -25,8 +25,8 @@ class VelocitySignalMomentumStrategy(Strategy):
     # Configurable holding period in trading days
     holding_period = 4
 
-    def __init__(self, options_handler: OptionsHandler, start_date_offset: int = 60, stop_loss: float = None):
-        super().__init__(start_date_offset=start_date_offset, stop_loss=stop_loss)
+    def __init__(self, options_handler: OptionsHandler, start_date_offset: int = 60, stop_loss: float = None, profit_target: float = None):
+        super().__init__(start_date_offset=start_date_offset, stop_loss=stop_loss, profit_target=profit_target)
 
         self.new_options_handler = options_handler
         
@@ -74,19 +74,28 @@ class VelocitySignalMomentumStrategy(Strategy):
 
     def on_end(self, positions: tuple['Position', ...], remove_position: Callable[['Position'], None], date: datetime):
         """
-        Create a plot showing SPY price over time with position entry indicators.
+        Create a plot showing SPY price over time with position entry indicators and volatility overlay.
         """
         if self.data is None or self.data.empty:
             progress_print("⚠️  No data available for plotting")
             return
         
         try:
-            # Create the plot
-            fig, ax = plt.subplots(figsize=(15, 8))
+            # Calculate volatility (20-day rolling standard deviation of returns, annualized)
+            returns = self.data['Close'].pct_change()
+            volatility_window = 20
+            rolling_vol = returns.rolling(window=volatility_window).std() * (252 ** 0.5) * 100  # Annualized in %
             
-            # Plot SPY price
-            ax.plot(self.data.index, self.data['Close'], 
-                   label='SPY Close Price', color='blue', alpha=0.7, linewidth=1)
+            # Create the plot with dual y-axes
+            fig, ax1 = plt.subplots(figsize=(15, 8))
+            
+            # Plot SPY price on primary y-axis
+            color_price = 'blue'
+            ax1.plot(self.data.index, self.data['Close'], 
+                   label='SPY Close Price', color=color_price, alpha=0.7, linewidth=1.5)
+            ax1.set_xlabel('Date', fontsize=12)
+            ax1.set_ylabel('SPY Price ($)', color=color_price, fontsize=12)
+            ax1.tick_params(axis='y', labelcolor=color_price)
             
             # Get position entry dates from the backtest engine
             # We need to access the backtest engine's closed_positions to get entry dates
@@ -104,37 +113,49 @@ class VelocitySignalMomentumStrategy(Strategy):
                 for entry_date in entry_dates:
                     if entry_date in self.data.index:
                         entry_price = self.data.loc[entry_date, 'Close']
-                        ax.scatter(entry_date, entry_price, 
+                        ax1.scatter(entry_date, entry_price, 
                                  color='red', s=100, marker='^', 
                                  label='Position Entry' if entry_date == entry_dates[0] else "", 
                                  zorder=5, alpha=0.8)
             
             # Add moving averages if they exist
             if 'SMA_15' in self.data.columns:
-                ax.plot(self.data.index, self.data['SMA_15'], 
+                ax1.plot(self.data.index, self.data['SMA_15'], 
                        label='SMA 15', color='orange', alpha=0.6, linewidth=1)
             
             if 'SMA_30' in self.data.columns:
-                ax.plot(self.data.index, self.data['SMA_30'], 
+                ax1.plot(self.data.index, self.data['SMA_30'], 
                        label='SMA 30', color='green', alpha=0.6, linewidth=1)
+            
+            # Create secondary y-axis for volatility
+            ax2 = ax1.twinx()
+            color_vol = 'purple'
+            ax2.plot(self.data.index, rolling_vol, 
+                    label=f'{volatility_window}-day Volatility', 
+                    color=color_vol, alpha=0.5, linewidth=1.5, linestyle='--')
+            ax2.set_ylabel('Annualized Volatility (%)', color=color_vol, fontsize=12)
+            ax2.tick_params(axis='y', labelcolor=color_vol)
+            ax2.fill_between(self.data.index, rolling_vol, alpha=0.1, color=color_vol)
             
             # Format the plot
             num_positions = len(entry_dates) if entry_dates else 0
-            title = f'SPY Price with Position Entries - Velocity Signal Momentum Strategy\nTotal Positions: {num_positions}'
-            ax.set_title(title, fontsize=14, fontweight='bold')
-            ax.set_xlabel('Date', fontsize=12)
-            ax.set_ylabel('SPY Price ($)', fontsize=12)
-            ax.legend(loc='upper left')
-            ax.grid(True, alpha=0.3)
+            title = f'SPY Price with Position Entries & Volatility - Velocity Signal Momentum Strategy\nTotal Positions: {num_positions}'
+            ax1.set_title(title, fontsize=14, fontweight='bold')
+            ax1.grid(True, alpha=0.3)
+            
+            # Combine legends from both axes
+            lines1, labels1 = ax1.get_legend_handles_labels()
+            lines2, labels2 = ax2.get_legend_handles_labels()
+            ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper left')
             
             # Add text box with strategy info
-            strategy_info = f'Strategy: Velocity Signal Momentum\nHolding Period: {self.holding_period} days\nMA Periods: 15/30'
-            ax.text(0.02, 0.98, strategy_info, transform=ax.transAxes, fontsize=10,
+            strategy_info = f'Strategy: Velocity Signal Momentum\nHolding Period: {self.holding_period} days\nMA Periods: 15/30\nVol Window: {volatility_window} days'
+            ax1.text(0.02, 0.98, strategy_info, transform=ax1.transAxes, fontsize=10,
                    verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
             
             # Format x-axis dates
-            ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
-            ax.xaxis.set_major_locator(mdates.MonthLocator(interval=1))
+            ax1.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+            ax1.xaxis.set_major_locator(mdates.MonthLocator(interval=1))
             plt.xticks(rotation=45)
             
             # Adjust layout
@@ -143,7 +164,7 @@ class VelocitySignalMomentumStrategy(Strategy):
             # Show the plot
             plt.show()
             
-            progress_print("📊 Position entry plot generated successfully")
+            progress_print("📊 Position entry plot with volatility overlay generated successfully")
             
         except Exception as e:
             progress_print(f"⚠️  Error creating plot: {e}")
@@ -614,6 +635,13 @@ class VelocitySignalMomentumStrategy(Strategy):
                 exit_price = self._sanitize_exit_price(exit_price)
                 progress_print(f"💰 Calculated exit price for {position.__str__()}: {exit_price}")
 
+            # Profit target
+            if self._should_close_due_to_profit_target(position, exit_price):
+                print(f"💰 Profit target hit for {position.__str__()} at exit {exit_price}")
+                current_volumes = self.get_current_volumes_for_position(position, date)
+                remove_position(date, position, exit_price if exit_price is not None else 0.0, current_volumes=current_volumes)
+                continue
+
             # Stop loss
             if self._should_close_due_to_stop(position, exit_price):
                 print(f"🛑 Stop loss hit for {position.__str__()} at exit {exit_price}")
@@ -679,8 +707,15 @@ class VelocitySignalMomentumStrategy(Strategy):
         except Exception:
             return False
 
+    def _should_close_due_to_profit_target(self, position: Position, exit_price: Optional[float]) -> bool:
+        if exit_price is None or self.profit_target is None:
+            return False
+        return position.profit_target_hit(self.profit_target, exit_price)
+
     def _should_close_due_to_stop(self, position: Position, exit_price: Optional[float]) -> bool:
-        return (exit_price is not None) and self._stop_loss_hit(position, exit_price)
+        if exit_price is None or self.stop_loss is None:
+            return False
+        return position.stop_loss_hit(self.stop_loss, exit_price)
 
     def _should_close_due_to_holding(self, position: Position, date: datetime, holding_period: int) -> bool:
         try:

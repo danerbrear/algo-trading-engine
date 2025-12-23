@@ -71,6 +71,78 @@ class TestVelocitySignalMomentumStrategy:
         )
         self.position.set_quantity(1)
 
+    def test_profit_target_and_stop_loss_initialization(self):
+        """Test that profit_target and stop_loss are properly initialized"""
+        mock_options_handler = Mock()
+        
+        # Test with both parameters
+        strategy_with_params = VelocitySignalMomentumStrategy(
+            options_handler=mock_options_handler,
+            profit_target=0.25,
+            stop_loss=0.60
+        )
+        assert strategy_with_params.profit_target == 0.25
+        assert strategy_with_params.stop_loss == 0.60
+        
+        # Test with None (default)
+        strategy_without_params = VelocitySignalMomentumStrategy(
+            options_handler=mock_options_handler
+        )
+        assert strategy_without_params.profit_target is None
+        assert strategy_without_params.stop_loss is None
+
+    def test_should_close_due_to_profit_target(self):
+        """Test that profit target check works correctly"""
+        mock_options_handler = Mock()
+        strategy = VelocitySignalMomentumStrategy(
+            options_handler=mock_options_handler,
+            profit_target=0.20
+        )
+        
+        # Create a mock position
+        position = Mock()
+        position.profit_target_hit = Mock(return_value=True)
+        
+        # Should close when profit target is hit
+        assert strategy._should_close_due_to_profit_target(position, 1.5) == True
+        position.profit_target_hit.assert_called_once_with(0.20, 1.5)
+        
+        # Should not close when exit_price is None
+        assert strategy._should_close_due_to_profit_target(position, None) == False
+        
+        # Should not close when profit_target is None
+        strategy_no_target = VelocitySignalMomentumStrategy(
+            options_handler=mock_options_handler,
+            profit_target=None
+        )
+        assert strategy_no_target._should_close_due_to_profit_target(position, 1.5) == False
+
+    def test_should_close_due_to_stop_loss(self):
+        """Test that stop loss check works correctly"""
+        mock_options_handler = Mock()
+        strategy = VelocitySignalMomentumStrategy(
+            options_handler=mock_options_handler,
+            stop_loss=0.60
+        )
+        
+        # Create a mock position
+        position = Mock()
+        position.stop_loss_hit = Mock(return_value=True)
+        
+        # Should close when stop loss is hit
+        assert strategy._should_close_due_to_stop(position, 1.5) == True
+        position.stop_loss_hit.assert_called_once_with(0.60, 1.5)
+        
+        # Should not close when exit_price is None
+        assert strategy._should_close_due_to_stop(position, None) == False
+        
+        # Should not close when stop_loss is None
+        strategy_no_stop = VelocitySignalMomentumStrategy(
+            options_handler=mock_options_handler,
+            stop_loss=None
+        )
+        assert strategy_no_stop._should_close_due_to_stop(position, 1.5) == False
+
     def test_select_week_expiration_prefers_5_to_10_days(self):
         mock_options_handler = Mock()
         strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
@@ -654,8 +726,17 @@ class TestVelocitySignalMomentumStrategy:
         
         # Mock matplotlib to prevent actual plotting
         mock_fig = Mock()
-        mock_ax = Mock()
-        mock_subplots = Mock(return_value=(mock_fig, mock_ax))
+        mock_ax1 = Mock()
+        mock_ax2 = Mock()
+        
+        # Mock get_legend_handles_labels() for both axes
+        mock_ax1.get_legend_handles_labels = Mock(return_value=([], []))
+        mock_ax2.get_legend_handles_labels = Mock(return_value=([], []))
+        
+        # Mock twinx() to return the second axis
+        mock_ax1.twinx = Mock(return_value=mock_ax2)
+        
+        mock_subplots = Mock(return_value=(mock_fig, mock_ax1))
         mock_show = Mock()
         mock_savefig = Mock()
         mock_tight_layout = Mock()
@@ -677,3 +758,43 @@ class TestVelocitySignalMomentumStrategy:
             # Note: savefig is not called in the implementation, only show() is called
             # mock_savefig.assert_called_once()  # Removed - not in implementation
             mock_tight_layout.assert_called_once()
+            # Verify that twinx() was called to create the secondary axis for volatility
+            mock_ax1.twinx.assert_called_once()
+
+
+class TestVelocityStrategyFactory:
+    """Test cases for VelocitySignalMomentumStrategy via StrategyFactory"""
+
+    def test_factory_passes_profit_target_and_stop_loss(self):
+        """Test that StrategyFactory properly passes profit_target and stop_loss to the strategy"""
+        from src.backtest.strategy_builder import StrategyFactory
+        
+        mock_options_handler = Mock()
+        
+        # Create strategy via factory with profit_target and stop_loss
+        strategy = StrategyFactory.create_strategy(
+            'velocity_momentum',
+            options_handler=mock_options_handler,
+            profit_target=0.20,
+            stop_loss=0.60
+        )
+        
+        # Verify the parameters were properly passed through
+        assert strategy.profit_target == 0.20
+        assert strategy.stop_loss == 0.60
+        
+    def test_factory_handles_none_parameters(self):
+        """Test that StrategyFactory handles None parameters correctly"""
+        from src.backtest.strategy_builder import StrategyFactory
+        
+        mock_options_handler = Mock()
+        
+        # Create strategy via factory without profit_target or stop_loss
+        strategy = StrategyFactory.create_strategy(
+            'velocity_momentum',
+            options_handler=mock_options_handler
+        )
+        
+        # Verify the parameters are None when not specified
+        assert strategy.profit_target is None
+        assert strategy.stop_loss is None

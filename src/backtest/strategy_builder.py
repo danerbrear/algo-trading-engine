@@ -170,7 +170,8 @@ class VelocitySignalMomentumStrategyBuilder(StrategyBuilder):
         strategy = VelocitySignalMomentumStrategy(
             options_handler=self._options_handler,
             start_date_offset=self._start_date_offset,
-            stop_loss=self._stop_loss
+            stop_loss=self._stop_loss,
+            profit_target=self._profit_target
         )
         
         self.reset()
