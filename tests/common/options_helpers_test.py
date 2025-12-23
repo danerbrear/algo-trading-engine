@@ -14,7 +14,7 @@ from src.common.options_helpers import OptionsRetrieverHelper
 from src.common.options_dtos import (
     OptionContractDTO, OptionBarDTO, StrikePrice, ExpirationDate
 )
-from src.common.models import OptionType
+from src.common.models import OptionType, SignalType
 
 
 class TestOptionsRetrieverHelperPhase4:
@@ -205,19 +205,6 @@ class TestOptionsRetrieverHelperPhase4:
         
         assert net_credit == 1.50
     
-    def test_calculate_max_profit_loss(self, sample_contracts):
-        """Test calculating maximum profit and loss."""
-        short_leg = sample_contracts[1]  # 600 call
-        long_leg = sample_contracts[2]   # 605 call
-        net_credit = 1.50
-        
-        max_profit, max_loss = OptionsRetrieverHelper.calculate_max_profit_loss(
-            short_leg, long_leg, net_credit
-        )
-        
-        assert max_profit == 1.50
-        assert max_loss == 3.50  # 5.00 - 1.50
-    
     def test_find_optimal_expiration(self, sample_contracts):
         """Test finding optimal expiration date."""
         # The fixture uses a date that's 1-7 days away (next Friday)
@@ -391,61 +378,6 @@ class TestOptionsRetrieverHelperPhase4:
         assert len(monthly_expirations) == 1
         assert monthly_expirations[0] == str(monthly_contracts[0].expiration_date)
     
-    def test_calculate_probability_of_profit_call(self, sample_contracts):
-        """Test calculating probability of profit for call credit spread."""
-        short_leg = sample_contracts[1]  # 600 call
-        long_leg = sample_contracts[2]   # 605 call
-        net_credit = 1.50
-        current_price = 600.0
-        days_to_expiration = 30
-        
-        pop = OptionsRetrieverHelper.calculate_probability_of_profit(
-            short_leg, long_leg, net_credit, OptionType.CALL, current_price, days_to_expiration
-        )
-        
-        assert 0.0 <= pop <= 1.0
-        # The simplified POP calculation may not always be > 0.5 for ATM spreads
-        # It's based on distance from current price and time decay
-        assert pop > 0.0  # Should have some probability of profit
-    
-    def test_calculate_probability_of_profit_put(self, sample_contracts):
-        """Test calculating probability of profit for put credit spread."""
-        short_leg = sample_contracts[4]  # 600 put
-        long_leg = sample_contracts[3]   # 580 put
-        net_credit = 1.50
-        current_price = 600.0
-        days_to_expiration = 30
-        
-        pop = OptionsRetrieverHelper.calculate_probability_of_profit(
-            short_leg, long_leg, net_credit, OptionType.PUT, current_price, days_to_expiration
-        )
-        
-        assert 0.0 <= pop <= 1.0
-        # The simplified POP calculation may not always be > 0.5 for ATM spreads
-        # It's based on distance from current price and time decay
-        assert pop > 0.0  # Should have some probability of profit
-    
-    def test_calculate_probability_of_profit_edge_cases(self, sample_contracts):
-        """Test probability of profit calculation edge cases."""
-        short_leg = sample_contracts[1]  # 600 call
-        long_leg = sample_contracts[2]   # 605 call
-        net_credit = 1.50
-        current_price = 600.0
-        
-        # Test with very short DTE
-        pop_short = OptionsRetrieverHelper.calculate_probability_of_profit(
-            short_leg, long_leg, net_credit, OptionType.CALL, current_price, 1
-        )
-        
-        # Test with very long DTE
-        pop_long = OptionsRetrieverHelper.calculate_probability_of_profit(
-            short_leg, long_leg, net_credit, OptionType.CALL, current_price, 60
-        )
-        
-        assert 0.0 <= pop_short <= 1.0
-        assert 0.0 <= pop_long <= 1.0
-        assert pop_short > pop_long  # Shorter DTE should have higher POP for credit spreads
-
 
 class TestOptionsRetrieverHelperIntegration:
     """Integration tests for OptionsRetrieverHelper with real-world scenarios."""
@@ -511,27 +443,14 @@ class TestOptionsRetrieverHelperIntegration:
             short_leg, long_leg, short_premium, long_premium
         )
         
-        # Calculate max profit/loss
-        max_profit, max_loss = OptionsRetrieverHelper.calculate_max_profit_loss(
-            short_leg, long_leg, net_credit
-        )
-        
         # Calculate breakeven
         lower_be, upper_be = OptionsRetrieverHelper.calculate_breakeven_points(
             short_leg, long_leg, net_credit, OptionType.CALL
         )
         
-        # Calculate probability of profit
-        pop = OptionsRetrieverHelper.calculate_probability_of_profit(
-            short_leg, long_leg, net_credit, OptionType.CALL, current_price, 30
-        )
-        
         # Verify all calculations are consistent
         assert net_credit == 1.50
-        assert max_profit == 1.50
-        assert max_loss == 3.50
         assert lower_be == upper_be == 601.50
-        assert 0.0 <= pop <= 1.0
         
         # Verify spread width (calculate manually since method doesn't exist)
         spread_width = abs(float(short_leg.strike_price.value) - float(long_leg.strike_price.value))

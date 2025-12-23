@@ -543,12 +543,6 @@ if short_leg and long_leg:
     breakeven_lower, breakeven_upper = OptionsRetrieverHelper.calculate_breakeven_points(
         short_leg, long_leg, net_credit, OptionType.CALL
     )
-    
-    # Calculate probability of profit
-    pop = OptionsRetrieverHelper.calculate_probability_of_profit(
-        short_leg, long_leg, net_credit, OptionType.CALL, 
-        current_price=450.0, days_to_expiration=30
-    )
 
 # Iron Condor Strategy
 put_long, put_short, call_short, call_long = OptionsRetrieverHelper.find_iron_condor_legs(
