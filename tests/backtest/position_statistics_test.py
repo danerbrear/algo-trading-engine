@@ -124,10 +124,13 @@ class TestPositionStatistics:
             self.engine._print_position_statistics()
             
             # Check drawdown is calculated and should be > 0
-            drawdown_line = next(line for line in printed_lines if "Average drawdown" in line)
-            assert "Average drawdown" in drawdown_line
-            # The average drawdown should be present (calculated as average of drawdown periods)
-            assert "1.7%" in drawdown_line  # Average of drawdown periods
+            drawdown_line = next(line for line in printed_lines if "Drawdowns:" in line)
+            assert "Drawdowns:" in drawdown_line
+            assert "Min:" in drawdown_line
+            assert "Mean:" in drawdown_line
+            assert "Max:" in drawdown_line
+            # The mean drawdown should be present (calculated as average of drawdown periods)
+            assert "1.73%" in drawdown_line  # Mean of drawdown periods
     
     def test_drawdown_calculation_no_drawdown(self):
         """Test drawdown calculation when there should be no drawdown"""
@@ -146,10 +149,10 @@ class TestPositionStatistics:
             m.setattr('builtins.print', mock_print)
             self.engine._print_position_statistics()
             
-            # Check drawdown is calculated and should be 0
-            drawdown_line = next(line for line in printed_lines if "Average drawdown" in line)
-            assert "Average drawdown" in drawdown_line
-            assert "0.0%" in drawdown_line
+            # Check drawdown is reported as no drawdowns
+            drawdown_line = next(line for line in printed_lines if "Drawdowns:" in line)
+            assert "Drawdowns:" in drawdown_line
+            assert "No drawdowns detected" in drawdown_line
     
     def test_strategy_type_statistics(self):
         """Test statistics breakdown by strategy type"""

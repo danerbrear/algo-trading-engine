@@ -369,14 +369,16 @@ class BacktestEngine:
         
         win_rate = len(winning_positions) / total_positions * 100 if total_positions > 0 else 0
         avg_return = total_return / total_positions if total_positions > 0 else 0
-        avg_drawdown = self._calculate_average_drawdown(self.closed_positions, self.initial_capital)
+        min_dd, mean_dd, max_dd = self._calculate_drawdown_stats(self.closed_positions, self.initial_capital)
         
         return OverallPerformanceStats(
             total_positions=total_positions,
             win_rate=win_rate,
             total_pnl=total_return,
             average_return=avg_return,
-            average_drawdown=avg_drawdown
+            min_drawdown=min_dd,
+            mean_drawdown=mean_dd,
+            max_drawdown=max_dd
         )
     
     def _calculate_strategy_statistics(self) -> List['StrategyPerformanceStats']:
@@ -398,7 +400,7 @@ class BacktestEngine:
             
             win_rate = len(winning_positions) / len(positions) * 100 if positions else 0
             avg_return = total_return / len(positions) if positions else 0
-            avg_drawdown = self._calculate_average_drawdown(positions, self.initial_capital)
+            min_dd, mean_dd, max_dd = self._calculate_drawdown_stats(positions, self.initial_capital)
             
             stats = StrategyPerformanceStats(
                 strategy_type=strategy_type,
@@ -406,16 +408,23 @@ class BacktestEngine:
                 win_rate=win_rate,
                 total_pnl=total_return,
                 average_return=avg_return,
-                average_drawdown=avg_drawdown
+                min_drawdown=min_dd,
+                mean_drawdown=mean_dd,
+                max_drawdown=max_dd
             )
             strategy_stats.append(stats)
         
         return strategy_stats
     
-    def _calculate_average_drawdown(self, positions: List[dict], initial_capital: float) -> float:
-        """Calculate average drawdown for a list of positions"""
+    def _calculate_drawdown_stats(self, positions: List[dict], initial_capital: float) -> tuple[float, float, float]:
+        """
+        Calculate drawdown statistics from closed positions.
+        
+        Returns:
+            Tuple of (min_drawdown, mean_drawdown, max_drawdown) as percentages
+        """
         if not positions:
-            return 0.0
+            return 0.0, 0.0, 0.0
         
         drawdowns = []
         peak_capital = initial_capital
@@ -431,7 +440,14 @@ class BacktestEngine:
                 drawdown = (peak_capital - current_capital) / peak_capital * 100
                 drawdowns.append(drawdown)
         
-        return sum(drawdowns) / len(drawdowns) if drawdowns else 0.0
+        if not drawdowns:
+            return 0.0, 0.0, 0.0
+        
+        min_dd = min(drawdowns)
+        mean_dd = sum(drawdowns) / len(drawdowns)
+        max_dd = max(drawdowns)
+        
+        return min_dd, mean_dd, max_dd
     
     def _print_overall_statistics(self, stats: 'OverallPerformanceStats'):
         """Print overall performance statistics"""
@@ -440,7 +456,12 @@ class BacktestEngine:
         print(f"   Overall win rate: {stats.win_rate:.1f}%")
         print(f"   Total P&L: ${stats.total_pnl:+,.2f}")
         print(f"   Average return per position: ${stats.average_return:+.2f}")
-        print(f"   Average drawdown: {stats.average_drawdown:.1f}%")
+        
+        # Print drawdown stats
+        if stats.max_drawdown > 0:
+            print(f"   Drawdowns: Min: {stats.min_drawdown:.2f}% | Mean: {stats.mean_drawdown:.2f}% | Max: {stats.max_drawdown:.2f}%")
+        else:
+            print(f"   Drawdowns: No drawdowns detected")
     
     def _print_strategy_statistics(self, strategy_stats: List['StrategyPerformanceStats']):
         """Print strategy-specific performance statistics"""
@@ -450,7 +471,12 @@ class BacktestEngine:
             print(f"     Win rate: {stats.win_rate:.1f}%")
             print(f"     Total P&L: ${stats.total_pnl:+,.2f}")
             print(f"     Average return: ${stats.average_return:+.2f}")
-            print(f"     Average drawdown: {stats.average_drawdown:.1f}%")
+            
+            # Print drawdown stats
+            if stats.max_drawdown > 0:
+                print(f"     Drawdowns: Min: {stats.min_drawdown:.2f}% | Mean: {stats.mean_drawdown:.2f}% | Max: {stats.max_drawdown:.2f}%")
+            else:
+                print(f"     Drawdowns: No drawdowns detected")
 
     def _handle_insufficient_volume_closure(self, position: Position, date: datetime) -> bool:
         """

@@ -443,8 +443,7 @@ class VelocitySignalMomentumStrategy(Strategy):
                     entry_price=net_credit,
                     spread_options=[atm_option, otm_option]
                 )
-                # Set quantity for test position (1 contract)
-                position.set_quantity(1)
+                # Note: Do NOT set quantity here - the backtest engine will set it based on max_position_size
                 return position
             else:
                 progress_print(f"⚠️  Negative credit: {net_credit:.2f}")
