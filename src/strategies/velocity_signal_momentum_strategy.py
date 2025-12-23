@@ -177,6 +177,7 @@ class VelocitySignalMomentumStrategy(Strategy):
         
         If the data matches the following criteria for a buy signal, return True:
             - MA velocity (SMA 15/30) must increase (signal detected)
+            - SMA 15 slope must be positive (current > previous)
             - Price must increase over the trend period (3-60 days)
             - No significant reversals (>2% drop) during the trend
             - Trend must last at least 3 days
@@ -250,6 +251,20 @@ class VelocitySignalMomentumStrategy(Strategy):
         if current_idx < 1 or self.data['Velocity_Changes'].iloc[current_idx] <= 0:
             progress_print(f"Velocity changes: {self.data['Velocity_Changes'].iloc[current_idx]}")
             return False
+        
+        # Check if SMA 15 slope is positive (current > previous)
+        if 'SMA_15' not in self.data.columns:
+            progress_print("⚠️  No SMA 15 data available")
+            return False
+        
+        current_sma15 = self.data['SMA_15'].iloc[current_idx]
+        previous_sma15 = self.data['SMA_15'].iloc[current_idx - 1]
+        
+        if current_sma15 <= previous_sma15:
+            progress_print(f"SMA 15 slope not positive: current={current_sma15:.2f}, previous={previous_sma15:.2f}")
+            return False
+        
+        progress_print(f"✅ SMA 15 slope is positive: current={current_sma15:.2f}, previous={previous_sma15:.2f}")
         
         # This is a velocity signal - now check if it leads to a successful trend
         signal_index = current_idx
