@@ -514,34 +514,6 @@ class OptionsRetrieverHelper:
         return None, None
     
     @staticmethod
-    def calculate_max_profit_loss(
-        short_leg: OptionContractDTO,
-        long_leg: OptionContractDTO,
-        net_credit: float
-    ) -> Tuple[float, float]:
-        """
-        Calculate maximum profit and loss for a credit spread.
-        
-        Args:
-            short_leg: Short leg contract
-            long_leg: Long leg contract
-            net_credit: Net credit received
-            
-        Returns:
-            Tuple of (max_profit, max_loss)
-        """
-        # Calculate spread width
-        spread_width = abs(short_leg.strike_price.value - long_leg.strike_price.value)
-        
-        # Max profit = net credit received
-        max_profit = net_credit
-        
-        # Max loss = spread width - net credit
-        max_loss = spread_width - net_credit
-        
-        return max_profit, max_loss
-    
-    @staticmethod
     def calculate_credit_spread_premium(
         short_leg: OptionContractDTO, 
         long_leg: OptionContractDTO,
@@ -562,27 +534,6 @@ class OptionsRetrieverHelper:
         """
         return short_premium - long_premium
     
-    @staticmethod
-    def calculate_max_profit_loss(
-        short_leg: OptionContractDTO, 
-        long_leg: OptionContractDTO,
-        net_credit: float
-    ) -> Tuple[float, float]:
-        """
-        Calculate maximum profit and loss for a credit spread.
-        
-        Args:
-            short_leg: Short leg contract
-            long_leg: Long leg contract
-            net_credit: Net credit received
-            
-        Returns:
-            Tuple of (max_profit, max_loss)
-        """
-        spread_width = abs(short_leg.strike_price.value - long_leg.strike_price.value)
-        max_profit = net_credit
-        max_loss = float(spread_width) - net_credit
-        return max_profit, max_loss
     
     @staticmethod
     def find_optimal_expiration(
@@ -861,48 +812,4 @@ class OptionsRetrieverHelper:
                     monthly_expirations.append(exp_str)
         
         return sorted(monthly_expirations)
-    
-    @staticmethod
-    def calculate_probability_of_profit(
-        short_leg: OptionContractDTO, 
-        long_leg: OptionContractDTO,
-        net_credit: float,
-        option_type: OptionType,
-        current_price: float,
-        days_to_expiration: int
-    ) -> float:
-        """
-        Calculate estimated probability of profit for a credit spread.
-        
-        Note: This is a simplified implementation. In practice, you would
-        use more sophisticated models like Black-Scholes or Monte Carlo.
-        
-        Args:
-            short_leg: Short leg contract
-            long_leg: Long leg contract
-            net_credit: Net credit received
-            option_type: Type of spread (CALL or PUT)
-            current_price: Current underlying price
-            days_to_expiration: Days until expiration
-            
-        Returns:
-            Estimated probability of profit (0.0 to 1.0)
-        """
-        # Simplified POP calculation based on distance from current price
-        if option_type == OptionType.CALL:
-            short_strike = float(short_leg.strike_price.value)
-            # POP decreases as current price approaches short strike
-            distance_ratio = (short_strike - current_price) / current_price
-        else:  # PUT
-            short_strike = float(short_leg.strike_price.value)
-            # POP decreases as current price approaches short strike
-            distance_ratio = (current_price - short_strike) / current_price
-        
-        # Base POP on distance from current price
-        base_pop = max(0.0, min(1.0, 0.5 + distance_ratio * 2))
-        
-        # Adjust for time decay (shorter DTE = higher POP for credit spreads)
-        time_factor = max(0.5, 1.0 - (days_to_expiration / 45.0))
-        
-        return min(0.95, base_pop * time_factor)
-    
+
