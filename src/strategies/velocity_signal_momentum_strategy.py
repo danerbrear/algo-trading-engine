@@ -23,7 +23,7 @@ class VelocitySignalMomentumStrategy(Strategy):
     """
 
     # Configurable holding period in trading days
-    holding_period = 4
+    holding_period = 11
 
     def __init__(self, options_handler: OptionsHandler, start_date_offset: int = 60, stop_loss: float = None, profit_target: float = None):
         super().__init__(start_date_offset=start_date_offset, stop_loss=stop_loss, profit_target=profit_target)
@@ -352,7 +352,7 @@ class VelocitySignalMomentumStrategy(Strategy):
     
     def _create_put_credit_spread(self, date: datetime, current_price: float, expiration: str) -> Optional[Position]:
         """
-        Create a test ATM/+10 put credit spread.
+        Create a put credit spread.
         
         Args:
             date: Current date
@@ -364,7 +364,7 @@ class VelocitySignalMomentumStrategy(Strategy):
         """
         try:
             # Get list of contracts for the date
-            expiration_range = ExpirationRangeDTO(min_days=5, max_days=10)
+            expiration_range = ExpirationRangeDTO(min_days=14, max_days=21)
             
             # Add strike range filter to prevent super far ITM contracts
             strike_range = StrikeRangeDTO(
@@ -422,6 +422,16 @@ class VelocitySignalMomentumStrategy(Strategy):
             
             min_difference = abs(float(otm_put.strike_price.value) - otm_strike)
             progress_print(f"Found OTM put: {otm_put.ticker} @ ${otm_put.strike_price.value} exp {otm_put.expiration_date} (strike difference: {min_difference})")
+            
+            # CRITICAL: Reject positions where OTM strike is too far from target
+            # This prevents accidentally creating huge spreads (e.g., 48-point instead of 6-point)
+            # when the desired strike isn't available
+            MAX_ACCEPTABLE_STRIKE_DIFFERENCE = 2.0  # Allow up to 2 points difference
+            if min_difference > MAX_ACCEPTABLE_STRIKE_DIFFERENCE:
+                progress_print(f"❌ REJECTING POSITION: OTM strike ${otm_put.strike_price.value} is {min_difference} points away from target ${otm_strike}")
+                progress_print(f"   This would create a {abs(float(atm_put.strike_price.value) - float(otm_put.strike_price.value)):.0f}-point spread instead of intended 6-point spread")
+                progress_print(f"   Maximum acceptable difference: {MAX_ACCEPTABLE_STRIKE_DIFFERENCE} points")
+                return None
             
             # Verify both legs have the same expiration (vertical spread check)
             if str(atm_put.expiration_date) != str(otm_put.expiration_date):
@@ -496,7 +506,7 @@ class VelocitySignalMomentumStrategy(Strategy):
             print("⚠️  Failed to get current price.")
             return
 
-        # Select expiration (target ~1 week)
+        # Select expiration
         expiration_str = self._select_week_expiration(date)
         if not expiration_str:
             progress_print("⚠️  Failed to select expiration")
@@ -548,8 +558,8 @@ class VelocitySignalMomentumStrategy(Strategy):
     def _get_option_chain(self, date: datetime, current_price: float) -> Optional[OptionsChainDTO]:
         date_key = date.strftime('%Y-%m-%d')
 
-        expiration_range = ExpirationRangeDTO(min_days=5, max_days=10)
-        
+        expiration_range = ExpirationRangeDTO(min_days=14, max_days=21)
+
         strike_range = StrikeRangeDTO(
             min_strike=StrikePrice(Decimal(str(current_price - 7))),  # current_price - 7 (width of 6 + buffer)
             max_strike=StrikePrice(Decimal(str(current_price + 1)))    # current_price + 1
@@ -570,7 +580,7 @@ class VelocitySignalMomentumStrategy(Strategy):
         Prefer expirations 5-10 days out, else nearest > 0 days, target 7 days.
         """
         progress_print(f"🔍 _select_week_expiration called for {date.strftime('%Y-%m-%d')}")
-        target_days = 7
+        target_days = 14
         
         def days_out(exp_str: str) -> int:
             try:
@@ -581,11 +591,11 @@ class VelocitySignalMomentumStrategy(Strategy):
         
         # Try to get expirations from new_options_handler
         try:
-            progress_print("🔍 Fetching expirations from new_options_handler for 5-10 day window...")
+            progress_print("🔍 Fetching expirations from new_options_handler for 14-21 day window...")
             
             # Use new_options_handler to get available expirations
             from src.common.options_dtos import ExpirationRangeDTO
-            expiration_range = ExpirationRangeDTO(min_days=5, max_days=10)
+            expiration_range = ExpirationRangeDTO(min_days=14, max_days=21)
             
             # Get contracts for the date (already filtered by expiration range)
             contracts = self.new_options_handler.get_contract_list_for_date(date, expiration_range=expiration_range)

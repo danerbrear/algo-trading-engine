@@ -144,6 +144,7 @@ class TestVelocitySignalMomentumStrategy:
         assert strategy_no_stop._should_close_due_to_stop(position, 1.5) == False
 
     def test_select_week_expiration_prefers_5_to_10_days(self):
+        """Test that _select_week_expiration selects expiration closest to target (14 days) from 14-21 day range."""
         mock_options_handler = Mock()
         strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
         
@@ -152,14 +153,15 @@ class TestVelocitySignalMomentumStrategy:
         from src.common.options_dtos import OptionContractDTO
         from src.common.models import OptionType as CommonOptionType
         
-        # Create mock contracts with different expiration dates
+        # Create mock contracts with different expiration dates in the 14-21 day range
+        # Implementation filters for 14-21 days and targets 14 days
         contracts = [
             OptionContractDTO(
-                ticker='O:SPY240103P100',
+                ticker='O:SPY240115P100',
                 underlying_ticker='SPY',
                 contract_type=CommonOptionType.PUT,
                 strike_price=100.0,
-                expiration_date='2024-01-03',  # 2 days
+                expiration_date='2024-01-15',  # 14 days (target, preferred)
                 exercise_style='american',
                 shares_per_contract=100,
                 primary_exchange='BATO',
@@ -167,11 +169,11 @@ class TestVelocitySignalMomentumStrategy:
                 additional_underlyings=None
             ),
             OptionContractDTO(
-                ticker='O:SPY240108P100',
+                ticker='O:SPY240118P100',
                 underlying_ticker='SPY',
                 contract_type=CommonOptionType.PUT,
                 strike_price=100.0,
-                expiration_date='2024-01-08',  # 7 days (preferred)
+                expiration_date='2024-01-18',  # 17 days
                 exercise_style='american',
                 shares_per_contract=100,
                 primary_exchange='BATO',
@@ -179,11 +181,11 @@ class TestVelocitySignalMomentumStrategy:
                 additional_underlyings=None
             ),
             OptionContractDTO(
-                ticker='O:SPY240120P100',
+                ticker='O:SPY240122P100',
                 underlying_ticker='SPY',
                 contract_type=CommonOptionType.PUT,
                 strike_price=100.0,
-                expiration_date='2024-01-20',  # 19 days
+                expiration_date='2024-01-22',  # 21 days
                 exercise_style='american',
                 shares_per_contract=100,
                 primary_exchange='BATO',
@@ -196,7 +198,8 @@ class TestVelocitySignalMomentumStrategy:
         
         date = datetime(2024, 1, 1)
         picked = strategy._select_week_expiration(date)
-        assert picked == '2024-01-08'
+        # Should select 2024-01-15 (14 days) as it's closest to the target of 14 days
+        assert picked == '2024-01-15'
 
     def test_get_current_underlying_price(self):
         mock_options_handler = Mock()
@@ -325,11 +328,14 @@ class TestVelocitySignalMomentumStrategy:
             additional_underlyings=None
         )
         
+        # Strategy targets 6-point spread: ATM $100 - 6 = OTM $94
+        # Validation allows up to 2 points difference, so acceptable range is $92-$96
+        # Use $94 (exact match) to ensure test passes
         otm_contract = OptionContractDTO(
-            ticker='O:SPY240115P90',
+            ticker='O:SPY240115P94',
             underlying_ticker='SPY',
             contract_type=CommonOptionType.PUT,
-            strike_price=StrikePrice(90.0),
+            strike_price=StrikePrice(94.0),  # Target OTM for 6-point spread (100 - 6 = 94)
             expiration_date=ExpirationDate(date_type(2024, 1, 15)),
             exercise_style='american',
             shares_per_contract=100,
@@ -357,7 +363,7 @@ class TestVelocitySignalMomentumStrategy:
         )
         
         otm_bar = OptionBarDTO(
-            ticker='O:SPY240115P90',
+            ticker='O:SPY240115P94',
             timestamp=datetime(2024, 1, 1),
             open_price=Decimal('0.50'),
             high_price=Decimal('0.60'),
