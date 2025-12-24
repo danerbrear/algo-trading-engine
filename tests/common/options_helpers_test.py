@@ -8,7 +8,7 @@ of the OptionsHandler refactoring.
 import pytest
 from datetime import datetime, date, timedelta
 from decimal import Decimal
-from typing import List, Dict
+from typing import Optional
 
 from src.common.options_helpers import OptionsRetrieverHelper
 from src.common.options_dtos import (
@@ -455,3 +455,412 @@ class TestOptionsRetrieverHelperIntegration:
         # Verify spread width (calculate manually since method doesn't exist)
         spread_width = abs(float(short_leg.strike_price.value) - float(long_leg.strike_price.value))
         assert spread_width == 5.0
+
+
+class TestFindBestCreditSpread:
+    """Test cases for find_best_credit_spread helper method."""
+    
+    def test_find_best_credit_spread_selects_highest_ratio(self):
+        """Test that find_best_credit_spread selects the spread with highest credit/width ratio."""
+        from datetime import date as date_type
+        
+        # Create contracts for multiple spread widths
+        # ATM at $100, OTM strikes at $96 (4pt), $94 (6pt), $92 (8pt)
+        atm_contract = OptionContractDTO(
+            ticker='O:SPY240115P100',
+            underlying_ticker='SPY',
+            contract_type=OptionType.PUT,
+            strike_price=StrikePrice(100.0),
+            expiration_date=ExpirationDate(date_type(2024, 1, 15)),
+            exercise_style='american',
+            shares_per_contract=100,
+            primary_exchange='BATO',
+            cfi='OCASPS',
+            additional_underlyings=None
+        )
+        
+        otm_4pt = OptionContractDTO(
+            ticker='O:SPY240115P96',
+            underlying_ticker='SPY',
+            contract_type=OptionType.PUT,
+            strike_price=StrikePrice(96.0),  # 4-point spread
+            expiration_date=ExpirationDate(date_type(2024, 1, 15)),
+            exercise_style='american',
+            shares_per_contract=100,
+            primary_exchange='BATO',
+            cfi='OCASPS',
+            additional_underlyings=None
+        )
+        
+        otm_6pt = OptionContractDTO(
+            ticker='O:SPY240115P94',
+            underlying_ticker='SPY',
+            contract_type=OptionType.PUT,
+            strike_price=StrikePrice(94.0),  # 6-point spread
+            expiration_date=ExpirationDate(date_type(2024, 1, 15)),
+            exercise_style='american',
+            shares_per_contract=100,
+            primary_exchange='BATO',
+            cfi='OCASPS',
+            additional_underlyings=None
+        )
+        
+        otm_8pt = OptionContractDTO(
+            ticker='O:SPY240115P92',
+            underlying_ticker='SPY',
+            contract_type=OptionType.PUT,
+            strike_price=StrikePrice(92.0),  # 8-point spread
+            expiration_date=ExpirationDate(date_type(2024, 1, 15)),
+            exercise_style='american',
+            shares_per_contract=100,
+            primary_exchange='BATO',
+            cfi='OCASPS',
+            additional_underlyings=None
+        )
+        
+        contracts = [atm_contract, otm_4pt, otm_6pt, otm_8pt]
+        
+        # Create bars with different credits to test ratio selection
+        # 4pt: $2.00 credit / 4pt = 0.50 ratio (best)
+        # 6pt: $1.50 credit / 6pt = 0.25 ratio
+        # 8pt: $2.20 credit / 8pt = 0.275 ratio
+        
+        def get_bar(contract: OptionContractDTO, date: datetime) -> Optional[OptionBarDTO]:
+            if '100' in contract.ticker:  # ATM
+                return OptionBarDTO(
+                    ticker=contract.ticker,
+                    timestamp=date,
+                    open_price=Decimal('3.00'),
+                    high_price=Decimal('3.10'),
+                    low_price=Decimal('2.90'),
+                    close_price=Decimal('3.00'),
+                    volume=1000,
+                    volume_weighted_avg_price=Decimal('3.00'),
+                    number_of_transactions=100
+                )
+            elif '96' in contract.ticker:  # 4pt OTM
+                return OptionBarDTO(
+                    ticker=contract.ticker,
+                    timestamp=date,
+                    open_price=Decimal('1.00'),
+                    high_price=Decimal('1.10'),
+                    low_price=Decimal('0.90'),
+                    close_price=Decimal('1.00'),  # Credit: 3.00 - 1.00 = 2.00, Ratio: 2.00/4 = 0.50
+                    volume=800,
+                    volume_weighted_avg_price=Decimal('1.00'),
+                    number_of_transactions=80
+                )
+            elif '94' in contract.ticker:  # 6pt OTM
+                return OptionBarDTO(
+                    ticker=contract.ticker,
+                    timestamp=date,
+                    open_price=Decimal('1.50'),
+                    high_price=Decimal('1.60'),
+                    low_price=Decimal('1.40'),
+                    close_price=Decimal('1.50'),  # Credit: 3.00 - 1.50 = 1.50, Ratio: 1.50/6 = 0.25
+                    volume=800,
+                    volume_weighted_avg_price=Decimal('1.50'),
+                    number_of_transactions=80
+                )
+            elif '92' in contract.ticker:  # 8pt OTM
+                return OptionBarDTO(
+                    ticker=contract.ticker,
+                    timestamp=date,
+                    open_price=Decimal('0.80'),
+                    high_price=Decimal('0.90'),
+                    low_price=Decimal('0.70'),
+                    close_price=Decimal('0.80'),  # Credit: 3.00 - 0.80 = 2.20, Ratio: 2.20/8 = 0.275
+                    volume=800,
+                    volume_weighted_avg_price=Decimal('0.80'),
+                    number_of_transactions=80
+                )
+            return None
+        
+        result = OptionsRetrieverHelper.find_best_credit_spread(
+            contracts=contracts,
+            current_price=100.0,
+            expiration='2024-01-15',
+            get_bar_fn=get_bar,
+            date=datetime(2024, 1, 1),
+            min_spread_width=4,
+            max_spread_width=10,
+            max_strike_difference=2.0,
+            option_type=OptionType.PUT
+        )
+        
+        # Should select 4-point spread (best credit/width ratio: 0.50)
+        assert result is not None
+        assert result['credit'] == 2.0  # 3.00 - 1.00
+        assert result['width'] == 4.0  # 100 - 96
+        assert result['credit_width_ratio'] == 0.5  # 2.00 / 4.0
+        assert result['atm_contract'].ticker == 'O:SPY240115P100'
+        assert result['otm_contract'].ticker == 'O:SPY240115P96'
+    
+    def test_find_best_credit_spread_rejects_strikes_too_far(self):
+        """Test that spreads are rejected when OTM strike is more than max_strike_difference from target."""
+        from datetime import date as date_type
+        
+        atm_contract = OptionContractDTO(
+            ticker='O:SPY240115P100',
+            underlying_ticker='SPY',
+            contract_type=OptionType.PUT,
+            strike_price=StrikePrice(100.0),
+            expiration_date=ExpirationDate(date_type(2024, 1, 15)),
+            exercise_style='american',
+            shares_per_contract=100,
+            primary_exchange='BATO',
+            cfi='OCASPS',
+            additional_underlyings=None
+        )
+        
+        # Only have OTM at $90 (10 points away)
+        # For 4pt target ($96), $90 is 6 points away (rejected with max_difference=2.0)
+        # For 6pt target ($94), $90 is 4 points away (rejected)
+        # For 8pt target ($92), $90 is 2 points away (accepted)
+        # For 10pt target ($90), $90 is 0 points away (accepted)
+        otm_contract = OptionContractDTO(
+            ticker='O:SPY240115P90',
+            underlying_ticker='SPY',
+            contract_type=OptionType.PUT,
+            strike_price=StrikePrice(90.0),
+            expiration_date=ExpirationDate(date_type(2024, 1, 15)),
+            exercise_style='american',
+            shares_per_contract=100,
+            primary_exchange='BATO',
+            cfi='OCASPS',
+            additional_underlyings=None
+        )
+        
+        contracts = [atm_contract, otm_contract]
+        
+        def get_bar(contract: OptionContractDTO, date: datetime) -> Optional[OptionBarDTO]:
+            if '100' in contract.ticker:
+                return OptionBarDTO(
+                    ticker=contract.ticker,
+                    timestamp=date,
+                    open_price=Decimal('3.00'),
+                    high_price=Decimal('3.10'),
+                    low_price=Decimal('2.90'),
+                    close_price=Decimal('3.00'),
+                    volume=1000,
+                    volume_weighted_avg_price=Decimal('3.00'),
+                    number_of_transactions=100
+                )
+            else:  # OTM at 90
+                return OptionBarDTO(
+                    ticker=contract.ticker,
+                    timestamp=date,
+                    open_price=Decimal('0.50'),
+                    high_price=Decimal('0.60'),
+                    low_price=Decimal('0.40'),
+                    close_price=Decimal('0.50'),
+                    volume=800,
+                    volume_weighted_avg_price=Decimal('0.50'),
+                    number_of_transactions=80
+                )
+        
+        result = OptionsRetrieverHelper.find_best_credit_spread(
+            contracts=contracts,
+            current_price=100.0,
+            expiration='2024-01-15',
+            get_bar_fn=get_bar,
+            date=datetime(2024, 1, 1),
+            min_spread_width=4,
+            max_spread_width=10,
+            max_strike_difference=2.0,
+            option_type=OptionType.PUT
+        )
+        
+        # Should select 10pt spread (exact match, best ratio)
+        assert result is not None
+        assert result['width'] == 10.0  # 100 - 90
+        assert result['credit'] == 2.5  # 3.00 - 0.50
+    
+    def test_find_best_credit_spread_no_valid_spreads(self):
+        """Test that None is returned when no valid spreads are found."""
+        from datetime import date as date_type
+        
+        # Only ATM contract, no OTM contracts
+        atm_contract = OptionContractDTO(
+            ticker='O:SPY240115P100',
+            underlying_ticker='SPY',
+            contract_type=OptionType.PUT,
+            strike_price=StrikePrice(100.0),
+            expiration_date=ExpirationDate(date_type(2024, 1, 15)),
+            exercise_style='american',
+            shares_per_contract=100,
+            primary_exchange='BATO',
+            cfi='OCASPS',
+            additional_underlyings=None
+        )
+        
+        contracts = [atm_contract]
+        
+        def get_bar(contract: OptionContractDTO, date: datetime) -> Optional[OptionBarDTO]:
+            return None
+        
+        result = OptionsRetrieverHelper.find_best_credit_spread(
+            contracts=contracts,
+            current_price=100.0,
+            expiration='2024-01-15',
+            get_bar_fn=get_bar,
+            date=datetime(2024, 1, 1),
+            min_spread_width=4,
+            max_spread_width=10,
+            max_strike_difference=2.0,
+            option_type=OptionType.PUT
+        )
+        
+        assert result is None
+    
+    def test_find_best_credit_spread_all_rejected_due_to_strike_distance(self):
+        """Test that None is returned when all spreads are rejected due to strikes being too far."""
+        from datetime import date as date_type
+        
+        atm_contract = OptionContractDTO(
+            ticker='O:SPY240115P100',
+            underlying_ticker='SPY',
+            contract_type=OptionType.PUT,
+            strike_price=StrikePrice(100.0),
+            expiration_date=ExpirationDate(date_type(2024, 1, 15)),
+            exercise_style='american',
+            shares_per_contract=100,
+            primary_exchange='BATO',
+            cfi='OCASPS',
+            additional_underlyings=None
+        )
+        
+        # OTM at $80 is way too far from any target (4pt=$96, 10pt=$90)
+        otm_contract = OptionContractDTO(
+            ticker='O:SPY240115P80',
+            underlying_ticker='SPY',
+            contract_type=OptionType.PUT,
+            strike_price=StrikePrice(80.0),
+            expiration_date=ExpirationDate(date_type(2024, 1, 15)),
+            exercise_style='american',
+            shares_per_contract=100,
+            primary_exchange='BATO',
+            cfi='OCASPS',
+            additional_underlyings=None
+        )
+        
+        contracts = [atm_contract, otm_contract]
+        
+        def get_bar(contract: OptionContractDTO, date: datetime) -> Optional[OptionBarDTO]:
+            if '100' in contract.ticker:
+                return OptionBarDTO(
+                    ticker=contract.ticker,
+                    timestamp=date,
+                    open_price=Decimal('3.00'),
+                    high_price=Decimal('3.10'),
+                    low_price=Decimal('2.90'),
+                    close_price=Decimal('3.00'),
+                    volume=1000,
+                    volume_weighted_avg_price=Decimal('3.00'),
+                    number_of_transactions=100
+                )
+            else:
+                return OptionBarDTO(
+                    ticker=contract.ticker,
+                    timestamp=date,
+                    open_price=Decimal('0.10'),
+                    high_price=Decimal('0.20'),
+                    low_price=Decimal('0.05'),
+                    close_price=Decimal('0.10'),
+                    volume=800,
+                    volume_weighted_avg_price=Decimal('0.10'),
+                    number_of_transactions=80
+                )
+        
+        result = OptionsRetrieverHelper.find_best_credit_spread(
+            contracts=contracts,
+            current_price=100.0,
+            expiration='2024-01-15',
+            get_bar_fn=get_bar,
+            date=datetime(2024, 1, 1),
+            min_spread_width=4,
+            max_spread_width=10,
+            max_strike_difference=2.0,
+            option_type=OptionType.PUT
+        )
+        
+        # Should return None - all spreads rejected (strikes too far)
+        assert result is None
+    
+    def test_find_best_credit_spread_works_with_calls(self):
+        """Test that find_best_credit_spread works with call credit spreads."""
+        from datetime import date as date_type
+        
+        # For call credit spreads, ATM is lower, OTM is higher
+        atm_contract = OptionContractDTO(
+            ticker='O:SPY240115C100',
+            underlying_ticker='SPY',
+            contract_type=OptionType.CALL,
+            strike_price=StrikePrice(100.0),
+            expiration_date=ExpirationDate(date_type(2024, 1, 15)),
+            exercise_style='american',
+            shares_per_contract=100,
+            primary_exchange='BATO',
+            cfi='OCASPS',
+            additional_underlyings=None
+        )
+        
+        otm_contract = OptionContractDTO(
+            ticker='O:SPY240115C104',
+            underlying_ticker='SPY',
+            contract_type=OptionType.CALL,
+            strike_price=StrikePrice(104.0),  # 4-point spread
+            expiration_date=ExpirationDate(date_type(2024, 1, 15)),
+            exercise_style='american',
+            shares_per_contract=100,
+            primary_exchange='BATO',
+            cfi='OCASPS',
+            additional_underlyings=None
+        )
+        
+        contracts = [atm_contract, otm_contract]
+        
+        def get_bar(contract: OptionContractDTO, date: datetime) -> Optional[OptionBarDTO]:
+            if '100' in contract.ticker:  # ATM
+                return OptionBarDTO(
+                    ticker=contract.ticker,
+                    timestamp=date,
+                    open_price=Decimal('3.00'),
+                    high_price=Decimal('3.10'),
+                    low_price=Decimal('2.90'),
+                    close_price=Decimal('3.00'),
+                    volume=1000,
+                    volume_weighted_avg_price=Decimal('3.00'),
+                    number_of_transactions=100
+                )
+            else:  # OTM at 104
+                return OptionBarDTO(
+                    ticker=contract.ticker,
+                    timestamp=date,
+                    open_price=Decimal('1.00'),
+                    high_price=Decimal('1.10'),
+                    low_price=Decimal('0.90'),
+                    close_price=Decimal('1.00'),  # Credit: 3.00 - 1.00 = 2.00
+                    volume=800,
+                    volume_weighted_avg_price=Decimal('1.00'),
+                    number_of_transactions=80
+                )
+        
+        result = OptionsRetrieverHelper.find_best_credit_spread(
+            contracts=contracts,
+            current_price=100.0,
+            expiration='2024-01-15',
+            get_bar_fn=get_bar,
+            date=datetime(2024, 1, 1),
+            min_spread_width=4,
+            max_spread_width=10,
+            max_strike_difference=2.0,
+            option_type=OptionType.CALL
+        )
+        
+        # Should find the 4-point call credit spread
+        assert result is not None
+        assert result['width'] == 4.0  # 104 - 100
+        assert result['credit'] == 2.0  # 3.00 - 1.00
+        assert result['atm_contract'].ticker == 'O:SPY240115C100'
+        assert result['otm_contract'].ticker == 'O:SPY240115C104'

@@ -400,6 +400,391 @@ class TestVelocitySignalMomentumStrategy:
         assert position.entry_price == 2.0  # 2.50 - 0.50
         assert len(position.spread_options) == 2
 
+    def test_create_put_credit_spread_selects_best_credit_width_ratio(self):
+        """Test that _create_put_credit_spread evaluates 4-10 point spreads and selects the one with best credit/width ratio."""
+        mock_options_handler = Mock()
+        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        
+        # Mock the new_options_handler
+        strategy.new_options_handler = Mock()
+        from src.common.options_dtos import OptionContractDTO, StrikePrice, ExpirationDate, OptionBarDTO
+        from src.common.models import OptionType as CommonOptionType
+        from datetime import date as date_type
+        from decimal import Decimal
+        
+        # Create contracts for multiple spread widths
+        # ATM at $100, OTM strikes at $96 (4pt), $94 (6pt), $92 (8pt), $90 (10pt)
+        atm_contract = OptionContractDTO(
+            ticker='O:SPY240115P100',
+            underlying_ticker='SPY',
+            contract_type=CommonOptionType.PUT,
+            strike_price=StrikePrice(100.0),
+            expiration_date=ExpirationDate(date_type(2024, 1, 15)),
+            exercise_style='american',
+            shares_per_contract=100,
+            primary_exchange='BATO',
+            cfi='OCASPS',
+            additional_underlyings=None
+        )
+        
+        otm_4pt = OptionContractDTO(
+            ticker='O:SPY240115P96',
+            underlying_ticker='SPY',
+            contract_type=CommonOptionType.PUT,
+            strike_price=StrikePrice(96.0),  # 4-point spread
+            expiration_date=ExpirationDate(date_type(2024, 1, 15)),
+            exercise_style='american',
+            shares_per_contract=100,
+            primary_exchange='BATO',
+            cfi='OCASPS',
+            additional_underlyings=None
+        )
+        
+        otm_6pt = OptionContractDTO(
+            ticker='O:SPY240115P94',
+            underlying_ticker='SPY',
+            contract_type=CommonOptionType.PUT,
+            strike_price=StrikePrice(94.0),  # 6-point spread
+            expiration_date=ExpirationDate(date_type(2024, 1, 15)),
+            exercise_style='american',
+            shares_per_contract=100,
+            primary_exchange='BATO',
+            cfi='OCASPS',
+            additional_underlyings=None
+        )
+        
+        otm_8pt = OptionContractDTO(
+            ticker='O:SPY240115P92',
+            underlying_ticker='SPY',
+            contract_type=CommonOptionType.PUT,
+            strike_price=StrikePrice(92.0),  # 8-point spread
+            expiration_date=ExpirationDate(date_type(2024, 1, 15)),
+            exercise_style='american',
+            shares_per_contract=100,
+            primary_exchange='BATO',
+            cfi='OCASPS',
+            additional_underlyings=None
+        )
+        
+        strategy.new_options_handler.get_contract_list_for_date.return_value = [
+            atm_contract, otm_4pt, otm_6pt, otm_8pt
+        ]
+        
+        # Create bars with different credits to test ratio selection
+        # 4pt: $2.00 credit / 4pt = 0.50 ratio
+        # 6pt: $1.50 credit / 6pt = 0.25 ratio  
+        # 8pt: $3.20 credit / 8pt = 0.40 ratio
+        # Best should be 4pt with 0.50 ratio
+        
+        def get_bar(contract, date):
+            if '100' in contract.ticker:  # ATM
+                return OptionBarDTO(
+                    ticker=contract.ticker,
+                    timestamp=date,
+                    open_price=Decimal('3.00'),
+                    high_price=Decimal('3.10'),
+                    low_price=Decimal('2.90'),
+                    close_price=Decimal('3.00'),
+                    volume=1000,
+                    volume_weighted_avg_price=Decimal('3.00'),
+                    number_of_transactions=100
+                )
+            elif '96' in contract.ticker:  # 4pt OTM
+                return OptionBarDTO(
+                    ticker=contract.ticker,
+                    timestamp=date,
+                    open_price=Decimal('1.00'),
+                    high_price=Decimal('1.10'),
+                    low_price=Decimal('0.90'),
+                    close_price=Decimal('1.00'),  # Credit: 3.00 - 1.00 = 2.00, Ratio: 2.00/4 = 0.50
+                    volume=800,
+                    volume_weighted_avg_price=Decimal('1.00'),
+                    number_of_transactions=80
+                )
+            elif '94' in contract.ticker:  # 6pt OTM
+                return OptionBarDTO(
+                    ticker=contract.ticker,
+                    timestamp=date,
+                    open_price=Decimal('1.50'),
+                    high_price=Decimal('1.60'),
+                    low_price=Decimal('1.40'),
+                    close_price=Decimal('1.50'),  # Credit: 3.00 - 1.50 = 1.50, Ratio: 1.50/6 = 0.25
+                    volume=800,
+                    volume_weighted_avg_price=Decimal('1.50'),
+                    number_of_transactions=80
+                )
+            elif '92' in contract.ticker:  # 8pt OTM
+                return OptionBarDTO(
+                    ticker=contract.ticker,
+                    timestamp=date,
+                    open_price=Decimal('0.80'),
+                    high_price=Decimal('0.90'),
+                    low_price=Decimal('0.70'),
+                    close_price=Decimal('0.80'),  # Credit: 3.00 - 0.80 = 2.20, Ratio: 2.20/8 = 0.275
+                    volume=800,
+                    volume_weighted_avg_price=Decimal('0.80'),
+                    number_of_transactions=80
+                )
+            return None
+        
+        strategy.new_options_handler.get_option_bar = Mock(side_effect=get_bar)
+        
+        # Create mock data
+        data = pd.DataFrame({
+            'Close': [100, 101, 102]
+        }, index=pd.date_range('2024-01-01', periods=3))
+        
+        treasury_data = TreasuryRates(pd.DataFrame({
+            'IRX_1Y': [0.05, 0.06, 0.07],
+            'TNX_10Y': [0.04, 0.05, 0.06]
+        }, index=pd.date_range('2024-01-01', periods=3)))
+        
+        strategy.set_data(data, treasury_data)
+        
+        # Test creating put credit spread
+        position = strategy._create_put_credit_spread(
+            datetime(2024, 1, 1), 100.0, '2024-01-15'
+        )
+        
+        # Should select 4-point spread (best credit/width ratio: 0.50)
+        assert position is not None
+        assert position.strategy_type == StrategyType.PUT_CREDIT_SPREAD
+        assert position.entry_price == 2.0  # 3.00 - 1.00 = 2.00 (4pt spread credit)
+        # Verify it's the 4-point spread (ATM 100, OTM 96)
+        assert len(position.spread_options) == 2
+        strikes = sorted([opt.strike for opt in position.spread_options])
+        assert strikes == [96.0, 100.0]  # 4-point spread
+    
+    def test_create_put_credit_spread_rejects_spreads_with_strikes_too_far(self):
+        """Test that spreads are rejected when OTM strike is more than 2 points from target."""
+        mock_options_handler = Mock()
+        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        
+        strategy.new_options_handler = Mock()
+        from src.common.options_dtos import OptionContractDTO, StrikePrice, ExpirationDate, OptionBarDTO
+        from src.common.models import OptionType as CommonOptionType
+        from datetime import date as date_type
+        from decimal import Decimal
+        
+        # Create contracts where only wide spreads are available (strikes far from targets)
+        atm_contract = OptionContractDTO(
+            ticker='O:SPY240115P100',
+            underlying_ticker='SPY',
+            contract_type=CommonOptionType.PUT,
+            strike_price=StrikePrice(100.0),
+            expiration_date=ExpirationDate(date_type(2024, 1, 15)),
+            exercise_style='american',
+            shares_per_contract=100,
+            primary_exchange='BATO',
+            cfi='OCASPS',
+            additional_underlyings=None
+        )
+        
+        # Only have OTM at $90 (10 points away, but for 4-10pt spreads, closest available is too far)
+        # For 4pt target ($96), $90 is 6 points away (rejected)
+        # For 6pt target ($94), $90 is 4 points away (rejected)
+        # For 8pt target ($92), $90 is 2 points away (accepted)
+        # For 10pt target ($90), $90 is 0 points away (accepted)
+        otm_contract = OptionContractDTO(
+            ticker='O:SPY240115P90',
+            underlying_ticker='SPY',
+            contract_type=CommonOptionType.PUT,
+            strike_price=StrikePrice(90.0),
+            expiration_date=ExpirationDate(date_type(2024, 1, 15)),
+            exercise_style='american',
+            shares_per_contract=100,
+            primary_exchange='BATO',
+            cfi='OCASPS',
+            additional_underlyings=None
+        )
+        
+        strategy.new_options_handler.get_contract_list_for_date.return_value = [
+            atm_contract, otm_contract
+        ]
+        
+        def get_bar(contract, date):
+            if '100' in contract.ticker:
+                return OptionBarDTO(
+                    ticker=contract.ticker,
+                    timestamp=date,
+                    open_price=Decimal('3.00'),
+                    high_price=Decimal('3.10'),
+                    low_price=Decimal('2.90'),
+                    close_price=Decimal('3.00'),
+                    volume=1000,
+                    volume_weighted_avg_price=Decimal('3.00'),
+                    number_of_transactions=100
+                )
+            else:  # OTM at 90
+                return OptionBarDTO(
+                    ticker=contract.ticker,
+                    timestamp=date,
+                    open_price=Decimal('0.50'),
+                    high_price=Decimal('0.60'),
+                    low_price=Decimal('0.40'),
+                    close_price=Decimal('0.50'),
+                    volume=800,
+                    volume_weighted_avg_price=Decimal('0.50'),
+                    number_of_transactions=80
+                )
+        
+        strategy.new_options_handler.get_option_bar = Mock(side_effect=get_bar)
+        
+        data = pd.DataFrame({
+            'Close': [100, 101, 102]
+        }, index=pd.date_range('2024-01-01', periods=3))
+        
+        treasury_data = TreasuryRates(pd.DataFrame({
+            'IRX_1Y': [0.05, 0.06, 0.07],
+            'TNX_10Y': [0.04, 0.05, 0.06]
+        }, index=pd.date_range('2024-01-01', periods=3)))
+        
+        strategy.set_data(data, treasury_data)
+        
+        # Should still create a position using 8pt or 10pt spread (within tolerance)
+        position = strategy._create_put_credit_spread(
+            datetime(2024, 1, 1), 100.0, '2024-01-15'
+        )
+        
+        # Should select 10pt spread (exact match, best ratio)
+        assert position is not None
+        assert position.entry_price == 2.5  # 3.00 - 0.50 = 2.50
+        strikes = sorted([opt.strike for opt in position.spread_options])
+        assert strikes == [90.0, 100.0]  # 10-point spread
+    
+    def test_create_put_credit_spread_no_valid_spreads(self):
+        """Test that None is returned when no valid spreads are found in 4-10 point range."""
+        mock_options_handler = Mock()
+        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        
+        strategy.new_options_handler = Mock()
+        from src.common.options_dtos import OptionContractDTO, StrikePrice, ExpirationDate
+        from src.common.models import OptionType as CommonOptionType
+        from datetime import date as date_type
+        
+        # Create only ATM contract, no OTM contracts available
+        atm_contract = OptionContractDTO(
+            ticker='O:SPY240115P100',
+            underlying_ticker='SPY',
+            contract_type=CommonOptionType.PUT,
+            strike_price=StrikePrice(100.0),
+            expiration_date=ExpirationDate(date_type(2024, 1, 15)),
+            exercise_style='american',
+            shares_per_contract=100,
+            primary_exchange='BATO',
+            cfi='OCASPS',
+            additional_underlyings=None
+        )
+        
+        strategy.new_options_handler.get_contract_list_for_date.return_value = [atm_contract]
+        
+        data = pd.DataFrame({
+            'Close': [100, 101, 102]
+        }, index=pd.date_range('2024-01-01', periods=3))
+        
+        treasury_data = TreasuryRates(pd.DataFrame({
+            'IRX_1Y': [0.05, 0.06, 0.07],
+            'TNX_10Y': [0.04, 0.05, 0.06]
+        }, index=pd.date_range('2024-01-01', periods=3)))
+        
+        strategy.set_data(data, treasury_data)
+        
+        # Should return None when no OTM contracts available
+        position = strategy._create_put_credit_spread(
+            datetime(2024, 1, 1), 100.0, '2024-01-15'
+        )
+        
+        assert position is None
+    
+    def test_create_put_credit_spread_all_spreads_rejected_due_to_strike_distance(self):
+        """Test that None is returned when all spreads are rejected due to strikes being too far."""
+        mock_options_handler = Mock()
+        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        
+        strategy.new_options_handler = Mock()
+        from src.common.options_dtos import OptionContractDTO, StrikePrice, ExpirationDate, OptionBarDTO
+        from src.common.models import OptionType as CommonOptionType
+        from datetime import date as date_type
+        from decimal import Decimal
+        
+        # Create contracts where OTM is way too far (e.g., $80 when targets are $96-$90)
+        atm_contract = OptionContractDTO(
+            ticker='O:SPY240115P100',
+            underlying_ticker='SPY',
+            contract_type=CommonOptionType.PUT,
+            strike_price=StrikePrice(100.0),
+            expiration_date=ExpirationDate(date_type(2024, 1, 15)),
+            exercise_style='american',
+            shares_per_contract=100,
+            primary_exchange='BATO',
+            cfi='OCASPS',
+            additional_underlyings=None
+        )
+        
+        # OTM at $80 is way too far from any target (4pt=$96, 10pt=$90)
+        otm_contract = OptionContractDTO(
+            ticker='O:SPY240115P80',
+            underlying_ticker='SPY',
+            contract_type=CommonOptionType.PUT,
+            strike_price=StrikePrice(80.0),
+            expiration_date=ExpirationDate(date_type(2024, 1, 15)),
+            exercise_style='american',
+            shares_per_contract=100,
+            primary_exchange='BATO',
+            cfi='OCASPS',
+            additional_underlyings=None
+        )
+        
+        strategy.new_options_handler.get_contract_list_for_date.return_value = [
+            atm_contract, otm_contract
+        ]
+        
+        def get_bar(contract, date):
+            if '100' in contract.ticker:
+                return OptionBarDTO(
+                    ticker=contract.ticker,
+                    timestamp=date,
+                    open_price=Decimal('3.00'),
+                    high_price=Decimal('3.10'),
+                    low_price=Decimal('2.90'),
+                    close_price=Decimal('3.00'),
+                    volume=1000,
+                    volume_weighted_avg_price=Decimal('3.00'),
+                    number_of_transactions=100
+                )
+            else:
+                return OptionBarDTO(
+                    ticker=contract.ticker,
+                    timestamp=date,
+                    open_price=Decimal('0.10'),
+                    high_price=Decimal('0.20'),
+                    low_price=Decimal('0.05'),
+                    close_price=Decimal('0.10'),
+                    volume=800,
+                    volume_weighted_avg_price=Decimal('0.10'),
+                    number_of_transactions=80
+                )
+        
+        strategy.new_options_handler.get_option_bar = Mock(side_effect=get_bar)
+        
+        data = pd.DataFrame({
+            'Close': [100, 101, 102]
+        }, index=pd.date_range('2024-01-01', periods=3))
+        
+        treasury_data = TreasuryRates(pd.DataFrame({
+            'IRX_1Y': [0.05, 0.06, 0.07],
+            'TNX_10Y': [0.04, 0.05, 0.06]
+        }, index=pd.date_range('2024-01-01', periods=3)))
+        
+        strategy.set_data(data, treasury_data)
+        
+        # Should return None - all spreads rejected (strikes too far)
+        position = strategy._create_put_credit_spread(
+            datetime(2024, 1, 1), 100.0, '2024-01-15'
+        )
+        
+        assert position is None
+
     def test_create_test_put_credit_spread_no_credit(self):
         """Test creating a test put credit spread when no credit is received."""
         mock_options_handler = Mock()

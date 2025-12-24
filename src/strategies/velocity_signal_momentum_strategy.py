@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Callable, Optional, Dict
+from typing import Callable, Optional
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
-from src.backtest.models import Strategy, Position, StrategyType, OptionChain, TreasuryRates
+from src.backtest.models import Strategy, Position, StrategyType, TreasuryRates
 from src.common.options_dtos import ExpirationRangeDTO, OptionsChainDTO
 from src.common.progress_tracker import progress_print
 from src.common.options_handler import OptionsHandler
@@ -352,7 +352,8 @@ class VelocitySignalMomentumStrategy(Strategy):
     
     def _create_put_credit_spread(self, date: datetime, current_price: float, expiration: str) -> Optional[Position]:
         """
-        Create a put credit spread.
+        Create a put credit spread by evaluating spreads from 4-10 points and selecting
+        the one that maximizes credit/width ratio.
         
         Args:
             date: Current date
@@ -366,9 +367,9 @@ class VelocitySignalMomentumStrategy(Strategy):
             # Get list of contracts for the date
             expiration_range = ExpirationRangeDTO(min_days=14, max_days=21)
             
-            # Add strike range filter to prevent super far ITM contracts
+            # Add strike range filter to accommodate up to 10-point spreads
             strike_range = StrikeRangeDTO(
-                min_strike=StrikePrice(Decimal(str(current_price - 7))),  # current_price - 7 (width of 6 + buffer)
+                min_strike=StrikePrice(Decimal(str(current_price - 11))),  # current_price - 11 (width of 10 + buffer)
                 max_strike=StrikePrice(Decimal(str(current_price + 1)))    # current_price + 1
             )
             
@@ -378,8 +379,7 @@ class VelocitySignalMomentumStrategy(Strategy):
                 progress_print("⚠️  No contracts found for the date")
                 return None
 
-            # CRITICAL: Filter for contracts with the specific expiration FIRST
-            # This ensures both legs have the same expiration (vertical spread, not diagonal)
+            # Check if we have contracts for the target expiration
             contracts_for_expiration = [
                 c for c in contracts 
                 if str(c.expiration_date) == expiration
@@ -391,91 +391,51 @@ class VelocitySignalMomentumStrategy(Strategy):
             
             progress_print(f"✅ Found {len(contracts_for_expiration)} contracts for expiration {expiration}")
 
-            # Find ATM put option from contracts with the target expiration
-            atm_strike = round(current_price)
-            atm_call, atm_put = OptionsRetrieverHelper.find_atm_contracts(contracts_for_expiration, current_price)
+            # Use helper function to find best credit spread
+            # Pass all contracts - helper will filter for expiration and option type internally
+            progress_print(f"🔍 Evaluating spreads from 4 to 10 points...")
             
-            if not atm_put:
-                progress_print(f"⚠️  No ATM put found for expiration {expiration}")
-                return None
-                
-            progress_print(f"Found ATM put: {atm_put.ticker} @ ${atm_put.strike_price.value} exp {atm_put.expiration_date}")
-            
-            # Find OTM put (-6 strike for 6-point width) from the same expiration
-            otm_strike = atm_strike - 6
-            
-            # Filter for puts only (already filtered by expiration)
-            puts_for_expiration = [
-                c for c in contracts_for_expiration 
-                if c.contract_type == OptionType.PUT
-            ]
-            
-            if not puts_for_expiration:
-                progress_print(f"⚠️  No put contracts found for expiration {expiration}")
-                return None
-                
-            # Find the put with the closest strike to the target OTM strike
-            otm_put = min(
-                puts_for_expiration, 
-                key=lambda put: abs(float(put.strike_price.value) - otm_strike)
+            best_spread = OptionsRetrieverHelper.find_best_credit_spread(
+                contracts=contracts,
+                current_price=current_price,
+                expiration=expiration,
+                get_bar_fn=lambda contract, d: self.new_options_handler.get_option_bar(contract, d),
+                date=date,
+                min_spread_width=4,
+                max_spread_width=10,
+                max_strike_difference=2.0,
+                option_type=OptionType.PUT
             )
             
-            min_difference = abs(float(otm_put.strike_price.value) - otm_strike)
-            progress_print(f"Found OTM put: {otm_put.ticker} @ ${otm_put.strike_price.value} exp {otm_put.expiration_date} (strike difference: {min_difference})")
-            
-            # CRITICAL: Reject positions where OTM strike is too far from target
-            # This prevents accidentally creating huge spreads (e.g., 48-point instead of 6-point)
-            # when the desired strike isn't available
-            MAX_ACCEPTABLE_STRIKE_DIFFERENCE = 2.0  # Allow up to 2 points difference
-            if min_difference > MAX_ACCEPTABLE_STRIKE_DIFFERENCE:
-                progress_print(f"❌ REJECTING POSITION: OTM strike ${otm_put.strike_price.value} is {min_difference} points away from target ${otm_strike}")
-                progress_print(f"   This would create a {abs(float(atm_put.strike_price.value) - float(otm_put.strike_price.value)):.0f}-point spread instead of intended 6-point spread")
-                progress_print(f"   Maximum acceptable difference: {MAX_ACCEPTABLE_STRIKE_DIFFERENCE} points")
+            if not best_spread:
+                progress_print("❌ No valid spreads found in 4-10 point range")
                 return None
             
-            # Verify both legs have the same expiration (vertical spread check)
-            if str(atm_put.expiration_date) != str(otm_put.expiration_date):
-                progress_print(f"❌ ERROR: Expiration mismatch! ATM: {atm_put.expiration_date}, OTM: {otm_put.expiration_date}")
-                progress_print("❌ This would create a diagonal spread, not a vertical spread. Rejecting position.")
-                return None
+            progress_print(f"✅ Selected {best_spread['width']:.0f}-point spread with credit/width ratio {best_spread['credit_width_ratio']:.4f} (credit: ${best_spread['credit']:.2f})")
             
-            progress_print(f"✅ Verified: Both legs have same expiration {expiration} (vertical spread)")
+            # Convert OptionContractDTO to Option using the new conversion method
+            from src.common.models import Option
+            atm_option = Option.from_contract_and_bar(best_spread['atm_contract'], best_spread['atm_bar'])
+            otm_option = Option.from_contract_and_bar(best_spread['otm_contract'], best_spread['otm_bar'])
             
-            # Get bar data to calculate net credit
-            atm_bar = self.new_options_handler.get_option_bar(atm_put, date)
-            otm_bar = self.new_options_handler.get_option_bar(otm_put, date)
-            
-            if not atm_bar or not otm_bar:
-                progress_print("⚠️  No bar data available for credit calculation")
-                return None
-            
-            # Calculate net credit (sell ATM, buy OTM)
-            net_credit = float(atm_bar.close_price) - float(otm_bar.close_price)
-            
-            if net_credit > 0:  # Only consider if we receive a credit
-                # Convert OptionContractDTO to Option using the new conversion method
-                from src.common.models import Option
-                atm_option = Option.from_contract_and_bar(atm_put, atm_bar)
-                otm_option = Option.from_contract_and_bar(otm_put, otm_bar)
-                
-                # Create test position
-                position = Position(
-                    symbol=self.data.index.name if self.data.index.name else 'SPY',
-                    expiration_date=datetime.strptime(expiration, '%Y-%m-%d'),
-                    strategy_type=StrategyType.PUT_CREDIT_SPREAD,
-                    strike_price=atm_strike,
-                    entry_date=date,
-                    entry_price=net_credit,
-                    spread_options=[atm_option, otm_option]
-                )
-                # Note: Do NOT set quantity here - the backtest engine will set it based on max_position_size
-                return position
-            else:
-                progress_print(f"⚠️  Negative credit: {net_credit:.2f}")
-                return None
+            atm_strike = round(current_price)
+            position = Position(
+                symbol=self.data.index.name if self.data.index.name else 'SPY',
+                expiration_date=datetime.strptime(expiration, '%Y-%m-%d'),
+                strategy_type=StrategyType.PUT_CREDIT_SPREAD,
+                strike_price=atm_strike,
+                entry_date=date,
+                entry_price=best_spread['credit'],
+                spread_options=[atm_option, otm_option]
+            )
+
+            # Note: Do NOT set quantity here - the backtest engine will set it based on max_position_size
+            return position
             
         except Exception as e:
             progress_print(f"⚠️  Error creating test put credit spread: {e}")
+            import traceback
+            traceback.print_exc()
             return None
     
     def _get_risk_free_rate(self, date: datetime) -> float:
