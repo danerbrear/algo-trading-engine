@@ -5,8 +5,7 @@ Tests the --auto-close argument and its integration with the recommendation engi
 """
 
 import unittest
-from unittest.mock import Mock, patch, MagicMock
-from datetime import datetime
+from unittest.mock import Mock, patch
 import sys
 import os
 
@@ -15,7 +14,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from src.prediction.recommend_cli import main
 from src.prediction.decision_store import JsonDecisionStore
-from src.backtest.models import Position, StrategyType
+from src.backtest.models import StrategyType
 from src.common.models import Option, OptionType
 
 
@@ -90,8 +89,8 @@ class TestRecommendCliAutoClose(unittest.TestCase):
         
         # Assertions
         mock_decision_store.return_value.get_open_positions.assert_called_once_with(symbol='SPY')
-        # Verify build_strategy was called with correct arguments
-        mock_build_strategy.assert_called_once_with('velocity_momentum', 'SPY', mock_options_handler.return_value)
+        # Verify build_strategy was called with correct arguments (no stop_loss/profit_target by default)
+        mock_build_strategy.assert_called_once_with('velocity_momentum', 'SPY', mock_options_handler.return_value, stop_loss=None, profit_target=None)
         mock_recommender_class.assert_called_once()
         mock_recommender.auto_yes = True  # Should be set to True for auto-close
         mock_recommender.recommend_close_positions.assert_called_once()
@@ -130,8 +129,8 @@ class TestRecommendCliAutoClose(unittest.TestCase):
                 main()
         
         # Assertions
-        # Verify build_strategy was called with correct arguments
-        mock_build_strategy.assert_called_once_with('velocity_momentum', 'SPY', mock_options_handler.return_value)
+        # Verify build_strategy was called with correct arguments (no stop_loss/profit_target by default)
+        mock_build_strategy.assert_called_once_with('velocity_momentum', 'SPY', mock_options_handler.return_value, stop_loss=None, profit_target=None)
         mock_recommender.recommend_close_positions.assert_called_once()
 
     @patch('src.prediction.recommend_cli.JsonDecisionStore')
@@ -183,8 +182,8 @@ class TestRecommendCliAutoClose(unittest.TestCase):
         
         # Assertions
         mock_decision_store.return_value.get_open_positions.assert_called_once_with(symbol='SPY')
-        # Verify build_strategy was called with correct arguments
-        mock_build_strategy.assert_called_once_with('velocity_momentum', 'SPY', mock_options_handler.return_value)
+        # Verify build_strategy was called with correct arguments (no stop_loss/profit_target by default)
+        mock_build_strategy.assert_called_once_with('velocity_momentum', 'SPY', mock_options_handler.return_value, stop_loss=None, profit_target=None)
         mock_recommender_class.assert_called_once()
 
     @patch('src.prediction.recommend_cli.JsonDecisionStore')
@@ -210,8 +209,8 @@ class TestRecommendCliAutoClose(unittest.TestCase):
         
         # Assertions
         mock_decision_store.return_value.get_open_positions.assert_called_once_with(symbol='SPY')
-        # Verify build_strategy was called with correct arguments
-        mock_build_strategy.assert_called_once_with('velocity_momentum', 'SPY', mock_options_handler.return_value)
+        # Verify build_strategy was called with correct arguments (no stop_loss/profit_target by default)
+        mock_build_strategy.assert_called_once_with('velocity_momentum', 'SPY', mock_options_handler.return_value, stop_loss=None, profit_target=None)
         mock_recommender_class.assert_called_once()
 
     def test_auto_close_argument_parsing(self):
@@ -254,9 +253,126 @@ class TestRecommendCliAutoClose(unittest.TestCase):
         
         # Assertions
         mock_decision_store.return_value.get_open_positions.assert_called_once_with(symbol='SPY')
-        # Verify build_strategy was called with correct arguments
-        mock_build_strategy.assert_called_once_with('velocity_momentum', 'SPY', mock_options_handler.return_value)
+        # Verify build_strategy was called with correct arguments (no stop_loss/profit_target by default)
+        mock_build_strategy.assert_called_once_with('velocity_momentum', 'SPY', mock_options_handler.return_value, stop_loss=None, profit_target=None)
         mock_recommender_class.assert_called_once()
+
+    @patch('src.prediction.recommend_cli.JsonDecisionStore')
+    @patch('src.prediction.recommend_cli.OptionsHandler')
+    @patch('src.prediction.recommend_cli.build_strategy')
+    @patch('src.prediction.recommend_cli.InteractiveStrategyRecommender')
+    def test_build_strategy_with_stop_loss_and_profit_target_close_flow(self, mock_recommender_class, mock_build_strategy,
+                                                                        mock_options_handler, mock_decision_store):
+        """Test that build_strategy is called with stop_loss and profit_target in close flow."""
+        # Setup mocks
+        mock_decision_store.return_value.get_open_positions.return_value = [self.test_decision_record]
+        mock_strategy = Mock()
+        mock_build_strategy.return_value = mock_strategy
+        mock_recommender = Mock()
+        mock_recommender_class.return_value = mock_recommender
+        mock_recommender.get_open_positions_status.return_value = []
+        mock_recommender.recommend_close_positions.return_value = []
+        
+        # Mock sys.argv with stop_loss and profit_target
+        with patch('sys.argv', ['recommend_cli.py', '--strategy', 'velocity_momentum', '--stop-loss', '0.6', '--profit-target', '0.4']):
+            with patch('sys.exit'):  # Prevent actual exit
+                main()
+        
+        # Assertions
+        mock_decision_store.return_value.get_open_positions.assert_called_once_with(symbol='SPY')
+        # Verify build_strategy was called with stop_loss and profit_target
+        mock_build_strategy.assert_called_once_with('velocity_momentum', 'SPY', mock_options_handler.return_value, stop_loss=0.6, profit_target=0.4)
+        mock_recommender_class.assert_called_once()
+
+    @patch('src.prediction.recommend_cli.JsonDecisionStore')
+    @patch('src.prediction.recommend_cli.OptionsHandler')
+    @patch('src.prediction.recommend_cli.DataRetriever')
+    @patch('src.prediction.recommend_cli.build_strategy')
+    @patch('src.prediction.recommend_cli.InteractiveStrategyRecommender')
+    def test_build_strategy_with_stop_loss_and_profit_target_open_flow(self, mock_recommender_class, mock_build_strategy,
+                                                                       mock_data_retriever, mock_options_handler, mock_decision_store):
+        """Test that build_strategy is called with stop_loss and profit_target in open flow."""
+        # Setup mocks
+        mock_decision_store.return_value.get_open_positions.return_value = []  # No open positions
+        mock_strategy = Mock()
+        mock_build_strategy.return_value = mock_strategy
+        mock_recommender = Mock()
+        mock_recommender_class.return_value = mock_recommender
+        
+        # Mock DataRetriever
+        import pandas as pd
+        mock_retriever = Mock()
+        mock_data = pd.DataFrame({'Close': [100, 101, 102]}, index=pd.date_range('2025-01-01', periods=3))
+        mock_retriever.fetch_data_for_period.return_value = mock_data
+        mock_data_retriever.return_value = mock_retriever
+        
+        # Mock CapitalManager
+        with patch('src.prediction.recommend_cli.CapitalManager') as mock_capital_manager_class:
+            mock_capital_manager = Mock()
+            mock_capital_manager.get_status_summary.return_value = "Capital status"
+            mock_capital_manager_class.from_config_file.return_value = mock_capital_manager
+            
+            # Mock sys.argv with stop_loss and profit_target
+            with patch('sys.argv', ['recommend_cli.py', '--strategy', 'velocity_momentum', '--stop-loss', '0.5', '--profit-target', '0.3']):
+                with patch('sys.exit'):  # Prevent actual exit
+                    main()
+            
+            # Assertions
+            mock_decision_store.return_value.get_open_positions.assert_called_once_with(symbol='SPY')
+            # Verify build_strategy was called with stop_loss and profit_target
+            # Note: In open flow, build_strategy uses keyword arguments (symbol=, options_handler=)
+            mock_build_strategy.assert_called_once_with('velocity_momentum', symbol='SPY', options_handler=mock_options_handler.return_value, stop_loss=0.5, profit_target=0.3)
+            mock_recommender_class.assert_called_once()
+
+    @patch('src.prediction.recommend_cli.JsonDecisionStore')
+    @patch('src.prediction.recommend_cli.OptionsHandler')
+    @patch('src.prediction.recommend_cli.build_strategy')
+    @patch('src.prediction.recommend_cli.InteractiveStrategyRecommender')
+    def test_build_strategy_with_only_stop_loss(self, mock_recommender_class, mock_build_strategy,
+                                               mock_options_handler, mock_decision_store):
+        """Test that build_strategy is called with only stop_loss (no profit_target)."""
+        # Setup mocks
+        mock_decision_store.return_value.get_open_positions.return_value = [self.test_decision_record]
+        mock_strategy = Mock()
+        mock_build_strategy.return_value = mock_strategy
+        mock_recommender = Mock()
+        mock_recommender_class.return_value = mock_recommender
+        mock_recommender.get_open_positions_status.return_value = []
+        mock_recommender.recommend_close_positions.return_value = []
+        
+        # Mock sys.argv with only stop_loss
+        with patch('sys.argv', ['recommend_cli.py', '--strategy', 'velocity_momentum', '--stop-loss', '0.6']):
+            with patch('sys.exit'):  # Prevent actual exit
+                main()
+        
+        # Assertions
+        # Verify build_strategy was called with stop_loss but None for profit_target
+        mock_build_strategy.assert_called_once_with('velocity_momentum', 'SPY', mock_options_handler.return_value, stop_loss=0.6, profit_target=None)
+
+    @patch('src.prediction.recommend_cli.JsonDecisionStore')
+    @patch('src.prediction.recommend_cli.OptionsHandler')
+    @patch('src.prediction.recommend_cli.build_strategy')
+    @patch('src.prediction.recommend_cli.InteractiveStrategyRecommender')
+    def test_build_strategy_with_only_profit_target(self, mock_recommender_class, mock_build_strategy,
+                                                   mock_options_handler, mock_decision_store):
+        """Test that build_strategy is called with only profit_target (no stop_loss)."""
+        # Setup mocks
+        mock_decision_store.return_value.get_open_positions.return_value = [self.test_decision_record]
+        mock_strategy = Mock()
+        mock_build_strategy.return_value = mock_strategy
+        mock_recommender = Mock()
+        mock_recommender_class.return_value = mock_recommender
+        mock_recommender.get_open_positions_status.return_value = []
+        mock_recommender.recommend_close_positions.return_value = []
+        
+        # Mock sys.argv with only profit_target
+        with patch('sys.argv', ['recommend_cli.py', '--strategy', 'velocity_momentum', '--profit-target', '0.4']):
+            with patch('sys.exit'):  # Prevent actual exit
+                main()
+        
+        # Assertions
+        # Verify build_strategy was called with profit_target but None for stop_loss
+        mock_build_strategy.assert_called_once_with('velocity_momentum', 'SPY', mock_options_handler.return_value, stop_loss=None, profit_target=0.4)
 
 
 if __name__ == '__main__':
