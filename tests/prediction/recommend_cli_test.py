@@ -5,8 +5,7 @@ Tests the --auto-close argument and its integration with the recommendation engi
 """
 
 import unittest
-from unittest.mock import Mock, patch, MagicMock
-from datetime import datetime
+from unittest.mock import Mock, patch
 import sys
 import os
 
@@ -15,7 +14,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from src.prediction.recommend_cli import main
 from src.prediction.decision_store import JsonDecisionStore
-from src.backtest.models import Position, StrategyType
+from src.backtest.models import StrategyType
 from src.common.models import Option, OptionType
 
 
