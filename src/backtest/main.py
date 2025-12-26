@@ -303,13 +303,37 @@ class BacktestEngine:
     def _get_position_size(self, position: Position) -> int:
         """
         Get the number of contracts to buy or sell for a position based on the max position size and the current capital.
+        
+        Returns:
+            int: Number of contracts to trade (0 if insufficient capital or invalid position)
         """
         if self.max_position_size is None:
             return 1
         
+        # Calculate maximum capital to risk on this position
         max_position_capital = self.capital * self.max_position_size
-
-        return int(max_position_capital / position.get_max_risk())
+        
+        # Get the maximum risk per contract
+        try:
+            max_risk_per_contract = position.get_max_risk()
+        except (ValueError, ZeroDivisionError) as e:
+            print(f"⚠️  Warning: Unable to calculate max risk: {e}")
+            return 0
+        
+        # Validate max_risk is positive and reasonable
+        if max_risk_per_contract <= 0:
+            print(f"⚠️  Warning: Invalid max risk (${max_risk_per_contract:.2f}), rejecting position")
+            return 0
+        
+        # Calculate position size
+        position_size = int(max_position_capital / max_risk_per_contract)
+        
+        # Additional safety check: ensure we have enough capital for at least the max risk
+        if position_size > 0 and max_risk_per_contract > self.capital:
+            print(f"⚠️  Warning: Max risk ${max_risk_per_contract:.2f} exceeds total capital ${self.capital:.2f}")
+            return 0
+        
+        return position_size
 
     def _calculate_sharpe_ratio(self) -> float:
         """

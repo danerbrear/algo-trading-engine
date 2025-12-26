@@ -131,9 +131,12 @@ def _map_strategy_name(strategy_name: str) -> str:
     """Map strategy name from decisions to config key.
     
     This handles cases where decision JSON has different names than config keys.
+    velocity_momentum and velocity_momentum_v2 are separate strategies with separate configs.
     """
     name_mapping = {
-        "velocity_signal_momentum": "velocity_momentum",
+        "velocity_signal_momentum": "velocity_momentum_v2",  # Class name maps to v2
+        "velocity_momentum": "velocity_momentum",  # Old records use old config
+        "velocity_momentum_v2": "velocity_momentum_v2",  # New records use v2 config
         "credit_spread": "credit_spread",
     }
     return name_mapping.get(strategy_name, strategy_name)
@@ -292,10 +295,12 @@ def plot_equity_curve(
     
     # Group positions by strategy if no filter
     if strategy_filter:
+        # Filter by exact strategy name match
         filtered_positions = [p for p in positions if p.strategy_name == strategy_filter]
         if not filtered_positions:
             print(f"No positions found for strategy: {strategy_filter}")
             return
+        # Use the filter name as the group key for display
         strategy_groups = {strategy_filter: filtered_positions}
     else:
         strategy_groups = {}
@@ -503,6 +508,7 @@ def print_summary(positions: List[ClosedPosition], strategy_filter: Optional[str
     
     # Filter if requested
     if strategy_filter:
+        # Filter by exact strategy name match
         positions = [p for p in positions if p.strategy_name == strategy_filter]
         if not positions:
             print(f"\n📊 No positions found for strategy: {strategy_filter}")
@@ -518,6 +524,10 @@ def print_summary(positions: List[ClosedPosition], strategy_filter: Optional[str
         if position.strategy_name not in strategy_groups:
             strategy_groups[position.strategy_name] = []
         strategy_groups[position.strategy_name].append(position)
+
+    print(f"\nStrategies and Allocated Capital:")
+    for strategy_name, strategy_positions in strategy_groups.items():
+        print(f"  {strategy_name.replace('_', ' ').title()}: ${capital_allocations.get(strategy_name, 0.0):,.2f}")
     
     # Calculate overall equity curve for drawdown analysis
     overall_initial_capital = 0.0
@@ -556,12 +566,12 @@ def print_summary(positions: List[ClosedPosition], strategy_filter: Optional[str
     # Capital tracking summary if allocations available
     if capital_allocations:
         print(f"\nCapital Tracking:")
-        for strategy_name in set(p.strategy_name for p in positions):
+        for strategy_name in sorted(strategy_groups.keys()):
             # Map strategy name to config key
             config_key = _map_strategy_name(strategy_name)
             if config_key in capital_allocations:
                 allocated = capital_allocations[config_key]
-                strategy_positions = [p for p in positions if p.strategy_name == strategy_name]
+                strategy_positions = strategy_groups[strategy_name]
                 strategy_pnl = sum(p.pnl for p in strategy_positions)
                 remaining = allocated + strategy_pnl
                 print(f"  {strategy_name.replace('_', ' ').title()}:")

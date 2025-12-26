@@ -551,11 +551,20 @@ class Position:
     def get_max_risk(self):
         """
         Determine the max loss for a position.
+        
+        For credit spreads, max risk = (spread width - net credit received) * 100
+        Uses the actual entry_price (net credit) stored on the position, not recalculated
+        from option prices which may differ due to timing, rounding, or price selection.
         """
+        if not self.spread_options or len(self.spread_options) < 2:
+            raise ValueError("Credit spread requires at least 2 options in spread_options")
+        
         atm_option, otm_option = self.spread_options
         width = abs(atm_option.strike - otm_option.strike)
-        net_credit = atm_option.last_price - otm_option.last_price
-        return (width - net_credit) * 100
+        
+        # Use the actual entry_price (net credit) that was stored when the position was created
+        # This ensures consistency between position sizing and risk calculations
+        return (width - self.entry_price) * 100
     
     def max_profit(self) -> Optional[float]:
         """

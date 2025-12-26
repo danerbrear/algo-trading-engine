@@ -302,7 +302,7 @@ class InteractiveStrategyRecommender:
         # Map class names to config keys
         name_mapping = {
             "credit_spread": "credit_spread",
-            "velocity_signal_momentum": "velocity_momentum",
+            "velocity_signal_momentum": "velocity_momentum_v2",
         }
         
         return name_mapping.get(strategy_name, strategy_name)

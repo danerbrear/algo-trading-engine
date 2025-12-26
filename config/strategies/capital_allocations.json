@@ -7,6 +7,10 @@
     "velocity_momentum": {
       "allocated_capital": 2000.0,
       "max_risk_percentage": 0.20
+    },
+    "velocity_momentum_v2": {
+      "allocated_capital": 1466.0,
+      "max_risk_percentage": 0.20
     }
   }
 }
