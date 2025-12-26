@@ -35,7 +35,7 @@ def allocations_config():
                 "allocated_capital": 10000.0,
                 "max_risk_percentage": 0.05
             },
-            "velocity_momentum": {  # This is the mapped key from velocity_signal_momentum
+            "velocity_momentum_v2": {  # This is the mapped key from velocity_signal_momentum
                 "allocated_capital": 15000.0,
                 "max_risk_percentage": 0.03
             }
@@ -247,7 +247,7 @@ def test_recommender_strategy_name_mapping(
     
     result = recommender.recommend_open_position(date)
     
-    # Should use velocity_momentum config (15000 allocated, 450 max risk)
+    # Should use velocity_momentum_v2 config (15000 allocated, 450 max risk)
     # Risk is 400, should pass
     assert result is not None
 
