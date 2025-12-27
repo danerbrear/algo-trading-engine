@@ -184,7 +184,7 @@ class VelocitySignalMomentumStrategyBuilder(StrategyBuilder):
             options_handler=self._options_handler,
             start_date_offset=self._start_date_offset,
             stop_loss=self._stop_loss,
-            max_risk_per_trade=self._max_risk_per_trade
+            profit_target=self._profit_target
         )
         
         self.reset()

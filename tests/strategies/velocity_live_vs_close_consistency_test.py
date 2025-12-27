@@ -27,6 +27,23 @@ from src.strategies.velocity_signal_momentum_strategy import VelocitySignalMomen
 class TestVelocityLiveVsCloseConsistency(unittest.TestCase):
     """Test signal consistency between live price and close price scenarios."""
     
+    @classmethod
+    def setUpClass(cls):
+        """Set up class-level mocks to prevent real API calls."""
+        # Mock DataRetriever to prevent yfinance API calls
+        cls.data_retriever_patcher = patch('src.strategies.velocity_signal_momentum_strategy.DataRetriever')
+        cls.mock_data_retriever_class = cls.data_retriever_patcher.start()
+        
+        # Configure the mock instance
+        cls.mock_data_retriever_instance = Mock()
+        cls.mock_data_retriever_instance.get_live_price.return_value = None
+        cls.mock_data_retriever_class.return_value = cls.mock_data_retriever_instance
+    
+    @classmethod
+    def tearDownClass(cls):
+        """Clean up class-level mocks."""
+        cls.data_retriever_patcher.stop()
+    
     def setUp(self):
         """Set up test fixtures."""
         # Create historical data ending yesterday
@@ -57,6 +74,9 @@ class TestVelocityLiveVsCloseConsistency(unittest.TestCase):
         print("TEST: Signal Consistency - Live Price vs Close Price")
         print("="*80)
         
+        # Configure mock DataRetriever to return live price
+        self.mock_data_retriever_instance.get_live_price.return_value = self.live_price
+        
         # Scenario 1: During market hours with live price
         print("\n📊 SCENARIO 1: During Market Hours (Live Price)")
         print("-" * 80)
@@ -71,11 +91,9 @@ class TestVelocityLiveVsCloseConsistency(unittest.TestCase):
         print(f"Current date: {self.current_date.date()}")
         print(f"Live price: ${self.live_price}")
         
-        # Mock live price fetch
-        with patch.object(strategy_live, '_get_current_underlying_price', return_value=self.live_price):
-            # Mock the trend check to return a positive signal (simulating upward trend)
-            with patch.object(strategy_live, '_check_trend_success', return_value=(True, 5, 0.03)):
-                signal_during_market_hours = strategy_live._has_buy_signal(self.current_date)
+        # No need to mock _get_current_underlying_price - DataRetriever is already mocked
+        with patch.object(strategy_live, '_check_trend_success', return_value=(True, 5, 0.03)):
+            signal_during_market_hours = strategy_live._has_buy_signal(self.current_date)
         
         # Get velocity metrics for live price scenario
         if self.current_date in strategy_live.data.index:
@@ -161,6 +179,9 @@ class TestVelocityLiveVsCloseConsistency(unittest.TestCase):
         print("TEST: Stale Cached Data Detection")
         print("="*80)
         
+        # Configure mock DataRetriever to return live price
+        self.mock_data_retriever_instance.get_live_price.return_value = self.live_price
+        
         # Create data that already includes current date with old price
         data_with_stale_current = self.historical_data.copy()
         stale_price = 580.00  # Much lower than expected
@@ -183,31 +204,33 @@ class TestVelocityLiveVsCloseConsistency(unittest.TestCase):
         print(f"Stale cached price for current date: ${stale_price}")
         print(f"Expected live price: ${self.live_price}")
         
-        # Mock live price fetch (should not be called since date exists in data)
-        with patch.object(strategy, '_get_current_underlying_price', return_value=self.live_price) as mock_get_price:
-            try:
-                # Call _has_buy_signal
-                strategy._has_buy_signal(self.current_date)
+        # Check if DataRetriever was called (no need to mock _get_current_underlying_price)
+        try:
+            # Reset the mock call count
+            self.mock_data_retriever_instance.get_live_price.reset_mock()
+            
+            # Call _has_buy_signal
+            strategy._has_buy_signal(self.current_date)
+            
+            # Check if live price was fetched via DataRetriever
+            if self.mock_data_retriever_instance.get_live_price.called:
+                print("✅ Live price fetch WAS called (good - overwrites stale data)")
+            else:
+                print("❌ Live price fetch was NOT called (bad - uses stale data)")
+                print("   This is the BUG that causes inconsistent signals!")
                 
-                # Check if live price was fetched
-                if mock_get_price.called:
-                    print("✅ Live price fetch WAS called (good - overwrites stale data)")
-                else:
-                    print("❌ Live price fetch was NOT called (bad - uses stale data)")
-                    print("   This is the BUG that causes inconsistent signals!")
-                    
-                    # Check what price is being used
-                    actual_price = strategy.data.loc[self.current_date, 'Close']
-                    print(f"   Price being used: ${actual_price}")
-                    
-                    if actual_price == stale_price:
-                        self.fail(
-                            f"Strategy is using stale cached data (${stale_price}) instead of "
-                            f"fetching live price (${self.live_price}) for current date!"
-                        )
-            except KeyError:
-                # Date not in index, so live fetch would be triggered
-                print("✅ Date not in index - live fetch would be triggered")
+                # Check what price is being used
+                actual_price = strategy.data.loc[self.current_date, 'Close']
+                print(f"   Price being used: ${actual_price}")
+                
+                if actual_price == stale_price:
+                    self.fail(
+                        f"Strategy is using stale cached data (${stale_price}) instead of "
+                        f"fetching live price (${self.live_price}) for current date!"
+                    )
+        except KeyError:
+            # Date not in index, so live fetch would be triggered
+            print("✅ Date not in index - live fetch would be triggered")
 
     def test_recommendation_engine_fresh_data_fetch(self):
         """Test that recommendation engine always uses fresh data for current date."""

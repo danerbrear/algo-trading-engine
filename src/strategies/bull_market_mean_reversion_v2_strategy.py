@@ -727,12 +727,13 @@ class BullMarketMeanReversionV2Strategy(Strategy):
         progress_print(f"✅ Strategy evaluation complete for {date.strftime('%Y-%m-%d')}")
     
     def _compute_exit_price(self, date: datetime, position: Position) -> tuple[Optional[float], bool]:
-        """Compute exit price using options_handler.get_option_bar"""
+        """Compute exit price using options_handler.get_option_bar for long put positions"""
         try:
             if not position.spread_options or len(position.spread_options) != 1:
                 progress_print("⚠️  Position doesn't have valid option")
                 return None, True
             
+            # This strategy only uses long puts (single option positions)
             put_option = position.spread_options[0]
             
             # Get bar data for the put option

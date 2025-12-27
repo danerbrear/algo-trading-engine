@@ -109,7 +109,9 @@ class StrategyPerformanceStats:
     win_rate: float
     total_pnl: float
     average_return: float
-    average_drawdown: float
+    min_drawdown: float
+    mean_drawdown: float
+    max_drawdown: float
 
 
 @dataclass(frozen=True)
@@ -119,4 +121,6 @@ class OverallPerformanceStats:
     win_rate: float
     total_pnl: float
     average_return: float
-    average_drawdown: float 
+    min_drawdown: float
+    mean_drawdown: float
+    max_drawdown: float 

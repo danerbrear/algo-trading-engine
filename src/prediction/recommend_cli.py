@@ -21,7 +21,7 @@ STRATEGY_REGISTRY = {
     "velocity_momentum": VelocitySignalMomentumStrategy
 }
 
-def build_strategy(name: str, symbol: str, options_handler: OptionsHandler):
+def build_strategy(name: str, symbol: str, options_handler: OptionsHandler, stop_loss: float = None, profit_target: float = None):
     """
     Build strategy and inject the options_handler.
     
@@ -29,6 +29,8 @@ def build_strategy(name: str, symbol: str, options_handler: OptionsHandler):
         name: Strategy name
         symbol: Symbol for the strategy
         options_handler: OptionsHandler instance to inject
+        stop_loss: Optional stop loss percentage
+        profit_target: Optional profit target percentage
     
     Returns:
         Strategy instance with options_handler injected
@@ -37,6 +39,8 @@ def build_strategy(name: str, symbol: str, options_handler: OptionsHandler):
         strategy_name=name,
         symbol=symbol,
         options_handler=options_handler,
+        stop_loss=stop_loss,
+        profit_target=profit_target,
     )
 
     return strategy
@@ -50,6 +54,8 @@ def main():
     parser.add_argument("--yes", action="store_true", help="Auto-accept prompts (non-interactive)")
     parser.add_argument("--auto-close", action="store_true", default=False, help="Automatically close any open positions recommended to close using previous day's prices")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose output (disable quiet mode)")
+    parser.add_argument("--stop-loss", type=float, default=None, help="Stop loss percentage")
+    parser.add_argument("--profit-target", type=float, default=None, help="Profit target percentage")
     parser.add_argument('-f', '--free', action='store_true', default=False,
                        help='Use free tier rate limiting (13 second timeout between API requests)')
     args = parser.parse_args()
@@ -76,8 +82,8 @@ def main():
     open_records = store.get_open_positions(symbol=args.symbol)
     if open_records:
         print(f"Open positions found: {len(open_records)}")
-        options_handler = OptionsHandler(args.symbol, quiet_mode=not args.verbose, use_free_tier=args.free)
-        strategy = build_strategy(args.strategy, options_handler, symbol=args.symbol)
+        options_handler = OptionsHandler(args.symbol, use_free_tier=args.free)
+        strategy = build_strategy(args.strategy, args.symbol, options_handler, stop_loss=args.stop_loss, profit_target=args.profit_target)
         recommender = InteractiveStrategyRecommender(strategy, options_handler, store, capital_manager, auto_yes=args.yes)
 
         # Print current status for open positions before prompting to close
@@ -126,7 +132,7 @@ def main():
         print(f"\nDate range: {start_date.date()} to {end_date.date()}\n")
 
     # Build strategy and inject options_handler
-    strategy = build_strategy(args.strategy, symbol=args.symbol, options_handler=options_handler)
+    strategy = build_strategy(args.strategy, symbol=args.symbol, options_handler=options_handler, stop_loss=args.stop_loss, profit_target=args.profit_target)
     
     # Prepare options data through the strategy
     strategy.set_data(data)

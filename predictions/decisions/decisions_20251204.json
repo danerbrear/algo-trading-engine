@@ -1,9 +1,9 @@
 [
   {
-    "closed_at": null,
+    "closed_at": "2025-12-08T07:44:06.530836",
     "decided_at": "2025-12-04T07:44:06.530836+00:00",
     "entry_price": 2.04,
-    "exit_price": null,
+    "exit_price": 1.7,
     "id": "b7c73d01dc15364c",
     "outcome": "accepted",
     "proposal": {
@@ -52,7 +52,7 @@
         }
       ],
       "probability_of_profit": 0.7,
-      "strategy_name": "velocity_signal_momentum",
+      "strategy_name": "velocity_momentum",
       "strategy_type": "put_credit_spread",
       "symbol": "SPY",
       "width": 6.0

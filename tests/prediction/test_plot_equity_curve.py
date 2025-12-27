@@ -11,6 +11,7 @@ import numpy as np
 from src.prediction.plot_equity_curve import (
     ClosedPosition,
     calculate_equity_curve,
+    calculate_drawdowns,
     fetch_spy_data,
     fetch_treasury_rates,
     plot_equity_curve,
@@ -222,6 +223,63 @@ class TestCalculateEquityCurve:
         assert capital[1] == 10150.0
         assert capital[2] == 10300.0
         assert capital[3] == 10200.0
+
+
+class TestCalculateDrawdowns:
+    """Test cases for drawdown calculation"""
+
+    def test_calculate_drawdowns_empty(self):
+        """Test drawdown calculation with empty list"""
+        drawdowns = calculate_drawdowns([])
+        assert drawdowns == []
+
+    def test_calculate_drawdowns_single_value(self):
+        """Test drawdown calculation with single value"""
+        drawdowns = calculate_drawdowns([10000.0])
+        assert drawdowns == []
+
+    def test_calculate_drawdowns_no_drawdown(self):
+        """Test drawdown calculation with no drawdowns (always increasing)"""
+        capital = [10000.0, 10100.0, 10200.0, 10300.0]
+        drawdowns = calculate_drawdowns(capital)
+        assert drawdowns == []
+
+    def test_calculate_drawdowns_single_drawdown(self):
+        """Test drawdown calculation with single drawdown"""
+        # Peak at 10200, drops to 9500 (6.86% drawdown), then 9600 (5.88% drawdown)
+        capital = [10000.0, 10100.0, 10200.0, 9500.0, 9600.0]
+        drawdowns = calculate_drawdowns(capital)
+        assert len(drawdowns) == 2  # Two points below peak
+        # First drawdown: (10200 - 9500) / 10200 * 100 = 6.86%
+        assert abs(drawdowns[0] - 6.86) < 0.1
+        # Second drawdown: (10200 - 9600) / 10200 * 100 = 5.88%
+        assert abs(drawdowns[1] - 5.88) < 0.1
+
+    def test_calculate_drawdowns_multiple_drawdowns(self):
+        """Test drawdown calculation with multiple drawdown periods"""
+        # First peak at 10000, drops to 9000 (10% drawdown)
+        # Then recovers to 11000 (new peak), drops to 9900 (10% drawdown)
+        capital = [10000.0, 9000.0, 9500.0, 11000.0, 9900.0, 10500.0]
+        drawdowns = calculate_drawdowns(capital)
+        assert len(drawdowns) > 0
+        # Should have drawdowns from both periods
+        assert max(drawdowns) >= 10.0  # At least 10% max drawdown
+
+    def test_calculate_drawdowns_with_zero_peak(self):
+        """Test drawdown calculation when peak is zero (edge case)"""
+        capital = [0.0, 1000.0, 900.0]
+        drawdowns = calculate_drawdowns(capital)
+        # Should handle zero peak gracefully
+        assert isinstance(drawdowns, list)
+
+    def test_calculate_drawdowns_recovery_after_drawdown(self):
+        """Test that recovery after drawdown doesn't create negative drawdowns"""
+        # Peak at 10000, drops to 8000 (20% drawdown), recovers to 12000
+        capital = [10000.0, 8000.0, 12000.0]
+        drawdowns = calculate_drawdowns(capital)
+        # Should only have drawdowns when below peak
+        assert all(dd >= 0 for dd in drawdowns)
+        assert max(drawdowns) >= 20.0  # At least 20% max drawdown
 
 
 class TestFetchSpyData:

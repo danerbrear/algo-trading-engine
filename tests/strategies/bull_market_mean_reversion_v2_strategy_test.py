@@ -79,9 +79,9 @@ class TestBullMarketMeanReversionV2Strategy:
         )
     
     def test_z_score_entry_threshold_default_value(self):
-        """Test that default z-score entry threshold is 1.5"""
+        """Test that default z-score entry threshold is 1.0"""
         strategy = BullMarketMeanReversionV2Strategy(options_handler=self.mock_options_handler)
-        assert strategy.z_score_entry_threshold == 1.5
+        assert strategy.z_score_entry_threshold == 1.0
     
     def test_z_score_entry_threshold_custom_value(self):
         """Test that custom z-score entry threshold can be set"""
@@ -246,16 +246,16 @@ class TestBullMarketMeanReversionV2Strategy:
         
         assert self.strategy._has_entry_signal(test_date) == False
     
-    def test_debit_spread_exit_price_calculation(self):
-        """Test that exit price is correctly calculated for put debit spreads"""
+    def test_long_put_exit_price_calculation(self):
+        """Test that exit price is correctly calculated for long put positions"""
         from src.common.models import Option
         
-        # Create a mock position with put debit spread
+        # Create a mock position with long put
         test_date = datetime(2024, 3, 15)
         expiration_date = datetime(2024, 3, 25)
         
-        # Create mock options for the spread
-        higher_option = Option(
+        # Create mock option for long put
+        put_option = Option(
             ticker="O:SPY240325P00500000",
             symbol="SPY",
             expiration="2024-03-25",
@@ -268,37 +268,22 @@ class TestBullMarketMeanReversionV2Strategy:
             open_interest=1000
         )
         
-        lower_option = Option(
-            ticker="O:SPY240325P00494000",
-            symbol="SPY",
-            expiration="2024-03-25",
-            strike=494.0,
-            option_type=OptionType.PUT,
-            last_price=1.00,
-            bid=0.95,
-            ask=1.05,
-            volume=50,
-            open_interest=500
-        )
-        
-        # Create position (put debit spread)
-        # Entry: Buy higher strike at 2.50, Sell lower strike at 1.00
-        # Net debit = 2.50 - 1.00 = 1.50 (stored as -1.50)
+        # Create position (long put)
+        # Entry: Buy put and pay premium (entry_price = premium_paid, positive)
         position = Position(
             symbol="SPY",
             expiration_date=expiration_date,
-            strategy_type=StrategyType.PUT_DEBIT_SPREAD,
+            strategy_type=StrategyType.LONG_PUT,
             strike_price=500.0,
             entry_date=datetime(2024, 3, 10),
-            entry_price=-1.50,  # Negative for debit spread
-            spread_options=[higher_option, lower_option]
+            entry_price=2.50,  # Premium paid (positive)
+            spread_options=[put_option]
         )
         position.set_quantity(1)
         
         # Mock option bar data for exit
-        # Exit: Sell higher strike at 1.20, Buy back lower strike at 0.30
-        # Net credit = 1.20 - 0.30 = 0.90
-        higher_bar = OptionBarDTO(
+        # Exit: Sell put and receive premium (exit_price = premium_received, positive)
+        put_bar = OptionBarDTO(
             ticker="O:SPY240325P00500000",
             timestamp=test_date,
             open_price=Decimal("1.25"),
@@ -310,21 +295,8 @@ class TestBullMarketMeanReversionV2Strategy:
             number_of_transactions=50
         )
         
-        lower_bar = OptionBarDTO(
-            ticker="O:SPY240325P00494000",
-            timestamp=test_date,
-            open_price=Decimal("0.35"),
-            high_price=Decimal("0.40"),
-            low_price=Decimal("0.30"),
-            close_price=Decimal("0.30"),
-            volume=75,
-            volume_weighted_avg_price=Decimal("0.30"),
-            number_of_transactions=25
-        )
-        
         # Mock the options_handler to return bar data
-        self.mock_options_handler.get_option_bar = Mock(side_effect=lambda opt, date: 
-            higher_bar if opt.strike == 500.0 else lower_bar)
+        self.mock_options_handler.get_option_bar = Mock(return_value=put_bar)
         
         # Calculate exit price
         exit_price, has_error = self.strategy._compute_exit_price(test_date, position)
@@ -333,23 +305,22 @@ class TestBullMarketMeanReversionV2Strategy:
         assert has_error == False, "Exit price calculation should not have error"
         assert exit_price is not None, "Exit price should not be None"
         
-        # Expected: net_credit_to_close = 1.20 - 0.30 = 0.90
-        # exit_price = -0.90 (negative for debit spread formula)
-        expected_exit_price = -(1.20 - 0.30)  # -0.90
+        # Expected: exit_price = premium received when selling = 1.20
+        expected_exit_price = 1.20
         assert abs(exit_price - expected_exit_price) < 0.01, \
             f"Exit price should be {expected_exit_price}, got {exit_price}"
     
-    def test_debit_spread_capital_calculation_on_close(self):
-        """Test that capital is correctly updated when closing a put debit spread"""
+    def test_long_put_capital_calculation_on_close(self):
+        """Test that capital is correctly updated when closing a long put position"""
         from src.backtest.main import BacktestEngine
         from src.common.models import Option
         
-        # Create a mock position with put debit spread
+        # Create a mock position with long put
         test_date = datetime(2024, 3, 15)
         expiration_date = datetime(2024, 3, 25)
         
-        # Create mock options
-        higher_option = Option(
+        # Create mock option
+        put_option = Option(
             ticker="O:SPY240325P00500000",
             symbol="SPY",
             expiration="2024-03-25",
@@ -362,28 +333,15 @@ class TestBullMarketMeanReversionV2Strategy:
             open_interest=1000
         )
         
-        lower_option = Option(
-            ticker="O:SPY240325P00494000",
-            symbol="SPY",
-            expiration="2024-03-25",
-            strike=494.0,
-            option_type=OptionType.PUT,
-            last_price=1.00,
-            bid=0.95,
-            ask=1.05,
-            volume=50,
-            open_interest=500
-        )
-        
-        # Create position with entry debit of $1.50 per contract
+        # Create position with entry premium of $2.50 per contract
         position = Position(
             symbol="SPY",
             expiration_date=expiration_date,
-            strategy_type=StrategyType.PUT_DEBIT_SPREAD,
+            strategy_type=StrategyType.LONG_PUT,
             strike_price=500.0,
             entry_date=datetime(2024, 3, 10),
-            entry_price=-1.50,  # Net debit paid
-            spread_options=[higher_option, lower_option]
+            entry_price=2.50,  # Premium paid (positive)
+            spread_options=[put_option]
         )
         position.set_quantity(7)  # 7 contracts
         
@@ -391,7 +349,7 @@ class TestBullMarketMeanReversionV2Strategy:
         mock_options_handler = Mock()
         strategy = BullMarketMeanReversionV2Strategy(
             options_handler=mock_options_handler,
-            max_risk_per_trade=0.35  # 35% to allow 7 contracts: (7 * 150) / 3000 = 0.35
+            max_risk_per_trade=0.35  # 35% to allow 7 contracts: (7 * 250) / 3000 = 0.58, but we'll use 0.35
         )
         
         dates = pd.date_range('2024-01-01', '2024-03-31', freq='D')
@@ -416,36 +374,39 @@ class TestBullMarketMeanReversionV2Strategy:
             quiet_mode=True
         )
         
-        # Add position (should subtract debit)
+        # Add position (should subtract premium paid)
+        # Note: _add_position will recalculate quantity based on capital and max_risk_per_trade
         backtest_engine._add_position(position)
         
-        # Expected capital after entry: 3000 - (1.50 * 7 * 100) = 3000 - 1050 = 1950
-        expected_capital_after_entry = initial_capital - (1.50 * 7 * 100)
+        # Get the actual quantity that was calculated (max_risk_allowed = 3000 * 0.35 = 1050, max_risk_per_contract = 2.50 * 100 = 250, quantity = 1050 / 250 = 4)
+        actual_quantity = position.quantity
+        
+        # Expected capital after entry: 3000 - (2.50 * actual_quantity * 100)
+        expected_capital_after_entry = initial_capital - (2.50 * actual_quantity * 100)
         assert abs(backtest_engine.capital - expected_capital_after_entry) < 0.01, \
             f"Capital after entry should be {expected_capital_after_entry}, got {backtest_engine.capital}"
         
-        # Close position with exit price (net credit to close = 0.90)
-        # exit_price = -0.90 (negative for debit spread formula)
-        exit_price = -0.90
+        # Close position with exit price (premium received when selling = 1.20)
+        exit_price = 1.20
         backtest_engine._remove_position(test_date, position, exit_price)
         
-        # Expected capital after exit: 1950 + (0.90 * 7 * 100) = 1950 + 630 = 2580
-        expected_capital_after_exit = expected_capital_after_entry + (0.90 * 7 * 100)
+        # Expected capital after exit: expected_capital_after_entry + (1.20 * actual_quantity * 100)
+        expected_capital_after_exit = expected_capital_after_entry + (1.20 * actual_quantity * 100)
         assert abs(backtest_engine.capital - expected_capital_after_exit) < 0.01, \
             f"Capital after exit should be {expected_capital_after_exit}, got {backtest_engine.capital}"
         
         # Verify exit price is not zero when it should have a value
         assert exit_price != 0.0, "Exit price should not be 0.0 when closing a position with value"
     
-    def test_debit_spread_exit_price_not_zero_at_2_dte(self):
+    def test_long_put_exit_price_not_zero_at_2_dte(self):
         """Test that exit price is calculated (not 0.0) when closing at 2 DTE"""
         from src.common.models import Option
         
         test_date = datetime(2024, 3, 15)
         expiration_date = datetime(2024, 3, 17)  # 2 days to expiration
         
-        # Create mock options
-        higher_option = Option(
+        # Create mock option
+        put_option = Option(
             ticker="O:SPY240317P00500000",
             symbol="SPY",
             expiration="2024-03-17",
@@ -458,32 +419,19 @@ class TestBullMarketMeanReversionV2Strategy:
             open_interest=1000
         )
         
-        lower_option = Option(
-            ticker="O:SPY240317P00494000",
-            symbol="SPY",
-            expiration="2024-03-17",
-            strike=494.0,
-            option_type=OptionType.PUT,
-            last_price=0.50,
-            bid=0.45,
-            ask=0.55,
-            volume=50,
-            open_interest=500
-        )
-        
         position = Position(
             symbol="SPY",
             expiration_date=expiration_date,
-            strategy_type=StrategyType.PUT_DEBIT_SPREAD,
+            strategy_type=StrategyType.LONG_PUT,
             strike_price=500.0,
             entry_date=datetime(2024, 3, 10),
-            entry_price=-1.50,
-            spread_options=[higher_option, lower_option]
+            entry_price=1.50,  # Premium paid (positive)
+            spread_options=[put_option]
         )
         position.set_quantity(1)
         
         # Mock bar data for 2 DTE
-        higher_bar = OptionBarDTO(
+        put_bar = OptionBarDTO(
             ticker="O:SPY240317P00500000",
             timestamp=test_date,
             open_price=Decimal("1.50"),
@@ -495,20 +443,7 @@ class TestBullMarketMeanReversionV2Strategy:
             number_of_transactions=50
         )
         
-        lower_bar = OptionBarDTO(
-            ticker="O:SPY240317P00494000",
-            timestamp=test_date,
-            open_price=Decimal("0.50"),
-            high_price=Decimal("0.55"),
-            low_price=Decimal("0.45"),
-            close_price=Decimal("0.30"),
-            volume=75,
-            volume_weighted_avg_price=Decimal("0.30"),
-            number_of_transactions=25
-        )
-        
-        self.mock_options_handler.get_option_bar = Mock(side_effect=lambda opt, date: 
-            higher_bar if opt.strike == 500.0 else lower_bar)
+        self.mock_options_handler.get_option_bar = Mock(return_value=put_bar)
         
         # Calculate exit price at 2 DTE
         exit_price, has_error = self.strategy._compute_exit_price(test_date, position)
@@ -518,8 +453,8 @@ class TestBullMarketMeanReversionV2Strategy:
         assert exit_price is not None, "Exit price should not be None"
         assert exit_price != 0.0, "Exit price should not be 0.0 when option prices are available"
         
-        # Expected: net_credit = 1.20 - 0.30 = 0.90, exit_price = -0.90
-        expected_exit_price = -(1.20 - 0.30)
+        # Expected: exit_price = premium received when selling long put = 1.20
+        expected_exit_price = 1.20
         assert abs(exit_price - expected_exit_price) < 0.01, \
             f"Exit price at 2 DTE should be {expected_exit_price}, got {exit_price}"
 

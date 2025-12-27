@@ -104,7 +104,9 @@ class CapitalManager:
     def get_max_allowed_risk(self, strategy_name: str) -> float:
         """Get the maximum allowed risk per position for a strategy.
         
-        Calculated as: allocated_capital * max_risk_percentage
+        Calculated as: remaining_capital * max_risk_percentage
+        
+        This ensures risk limits account for capital already allocated to open positions.
         
         Args:
             strategy_name: Name of the strategy
@@ -112,9 +114,9 @@ class CapitalManager:
         Returns:
             Maximum allowed risk per position
         """
-        allocated = self.get_allocated_capital(strategy_name)
+        remaining = self.get_remaining_capital(strategy_name)
         max_risk_pct = self.get_max_risk_percentage(strategy_name)
-        return allocated * max_risk_pct
+        return remaining * max_risk_pct
     
     def check_risk_threshold(self, strategy_name: str, max_risk: float) -> Tuple[bool, str]:
         """Check if a position's max risk is within the threshold.
@@ -133,11 +135,11 @@ class CapitalManager:
         remaining = self.get_remaining_capital(strategy_name)
         
         if max_risk > max_allowed:
-            allocated = self.get_allocated_capital(strategy_name)
+            remaining = self.get_remaining_capital(strategy_name)
             risk_pct = self.get_max_risk_percentage(strategy_name) * 100
             return False, (
                 f"${max_risk:.2f} exceeds maximum allowed risk of "
-                f"${max_allowed:.2f} ({risk_pct:.1f}% of ${allocated:,.2f})"
+                f"${max_allowed:.2f} ({risk_pct:.1f}% of ${remaining:,.2f} remaining capital)"
             )
         
         if max_risk > remaining:

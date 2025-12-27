@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Callable, Dict, Optional, List
 from datetime import datetime
 import pandas as pd
@@ -612,6 +614,154 @@ class Position:
         width = abs(atm_option.strike - otm_option.strike)
         net_credit = atm_option.last_price - otm_option.last_price
         return (width - net_credit) * 100
+    
+    def max_profit(self) -> Optional[float]:
+        """
+        Calculate maximum profit for the position based on strategy type.
+        
+        Returns:
+            Maximum profit per contract, or None if unlimited.
+            
+        Raises:
+            ValueError: If strategy type is unsupported or required data is missing
+        """
+        # Credit Spreads
+        if self.strategy_type in [StrategyType.CALL_CREDIT_SPREAD, StrategyType.PUT_CREDIT_SPREAD]:
+            # Max profit = net credit received
+            return self.entry_price
+        
+        # Long Options
+        elif self.strategy_type == StrategyType.LONG_CALL:
+            # Unlimited upside
+            return None
+        
+        elif self.strategy_type == StrategyType.LONG_PUT:
+            if not self.spread_options or len(self.spread_options) == 0:
+                raise ValueError("Long put requires option data in spread_options")
+            option = self.spread_options[0]
+            # Max profit if stock goes to 0
+            return option.strike - self.entry_price
+        
+        # Short Options
+        elif self.strategy_type == StrategyType.SHORT_CALL:
+            # Max profit = premium received
+            return self.entry_price
+        
+        elif self.strategy_type == StrategyType.SHORT_PUT:
+            # Max profit = premium received
+            return self.entry_price
+        
+        else:
+            raise ValueError(f"Unsupported strategy type: {self.strategy_type}")
+    
+    def max_loss(self) -> Optional[float]:
+        """
+        Calculate maximum loss for the position based on strategy type.
+        
+        Returns:
+            Maximum loss per contract, or None if unlimited.
+            
+        Raises:
+            ValueError: If strategy type is unsupported or required data is missing
+        """
+        # Credit Spreads
+        if self.strategy_type in [StrategyType.CALL_CREDIT_SPREAD, StrategyType.PUT_CREDIT_SPREAD]:
+            if not self.spread_options or len(self.spread_options) != 2:
+                raise ValueError("Credit spread requires 2 options in spread_options")
+            atm_option, otm_option = self.spread_options
+            spread_width = abs(atm_option.strike - otm_option.strike)
+            # Max loss = spread width - net credit
+            return spread_width - self.entry_price
+        
+        # Long Options
+        elif self.strategy_type == StrategyType.LONG_CALL:
+            # Max loss = premium paid
+            return self.entry_price
+        
+        elif self.strategy_type == StrategyType.LONG_PUT:
+            # Max loss = premium paid
+            return self.entry_price
+        
+        # Short Options
+        elif self.strategy_type == StrategyType.SHORT_CALL:
+            # Unlimited risk
+            return None
+        
+        elif self.strategy_type == StrategyType.SHORT_PUT:
+            if not self.spread_options or len(self.spread_options) == 0:
+                raise ValueError("Short put requires option data in spread_options")
+            option = self.spread_options[0]
+            # Max loss if stock goes to 0
+            return option.strike - self.entry_price
+        
+        else:
+            raise ValueError(f"Unsupported strategy type: {self.strategy_type}")
+    
+    def risk_reward_ratio(self) -> Optional[float]:
+        """
+        Calculate the risk/reward ratio for the position.
+        
+        Returns:
+            Risk/reward ratio (max_loss / max_profit), or None if either is unlimited or zero.
+            
+        Example:
+            A ratio of 2.0 means you risk $2 to make $1.
+            A ratio of 0.5 means you risk $0.50 to make $1.
+        """
+        max_profit = self.max_profit()
+        max_loss = self.max_loss()
+        
+        # Can't calculate if either is unlimited
+        if max_profit is None or max_loss is None:
+            return None
+        
+        # Can't divide by zero
+        if max_profit == 0:
+            return None
+        
+        return max_loss / max_profit
+    
+    def expected_value(self, probability_of_profit: float) -> Optional[float]:
+        """
+        Calculate expected value given a probability of profit.
+        
+        Args:
+            probability_of_profit: Probability of profit (0.0 to 1.0)
+            
+        Returns:
+            Expected value per contract, or None if max profit/loss is unlimited.
+            
+        Example:
+            If max_profit=$2.50, max_loss=$2.50, and PoP=0.70:
+            EV = (2.50 × 0.70) - (2.50 × 0.30) = $1.00
+        """
+        if not 0 <= probability_of_profit <= 1:
+            raise ValueError(f"probability_of_profit must be between 0 and 1, got {probability_of_profit}")
+        
+        max_profit = self.max_profit()
+        max_loss = self.max_loss()
+        
+        # Can't calculate if either is unlimited
+        if max_profit is None or max_loss is None:
+            return None
+        
+        return (max_profit * probability_of_profit) - (max_loss * (1 - probability_of_profit))
+    
+    def spread_width(self) -> Optional[float]:
+        """
+        Calculate the spread width for spread strategies.
+        
+        Returns:
+            Spread width (difference between strikes), or None if not a spread strategy.
+        """
+        if self.strategy_type not in [StrategyType.CALL_CREDIT_SPREAD, StrategyType.PUT_CREDIT_SPREAD]:
+            return None
+        
+        if not self.spread_options or len(self.spread_options) != 2:
+            raise ValueError("Spread strategy requires 2 options in spread_options")
+        
+        atm_option, otm_option = self.spread_options
+        return abs(atm_option.strike - otm_option.strike)
     
     def __eq__(self, other) -> bool:
         """
