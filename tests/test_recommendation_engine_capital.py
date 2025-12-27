@@ -251,3 +251,53 @@ def test_recommender_strategy_name_mapping(
     # Risk is 400, should pass
     assert result is not None
 
+
+def test_calculate_quantity_raises_error_when_max_risk_per_trade_missing(
+    options_handler_mock, decision_store, allocations_config
+):
+    """Test that _calculate_quantity raises ValueError when max_risk_per_trade is missing."""
+    date = datetime(2025, 8, 8)
+    
+    # Create capital manager
+    capital_manager = CapitalManager(allocations_config, decision_store)
+    
+    # Create a strategy mock WITHOUT max_risk_per_trade
+    strategy_mock = MagicMock()
+    strategy_mock.data = MagicMock()
+    strategy_mock.data.loc.__getitem__.return_value = {'Close': 500}
+    # Explicitly remove max_risk_per_trade if it exists
+    if hasattr(strategy_mock, 'max_risk_per_trade'):
+        delattr(strategy_mock, 'max_risk_per_trade')
+    
+    recommender = InteractiveStrategyRecommender(
+        strategy_mock, options_handler_mock, decision_store, capital_manager, auto_yes=True
+    )
+    
+    # Verify that _calculate_quantity raises ValueError
+    with pytest.raises(ValueError, match="must have max_risk_per_trade attribute set"):
+        recommender._calculate_quantity(max_risk_per_contract=100.0, strategy_name="credit_spread")
+
+
+def test_calculate_quantity_raises_error_when_max_risk_per_trade_is_none(
+    options_handler_mock, decision_store, allocations_config
+):
+    """Test that _calculate_quantity raises ValueError when max_risk_per_trade is None."""
+    date = datetime(2025, 8, 8)
+    
+    # Create capital manager
+    capital_manager = CapitalManager(allocations_config, decision_store)
+    
+    # Create a strategy mock with max_risk_per_trade set to None
+    strategy_mock = MagicMock()
+    strategy_mock.data = MagicMock()
+    strategy_mock.data.loc.__getitem__.return_value = {'Close': 500}
+    strategy_mock.max_risk_per_trade = None
+    
+    recommender = InteractiveStrategyRecommender(
+        strategy_mock, options_handler_mock, decision_store, capital_manager, auto_yes=True
+    )
+    
+    # Verify that _calculate_quantity raises ValueError
+    with pytest.raises(ValueError, match="must have max_risk_per_trade attribute set"):
+        recommender._calculate_quantity(max_risk_per_contract=100.0, strategy_name="credit_spread")
+

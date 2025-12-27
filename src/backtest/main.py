@@ -62,9 +62,20 @@ class BacktestEngine:
 
         # Use only dates that exist in the data (not pd.bdate_range which includes holidays)
         # Filter data to the specified date range and use the actual dates
-        date_range = self.data.index
+        # Filter by start_date and end_date to ensure we only process the requested range
+        start_date_ts = pd.Timestamp(self.start_date)
+        end_date_ts = pd.Timestamp(self.end_date)
+        mask = (self.data.index >= start_date_ts) & (self.data.index <= end_date_ts)
+        filtered_data = self.data[mask].copy()
+        date_range = filtered_data.index
+        
+        if len(date_range) == 0:
+            print(f"❌ No data available in the specified date range: {self.start_date.date()} to {self.end_date.date()}")
+            return False
 
-        self.benchmark.set_start_price(self.data.iloc[self.strategy.start_date_offset]['Close'])
+        # Use filtered_data for benchmark start price calculation
+        benchmark_start_idx = min(self.strategy.start_date_offset, len(filtered_data) - 1)
+        self.benchmark.set_start_price(filtered_data.iloc[benchmark_start_idx]['Close'])
         
         # Initialize progress tracker if enabled
         if self.enable_progress_tracking:
@@ -174,10 +185,13 @@ class BacktestEngine:
         print(f"   Sharpe Ratio: {sharpe_ratio:.3f}")
 
 
-    def _add_position(self, position: Position):
+    def _add_position(self, position: Position) -> bool:
         """
         Add a position to the positions. Rejects positions with insufficient volume and determines position size based
         on capital provided to the backtest.
+        
+        Returns:
+            bool: True if position was successfully added, False if rejected
         """
         
         # Volume validation - check all options in the spread
@@ -186,31 +200,43 @@ class BacktestEngine:
                 if not self._validate_option_volume(option):
                     print(f"⚠️  Volume validation failed: {option.symbol} has insufficient volume")
                     self.volume_stats = self.volume_stats.increment_rejected_positions()
-                    return  # Reject the position
+                    return False  # Reject the position
 
         position_size = self._get_position_size(position)
         if position_size == 0:
             print(f"⚠️  Warning: Not enough capital to add position. Position size is 0.")
-            return
+            return False
         
         position.set_quantity(position_size)
 
-        # For credit spreads, we need to reserve the maximum risk amount
+        # Handle capital adjustment based on position type
         if position.strategy_type in [StrategyType.CALL_CREDIT_SPREAD, StrategyType.PUT_CREDIT_SPREAD]:
-            # For credit spreads: Add the net credit received to capital
-            # The net credit is already stored in position.entry_price
+            # Credit spread: Add the net credit received to capital
             credit_received = position.entry_price * position.quantity * 100
             self.capital += credit_received
             print(f"💰 Added net credit of ${credit_received:.2f} to capital")
+        elif position.strategy_type == StrategyType.PUT_DEBIT_SPREAD:
+            # Debit spread: Subtract the net debit paid from capital
+            # entry_price is negative for debit spreads, so use abs()
+            debit_paid = abs(position.entry_price) * position.quantity * 100
+            if self.capital < debit_paid:
+                print(f"⚠️  Warning: Not enough capital to add position. Need ${debit_paid:.2f}, have ${self.capital:.2f}")
+                return False
+            self.capital -= debit_paid
+            print(f"💰 Deducted net debit of ${debit_paid:.2f} from capital")
         else:
             # For other position types, check if we have enough capital
-            if self.capital < position.entry_price * position.quantity * 100:
-                raise ValueError("Not enough capital to add position")
+            cost = abs(position.entry_price) * position.quantity * 100
+            if self.capital < cost:
+                raise ValueError(f"Not enough capital to add position. Need ${cost:.2f}, have ${self.capital:.2f}")
+            self.capital -= cost
 
         print(f"Adding position: {position.__str__()}\n")
         
         self.positions.append(position)
         self.total_positions += 1
+        
+        return True  # Position successfully added
 
     def _remove_position(self, date: datetime, position: Position, exit_price: float, underlying_price: float = None, current_volumes: list[int] = None):
         """
@@ -263,11 +289,24 @@ class BacktestEngine:
 
         # Update capital based on position type
         if position.strategy_type in [StrategyType.CALL_CREDIT_SPREAD, StrategyType.PUT_CREDIT_SPREAD]:
-            # For credit spreads: Subtract the cost to buy back the spread
+            # Credit spread: Subtract the cost to buy back the spread
             # The exit_price represents the cost to close the position
             cost_to_close = exit_price * position.quantity * 100
             self.capital -= cost_to_close
             print(f"💰 Subtracted cost to close of ${cost_to_close:.2f} from capital")
+        elif position.strategy_type == StrategyType.PUT_DEBIT_SPREAD:
+            # Debit spread: Add the net credit received when closing
+            # exit_price is negative (net credit to close), so we add it
+            credit_received = abs(exit_price) * position.quantity * 100
+            self.capital += credit_received
+            print(f"💰 Added net credit received of ${credit_received:.2f} to capital")
+        elif position.strategy_type in [StrategyType.LONG_PUT, StrategyType.LONG_CALL, StrategyType.LONG_STOCK]:
+            # Long positions: Add the proceeds received when selling
+            # For long puts/calls: exit_price is the premium received when selling
+            # For long stock: exit_price is the sale price
+            proceeds_received = exit_price * position.quantity * 100
+            self.capital += proceeds_received
+            print(f"💰 Added proceeds received of ${proceeds_received:.2f} to capital")
         else:
             # For other position types, add the return
             self.capital += position_return
@@ -299,17 +338,37 @@ class BacktestEngine:
         print(f"     Entry: ${position.entry_price:.2f} | Exit: ${exit_price:.2f}")
         print(f"     Return: ${position_return:+.2f} | Capital: ${self.capital:.2f}\n")
     
-    # TODO: Only works for credit spreads since using max risk
     def _get_position_size(self, position: Position) -> int:
         """
-        Get the number of contracts to buy or sell for a position based on the max position size and the current capital.
-        """
-        if self.max_position_size is None:
-            return 1
+        Get the number of contracts to buy or sell for a position based on the strategy's max_risk_per_trade.
         
-        max_position_capital = self.capital * self.max_position_size
-
-        return int(max_position_capital / position.get_max_risk())
+        Uses: max_risk_allowed = capital * max_risk_per_trade
+              position_size = max_risk_allowed / position.get_max_risk()
+        
+        Returns 0 if calculated size is 0.
+        
+        Raises:
+            ValueError: If strategy doesn't have max_risk_per_trade attribute set.
+        """
+        # Check if strategy has max_risk_per_trade attribute
+        if not hasattr(self.strategy, 'max_risk_per_trade') or self.strategy.max_risk_per_trade is None:
+            raise ValueError(
+                f"Strategy {type(self.strategy).__name__} must have max_risk_per_trade attribute set. "
+                f"This is required for position sizing."
+            )
+        
+        # Use strategy's max_risk_per_trade: max risk allowed = capital * max_risk_per_trade
+        max_risk_allowed = self.capital * self.strategy.max_risk_per_trade
+        max_risk_per_contract = position.get_max_risk()
+        position_size = int(max_risk_allowed / max_risk_per_contract)
+        
+        # Debug logging
+        if not self.quiet_mode:
+            print(f"📊 Position sizing: Capital=${self.capital:.2f}, MaxRisk%={self.strategy.max_risk_per_trade:.1%}, "
+                  f"MaxRiskAllowed=${max_risk_allowed:.2f}, MaxRiskPerContract=${max_risk_per_contract:.2f}, "
+                  f"Quantity={position_size}")
+        
+        return position_size
 
     def _calculate_sharpe_ratio(self) -> float:
         """
@@ -559,7 +618,12 @@ if __name__ == "__main__":
     data_retriever.load_treasury_rates(start_date, end_date)
 
     try:
-        data = data_retriever.fetch_data_for_period(start_date, 'backtest')
+        # Fetch data with enough history before start_date for strategy calculations
+        # The strategy needs start_date_offset days of history, so fetch from earlier
+        # Add a buffer of start_date_offset days before the start_date
+        from datetime import timedelta
+        fetch_start_date = (start_date - timedelta(days=args.start_date_offset + 30)).strftime('%Y-%m-%d')
+        data = data_retriever.fetch_data_for_period(fetch_start_date, end_date.strftime('%Y-%m-%d'), 'backtest')
 
         # Create options handler to inject into strategy
         options_handler = OptionsHandler(

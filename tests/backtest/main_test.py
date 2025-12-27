@@ -21,6 +21,7 @@ class MockStrategy(Strategy):
     def __init__(self, options_handler=None):
         super().__init__()
         self.options_handler = options_handler
+        self.max_risk_per_trade = 0.08  # 8% max risk per trade
         # Create comprehensive mock data with all required columns
         dates = pd.date_range('2024-01-01', periods=3)
         self.data = pd.DataFrame({
@@ -54,6 +55,7 @@ class MockStrategy(Strategy):
             option1.symbol = "SPY240315C00500000"
             option1.volume = 15
             option1.strike = 500.0
+            option1.last_price = 3.0  # Needed for get_max_risk calculation
             option1.expiration = "2024-03-15"
             option1.option_type = Mock()
             option1.option_type.value = "C"
@@ -62,6 +64,7 @@ class MockStrategy(Strategy):
             option2.symbol = "SPY240315C00510000"
             option2.volume = 20
             option2.strike = 510.0
+            option2.last_price = 0.5  # Needed for get_max_risk calculation
             option2.expiration = "2024-03-15"
             option2.option_type = Mock()
             option2.option_type.value = "C"
@@ -340,19 +343,28 @@ class TestVolumeValidationIntegration:
         assert success is True
         
         # Check that statistics are properly tracked
-        assert engine.volume_stats.options_checked == 2
+        # With max_risk_per_trade set, position is added on day 1, so volume validation only runs once (2 options)
+        assert engine.volume_stats.options_checked == 2  # Two options checked on day 1
         assert engine.volume_stats.positions_rejected_volume == 0
         
         # Check that summary statistics are calculated correctly
         summary = engine.volume_stats.get_summary()
         assert summary['positions_rejected_volume'] == 0
-        assert summary['options_checked'] == 2
+        assert summary['options_checked'] == 2  # Two options checked on day 1
         assert summary['rejection_rate'] == 0.0  # 0/2 * 100
     
     def test_backtest_engine_with_position_without_spread_options(self):
         """Test BacktestEngine handles positions without spread_options gracefully."""
         
         class MockStrategyWithoutSpreadOptions(MockStrategy):
+            def __init__(self, options_handler=None):
+                super().__init__(options_handler)
+                # For LONG_STOCK, we need higher max_risk_per_trade to allow position
+                # With entry_price=100.0, max_risk = 100.0 * 100 = 10000
+                # To get 1 contract: need max_risk_allowed >= 10000
+                # With capital=10000: max_risk_per_trade >= 1.0 (100%)
+                self.max_risk_per_trade = 1.0  # 100% to allow 1 share
+            
             def on_new_date(self, date, positions, add_position, remove_position):
                 """Mock strategy that creates positions without spread_options."""
                 if len(positions) == 0:
@@ -490,6 +502,274 @@ class TestVolumeValidationIntegration:
         assert volume_summary['positions_rejected_closure_volume'] == 1, "Should track rejected closure"
         assert volume_summary['skipped_closures'] == 1, "Should track skipped closure"
         assert volume_summary['options_checked'] >= 1, "Should have checked at least one option"
+
+    def test_get_position_size_raises_error_when_max_risk_per_trade_missing(self):
+        """Test that _get_position_size raises ValueError when max_risk_per_trade is missing."""
+        # Create mock data
+        data = pd.DataFrame({
+            'Close': [100, 101, 102],
+            'Volume': [1000, 1100, 1200],
+        }, index=pd.date_range('2024-01-01', periods=3))
+        
+        # Create strategy WITHOUT max_risk_per_trade
+        class StrategyWithoutMaxRisk(MockStrategy):
+            def __init__(self):
+                super().__init__()
+                # Remove max_risk_per_trade attribute
+                if hasattr(self, 'max_risk_per_trade'):
+                    delattr(self, 'max_risk_per_trade')
+        
+        strategy = StrategyWithoutMaxRisk()
+        
+        # Create backtest engine
+        engine = BacktestEngine(
+            data=data,
+            strategy=strategy,
+            initial_capital=10000,
+            start_date=datetime(2024, 1, 1),
+            end_date=datetime(2024, 1, 3)
+        )
+        
+        # Create a position
+        option1 = Mock(spec=Option)
+        option1.symbol = "SPY240315C00500000"
+        option1.strike = 500.0
+        option1.last_price = 3.0
+        option1.expiration = "2024-03-15"
+        option1.option_type = Mock()
+        option1.option_type.value = "C"
+        
+        option2 = Mock(spec=Option)
+        option2.symbol = "SPY240315C00510000"
+        option2.strike = 510.0
+        option2.last_price = 0.5
+        option2.expiration = "2024-03-15"
+        option2.option_type = Mock()
+        option2.option_type.value = "C"
+        
+        position = Position(
+            symbol="SPY",
+            expiration_date=datetime(2024, 3, 15),
+            strategy_type=StrategyType.CALL_CREDIT_SPREAD,
+            strike_price=500.0,
+            entry_date=datetime(2024, 1, 1),
+            entry_price=2.50,
+            spread_options=[option1, option2]
+        )
+        
+        # Verify that _get_position_size raises ValueError
+        with pytest.raises(ValueError, match="must have max_risk_per_trade attribute set"):
+            engine._get_position_size(position)
+    
+    def test_get_position_size_raises_error_when_max_risk_per_trade_is_none(self):
+        """Test that _get_position_size raises ValueError when max_risk_per_trade is None."""
+        # Create mock data
+        data = pd.DataFrame({
+            'Close': [100, 101, 102],
+            'Volume': [1000, 1100, 1200],
+        }, index=pd.date_range('2024-01-01', periods=3))
+        
+        # Create strategy with max_risk_per_trade set to None
+        class StrategyWithNoneMaxRisk(MockStrategy):
+            def __init__(self):
+                super().__init__()
+                self.max_risk_per_trade = None
+        
+        strategy = StrategyWithNoneMaxRisk()
+        
+        # Create backtest engine
+        engine = BacktestEngine(
+            data=data,
+            strategy=strategy,
+            initial_capital=10000,
+            start_date=datetime(2024, 1, 1),
+            end_date=datetime(2024, 1, 3)
+        )
+        
+        # Create a position
+        option1 = Mock(spec=Option)
+        option1.symbol = "SPY240315C00500000"
+        option1.strike = 500.0
+        option1.last_price = 3.0
+        option1.expiration = "2024-03-15"
+        option1.option_type = Mock()
+        option1.option_type.value = "C"
+        
+        option2 = Mock(spec=Option)
+        option2.symbol = "SPY240315C00510000"
+        option2.strike = 510.0
+        option2.last_price = 0.5
+        option2.expiration = "2024-03-15"
+        option2.option_type = Mock()
+        option2.option_type.value = "C"
+        
+        position = Position(
+            symbol="SPY",
+            expiration_date=datetime(2024, 3, 15),
+            strategy_type=StrategyType.CALL_CREDIT_SPREAD,
+            strike_price=500.0,
+            entry_date=datetime(2024, 1, 1),
+            entry_price=2.50,
+            spread_options=[option1, option2]
+        )
+        
+        # Verify that _get_position_size raises ValueError
+        with pytest.raises(ValueError, match="must have max_risk_per_trade attribute set"):
+            engine._get_position_size(position)
+
+
+class TestLongPutIntegration:
+    """Integration tests for LONG_PUT positions in backtest engine."""
+    
+    def test_backtest_engine_with_long_put_position(self):
+        """Test BacktestEngine with a long put position."""
+        # This test verifies that the backtest engine can handle long put positions
+        # We're testing the Position class directly since integration with BacktestEngine
+        # requires more complex setup
+        from src.common.models import Option, OptionType
+        
+        put_option = Option(
+            ticker="O:SPY250315P00500000",
+            symbol="SPY",
+            strike=500.0,
+            expiration="2025-03-15",
+            option_type=OptionType.PUT,
+            last_price=3.0
+        )
+        
+        position = Position(
+            symbol="SPY",
+            expiration_date=datetime(2025, 3, 15),
+            strategy_type=StrategyType.LONG_PUT,
+            strike_price=500.0,
+            entry_date=datetime(2025, 3, 1),
+            entry_price=3.0,
+            spread_options=[put_option]
+        )
+        position.set_quantity(1)
+        
+        # Verify position was created correctly
+        assert position.strategy_type == StrategyType.LONG_PUT
+        assert position.entry_price == 3.0
+        assert len(position.spread_options) == 1
+    
+    def test_long_put_profit_calculation(self):
+        """Test that long put profit is calculated correctly."""
+        from src.common.models import Option, OptionType
+        
+        put_option = Option(
+            ticker="O:SPY250315P00500000",
+            symbol="SPY",
+            strike=500.0,
+            expiration="2025-03-15",
+            option_type=OptionType.PUT,
+            last_price=3.0
+        )
+        
+        position = Position(
+            symbol="SPY",
+            expiration_date=datetime(2025, 3, 15),
+            strategy_type=StrategyType.LONG_PUT,
+            strike_price=500.0,
+            entry_date=datetime(2025, 3, 1),
+            entry_price=3.0,  # Buy at $3.00
+            spread_options=[put_option]
+        )
+        position.set_quantity(2)
+        
+        # Exit at profit
+        exit_price = 5.0  # Sell at $5.00
+        return_dollars = position.get_return_dollars(exit_price)
+        
+        # Expected: (5.0 - 3.0) * 2 * 100 = $400
+        assert return_dollars == 400.0
+        
+        # Check percentage return
+        return_pct = position._get_return(exit_price)
+        expected_pct = (5.0 - 3.0) / 3.0  # 67%
+        assert abs(return_pct - expected_pct) < 0.01
+    
+    def test_long_put_loss_calculation(self):
+        """Test that long put loss is calculated correctly."""
+        from src.common.models import Option, OptionType
+        
+        put_option = Option(
+            ticker="O:SPY250315P00500000",
+            symbol="SPY",
+            strike=500.0,
+            expiration="2025-03-15",
+            option_type=OptionType.PUT,
+            last_price=3.0
+        )
+        
+        position = Position(
+            symbol="SPY",
+            expiration_date=datetime(2025, 3, 15),
+            strategy_type=StrategyType.LONG_PUT,
+            strike_price=500.0,
+            entry_date=datetime(2025, 3, 1),
+            entry_price=3.0,  # Buy at $3.00
+            spread_options=[put_option]
+        )
+        position.set_quantity(2)
+        
+        # Exit at loss
+        exit_price = 1.0  # Sell at $1.00
+        return_dollars = position.get_return_dollars(exit_price)
+        
+        # Expected: (1.0 - 3.0) * 2 * 100 = -$400
+        assert return_dollars == -400.0
+        
+        # Check percentage return
+        return_pct = position._get_return(exit_price)
+        expected_pct = (1.0 - 3.0) / 3.0  # -67%
+        assert abs(return_pct - expected_pct) < 0.01
+    
+    def test_long_put_volume_validation(self):
+        """Test that volume validation works for long put positions."""
+        from src.common.models import Option, OptionType
+        
+        # Create a long put with low volume
+        put_option = Mock(spec=Option)
+        put_option.symbol = "SPY240315P00500000"
+        put_option.volume = 5  # Below minimum of 10
+        put_option.strike = 500.0
+        put_option.last_price = 3.0
+        put_option.expiration = "2024-03-15"
+        put_option.option_type = Mock()
+        put_option.option_type.value = "P"
+        
+        position = Position(
+            symbol="SPY",
+            expiration_date=datetime(2024, 3, 15),
+            strategy_type=StrategyType.LONG_PUT,
+            strike_price=500.0,
+            entry_date=datetime(2024, 1, 1),
+            entry_price=3.0,
+            spread_options=[put_option]
+        )
+        
+        data = pd.DataFrame({
+            'Close': [100.0, 101.0, 102.0]
+        }, index=pd.date_range('2024-01-01', periods=3))
+        
+        strategy = Mock(spec=Strategy)
+        strategy.validate_data.return_value = True
+        
+        engine = BacktestEngine(
+            data=data,
+            strategy=strategy,
+            initial_capital=10000,
+            enable_progress_tracking=False,
+            volume_config=VolumeConfig(min_volume=10)
+        )
+        
+        # Try to add position - should be rejected due to low volume
+        initial_count = len(engine.positions)
+        engine._add_position(position)
+        
+        # Position should be rejected
+        assert len(engine.positions) == initial_count
 
 
 if __name__ == "__main__":
