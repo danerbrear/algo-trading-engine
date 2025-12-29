@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "lstm-poc"
+name = "algo-trading-engine"
 version = "0.1.0"
 description = "Options trading backtesting and prediction framework"
 readme = "README.md"
