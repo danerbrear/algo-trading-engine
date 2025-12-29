@@ -340,31 +340,36 @@ class BacktestEngine:
     
     def _get_position_size(self, position: Position) -> int:
         """
-        Get the number of contracts to buy or sell for a position based on the strategy's max_risk_per_trade.
+        Get the number of contracts to buy or sell for a position based on max_position_size or strategy's max_risk_per_trade.
         
-        Uses: max_risk_allowed = capital * max_risk_per_trade
+        Uses: max_risk_allowed = capital * max_position_size (if provided) or capital * max_risk_per_trade (fallback)
               position_size = max_risk_allowed / position.get_max_risk()
         
         Returns 0 if calculated size is 0.
         
         Raises:
-            ValueError: If strategy doesn't have max_risk_per_trade attribute set.
+            ValueError: If neither max_position_size nor strategy's max_risk_per_trade is set.
         """
-        # Check if strategy has max_risk_per_trade attribute
-        if not hasattr(self.strategy, 'max_risk_per_trade') or self.strategy.max_risk_per_trade is None:
+        # Determine which risk percentage to use: command line max_position_size takes precedence
+        if self.max_position_size is not None:
+            risk_percentage = self.max_position_size
+        elif hasattr(self.strategy, 'max_risk_per_trade') and self.strategy.max_risk_per_trade is not None:
+            risk_percentage = self.strategy.max_risk_per_trade
+        else:
             raise ValueError(
-                f"Strategy {type(self.strategy).__name__} must have max_risk_per_trade attribute set. "
+                f"Strategy {type(self.strategy).__name__} must have max_risk_per_trade attribute set, "
+                f"or max_position_size must be provided to BacktestEngine. "
                 f"This is required for position sizing."
             )
         
-        # Use strategy's max_risk_per_trade: max risk allowed = capital * max_risk_per_trade
-        max_risk_allowed = self.capital * self.strategy.max_risk_per_trade
+        # Use the determined risk percentage: max risk allowed = capital * risk_percentage
+        max_risk_allowed = self.capital * risk_percentage
         max_risk_per_contract = position.get_max_risk()
         position_size = int(max_risk_allowed / max_risk_per_contract)
         
         # Debug logging
         if not self.quiet_mode:
-            print(f"📊 Position sizing: Capital=${self.capital:.2f}, MaxRisk%={self.strategy.max_risk_per_trade:.1%}, "
+            print(f"📊 Position sizing: Capital=${self.capital:.2f}, MaxRisk%={risk_percentage:.1%}, "
                   f"MaxRiskAllowed=${max_risk_allowed:.2f}, MaxRiskPerContract=${max_risk_per_contract:.2f}, "
                   f"Quantity={position_size}")
         

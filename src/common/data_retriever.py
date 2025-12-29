@@ -169,6 +169,48 @@ class DataRetriever:
             # Filter by end_date if provided and data is cached
             if end_date is not None:
                 end_date_ts = pd.Timestamp(end_date).tz_localize(None)
+                cached_end_date = cached_data.index[-1]
+                
+                # Check if cached data extends to requested end_date
+                if cached_end_date < end_date_ts:
+                    print(f"⚠️  Cached data only extends to {cached_end_date.date()}, but end_date is {end_date_ts.date()}")
+                    print(f"🌐 Fetching additional data from {cached_end_date.date()} to {end_date_ts.date()}...")
+                    
+                    # Fetch additional data from API
+                    if self.ticker is None:
+                        self.ticker = yf.Ticker(self.symbol)
+                    
+                    # Fetch data from just after cached end_date to requested end_date
+                    # Add 1 day buffer to ensure we get the next trading day
+                    fetch_start = (cached_end_date + pd.Timedelta(days=1)).strftime('%Y-%m-%d')
+                    additional_data = self.ticker.history(start=fetch_start, end=end_date)
+                    
+                    if not additional_data.empty:
+                        additional_data.index = additional_data.index.tz_localize(None)
+                        # Combine cached data with new data
+                        combined_data = pd.concat([cached_data, additional_data])
+                        combined_data = combined_data[~combined_data.index.duplicated(keep='last')].sort_index()
+                        
+                        # Filter to requested end_date
+                        mask = combined_data.index <= end_date_ts
+                        combined_data = combined_data[mask].copy()
+                        
+                        print(f"✅ Combined cached and fresh data: {combined_data.index[0]} to {combined_data.index[-1]} ({len(combined_data)} samples)")
+                        
+                        # Update cache with extended data
+                        self.cache_manager.save_date_to_cache(
+                            pd.Timestamp(start_date),
+                            combined_data,
+                            cache_suffix,
+                            'stocks',
+                            self.symbol
+                        )
+                        
+                        return combined_data
+                    else:
+                        print(f"⚠️  No additional data available from API. Using cached data up to {cached_end_date.date()}")
+                
+                # Filter cached data to requested end_date (even if it doesn't extend that far)
                 mask = cached_data.index <= end_date_ts
                 cached_data = cached_data[mask].copy()
                 print(f"✂️ Filtered cached {data_type} data to end date {end_date}: {cached_data.index[0]} to {cached_data.index[-1]} ({len(cached_data)} samples)")

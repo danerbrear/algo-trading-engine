@@ -24,8 +24,9 @@ class BullMarketMeanReversionV2Strategy(Strategy):
     than its historical average and will revert towards its historical value.
     
     Entry Criteria:
-    - Upward trend: SMA15 > SMA30 and width between them is increasing
+    - Upward trend: SMA15 > SMA30 (width increasing condition temporarily disabled)
     - Z-Score of daily returns > 1.0 (measures deviation from expected return, accounting for market growth)
+    - Current day's Z-Score is less than previous day's Z-Score (momentum slowing)
     - Long put (buy ATM put)
     - 7-10 DTE
     
@@ -38,6 +39,9 @@ class BullMarketMeanReversionV2Strategy(Strategy):
     - Only 1 open position at a time
     - Size based on maximum risk per trade of 8%
     """
+    
+    # Z-Score rolling window in days
+    Z_SCORE_ROLLING_WINDOW = 60
 
     def __init__(
         self, 
@@ -91,7 +95,7 @@ class BullMarketMeanReversionV2Strategy(Strategy):
             # This measures deviation from expected return, not deviation from absolute price level
             # Formula: Z-Score = (current_return - mean_return) / std_return
             # This better detects overvaluation relative to the trend, not just high absolute prices
-            window = 60
+            window = self.Z_SCORE_ROLLING_WINDOW
             # Calculate daily returns (percentage change)
             self.data['Returns'] = self.data['Close'].pct_change()
             # Calculate rolling mean and std of returns
@@ -140,8 +144,8 @@ class BullMarketMeanReversionV2Strategy(Strategy):
                 self.vix_z_score = None
                 return
             
-            # Calculate VIX Z-Score using same 60-day window
-            window = 60
+            # Calculate VIX Z-Score using same rolling window as SPY Z-Score
+            window = self.Z_SCORE_ROLLING_WINDOW
             aligned_vix['VIX_Mean'] = aligned_vix['Close'].rolling(window=window).mean()
             aligned_vix['VIX_Std'] = aligned_vix['Close'].rolling(window=window).std()
             aligned_vix['VIX_Z_Score'] = (aligned_vix['Close'] - aligned_vix['VIX_Mean']) / aligned_vix['VIX_Std']
@@ -172,7 +176,7 @@ class BullMarketMeanReversionV2Strategy(Strategy):
             self.data['SMA_Width_Change'] = self.data['SMA_Width'].diff()
             
             # Calculate Z-Score based on returns (not absolute prices) to account for market growth/trend
-            window = 60
+            window = self.Z_SCORE_ROLLING_WINDOW
             # Calculate daily returns (percentage change)
             self.data['Returns'] = self.data['Close'].pct_change()
             # Calculate rolling mean and std of returns
@@ -306,9 +310,9 @@ class BullMarketMeanReversionV2Strategy(Strategy):
     def _has_entry_signal(self, date: datetime) -> bool:
         """
         Check for entry signal:
-        1. Upward trend: SMA15 > SMA30 and width between them is increasing
+        1. Upward trend: SMA15 > SMA30 (width increasing condition temporarily disabled)
         2. Z-Score of returns > entry threshold (measures deviation from expected return, accounting for market growth)
-        3. Inverse Divergence: VIX Z-Score - SPY Z-Score > -2.0 (VIX not too negative relative to SPY = some fear present)
+        3. Current day's Z-Score is less than previous day's Z-Score (momentum slowing)
         """
         if self.data is None or self.data.empty:
             return False
@@ -355,10 +359,10 @@ class BullMarketMeanReversionV2Strategy(Strategy):
                 progress_print("⚠️  Date not found in data")
                 return False
         
-        # Check if we have enough data to analyze (need at least 60 days for returns-based Z-Score rolling window)
-        # Note: Returns calculation needs 1 day, rolling window needs 60 days, so we need at least 61 rows total
-        if current_idx < 60:
-            progress_print("⚠️  Not enough data to analyze (need at least 60 days for Z-Score calculation)")
+        # Check if we have enough data to analyze (need at least Z_SCORE_ROLLING_WINDOW days for returns-based Z-Score rolling window)
+        # Note: Returns calculation needs 1 day, rolling window needs Z_SCORE_ROLLING_WINDOW days, so we need at least Z_SCORE_ROLLING_WINDOW + 1 rows total
+        if current_idx < self.Z_SCORE_ROLLING_WINDOW:
+            progress_print(f"⚠️  Not enough data to analyze (need at least {self.Z_SCORE_ROLLING_WINDOW} days for Z-Score calculation)")
             return False
         
         # Check if required columns exist
@@ -377,14 +381,15 @@ class BullMarketMeanReversionV2Strategy(Strategy):
             return False
         
         # Check if width is increasing (comparing to previous day)
-        if current_idx < 1:
-            progress_print("⚠️  Not enough data to check width change")
-            return False
-        
-        width_change = self.data['SMA_Width_Change'].iloc[current_idx]
-        if pd.isna(width_change) or width_change <= 0:
-            progress_print(f"⚠️  Width not increasing: change={width_change:.4f}")
-            return False
+        # TEMPORARILY COMMENTED OUT
+        # if current_idx < 1:
+        #     progress_print("⚠️  Not enough data to check width change")
+        #     return False
+        # 
+        # width_change = self.data['SMA_Width_Change'].iloc[current_idx]
+        # if pd.isna(width_change) or width_change <= 0:
+        #     progress_print(f"⚠️  Width not increasing: change={width_change:.4f}")
+        #     return False
         
         # Check Z-Score > entry threshold
         z_score = self.data['Z_Score'].iloc[current_idx]
@@ -392,41 +397,21 @@ class BullMarketMeanReversionV2Strategy(Strategy):
             progress_print(f"⚠️  Z-Score not above threshold: Z-Score={z_score:.2f}, threshold={self.z_score_entry_threshold}")
             return False
         
-        # Check inverse divergence: VIX Z-Score - SPY Z-Score > -2.0 (VIX not too negative relative to SPY = some fear present)
-        # This is less restrictive - we want VIX to not be too low when SPY is high
-        # Example: If SPY Z = 1.6, we allow VIX Z > -0.4 (much more permissive)
-        inverse_divergence_threshold = -2.0
-        if self.vix_z_score is not None and not self.vix_z_score.empty:
-            try:
-                vix_z_score = self.vix_z_score.loc[date] if date in self.vix_z_score.index else None
-                if vix_z_score is not None and not pd.isna(vix_z_score):
-                    inverse_divergence = vix_z_score - z_score
-                    if inverse_divergence <= inverse_divergence_threshold:
-                        progress_print(f"⚠️  Insufficient inverse divergence: SPY Z-Score={z_score:.2f}, VIX Z-Score={vix_z_score:.2f}, inverse divergence={inverse_divergence:.2f} (entry requires > {inverse_divergence_threshold})")
-                        return False
-                else:
-                    # If VIX data not available for this date, skip the filter (backward compatibility)
-                    progress_print(f"⚠️  VIX Z-Score not available for {date.date()}, skipping inverse divergence filter")
-            except (KeyError, IndexError):
-                # If VIX data not available for this date, skip the filter (backward compatibility)
-                progress_print(f"⚠️  VIX Z-Score not available for {date.date()}, skipping inverse divergence filter")
-        else:
-            # If VIX data not loaded, skip the filter (backward compatibility)
-            progress_print("⚠️  VIX Z-Score data not loaded, skipping inverse divergence filter")
+        # Check that current day's Z-Score is less than previous day's Z-Score
+        if current_idx < 1:
+            progress_print("⚠️  Not enough data to check Z-Score change (need previous day)")
+            return False
         
-        vix_z_display = ""
-        inverse_divergence_display = ""
-        if self.vix_z_score is not None and not self.vix_z_score.empty:
-            try:
-                vix_z = self.vix_z_score.loc[date] if date in self.vix_z_score.index else None
-                if vix_z is not None and not pd.isna(vix_z):
-                    inverse_divergence = vix_z - z_score
-                    vix_z_display = f", VIX Z-Score={vix_z:.2f}"
-                    inverse_divergence_display = f", Inverse Divergence={inverse_divergence:.2f}"
-            except (KeyError, IndexError):
-                pass
+        previous_z_score = self.data['Z_Score'].iloc[current_idx - 1]
+        if pd.isna(previous_z_score):
+            progress_print("⚠️  Previous day's Z-Score is not available")
+            return False
         
-        progress_print(f"✅ Entry signal detected: SMA15={sma15:.2f} > SMA30={sma30:.2f}, width increasing, Z-Score={z_score:.2f}{vix_z_display}{inverse_divergence_display}")
+        if z_score >= previous_z_score:
+            progress_print(f"⚠️  Z-Score not decreasing: current={z_score:.2f}, previous={previous_z_score:.2f}")
+            return False
+        
+        progress_print(f"✅ Entry signal detected: SMA15={sma15:.2f} > SMA30={sma30:.2f}, width increasing, Z-Score={z_score:.2f} (decreased from {previous_z_score:.2f})")
         return True
     
     def _get_current_underlying_price(self, date: datetime) -> Optional[float]:
@@ -830,10 +815,10 @@ class BullMarketMeanReversionV2Strategy(Strategy):
             progress_print("❌ Error: Data must have a datetime index for backtesting")
             return False
         
-        # Check if we have enough data for returns-based Z-Score calculation (need at least 60 days for rolling window)
-        # Note: Returns calculation needs 1 day, rolling window needs 60 days, so we need at least 61 rows total
-        if len(data) < 60:
-            progress_print(f"⚠️  Warning: Not enough data for Z-Score analysis. Need at least 60 days, got {len(data)}")
+        # Check if we have enough data for returns-based Z-Score calculation (need at least Z_SCORE_ROLLING_WINDOW days for rolling window)
+        # Note: Returns calculation needs 1 day, rolling window needs Z_SCORE_ROLLING_WINDOW days, so we need at least Z_SCORE_ROLLING_WINDOW + 1 rows total
+        if len(data) < self.Z_SCORE_ROLLING_WINDOW:
+            progress_print(f"⚠️  Warning: Not enough data for Z-Score analysis. Need at least {self.Z_SCORE_ROLLING_WINDOW} days, got {len(data)}")
             return False
         
         # Check for gaps in the data (missing trading days)

@@ -129,10 +129,13 @@ class TestBullMarketMeanReversionV2Strategy:
         assert has_signal == False, "Entry signal should be rejected when z-score (1.5) equals threshold (1.5)"
     
     def test_entry_signal_accepted_when_z_score_above_threshold(self):
-        """Test that entry signal IS triggered when z-score is above threshold"""
+        """Test that entry signal IS triggered when z-score is above threshold and decreasing"""
         test_date = self.market_data.index[70]
+        prev_date = self.market_data.index[69]
         
-        # Set z-score above threshold
+        # Set previous day's z-score higher than current (z-score decreasing)
+        self.strategy.data.loc[prev_date, 'Z_Score'] = 1.8
+        # Set current z-score above threshold but less than previous
         self.strategy.data.loc[test_date, 'Z_Score'] = 1.6
         
         # Ensure upward trend conditions are met
@@ -144,12 +147,14 @@ class TestBullMarketMeanReversionV2Strategy:
         # Check entry signal
         has_signal = self.strategy._has_entry_signal(test_date)
         
-        assert has_signal == True, "Entry signal should be accepted when z-score (1.6) is above threshold (1.5)"
+        assert has_signal == True, "Entry signal should be accepted when z-score (1.6) is above threshold (1.5) and decreasing from 1.8"
     
     def test_entry_signal_with_different_threshold_values(self):
         """Test entry signal behavior with different threshold values"""
         test_date = self.market_data.index[70]
+        prev_date = self.market_data.index[69]
         z_score = 1.8
+        prev_z_score = 2.0  # Higher than current (decreasing)
         
         # Test with threshold 1.5 (should accept)
         strategy_low = BullMarketMeanReversionV2Strategy(
@@ -157,6 +162,7 @@ class TestBullMarketMeanReversionV2Strategy:
             z_score_entry_threshold=1.5
         )
         strategy_low.set_data(self.market_data)
+        strategy_low.data.loc[prev_date, 'Z_Score'] = prev_z_score
         strategy_low.data.loc[test_date, 'Z_Score'] = z_score
         strategy_low.data.loc[test_date, 'SMA_15'] = 520.0
         strategy_low.data.loc[test_date, 'SMA_30'] = 510.0
@@ -164,14 +170,15 @@ class TestBullMarketMeanReversionV2Strategy:
         strategy_low.data.loc[test_date, 'SMA_Width_Change'] = 0.5
         
         assert strategy_low._has_entry_signal(test_date) == True, \
-            "Should accept z-score 1.8 with threshold 1.5"
+            "Should accept z-score 1.8 with threshold 1.5 when decreasing from 2.0"
         
-        # Test with threshold 2.0 (should reject)
+        # Test with threshold 2.0 (should reject - z-score not above threshold)
         strategy_high = BullMarketMeanReversionV2Strategy(
             options_handler=self.mock_options_handler,
             z_score_entry_threshold=2.0
         )
         strategy_high.set_data(self.market_data)
+        strategy_high.data.loc[prev_date, 'Z_Score'] = prev_z_score
         strategy_high.data.loc[test_date, 'Z_Score'] = z_score
         strategy_high.data.loc[test_date, 'SMA_15'] = 520.0
         strategy_high.data.loc[test_date, 'SMA_30'] = 510.0
@@ -179,7 +186,7 @@ class TestBullMarketMeanReversionV2Strategy:
         strategy_high.data.loc[test_date, 'SMA_Width_Change'] = 0.5
         
         assert strategy_high._has_entry_signal(test_date) == False, \
-            "Should reject z-score 1.8 with threshold 2.0"
+            "Should reject z-score 1.8 with threshold 2.0 (not above threshold)"
     
     def test_entry_signal_rejected_when_z_score_is_nan(self):
         """Test that entry signal is rejected when z-score is NaN"""
@@ -202,12 +209,16 @@ class TestBullMarketMeanReversionV2Strategy:
     def test_z_score_threshold_validation_in_full_entry_check(self):
         """Test that z-score threshold is properly checked in the full entry signal logic"""
         test_date = self.market_data.index[70]
+        prev_date = self.market_data.index[69]
         
         # Set up all conditions except z-score
         self.strategy.data.loc[test_date, 'SMA_15'] = 520.0
         self.strategy.data.loc[test_date, 'SMA_30'] = 510.0
         self.strategy.data.loc[test_date, 'SMA_Width'] = 10.0
         self.strategy.data.loc[test_date, 'SMA_Width_Change'] = 0.5
+        
+        # Set previous z-score higher for all tests (to satisfy decreasing condition)
+        self.strategy.data.loc[prev_date, 'Z_Score'] = 2.0
         
         # Test with z-score below threshold
         self.strategy.data.loc[test_date, 'Z_Score'] = 1.4
@@ -217,24 +228,27 @@ class TestBullMarketMeanReversionV2Strategy:
         self.strategy.data.loc[test_date, 'Z_Score'] = 1.5
         assert self.strategy._has_entry_signal(test_date) == False
         
-        # Test with z-score above threshold
+        # Test with z-score above threshold and decreasing
         self.strategy.data.loc[test_date, 'Z_Score'] = 1.6
         assert self.strategy._has_entry_signal(test_date) == True
     
     def test_z_score_threshold_with_other_entry_conditions(self):
         """Test that z-score threshold works correctly with other entry conditions"""
         test_date = self.market_data.index[70]
+        prev_date = self.market_data.index[69]
         
-        # Case 1: All conditions met including z-score above threshold
+        # Case 1: All conditions met including z-score above threshold and decreasing
         self.strategy.data.loc[test_date, 'SMA_15'] = 520.0
         self.strategy.data.loc[test_date, 'SMA_30'] = 510.0  # SMA15 > SMA30 ✓
         self.strategy.data.loc[test_date, 'SMA_Width'] = 10.0
         self.strategy.data.loc[test_date, 'SMA_Width_Change'] = 0.5  # Width increasing ✓
-        self.strategy.data.loc[test_date, 'Z_Score'] = 1.6  # Above threshold ✓
+        self.strategy.data.loc[prev_date, 'Z_Score'] = 1.8  # Previous higher ✓
+        self.strategy.data.loc[test_date, 'Z_Score'] = 1.6  # Above threshold and decreasing ✓
         
         assert self.strategy._has_entry_signal(test_date) == True
         
         # Case 2: All conditions met except z-score below threshold
+        self.strategy.data.loc[prev_date, 'Z_Score'] = 1.6
         self.strategy.data.loc[test_date, 'Z_Score'] = 1.4  # Below threshold ✗
         
         assert self.strategy._has_entry_signal(test_date) == False
@@ -242,6 +256,7 @@ class TestBullMarketMeanReversionV2Strategy:
         # Case 3: Z-score above threshold but no upward trend
         self.strategy.data.loc[test_date, 'SMA_15'] = 510.0
         self.strategy.data.loc[test_date, 'SMA_30'] = 520.0  # SMA15 < SMA30 ✗
+        self.strategy.data.loc[prev_date, 'Z_Score'] = 1.8
         self.strategy.data.loc[test_date, 'Z_Score'] = 1.6  # Above threshold ✓
         
         assert self.strategy._has_entry_signal(test_date) == False
@@ -457,4 +472,116 @@ class TestBullMarketMeanReversionV2Strategy:
         expected_exit_price = 1.20
         assert abs(exit_price - expected_exit_price) < 0.01, \
             f"Exit price at 2 DTE should be {expected_exit_price}, got {exit_price}"
+    
+    def test_entry_signal_rejected_when_z_score_not_decreasing(self):
+        """Test that entry signal is rejected when current z-score is not less than previous"""
+        test_date = self.market_data.index[70]
+        prev_date = self.market_data.index[69]
+        
+        # Set previous z-score equal to current (not decreasing)
+        self.strategy.data.loc[prev_date, 'Z_Score'] = 1.6
+        self.strategy.data.loc[test_date, 'Z_Score'] = 1.6
+        
+        # Ensure all other conditions are met
+        self.strategy.data.loc[test_date, 'SMA_15'] = 520.0
+        self.strategy.data.loc[test_date, 'SMA_30'] = 510.0
+        self.strategy.data.loc[test_date, 'SMA_Width'] = 10.0
+        self.strategy.data.loc[test_date, 'SMA_Width_Change'] = 0.5
+        
+        has_signal = self.strategy._has_entry_signal(test_date)
+        assert has_signal == False, "Entry signal should be rejected when z-score is not decreasing (equal)"
+        
+        # Test with current z-score higher than previous (increasing)
+        self.strategy.data.loc[prev_date, 'Z_Score'] = 1.6
+        self.strategy.data.loc[test_date, 'Z_Score'] = 1.8
+        
+        has_signal = self.strategy._has_entry_signal(test_date)
+        assert has_signal == False, "Entry signal should be rejected when z-score is increasing"
+    
+    def test_entry_signal_rejected_when_previous_z_score_is_nan(self):
+        """Test that entry signal is rejected when previous day's z-score is NaN"""
+        test_date = self.market_data.index[70]
+        prev_date = self.market_data.index[69]
+        
+        # Set previous z-score to NaN
+        self.strategy.data.loc[prev_date, 'Z_Score'] = np.nan
+        self.strategy.data.loc[test_date, 'Z_Score'] = 1.6
+        
+        # Ensure all other conditions are met
+        self.strategy.data.loc[test_date, 'SMA_15'] = 520.0
+        self.strategy.data.loc[test_date, 'SMA_30'] = 510.0
+        self.strategy.data.loc[test_date, 'SMA_Width'] = 10.0
+        self.strategy.data.loc[test_date, 'SMA_Width_Change'] = 0.5
+        
+        has_signal = self.strategy._has_entry_signal(test_date)
+        assert has_signal == False, "Entry signal should be rejected when previous z-score is NaN"
+    
+    def test_entry_signal_rejected_when_no_previous_day(self):
+        """Test that entry signal is rejected when there's no previous day to compare"""
+        test_date = self.market_data.index[0]  # First day (no previous day)
+        
+        # Set z-score above threshold
+        self.strategy.data.loc[test_date, 'Z_Score'] = 1.6
+        
+        # Ensure all other conditions are met
+        self.strategy.data.loc[test_date, 'SMA_15'] = 520.0
+        self.strategy.data.loc[test_date, 'SMA_30'] = 510.0
+        self.strategy.data.loc[test_date, 'SMA_Width'] = 10.0
+        self.strategy.data.loc[test_date, 'SMA_Width_Change'] = 0.5
+        
+        has_signal = self.strategy._has_entry_signal(test_date)
+        assert has_signal == False, "Entry signal should be rejected when there's no previous day"
+    
+    def test_entry_signal_accepted_when_z_score_decreasing(self):
+        """Test that entry signal is accepted when z-score is decreasing from previous day"""
+        test_date = self.market_data.index[70]
+        prev_date = self.market_data.index[69]
+        
+        # Set previous z-score higher than current (decreasing)
+        self.strategy.data.loc[prev_date, 'Z_Score'] = 2.0
+        self.strategy.data.loc[test_date, 'Z_Score'] = 1.6  # Above threshold (1.5) and decreasing
+        
+        # Ensure all other conditions are met
+        self.strategy.data.loc[test_date, 'SMA_15'] = 520.0
+        self.strategy.data.loc[test_date, 'SMA_30'] = 510.0
+        self.strategy.data.loc[test_date, 'SMA_Width'] = 10.0
+        self.strategy.data.loc[test_date, 'SMA_Width_Change'] = 0.5
+        
+        has_signal = self.strategy._has_entry_signal(test_date)
+        assert has_signal == True, "Entry signal should be accepted when z-score is decreasing from 2.0 to 1.6"
+    
+    def test_z_score_decrease_condition_with_various_values(self):
+        """Test z-score decrease condition with various value combinations"""
+        test_date = self.market_data.index[70]
+        prev_date = self.market_data.index[69]
+        
+        # Ensure all other conditions are met
+        self.strategy.data.loc[test_date, 'SMA_15'] = 520.0
+        self.strategy.data.loc[test_date, 'SMA_30'] = 510.0
+        self.strategy.data.loc[test_date, 'SMA_Width'] = 10.0
+        self.strategy.data.loc[test_date, 'SMA_Width_Change'] = 0.5
+        
+        # Test case 1: Large decrease (2.5 -> 1.6) - should accept
+        self.strategy.data.loc[prev_date, 'Z_Score'] = 2.5
+        self.strategy.data.loc[test_date, 'Z_Score'] = 1.6
+        assert self.strategy._has_entry_signal(test_date) == True, \
+            "Should accept when z-score decreases from 2.5 to 1.6"
+        
+        # Test case 2: Small decrease (1.7 -> 1.6) - should accept
+        self.strategy.data.loc[prev_date, 'Z_Score'] = 1.7
+        self.strategy.data.loc[test_date, 'Z_Score'] = 1.6
+        assert self.strategy._has_entry_signal(test_date) == True, \
+            "Should accept when z-score decreases from 1.7 to 1.6"
+        
+        # Test case 3: No change (1.6 -> 1.6) - should reject
+        self.strategy.data.loc[prev_date, 'Z_Score'] = 1.6
+        self.strategy.data.loc[test_date, 'Z_Score'] = 1.6
+        assert self.strategy._has_entry_signal(test_date) == False, \
+            "Should reject when z-score stays the same (1.6 -> 1.6)"
+        
+        # Test case 4: Increase (1.5 -> 1.6) - should reject
+        self.strategy.data.loc[prev_date, 'Z_Score'] = 1.5
+        self.strategy.data.loc[test_date, 'Z_Score'] = 1.6
+        assert self.strategy._has_entry_signal(test_date) == False, \
+            "Should reject when z-score increases from 1.5 to 1.6"
 
