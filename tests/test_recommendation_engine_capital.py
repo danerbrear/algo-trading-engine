@@ -4,11 +4,11 @@ import pytest
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
-from src.prediction.decision_store import JsonDecisionStore
-from src.prediction.recommendation_engine import InteractiveStrategyRecommender
-from src.prediction.capital_manager import CapitalManager
-from src.backtest.models import StrategyType
-from src.common.models import Option
+from algo_trading_engine.prediction.decision_store import JsonDecisionStore
+from algo_trading_engine.prediction.recommendation_engine import InteractiveStrategyRecommender
+from algo_trading_engine.prediction.capital_manager import CapitalManager
+from algo_trading_engine.backtest.models import StrategyType
+from algo_trading_engine.common.models import Option
 
 
 def _make_option(symbol: str, strike: float, expiration: str, opt_type: str, last: float) -> Option:

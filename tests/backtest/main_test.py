@@ -9,10 +9,10 @@ from datetime import datetime
 from unittest.mock import Mock
 import pandas as pd
 
-from src.backtest.main import BacktestEngine
-from src.backtest.config import VolumeConfig
-from src.backtest.models import Strategy, Position, StrategyType
-from src.common.models import Option, OptionType
+from algo_trading_engine.backtest.main import BacktestEngine
+from algo_trading_engine.backtest.config import VolumeConfig
+from algo_trading_engine.backtest.models import Strategy, Position, StrategyType
+from algo_trading_engine.common.models import Option, OptionType
 
 
 class MockStrategy(Strategy):

@@ -9,13 +9,13 @@ from unittest.mock import Mock, patch
 import sys
 import os
 
-# Add the src directory to the path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+# Add the algo_trading_engine directory to the path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'algo_trading_engine'))
 
-from src.prediction.recommend_cli import main
-from src.prediction.decision_store import JsonDecisionStore
-from src.backtest.models import StrategyType
-from src.common.models import Option, OptionType
+from algo_trading_engine.prediction.recommend_cli import main
+from algo_trading_engine.prediction.decision_store import JsonDecisionStore
+from algo_trading_engine.backtest.models import StrategyType
+from algo_trading_engine.common.models import Option, OptionType
 
 
 class TestRecommendCliAutoClose(unittest.TestCase):
@@ -54,10 +54,10 @@ class TestRecommendCliAutoClose(unittest.TestCase):
         self.test_decision_record.quantity = 1
         self.test_decision_record.decided_at = "2025-09-22T17:06:46.176650+00:00"
 
-    @patch('src.prediction.recommend_cli.JsonDecisionStore')
-    @patch('src.prediction.recommend_cli.OptionsHandler')
-    @patch('src.prediction.recommend_cli.build_strategy')
-    @patch('src.prediction.recommend_cli.InteractiveStrategyRecommender')
+    @patch('algo_trading_engine.prediction.recommend_cli.JsonDecisionStore')
+    @patch('algo_trading_engine.prediction.recommend_cli.OptionsHandler')
+    @patch('algo_trading_engine.prediction.recommend_cli.build_strategy')
+    @patch('algo_trading_engine.prediction.recommend_cli.InteractiveStrategyRecommender')
     def test_auto_close_mode_with_open_positions(self, mock_recommender_class, mock_build_strategy, 
                                                 mock_options_handler, mock_decision_store):
         """Test that --auto-close mode works with open positions."""
@@ -95,10 +95,10 @@ class TestRecommendCliAutoClose(unittest.TestCase):
         mock_recommender.auto_yes = True  # Should be set to True for auto-close
         mock_recommender.recommend_close_positions.assert_called_once()
 
-    @patch('src.prediction.recommend_cli.JsonDecisionStore')
-    @patch('src.prediction.recommend_cli.OptionsHandler')
-    @patch('src.prediction.recommend_cli.build_strategy')
-    @patch('src.prediction.recommend_cli.InteractiveStrategyRecommender')
+    @patch('algo_trading_engine.prediction.recommend_cli.JsonDecisionStore')
+    @patch('algo_trading_engine.prediction.recommend_cli.OptionsHandler')
+    @patch('algo_trading_engine.prediction.recommend_cli.build_strategy')
+    @patch('algo_trading_engine.prediction.recommend_cli.InteractiveStrategyRecommender')
     def test_auto_close_mode_no_positions_to_close(self, mock_recommender_class, mock_build_strategy,
                                                   mock_options_handler, mock_decision_store):
         """Test that --auto-close mode handles case when no positions need closing."""
@@ -133,10 +133,10 @@ class TestRecommendCliAutoClose(unittest.TestCase):
         mock_build_strategy.assert_called_once_with('velocity_momentum', 'SPY', mock_options_handler.return_value, stop_loss=None, profit_target=None)
         mock_recommender.recommend_close_positions.assert_called_once()
 
-    @patch('src.prediction.recommend_cli.JsonDecisionStore')
-    @patch('src.prediction.recommend_cli.OptionsHandler')
-    @patch('src.prediction.recommend_cli.build_strategy')
-    @patch('src.prediction.recommend_cli.InteractiveStrategyRecommender')
+    @patch('algo_trading_engine.prediction.recommend_cli.JsonDecisionStore')
+    @patch('algo_trading_engine.prediction.recommend_cli.OptionsHandler')
+    @patch('algo_trading_engine.prediction.recommend_cli.build_strategy')
+    @patch('algo_trading_engine.prediction.recommend_cli.InteractiveStrategyRecommender')
     def test_interactive_mode_default_behavior(self, mock_recommender_class, mock_build_strategy,
                                              mock_options_handler, mock_decision_store):
         """Test that default behavior (no --auto-close) uses interactive mode."""
@@ -159,10 +159,10 @@ class TestRecommendCliAutoClose(unittest.TestCase):
         # Should not set auto_yes to True (default is False)
         mock_recommender.recommend_close_positions.assert_called_once()
 
-    @patch('src.prediction.recommend_cli.JsonDecisionStore')
-    @patch('src.prediction.recommend_cli.OptionsHandler')
-    @patch('src.prediction.recommend_cli.build_strategy')
-    @patch('src.prediction.recommend_cli.InteractiveStrategyRecommender')
+    @patch('algo_trading_engine.prediction.recommend_cli.JsonDecisionStore')
+    @patch('algo_trading_engine.prediction.recommend_cli.OptionsHandler')
+    @patch('algo_trading_engine.prediction.recommend_cli.build_strategy')
+    @patch('algo_trading_engine.prediction.recommend_cli.InteractiveStrategyRecommender')
     def test_auto_close_with_verbose_flag(self, mock_recommender_class, mock_build_strategy,
                                         mock_options_handler, mock_decision_store):
         """Test that --auto-close works with --verbose flag."""
@@ -186,10 +186,10 @@ class TestRecommendCliAutoClose(unittest.TestCase):
         mock_build_strategy.assert_called_once_with('velocity_momentum', 'SPY', mock_options_handler.return_value, stop_loss=None, profit_target=None)
         mock_recommender_class.assert_called_once()
 
-    @patch('src.prediction.recommend_cli.JsonDecisionStore')
-    @patch('src.prediction.recommend_cli.OptionsHandler')
-    @patch('src.prediction.recommend_cli.build_strategy')
-    @patch('src.prediction.recommend_cli.InteractiveStrategyRecommender')
+    @patch('algo_trading_engine.prediction.recommend_cli.JsonDecisionStore')
+    @patch('algo_trading_engine.prediction.recommend_cli.OptionsHandler')
+    @patch('algo_trading_engine.prediction.recommend_cli.build_strategy')
+    @patch('algo_trading_engine.prediction.recommend_cli.InteractiveStrategyRecommender')
     def test_auto_close_with_custom_date(self, mock_recommender_class, mock_build_strategy,
                                             mock_options_handler, mock_decision_store):
         """Test that --auto-close works with custom date."""
@@ -230,10 +230,10 @@ class TestRecommendCliAutoClose(unittest.TestCase):
         args_without_auto_close = parser.parse_args([])
         self.assertFalse(args_without_auto_close.auto_close)
 
-    @patch('src.prediction.recommend_cli.JsonDecisionStore')
-    @patch('src.prediction.recommend_cli.OptionsHandler')
-    @patch('src.prediction.recommend_cli.build_strategy')
-    @patch('src.prediction.recommend_cli.InteractiveStrategyRecommender')
+    @patch('algo_trading_engine.prediction.recommend_cli.JsonDecisionStore')
+    @patch('algo_trading_engine.prediction.recommend_cli.OptionsHandler')
+    @patch('algo_trading_engine.prediction.recommend_cli.build_strategy')
+    @patch('algo_trading_engine.prediction.recommend_cli.InteractiveStrategyRecommender')
     def test_auto_close_with_free_tier_flag(self, mock_recommender_class, mock_build_strategy,
                                          mock_options_handler, mock_decision_store):
         """Test that --auto-close works with --free flag."""
@@ -257,10 +257,10 @@ class TestRecommendCliAutoClose(unittest.TestCase):
         mock_build_strategy.assert_called_once_with('velocity_momentum', 'SPY', mock_options_handler.return_value, stop_loss=None, profit_target=None)
         mock_recommender_class.assert_called_once()
 
-    @patch('src.prediction.recommend_cli.JsonDecisionStore')
-    @patch('src.prediction.recommend_cli.OptionsHandler')
-    @patch('src.prediction.recommend_cli.build_strategy')
-    @patch('src.prediction.recommend_cli.InteractiveStrategyRecommender')
+    @patch('algo_trading_engine.prediction.recommend_cli.JsonDecisionStore')
+    @patch('algo_trading_engine.prediction.recommend_cli.OptionsHandler')
+    @patch('algo_trading_engine.prediction.recommend_cli.build_strategy')
+    @patch('algo_trading_engine.prediction.recommend_cli.InteractiveStrategyRecommender')
     def test_build_strategy_with_stop_loss_and_profit_target_close_flow(self, mock_recommender_class, mock_build_strategy,
                                                                         mock_options_handler, mock_decision_store):
         """Test that build_strategy is called with stop_loss and profit_target in close flow."""
@@ -284,11 +284,11 @@ class TestRecommendCliAutoClose(unittest.TestCase):
         mock_build_strategy.assert_called_once_with('velocity_momentum', 'SPY', mock_options_handler.return_value, stop_loss=0.6, profit_target=0.4)
         mock_recommender_class.assert_called_once()
 
-    @patch('src.prediction.recommend_cli.JsonDecisionStore')
-    @patch('src.prediction.recommend_cli.OptionsHandler')
-    @patch('src.prediction.recommend_cli.DataRetriever')
-    @patch('src.prediction.recommend_cli.build_strategy')
-    @patch('src.prediction.recommend_cli.InteractiveStrategyRecommender')
+    @patch('algo_trading_engine.prediction.recommend_cli.JsonDecisionStore')
+    @patch('algo_trading_engine.prediction.recommend_cli.OptionsHandler')
+    @patch('algo_trading_engine.prediction.recommend_cli.DataRetriever')
+    @patch('algo_trading_engine.prediction.recommend_cli.build_strategy')
+    @patch('algo_trading_engine.prediction.recommend_cli.InteractiveStrategyRecommender')
     def test_build_strategy_with_stop_loss_and_profit_target_open_flow(self, mock_recommender_class, mock_build_strategy,
                                                                        mock_data_retriever, mock_options_handler, mock_decision_store):
         """Test that build_strategy is called with stop_loss and profit_target in open flow."""
@@ -307,7 +307,7 @@ class TestRecommendCliAutoClose(unittest.TestCase):
         mock_data_retriever.return_value = mock_retriever
         
         # Mock CapitalManager
-        with patch('src.prediction.recommend_cli.CapitalManager') as mock_capital_manager_class:
+        with patch('algo_trading_engine.prediction.recommend_cli.CapitalManager') as mock_capital_manager_class:
             mock_capital_manager = Mock()
             mock_capital_manager.get_status_summary.return_value = "Capital status"
             mock_capital_manager_class.from_config_file.return_value = mock_capital_manager
@@ -324,10 +324,10 @@ class TestRecommendCliAutoClose(unittest.TestCase):
             mock_build_strategy.assert_called_once_with('velocity_momentum', symbol='SPY', options_handler=mock_options_handler.return_value, stop_loss=0.5, profit_target=0.3)
             mock_recommender_class.assert_called_once()
 
-    @patch('src.prediction.recommend_cli.JsonDecisionStore')
-    @patch('src.prediction.recommend_cli.OptionsHandler')
-    @patch('src.prediction.recommend_cli.build_strategy')
-    @patch('src.prediction.recommend_cli.InteractiveStrategyRecommender')
+    @patch('algo_trading_engine.prediction.recommend_cli.JsonDecisionStore')
+    @patch('algo_trading_engine.prediction.recommend_cli.OptionsHandler')
+    @patch('algo_trading_engine.prediction.recommend_cli.build_strategy')
+    @patch('algo_trading_engine.prediction.recommend_cli.InteractiveStrategyRecommender')
     def test_build_strategy_with_only_stop_loss(self, mock_recommender_class, mock_build_strategy,
                                                mock_options_handler, mock_decision_store):
         """Test that build_strategy is called with only stop_loss (no profit_target)."""
@@ -349,10 +349,10 @@ class TestRecommendCliAutoClose(unittest.TestCase):
         # Verify build_strategy was called with stop_loss but None for profit_target
         mock_build_strategy.assert_called_once_with('velocity_momentum', 'SPY', mock_options_handler.return_value, stop_loss=0.6, profit_target=None)
 
-    @patch('src.prediction.recommend_cli.JsonDecisionStore')
-    @patch('src.prediction.recommend_cli.OptionsHandler')
-    @patch('src.prediction.recommend_cli.build_strategy')
-    @patch('src.prediction.recommend_cli.InteractiveStrategyRecommender')
+    @patch('algo_trading_engine.prediction.recommend_cli.JsonDecisionStore')
+    @patch('algo_trading_engine.prediction.recommend_cli.OptionsHandler')
+    @patch('algo_trading_engine.prediction.recommend_cli.build_strategy')
+    @patch('algo_trading_engine.prediction.recommend_cli.InteractiveStrategyRecommender')
     def test_build_strategy_with_only_profit_target(self, mock_recommender_class, mock_build_strategy,
                                                    mock_options_handler, mock_decision_store):
         """Test that build_strategy is called with only profit_target (no stop_loss)."""

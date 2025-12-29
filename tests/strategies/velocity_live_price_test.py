@@ -13,13 +13,13 @@ import pandas as pd
 import numpy as np
 
 # Add the src directory to the path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'algo_trading_engine'))
 
-from src.prediction.recommend_cli import main, build_strategy
-from src.prediction.decision_store import JsonDecisionStore
-from src.backtest.models import Position, StrategyType
-from src.common.models import Option, OptionType
-from src.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
+from algo_trading_engine.prediction.recommend_cli import main, build_strategy
+from algo_trading_engine.prediction.decision_store import JsonDecisionStore
+from algo_trading_engine.backtest.models import Position, StrategyType
+from algo_trading_engine.common.models import Option, OptionType
+from algo_trading_engine.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
 
 
 class TestVelocityLivePrice(unittest.TestCase):
@@ -161,7 +161,7 @@ class TestVelocityLivePrice(unittest.TestCase):
         strategy.set_data(self.test_data.copy())
         
         # Mock DataRetriever creation and get_live_price
-        with patch('src.strategies.velocity_signal_momentum_strategy.DataRetriever') as mock_data_retriever_class:
+        with patch('algo_trading_engine.strategies.velocity_signal_momentum_strategy.DataRetriever') as mock_data_retriever_class:
             mock_data_retriever = Mock()
             mock_data_retriever.get_live_price.return_value = self.live_price
             mock_data_retriever_class.return_value = mock_data_retriever
@@ -203,11 +203,11 @@ class TestVelocityLivePrice(unittest.TestCase):
         
         print(f"✅ Fallback to cached data working correctly")
 
-    @patch('src.prediction.recommend_cli.JsonDecisionStore')
-    @patch('src.prediction.recommend_cli.DataRetriever')
-    @patch('src.prediction.recommend_cli.get_model_directory')
-    @patch('src.prediction.recommend_cli.load_lstm_model')
-    @patch('src.prediction.recommend_cli.load_hmm_model')
+    @patch('algo_trading_engine.prediction.recommend_cli.JsonDecisionStore')
+    @patch('algo_trading_engine.prediction.recommend_cli.DataRetriever')
+    @patch('algo_trading_engine.prediction.recommend_cli.get_model_directory')
+    @patch('algo_trading_engine.prediction.recommend_cli.load_lstm_model')
+    @patch('algo_trading_engine.prediction.recommend_cli.load_hmm_model')
     def test_recommend_cli_uses_live_price_for_velocity(
         self, mock_load_hmm, mock_load_lstm, mock_get_model_dir, 
         mock_data_retriever_class, mock_decision_store
@@ -233,7 +233,7 @@ class TestVelocityLivePrice(unittest.TestCase):
         mock_data_retriever_class.return_value = mock_retriever
         
         # Mock InteractiveStrategyRecommender
-        with patch('src.prediction.recommend_cli.InteractiveStrategyRecommender') as mock_recommender_class:
+        with patch('algo_trading_engine.prediction.recommend_cli.InteractiveStrategyRecommender') as mock_recommender_class:
             mock_recommender = Mock()
             mock_recommender_class.return_value = mock_recommender
             

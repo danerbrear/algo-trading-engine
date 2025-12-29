@@ -8,9 +8,9 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from unittest.mock import Mock, MagicMock, patch
 
-from src.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
-from src.common.models import OptionType
-from src.common.options_dtos import (
+from algo_trading_engine.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
+from algo_trading_engine.common.models import OptionType
+from algo_trading_engine.common.options_dtos import (
     OptionContractDTO, 
     OptionBarDTO, 
     StrikePrice,
@@ -43,7 +43,7 @@ class TestVelocityVerticalSpread:
         exp_date_2 = datetime(2025, 11, 6)  # 7 days out (target)
         exp_date_3 = datetime(2025, 11, 7)  # 8 days out
         
-        from src.common.options_dtos import ExpirationDate
+        from algo_trading_engine.common.options_dtos import ExpirationDate
         from datetime import date as date_type
         
         mock_contracts = [
@@ -205,7 +205,7 @@ class TestVelocityVerticalSpread:
         target_expiration = "2025-11-06"
         
         # Create contracts that DON'T include the target expiration
-        from src.common.options_dtos import ExpirationDate
+        from algo_trading_engine.common.options_dtos import ExpirationDate
         from datetime import date as date_type
         
         mock_contracts = [

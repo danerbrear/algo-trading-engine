@@ -6,10 +6,10 @@ from datetime import datetime, date
 from decimal import Decimal
 from unittest.mock import Mock
 
-from src.strategies.credit_spread_minimal import CreditSpreadStrategy
-from src.backtest.models import Position, StrategyType
-from src.common.models import Option, OptionType
-from src.common.options_dtos import OptionContractDTO, OptionBarDTO, StrikePrice, ExpirationDate
+from algo_trading_engine.strategies.credit_spread_minimal import CreditSpreadStrategy
+from algo_trading_engine.backtest.models import Position, StrategyType
+from algo_trading_engine.common.models import Option, OptionType
+from algo_trading_engine.common.options_dtos import OptionContractDTO, OptionBarDTO, StrikePrice, ExpirationDate
 
 
 class TestStrategyCurrentDateVolumeValidation:
@@ -64,7 +64,7 @@ class TestStrategyCurrentDateVolumeValidation:
     def test_get_current_volumes_for_position_success(self):
         """Test successful volume data fetching for position."""
         # Create mock contracts and bars for new API
-        from src.common.options_dtos import StrikeRangeDTO, ExpirationRangeDTO
+        from algo_trading_engine.common.options_dtos import StrikeRangeDTO, ExpirationRangeDTO
         
         contract1 = OptionContractDTO(
             ticker='O:SPY240315C00500000',
@@ -145,7 +145,7 @@ class TestStrategyCurrentDateVolumeValidation:
     def test_get_current_volumes_for_position_no_volume_data(self):
         """Test handling when no volume data is available."""
         # Mock contracts but return None for bars (no volume data)
-        from src.common.options_dtos import StrikeRangeDTO, ExpirationRangeDTO, StrikePrice, ExpirationDate
+        from algo_trading_engine.common.options_dtos import StrikeRangeDTO, ExpirationRangeDTO, StrikePrice, ExpirationDate
         
         contract1 = OptionContractDTO(
             ticker='O:SPY240315C00500000',
@@ -203,7 +203,7 @@ class TestStrategyCurrentDateVolumeValidation:
     def test_get_current_volumes_for_position_mixed_results(self):
         """Test handling of mixed results (some success, some failure)."""
         # Create mock contracts
-        from src.common.options_dtos import StrikeRangeDTO, ExpirationRangeDTO, StrikePrice, ExpirationDate
+        from algo_trading_engine.common.options_dtos import StrikeRangeDTO, ExpirationRangeDTO, StrikePrice, ExpirationDate
         
         contract1 = OptionContractDTO(
             ticker='O:SPY240315C00500000',
