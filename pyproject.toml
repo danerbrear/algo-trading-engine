@@ -30,13 +30,13 @@ dev = [
 ]
 
 [tool.setuptools]
-# Packages are at root level
+package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
-where = ["."]
+where = ["src"]
 include = ["algo_trading_engine*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
-
+pythonpath = ["src"]
