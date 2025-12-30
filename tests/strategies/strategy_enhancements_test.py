@@ -5,10 +5,10 @@ from datetime import datetime
 from unittest.mock import Mock, patch
 import pandas as pd
 
-from src.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
-from src.strategies.credit_spread_minimal import CreditSpreadStrategy
-from src.common.models import Option, OptionType
-from src.backtest.models import Position, StrategyType
+from algo_trading_engine.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
+from algo_trading_engine.strategies.credit_spread_minimal import CreditSpreadStrategy
+from algo_trading_engine.common.models import Option, OptionType
+from algo_trading_engine.backtest.models import Position, StrategyType
 
 
 class TestVelocitySignalMomentumStrategyEnhancements:
@@ -43,8 +43,8 @@ class TestVelocitySignalMomentumStrategyEnhancements:
         expected_price = self.sample_data.loc[test_date, 'Close']
         assert price == expected_price
     
-    @patch('src.strategies.velocity_signal_momentum_strategy.datetime')
-    @patch('src.strategies.velocity_signal_momentum_strategy.DataRetriever')
+    @patch('algo_trading_engine.strategies.velocity_signal_momentum_strategy.datetime')
+    @patch('algo_trading_engine.strategies.velocity_signal_momentum_strategy.DataRetriever')
     def test_get_current_underlying_price_current_date_with_live_price(self, mock_data_retriever_class, mock_datetime):
         """Test _get_current_underlying_price with current date and live price available"""
         # Mock current date
@@ -61,8 +61,8 @@ class TestVelocitySignalMomentumStrategyEnhancements:
         assert price == 150.0
         mock_data_retriever.get_live_price.assert_called_once()
     
-    @patch('src.strategies.velocity_signal_momentum_strategy.datetime')
-    @patch('src.strategies.velocity_signal_momentum_strategy.DataRetriever')
+    @patch('algo_trading_engine.strategies.velocity_signal_momentum_strategy.datetime')
+    @patch('algo_trading_engine.strategies.velocity_signal_momentum_strategy.DataRetriever')
     def test_get_current_underlying_price_current_date_fallback(self, mock_data_retriever_class, mock_datetime):
         """Test _get_current_underlying_price with current date but no live price available"""
         # Mock current date that's NOT in the sample data
@@ -200,8 +200,8 @@ class TestCreditSpreadStrategyEnhancements:
         expected_price = self.sample_data.loc[test_date, 'Close']
         assert price == expected_price
     
-    @patch('src.strategies.credit_spread_minimal.datetime')
-    @patch('src.common.data_retriever.DataRetriever')
+    @patch('algo_trading_engine.strategies.credit_spread_minimal.datetime')
+    @patch('algo_trading_engine.common.data_retriever.DataRetriever')
     def test_get_current_underlying_price_current_date_with_live_price(self, mock_data_retriever_class, mock_datetime):
         """Test _get_current_underlying_price with current date and live price available"""
         # Mock current date
@@ -223,8 +223,8 @@ class TestCreditSpreadStrategyEnhancements:
     
     def test_get_current_volumes_for_position_success(self):
         """Test get_current_volumes_for_position with successful API calls"""
-        from src.common.options_dtos import OptionContractDTO, OptionBarDTO
-        from src.common.models import OptionType as CommonOptionType
+        from algo_trading_engine.common.options_dtos import OptionContractDTO, OptionBarDTO
+        from algo_trading_engine.common.models import OptionType as CommonOptionType
         from decimal import Decimal
         
         # Create mock position with options
@@ -258,7 +258,7 @@ class TestCreditSpreadStrategyEnhancements:
         )
         
         # Mock contract DTOs
-        from src.common.options_dtos import StrikePrice, ExpirationDate
+        from algo_trading_engine.common.options_dtos import StrikePrice, ExpirationDate
         contract1 = OptionContractDTO(
             ticker='O:SPY240119C00450000',
             underlying_ticker='SPY',
@@ -364,8 +364,8 @@ class TestCreditSpreadStrategyEnhancements:
     
     def test_get_current_volumes_for_position_no_volume_data(self):
         """Test get_current_volumes_for_position when fresh option has no volume"""
-        from src.common.options_dtos import OptionContractDTO, OptionBarDTO
-        from src.common.models import OptionType as CommonOptionType
+        from algo_trading_engine.common.options_dtos import OptionContractDTO, OptionBarDTO
+        from algo_trading_engine.common.models import OptionType as CommonOptionType
         from decimal import Decimal
         
         # Create mock position with options
@@ -390,7 +390,7 @@ class TestCreditSpreadStrategyEnhancements:
         )
         
         # Mock contract DTO
-        from src.common.options_dtos import StrikePrice, ExpirationDate
+        from algo_trading_engine.common.options_dtos import StrikePrice, ExpirationDate
         contract1 = OptionContractDTO(
             ticker='O:SPY240119C00450000',
             underlying_ticker='SPY',
@@ -417,14 +417,14 @@ class TestDataRetrieverLivePrice:
     
     def setup_method(self):
         """Set up test fixtures"""
-        from src.common.data_retriever import DataRetriever
+        from algo_trading_engine.common.data_retriever import DataRetriever
         self.data_retriever = DataRetriever(
             symbol='SPY',
             use_free_tier=True,
             quiet_mode=True
         )
     
-    @patch('src.common.data_retriever.yf.Ticker')
+    @patch('algo_trading_engine.common.data_retriever.yf.Ticker')
     def test_get_live_price_yfinance_fallback(self, mock_ticker):
         """Test get_live_price with yfinance fallback"""
         # Mock yfinance ticker
@@ -441,7 +441,7 @@ class TestDataRetrieverLivePrice:
         assert price == 450.0
         mock_ticker.assert_called_once_with('SPY')
     
-    @patch('src.common.data_retriever.yf.Ticker')
+    @patch('algo_trading_engine.common.data_retriever.yf.Ticker')
     def test_get_live_price_yfinance_no_current_price(self, mock_ticker):
         """Test get_live_price with yfinance when currentPrice is None"""
         # Mock yfinance ticker with no currentPrice
@@ -457,7 +457,7 @@ class TestDataRetrieverLivePrice:
         
         assert price == 450.0  # Should fall back to regularMarketPrice
     
-    @patch('src.common.data_retriever.yf.Ticker')
+    @patch('algo_trading_engine.common.data_retriever.yf.Ticker')
     def test_get_live_price_yfinance_fallback_to_previous_close(self, mock_ticker):
         """Test get_live_price with yfinance falling back to previousClose"""
         # Mock yfinance ticker with no currentPrice or regularMarketPrice
@@ -473,7 +473,7 @@ class TestDataRetrieverLivePrice:
         
         assert price == 445.0  # Should fall back to previousClose
     
-    @patch('src.common.data_retriever.yf.Ticker')
+    @patch('algo_trading_engine.common.data_retriever.yf.Ticker')
     def test_get_live_price_yfinance_no_data(self, mock_ticker):
         """Test get_live_price with yfinance when no price data is available"""
         # Mock yfinance ticker with no price data
@@ -489,7 +489,7 @@ class TestDataRetrieverLivePrice:
         
         assert price is None
     
-    @patch('src.common.data_retriever.yf.Ticker')
+    @patch('algo_trading_engine.common.data_retriever.yf.Ticker')
     def test_get_live_price_yfinance_exception(self, mock_ticker):
         """Test get_live_price with yfinance exception"""
         # Mock yfinance ticker to raise exception

@@ -4,15 +4,15 @@ import argparse
 from datetime import datetime, timedelta
 import sys
 
-from src.backtest.strategy_builder import create_strategy_from_args
-from src.common.data_retriever import DataRetriever
-from src.common.functions import get_model_directory, load_lstm_model, load_hmm_model
-from src.common.options_handler import OptionsHandler
-from src.prediction.decision_store import JsonDecisionStore
-from src.prediction.recommendation_engine import InteractiveStrategyRecommender
-from src.prediction.capital_manager import CapitalManager
-from src.strategies.credit_spread_minimal import CreditSpreadStrategy
-from src.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
+from algo_trading_engine.backtest.strategy_builder import create_strategy_from_args
+from algo_trading_engine.common.data_retriever import DataRetriever
+from algo_trading_engine.common.functions import get_model_directory, load_lstm_model, load_hmm_model
+from algo_trading_engine.common.options_handler import OptionsHandler
+from algo_trading_engine.prediction.decision_store import JsonDecisionStore
+from algo_trading_engine.prediction.recommendation_engine import InteractiveStrategyRecommender
+from algo_trading_engine.prediction.capital_manager import CapitalManager
+from algo_trading_engine.strategies.credit_spread_minimal import CreditSpreadStrategy
+from algo_trading_engine.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
 
 LOOKBACK_DAYS = 120
 

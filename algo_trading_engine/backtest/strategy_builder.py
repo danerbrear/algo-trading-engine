@@ -8,12 +8,12 @@ trading strategies with flexible parameter selection and validation.
 from abc import ABC, abstractmethod
 from typing import Dict, Type, List, Optional
 
-from src.common.options_handler import OptionsHandler
+from algo_trading_engine.common.options_handler import OptionsHandler
 try:
     from .models import Strategy
 except ImportError:
     # Fallback for direct execution
-    from src.backtest.models import Strategy
+    from algo_trading_engine.backtest.models import Strategy
 
 
 class StrategyBuilder(ABC):
@@ -99,7 +99,7 @@ class CreditSpreadStrategyBuilder(StrategyBuilder):
         try:
             from ..strategies.credit_spread_minimal import CreditSpreadStrategy
         except ImportError:
-            from src.strategies.credit_spread_minimal import CreditSpreadStrategy
+            from algo_trading_engine.strategies.credit_spread_minimal import CreditSpreadStrategy
         
         # Symbol is required for CreditSpreadStrategy
         if not self._symbol:
@@ -110,7 +110,7 @@ class CreditSpreadStrategyBuilder(StrategyBuilder):
             try:
                 from ..common.functions import get_model_directory, load_lstm_model
             except ImportError:
-                from src.common.functions import get_model_directory, load_lstm_model
+                from algo_trading_engine.common.functions import get_model_directory, load_lstm_model
             
             model_dir = get_model_directory(symbol=self._symbol)
             try:
@@ -165,7 +165,7 @@ class VelocitySignalMomentumStrategyBuilder(StrategyBuilder):
         try:
             from ..strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
         except ImportError:
-            from src.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
+            from algo_trading_engine.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
         
         strategy = VelocitySignalMomentumStrategy(
             options_handler=self._options_handler,

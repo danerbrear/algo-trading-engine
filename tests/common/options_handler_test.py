@@ -1,4 +1,4 @@
-﻿"""
+"""
 Unit tests for Phase 2 OptionsHandler refactoring.
 
 Tests the new caching infrastructure, migration utility, and helper classes.
@@ -12,14 +12,14 @@ from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
 
-from src.common.options_handler import OptionsHandler
-from src.common.cache.options_cache_manager import OptionsCacheManager
-from src.common.options_cache_migration import OptionsCacheMigrator
-from src.common.options_helpers import OptionsRetrieverHelper
-from src.common.options_dtos import (
+from algo_trading_engine.common.options_handler import OptionsHandler
+from algo_trading_engine.common.cache.options_cache_manager import OptionsCacheManager
+from algo_trading_engine.common.options_cache_migration import OptionsCacheMigrator
+from algo_trading_engine.common.options_helpers import OptionsRetrieverHelper
+from algo_trading_engine.common.options_dtos import (
     OptionContractDTO, OptionBarDTO, StrikePrice, ExpirationDate
 )
-from src.common.models import OptionType, SignalType
+from algo_trading_engine.common.models import OptionType, SignalType
 
 
 class TestOptionsCacheManager:
@@ -334,7 +334,7 @@ class TestOptionsHandler:
             options_handler._cache_contracts(test_date, [])
             options_handler._cache_bar(test_date, "test_ticker", None)
             options_handler._get_cache_stats(test_date)
-            print("âœ… Private methods accessible during testing (as expected)")
+            print("✅ Private methods accessible during testing (as expected)")
         except AttributeError as e:
             pytest.fail(f"Private methods should be accessible during testing: {e}")
         
@@ -558,13 +558,13 @@ from decimal import Decimal
 from unittest.mock import Mock, patch, MagicMock
 from pathlib import Path
 
-from src.common.options_handler import OptionsHandler
-from src.common.cache.options_cache_manager import OptionsCacheManager
-from src.common.options_dtos import (
+from algo_trading_engine.common.options_handler import OptionsHandler
+from algo_trading_engine.common.cache.options_cache_manager import OptionsCacheManager
+from algo_trading_engine.common.options_dtos import (
     OptionContractDTO, OptionBarDTO, StrikeRangeDTO, ExpirationRangeDTO,
     StrikePrice, ExpirationDate
 )
-from src.common.models import OptionType
+from algo_trading_engine.common.models import OptionType
 
 
 class TestOptionsHandlerPhase3:
@@ -589,8 +589,8 @@ class TestOptionsHandlerPhase3:
             yield
             return
             
-        with patch('src.common.options_handler.OptionsHandler._fetch_bar_from_api', return_value=None), \
-             patch('src.common.options_handler.OptionsHandler._fetch_contracts_from_api', return_value=[]):
+        with patch('algo_trading_engine.common.options_handler.OptionsHandler._fetch_bar_from_api', return_value=None), \
+             patch('algo_trading_engine.common.options_handler.OptionsHandler._fetch_contracts_from_api', return_value=[]):
             yield
     
     @pytest.fixture
@@ -879,7 +879,7 @@ class TestOptionsHandlerPhase3:
             options_handler._cache_contracts(test_date, [])
             options_handler._cache_bar(test_date, "test_ticker", None)
             options_handler._get_cache_stats(test_date)
-            print("âœ… Private methods accessible during testing (as expected)")
+            print("✅ Private methods accessible during testing (as expected)")
         except AttributeError as e:
             pytest.fail(f"Private methods should be accessible during testing: {e}")
         
@@ -1081,12 +1081,12 @@ from datetime import datetime, date, timedelta
 from decimal import Decimal
 from unittest.mock import Mock, patch
 
-from src.common.options_handler import OptionsHandler
-from src.common.options_dtos import (
+from algo_trading_engine.common.options_handler import OptionsHandler
+from algo_trading_engine.common.options_dtos import (
     OptionContractDTO, OptionBarDTO, StrikeRangeDTO, ExpirationRangeDTO,
     StrikePrice, ExpirationDate
 )
-from src.common.models import OptionType
+from algo_trading_engine.common.models import OptionType
 
 
 class TestOptionsHandlerPhase5Simple:
@@ -1405,14 +1405,14 @@ from typing import List, Dict, Any
 import time
 import os
 
-from src.common.options_handler import OptionsHandler
-from src.common.options_dtos import (
+from algo_trading_engine.common.options_handler import OptionsHandler
+from algo_trading_engine.common.options_dtos import (
     OptionContractDTO, OptionBarDTO, StrikeRangeDTO, ExpirationRangeDTO,
     OptionsChainDTO, StrikePrice, ExpirationDate
 )
-from src.common.options_helpers import OptionsRetrieverHelper
-from src.common.models import OptionType
-from src.common.cache.options_cache_manager import OptionsCacheManager
+from algo_trading_engine.common.options_helpers import OptionsRetrieverHelper
+from algo_trading_engine.common.models import OptionType
+from algo_trading_engine.common.cache.options_cache_manager import OptionsCacheManager
 
 
 class TestOptionsHandlerPhase5Integration:
@@ -1429,8 +1429,8 @@ class TestOptionsHandlerPhase5Integration:
             yield
             return
             
-        with patch('src.common.options_handler.OptionsHandler._fetch_bar_from_api', return_value=None), \
-             patch('src.common.options_handler.OptionsHandler._fetch_contracts_from_api', return_value=[]):
+        with patch('algo_trading_engine.common.options_handler.OptionsHandler._fetch_bar_from_api', return_value=None), \
+             patch('algo_trading_engine.common.options_handler.OptionsHandler._fetch_contracts_from_api', return_value=[]):
             yield
     
     @pytest.fixture
@@ -1906,8 +1906,8 @@ class TestOptionsHandlerErrorHandling:
             yield
             return
             
-        with patch('src.common.options_handler.OptionsHandler._fetch_bar_from_api', return_value=None), \
-             patch('src.common.options_handler.OptionsHandler._fetch_contracts_from_api', return_value=[]):
+        with patch('algo_trading_engine.common.options_handler.OptionsHandler._fetch_bar_from_api', return_value=None), \
+             patch('algo_trading_engine.common.options_handler.OptionsHandler._fetch_contracts_from_api', return_value=[]):
             yield
     
     @pytest.fixture
@@ -1955,9 +1955,9 @@ class TestOptionsHandlerErrorHandling:
     
     def test_invalid_contract_parameters(self, options_handler):
         """Test error handling for invalid contract parameters."""
-        from src.common.options_dtos import OptionContractDTO
-        from src.common.models import OptionType
-        from src.common.options_dtos import StrikePrice, ExpirationDate
+        from algo_trading_engine.common.options_dtos import OptionContractDTO
+        from algo_trading_engine.common.models import OptionType
+        from algo_trading_engine.common.options_dtos import StrikePrice, ExpirationDate
         
         # Create a valid contract for testing
         valid_contract = OptionContractDTO(

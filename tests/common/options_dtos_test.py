@@ -9,12 +9,12 @@ from datetime import datetime, date, timedelta
 from decimal import Decimal
 from dataclasses import FrozenInstanceError
 
-from src.common.options_dtos import (
+from algo_trading_engine.common.options_dtos import (
     StrikePrice, ExpirationDate,
     OptionContractDTO, OptionBarDTO, StrikeRangeDTO, ExpirationRangeDTO,
     OptionsChainDTO
 )
-from src.common.models import OptionType
+from algo_trading_engine.common.models import OptionType
 
 
 class TestStrikePrice:

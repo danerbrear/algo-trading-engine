@@ -7,8 +7,8 @@ maximum profit, maximum loss, risk/reward ratio, and expected value.
 
 import pytest
 from datetime import datetime
-from src.backtest.models import Position, StrategyType
-from src.common.models import Option, OptionType
+from algo_trading_engine.backtest.models import Position, StrategyType
+from algo_trading_engine.common.models import Option, OptionType
 
 
 class TestPositionMaxProfitLoss:

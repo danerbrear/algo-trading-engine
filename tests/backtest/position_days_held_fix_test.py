@@ -6,8 +6,8 @@ Tests the fix for date-only comparison in trading day calculations.
 
 import unittest
 from datetime import datetime, timezone
-from src.backtest.models import Position, StrategyType
-from src.common.models import Option, OptionType
+from algo_trading_engine.backtest.models import Position, StrategyType
+from algo_trading_engine.common.models import Option, OptionType
 
 
 class TestPositionDaysHeldFix(unittest.TestCase):

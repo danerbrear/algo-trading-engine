@@ -30,10 +30,10 @@ dev = [
 ]
 
 [tool.setuptools]
-package-dir = {"" = "src"}
+package-dir = {"" = "algo_trading_engine"}
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["algo_trading_engine"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

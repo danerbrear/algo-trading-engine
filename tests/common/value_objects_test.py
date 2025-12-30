@@ -3,7 +3,7 @@ Unit tests for Value Objects defined in src/common/models.py
 """
 import pytest
 from decimal import Decimal
-from src.common.models import (
+from algo_trading_engine.common.models import (
     MarketState, MarketStateType, TradingSignal, SignalType, 
     PriceRange, Volatility
 )
