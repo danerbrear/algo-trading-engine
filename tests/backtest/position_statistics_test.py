@@ -7,8 +7,8 @@ import pandas as pd
 from datetime import datetime
 from unittest.mock import Mock
 
-from src.backtest.main import BacktestEngine
-from src.backtest.models import StrategyType
+from algo_trading_engine.backtest.main import BacktestEngine
+from algo_trading_engine.backtest.models import StrategyType
 
 
 class TestPositionStatistics:

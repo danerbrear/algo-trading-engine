@@ -2,7 +2,7 @@ import pytest
 import pandas as pd
 from datetime import datetime
 from decimal import Decimal
-from src.common.models import TreasuryRates
+from algo_trading_engine.common.models import TreasuryRates
 
 
 class TestTreasuryRates:

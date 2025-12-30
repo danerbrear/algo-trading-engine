@@ -3,9 +3,9 @@ import pandas as pd
 from datetime import datetime
 from unittest.mock import Mock
 
-from src.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
-from src.backtest.models import Position, StrategyType
-from src.common.models import TreasuryRates, Option, OptionChain, OptionType
+from algo_trading_engine.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
+from algo_trading_engine.backtest.models import Position, StrategyType
+from algo_trading_engine.common.models import TreasuryRates, Option, OptionChain, OptionType
 
 
 class TestVelocitySignalMomentumStrategy:
@@ -149,8 +149,8 @@ class TestVelocitySignalMomentumStrategy:
         
         # Mock the new_options_handler to return contracts with different expirations
         strategy.new_options_handler = Mock()
-        from src.common.options_dtos import OptionContractDTO
-        from src.common.models import OptionType as CommonOptionType
+        from algo_trading_engine.common.options_dtos import OptionContractDTO
+        from algo_trading_engine.common.models import OptionType as CommonOptionType
         
         # Create mock contracts with different expiration dates
         contracts = [
@@ -234,7 +234,7 @@ class TestVelocitySignalMomentumStrategy:
         
         # Mock the new_options_handler to return bar data
         strategy.new_options_handler = Mock()
-        from src.common.options_dtos import OptionBarDTO
+        from algo_trading_engine.common.options_dtos import OptionBarDTO
         
         # Create mock bar data
         from decimal import Decimal
@@ -304,11 +304,11 @@ class TestVelocitySignalMomentumStrategy:
         
         # Mock the new_options_handler to return contracts
         strategy.new_options_handler = Mock()
-        from src.common.options_dtos import OptionContractDTO
-        from src.common.models import OptionType as CommonOptionType
+        from algo_trading_engine.common.options_dtos import OptionContractDTO
+        from algo_trading_engine.common.models import OptionType as CommonOptionType
         
         # Create mock contracts
-        from src.common.options_dtos import StrikePrice, ExpirationDate
+        from algo_trading_engine.common.options_dtos import StrikePrice, ExpirationDate
         
         from datetime import date as date_type
         
@@ -341,7 +341,7 @@ class TestVelocitySignalMomentumStrategy:
         strategy.new_options_handler.get_contract_list_for_date.return_value = [atm_contract, otm_contract]
         
         # Mock get_option_bar to return OptionBarDTO with proper close_price
-        from src.common.options_dtos import OptionBarDTO
+        from algo_trading_engine.common.options_dtos import OptionBarDTO
         from decimal import Decimal
         
         atm_bar = OptionBarDTO(
@@ -699,7 +699,7 @@ class TestVelocitySignalMomentumStrategy:
         # Mock the progress_print function to capture output
         mock_progress_print = Mock()
         with pytest.MonkeyPatch().context() as m:
-            m.setattr('src.strategies.velocity_signal_momentum_strategy.progress_print', mock_progress_print)
+            m.setattr('algo_trading_engine.strategies.velocity_signal_momentum_strategy.progress_print', mock_progress_print)
             
             # Call on_end with no data
             strategy.on_end((), Mock(), datetime.now())
@@ -747,7 +747,7 @@ class TestVelocitySignalMomentumStrategy:
             m.setattr('matplotlib.pyplot.show', mock_show)
             m.setattr('matplotlib.pyplot.savefig', mock_savefig)
             m.setattr('matplotlib.pyplot.tight_layout', mock_tight_layout)
-            m.setattr('src.strategies.velocity_signal_momentum_strategy.progress_print', mock_progress_print)
+            m.setattr('algo_trading_engine.strategies.velocity_signal_momentum_strategy.progress_print', mock_progress_print)
             
             # Call on_end
             strategy.on_end((), Mock(), datetime.now())
@@ -767,7 +767,7 @@ class TestVelocityStrategyFactory:
 
     def test_factory_passes_profit_target_and_stop_loss(self):
         """Test that StrategyFactory properly passes profit_target and stop_loss to the strategy"""
-        from src.backtest.strategy_builder import StrategyFactory
+        from algo_trading_engine.backtest.strategy_builder import StrategyFactory
         
         mock_options_handler = Mock()
         
@@ -785,7 +785,7 @@ class TestVelocityStrategyFactory:
         
     def test_factory_handles_none_parameters(self):
         """Test that StrategyFactory handles None parameters correctly"""
-        from src.backtest.strategy_builder import StrategyFactory
+        from algo_trading_engine.backtest.strategy_builder import StrategyFactory
         
         mock_options_handler = Mock()
         

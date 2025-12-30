@@ -7,23 +7,23 @@ import os
 import sys
 import os
 from typing import Optional
-# Add the src directory to the path for imports
+# Add the algo_trading_engine directory to the path for imports
 current_dir = os.path.dirname(os.path.abspath(__file__))
-src_dir = os.path.join(current_dir, '..')
-sys.path.insert(0, src_dir)
+package_dir = os.path.join(current_dir, '..')
+sys.path.insert(0, package_dir)
 
 # Add try/except for linter compatibility
 try:
-    from model.market_state_classifier import MarketStateClassifier
-    from model.calendar_features import CalendarFeatureProcessor
-    from common.cache.cache_manager import CacheManager
+    from algo_trading_engine.model.market_state_classifier import MarketStateClassifier
+    from algo_trading_engine.model.calendar_features import CalendarFeatureProcessor
+    from algo_trading_engine.common.cache.cache_manager import CacheManager
 except ImportError:
     # Fallback for direct script execution
-    sys.path.insert(0, os.path.join(src_dir, '..'))
-    from src.model.market_state_classifier import MarketStateClassifier
-    from src.model.calendar_features import CalendarFeatureProcessor
-    from src.common.cache.cache_manager import CacheManager
-from src.common.models import TreasuryRates
+    sys.path.insert(0, os.path.join(package_dir, '..'))
+    from algo_trading_engine.model.market_state_classifier import MarketStateClassifier
+    from algo_trading_engine.model.calendar_features import CalendarFeatureProcessor
+    from algo_trading_engine.common.cache.cache_manager import CacheManager
+from algo_trading_engine.common.models import TreasuryRates
 
 class DataRetriever:
     """Handles data retrieval, feature calculation, and preparation for LSTM and HMM models."""

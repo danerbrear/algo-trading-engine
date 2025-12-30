@@ -6,7 +6,7 @@ liquidity for trading during backtests.
 """
 
 from typing import List
-from src.common.models import Option
+from algo_trading_engine.common.models import Option
 
 
 class VolumeValidator:

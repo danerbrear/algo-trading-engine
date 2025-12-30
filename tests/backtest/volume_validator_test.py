@@ -8,9 +8,9 @@ import pytest
 from unittest.mock import Mock
 import dataclasses
 
-from src.backtest.volume_validator import VolumeValidator
-from src.backtest.config import VolumeConfig, VolumeStats
-from src.common.models import Option, OptionType
+from algo_trading_engine.backtest.volume_validator import VolumeValidator
+from algo_trading_engine.backtest.config import VolumeConfig, VolumeStats
+from algo_trading_engine.common.models import Option, OptionType
 
 
 class TestVolumeValidator:

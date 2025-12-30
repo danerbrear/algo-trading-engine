@@ -1,11 +1,11 @@
 from datetime import datetime
 from unittest.mock import MagicMock
 
-from src.prediction.decision_store import JsonDecisionStore, ProposedPositionRequest, DecisionResponse, generate_decision_id
-from src.prediction.recommendation_engine import InteractiveStrategyRecommender
-from src.prediction.capital_manager import CapitalManager
-from src.backtest.models import StrategyType
-from src.common.models import Option
+from algo_trading_engine.prediction.decision_store import JsonDecisionStore, ProposedPositionRequest, DecisionResponse, generate_decision_id
+from algo_trading_engine.prediction.recommendation_engine import InteractiveStrategyRecommender
+from algo_trading_engine.prediction.capital_manager import CapitalManager
+from algo_trading_engine.backtest.models import StrategyType
+from algo_trading_engine.common.models import Option
 
 
 def _make_option(symbol: str, strike: float, expiration: str, opt_type: str, last: float, volume: int = 100) -> Option:
@@ -158,7 +158,7 @@ def test_recommender_close_accept(monkeypatch, tmp_path):
     # The legacy get_specific_option_contract method is no longer used
 
     # Mock strategy to recommend closing the position
-    from src.backtest.models import Position
+    from algo_trading_engine.backtest.models import Position
     mock_position = Position(
         symbol='SPY',
         expiration_date=datetime(2025, 9, 6),

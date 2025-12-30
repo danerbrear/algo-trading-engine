@@ -19,9 +19,9 @@ import pandas as pd
 import numpy as np
 
 # Add the src directory to the path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'algo_trading_engine'))
 
-from src.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
+from algo_trading_engine.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
 
 
 class TestVelocityLiveVsCloseConsistency(unittest.TestCase):
@@ -31,7 +31,7 @@ class TestVelocityLiveVsCloseConsistency(unittest.TestCase):
     def setUpClass(cls):
         """Set up class-level mocks to prevent real API calls."""
         # Mock DataRetriever to prevent yfinance API calls
-        cls.data_retriever_patcher = patch('src.strategies.velocity_signal_momentum_strategy.DataRetriever')
+        cls.data_retriever_patcher = patch('algo_trading_engine.strategies.velocity_signal_momentum_strategy.DataRetriever')
         cls.mock_data_retriever_class = cls.data_retriever_patcher.start()
         
         # Configure the mock instance

@@ -74,7 +74,7 @@ def load_lstm_model(model_dir, return_lstm_instance=False):
                 lstm_instance.model = keras_model
                 return lstm_instance, scaler
             except ImportError:
-                from model.lstm_model import LSTMModel
+                from algo_trading_engine.model.lstm_model import LSTMModel
                 lstm_instance = LSTMModel(sequence_length=60, n_features=29)
                 lstm_instance.model = keras_model
                 return lstm_instance, scaler

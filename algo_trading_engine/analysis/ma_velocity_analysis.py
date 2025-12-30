@@ -16,13 +16,7 @@ import matplotlib.pyplot as plt
 from dataclasses import dataclass
 
 # Import data retrieval classes
-import sys
-import os
-current_dir = os.path.dirname(os.path.abspath(__file__))
-src_dir = os.path.join(current_dir, '..')
-sys.path.insert(0, src_dir)
-
-from common.data_retriever import DataRetriever
+from algo_trading_engine.common.data_retriever import DataRetriever
 
 
 @dataclass

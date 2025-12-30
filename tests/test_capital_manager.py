@@ -6,10 +6,10 @@ import tempfile
 import os
 from pathlib import Path
 
-from src.prediction.capital_manager import CapitalManager
-from src.prediction.decision_store import JsonDecisionStore, ProposedPositionRequest, DecisionResponse, generate_decision_id
-from src.backtest.models import StrategyType
-from src.common.models import Option
+from algo_trading_engine.prediction.capital_manager import CapitalManager
+from algo_trading_engine.prediction.decision_store import JsonDecisionStore, ProposedPositionRequest, DecisionResponse, generate_decision_id
+from algo_trading_engine.backtest.models import StrategyType
+from algo_trading_engine.common.models import Option
 from datetime import datetime
 
 

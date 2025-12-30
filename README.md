@@ -10,38 +10,38 @@ The system operates in two main stages:
 
 ### Core Components
 
-- **`src/model/`** - Machine learning models and training logic
+- **`algo_trading_engine/model/`** - Machine learning models and training logic
   - Market analysis models
   - Strategy prediction models
-  - See [Model Documentation](src/model/README.md) for details
+  - See [Model Documentation](algo_trading_engine/model/README.md) for details
 
-- **`src/strategies/`** - Trading strategy implementations
+- **`algo_trading_engine/strategies/`** - Trading strategy implementations
   - Various options trading strategies
   - Risk management and position sizing
-  - See [Strategy Documentation](src/strategies/README.md) for details
+  - See [Strategy Documentation](algo_trading_engine/strategies/README.md) for details
 
-- **`src/backtest/`** - Backtesting framework
+- **`algo_trading_engine/backtest/`** - Backtesting framework
   - Volume validation system
   - Performance analysis tools
   - Strategy evaluation
 
-- **`src/common/`** - Shared utilities and data models
+- **`algo_trading_engine/common/`** - Shared utilities and data models
   - Data retrieval and caching
   - Value Objects and DTOs
   - Common functions
 
-- **`src/prediction/`** - Prediction pipeline
+- **`algo_trading_engine/prediction/`** - Prediction pipeline
   - Interactive recommendations and decision capture
   - JSON decision store
   - CLI for open/close flows
   - Equity curve visualization
-  - See [Prediction Documentation](src/prediction/README.md) for details
+  - See [Prediction Documentation](algo_trading_engine/prediction/README.md) for details
 
 ## 📁 Project Structure
 
 ```
 lstm_poc/
-├── src/                      # Source code directory
+├── algo_trading_engine/      # Source code directory (Python package)
 │   ├── model/                # ML models and training
 │   │   ├── README.md         # Model-specific documentation
 │   │   ├── main.py           # Training entry point
@@ -193,10 +193,10 @@ python -m pytest tests/test_velocity_strategy.py -v
 
 ## 📚 Documentation
 
-- **[Model Documentation](src/model/README.md)** - ML models, training, and evaluation
-- **[Strategy Documentation](src/strategies/README.md)** - Trading strategy implementations
-- **[Prediction Documentation](src/prediction/README.md)** - Recommendation CLI and equity curve analysis
-- **[Backtest Documentation](src/backtest/README.md)** - Backtesting framework and usage
+- **[Model Documentation](algo_trading_engine/model/README.md)** - ML models, training, and evaluation
+- **[Strategy Documentation](algo_trading_engine/strategies/README.md)** - Trading strategy implementations
+- **[Prediction Documentation](algo_trading_engine/prediction/README.md)** - Recommendation CLI and equity curve analysis
+- **[Backtest Documentation](algo_trading_engine/backtest/README.md)** - Backtesting framework and usage
 - **[API Documentation](docs/)** - Detailed API and usage guides
 
 ## ⚠️ Limitations

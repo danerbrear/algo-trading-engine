@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch, MagicMock
 import pandas as pd
 import numpy as np
 
-from src.prediction.plot_equity_curve import (
+from algo_trading_engine.prediction.plot_equity_curve import (
     ClosedPosition,
     calculate_equity_curve,
     calculate_drawdowns,
@@ -238,7 +238,7 @@ class TestCalculateDrawdowns:
 class TestFetchSpyData:
     """Test cases for SPY data fetching"""
 
-    @patch('src.prediction.plot_equity_curve.yf.Ticker')
+    @patch('algo_trading_engine.prediction.plot_equity_curve.yf.Ticker')
     def test_fetch_spy_data_success(self, mock_ticker):
         """Test successful SPY data fetch"""
         # Mock yfinance data
@@ -260,7 +260,7 @@ class TestFetchSpyData:
         assert 'Close' in result.columns
         mock_ticker.assert_called_once_with("SPY")
 
-    @patch('src.prediction.plot_equity_curve.yf.Ticker')
+    @patch('algo_trading_engine.prediction.plot_equity_curve.yf.Ticker')
     def test_fetch_spy_data_empty(self, mock_ticker):
         """Test SPY data fetch with empty result"""
         mock_ticker_instance = Mock()
@@ -274,7 +274,7 @@ class TestFetchSpyData:
 
         assert result is None
 
-    @patch('src.prediction.plot_equity_curve.yf.Ticker')
+    @patch('algo_trading_engine.prediction.plot_equity_curve.yf.Ticker')
     def test_fetch_spy_data_exception(self, mock_ticker):
         """Test SPY data fetch with exception"""
         mock_ticker.side_effect = Exception("API error")
@@ -290,7 +290,7 @@ class TestFetchSpyData:
 class TestFetchTreasuryRates:
     """Test cases for treasury rates fetching"""
 
-    @patch('src.prediction.plot_equity_curve.yf.Ticker')
+    @patch('algo_trading_engine.prediction.plot_equity_curve.yf.Ticker')
     def test_fetch_treasury_rates_success(self, mock_ticker):
         """Test successful treasury rates fetch"""
         # Mock yfinance data for ^TNX
@@ -313,7 +313,7 @@ class TestFetchTreasuryRates:
         assert result['10Y_Rate'].iloc[0] == 4.25
         mock_ticker.assert_called_once_with("^TNX")
 
-    @patch('src.prediction.plot_equity_curve.yf.Ticker')
+    @patch('algo_trading_engine.prediction.plot_equity_curve.yf.Ticker')
     def test_fetch_treasury_rates_empty(self, mock_ticker):
         """Test treasury rates fetch with empty result"""
         mock_ticker_instance = Mock()
@@ -327,7 +327,7 @@ class TestFetchTreasuryRates:
 
         assert result is None
 
-    @patch('src.prediction.plot_equity_curve.yf.Ticker')
+    @patch('algo_trading_engine.prediction.plot_equity_curve.yf.Ticker')
     def test_fetch_treasury_rates_exception(self, mock_ticker):
         """Test treasury rates fetch with exception"""
         mock_ticker.side_effect = Exception("API error")
@@ -343,16 +343,16 @@ class TestFetchTreasuryRates:
 class TestPlotEquityCurve:
     """Test cases for plot_equity_curve function"""
 
-    @patch('src.prediction.plot_equity_curve.plt')
+    @patch('algo_trading_engine.prediction.plot_equity_curve.plt')
     def test_plot_equity_curve_no_positions(self, mock_plt):
         """Test plotting with no positions"""
         plot_equity_curve([], show_plot=False)
         # Should not create any plot
         mock_plt.subplots.assert_not_called()
 
-    @patch('src.prediction.plot_equity_curve.plt')
-    @patch('src.prediction.plot_equity_curve.fetch_spy_data')
-    @patch('src.prediction.plot_equity_curve.fetch_treasury_rates')
+    @patch('algo_trading_engine.prediction.plot_equity_curve.plt')
+    @patch('algo_trading_engine.prediction.plot_equity_curve.fetch_spy_data')
+    @patch('algo_trading_engine.prediction.plot_equity_curve.fetch_treasury_rates')
     def test_plot_equity_curve_with_spy_overlay(
         self, mock_fetch_rates, mock_fetch_spy, mock_plt
     ):
@@ -398,9 +398,9 @@ class TestPlotEquityCurve:
         # Verify plot was created
         mock_plt.subplots.assert_called_once()
 
-    @patch('src.prediction.plot_equity_curve.plt')
-    @patch('src.prediction.plot_equity_curve.fetch_spy_data')
-    @patch('src.prediction.plot_equity_curve.fetch_treasury_rates')
+    @patch('algo_trading_engine.prediction.plot_equity_curve.plt')
+    @patch('algo_trading_engine.prediction.plot_equity_curve.fetch_spy_data')
+    @patch('algo_trading_engine.prediction.plot_equity_curve.fetch_treasury_rates')
     def test_plot_equity_curve_with_rates_overlay(
         self, mock_fetch_rates, mock_fetch_spy, mock_plt
     ):
@@ -444,9 +444,9 @@ class TestPlotEquityCurve:
         # Verify secondary axis was created
         ax1.twinx.assert_called()
 
-    @patch('src.prediction.plot_equity_curve.plt')
-    @patch('src.prediction.plot_equity_curve.fetch_spy_data')
-    @patch('src.prediction.plot_equity_curve.fetch_treasury_rates')
+    @patch('algo_trading_engine.prediction.plot_equity_curve.plt')
+    @patch('algo_trading_engine.prediction.plot_equity_curve.fetch_spy_data')
+    @patch('algo_trading_engine.prediction.plot_equity_curve.fetch_treasury_rates')
     def test_plot_equity_curve_with_both_overlays(
         self, mock_fetch_rates, mock_fetch_spy, mock_plt
     ):
