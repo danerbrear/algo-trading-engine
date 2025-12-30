@@ -21,6 +21,21 @@ STRATEGY_REGISTRY = {
     "velocity_momentum": VelocitySignalMomentumStrategy
 }
 
+def map_strategy_name_to_config_key(strategy_name: str) -> str:
+    """Map CLI strategy name to capital allocation config key.
+    
+    Args:
+        strategy_name: Strategy name from CLI arguments
+        
+    Returns:
+        Config key for capital allocation
+    """
+    name_mapping = {
+        "credit_spread": "credit_spread",
+        "velocity_momentum": "velocity_momentum_v2",  # CLI name maps to v2 config
+    }
+    return name_mapping.get(strategy_name, strategy_name)
+
 def build_strategy(name: str, symbol: str, options_handler: OptionsHandler, stop_loss: float = None, profit_target: float = None):
     """
     Build strategy and inject the options_handler.
@@ -139,8 +154,9 @@ def main():
 
     # Store and recommender
     # Display capital status
-    strategy_name = args.strategy
-    print(capital_manager.get_status_summary(strategy_name))
+    # Map CLI strategy name to config key for capital allocation
+    config_key = map_strategy_name_to_config_key(args.strategy)
+    print(capital_manager.get_status_summary(config_key))
     print()
     
     recommender = InteractiveStrategyRecommender(strategy, options_handler, store, capital_manager, auto_yes=args.yes)
