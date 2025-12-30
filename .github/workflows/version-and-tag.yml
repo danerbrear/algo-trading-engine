@@ -4,17 +4,42 @@ on:
   push:
     branches:
       - main
-  # TEMPORARY: Also trigger on pull requests for testing
-  pull_request:
-    branches:
-      - main
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        python-version: ['3.9']
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Run unit tests
+      run: |
+        python -m pytest tests/ -v --tb=short
+      env:
+        # Set dummy API key for tests (tests should mock this anyway)
+        POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY || 'test_key' }}
+
   version:
     runs-on: ubuntu-latest
+    needs: test  # Only run after tests pass
     # Only run if not a tag push (to avoid infinite loops)
-    # TEMPORARY: Skip actual tagging on pull requests (just test the workflow)
-    if: "!startsWith(github.ref, 'refs/tags/') && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)"
+    if: "!startsWith(github.ref, 'refs/tags/')"
     
     permissions:
       contents: write  # Required to create tags and push commits
@@ -77,8 +102,6 @@ jobs:
         grep "version = " pyproject.toml
 
     - name: Commit version update
-      # TEMPORARY: Skip committing on pull requests (just test the workflow)
-      if: github.event_name == 'push'
       run: |
         NEW_VERSION="${{ steps.get_version.outputs.new_version }}"
         git add pyproject.toml
