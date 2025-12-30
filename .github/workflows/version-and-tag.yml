@@ -4,12 +4,17 @@ on:
   push:
     branches:
       - main
+  # TEMPORARY: Also trigger on pull requests for testing
+  pull_request:
+    branches:
+      - main
 
 jobs:
   version:
     runs-on: ubuntu-latest
     # Only run if not a tag push (to avoid infinite loops)
-    if: "!startsWith(github.ref, 'refs/tags/')"
+    # TEMPORARY: Skip actual tagging on pull requests (just test the workflow)
+    if: "!startsWith(github.ref, 'refs/tags/') && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)"
     
     permissions:
       contents: write  # Required to create tags and push commits
@@ -72,6 +77,8 @@ jobs:
         grep "version = " pyproject.toml
 
     - name: Commit version update
+      # TEMPORARY: Skip committing on pull requests (just test the workflow)
+      if: github.event_name == 'push'
       run: |
         NEW_VERSION="${{ steps.get_version.outputs.new_version }}"
         git add pyproject.toml
