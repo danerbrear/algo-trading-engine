@@ -9,13 +9,7 @@ from .strategy import Strategy
 from .engine import TradingEngine, PaperTradingEngine
 from .data_provider import DataProvider
 
-# BacktestEngine is in backtest.main to avoid circular imports
-# Import it here for convenience
-try:
-    from algo_trading_engine.backtest.main import BacktestEngine
-except ImportError:
-    # During initial setup, this might not be available
-    BacktestEngine = None
+from algo_trading_engine.backtest.main import BacktestEngine
 
 __all__ = [
     'Strategy',
