@@ -1,8 +1,9 @@
 import os
 import pandas as pd
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 import argparse
+import numpy as np
 
 from algo_trading_engine.common.options_handler import OptionsHandler
 
@@ -12,8 +13,11 @@ from algo_trading_engine.common.functions import load_hmm_model, load_lstm_model
 from .config import VolumeConfig, VolumeStats, OverallPerformanceStats, StrategyPerformanceStats
 from algo_trading_engine.common.progress_tracker import ProgressTracker, set_global_progress_tracker, progress_print
 from .strategy_builder import StrategyFactory, create_strategy_from_args
+from algo_trading_engine.core.engine import TradingEngine
+from algo_trading_engine.models.config import BacktestConfig as BacktestConfigDTO
+from algo_trading_engine.models.metrics import PerformanceMetrics, PositionStats
 
-class BacktestEngine:
+class BacktestEngine(TradingEngine):
     """
     BacktestEngine is a class that runs a backtest on a given dataset and model.
     """
@@ -172,6 +176,66 @@ class BacktestEngine:
         print(f"   Final capital: ${self.capital:.2f}")
         print(f"   Total Return: ${final_return:+,.2f} ({final_return_pct:+.2f}%)")
         print(f"   Sharpe Ratio: {sharpe_ratio:.3f}")
+    
+    def get_performance_metrics(self) -> PerformanceMetrics:
+        """
+        Get performance statistics for the backtest.
+        
+        Returns:
+            PerformanceMetrics object with all performance data
+        """
+        # Calculate overall stats
+        overall_stats = self._calculate_overall_statistics()
+        strategy_stats = self._calculate_strategy_statistics()
+        
+        # Calculate final return
+        final_return = self.capital - self.initial_capital
+        final_return_pct = (final_return / self.initial_capital) * 100
+        
+        # Calculate Sharpe Ratio
+        sharpe_ratio = self._calculate_sharpe_ratio()
+        
+        # Calculate max drawdown
+        max_drawdown = overall_stats.max_drawdown
+        
+        # Convert closed positions to PositionStats
+        position_stats_list = []
+        for pos in self.closed_positions:
+            position_stats = PositionStats(
+                strategy_type=pos['strategy_type'],
+                entry_date=pos['entry_date'],
+                exit_date=pos['exit_date'],
+                entry_price=pos['entry_price'],
+                exit_price=pos['exit_price'],
+                return_dollars=pos['return_dollars'],
+                return_percentage=pos['return_percentage'],
+                days_held=pos['days_held'],
+                max_risk=pos['max_risk']
+            )
+            position_stats_list.append(position_stats)
+        
+        return PerformanceMetrics(
+            total_return=final_return,
+            total_return_pct=final_return_pct,
+            sharpe_ratio=sharpe_ratio,
+            max_drawdown=max_drawdown,
+            win_rate=overall_stats.win_rate,
+            total_positions=self.total_positions,
+            closed_positions=position_stats_list,
+            strategy_stats=strategy_stats,
+            overall_stats=overall_stats,
+            benchmark_return=self.benchmark.get_return_dollars(),
+            benchmark_return_pct=self.benchmark.get_return_percentage()
+        )
+    
+    def get_positions(self) -> List[Position]:
+        """
+        Get current open positions.
+        
+        Returns:
+            List of currently open Position objects
+        """
+        return self.positions.copy()
 
 
     def _add_position(self, position: Position):

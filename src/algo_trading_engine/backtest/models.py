@@ -6,7 +6,9 @@ import pandas as pd
 from enum import Enum
 from algo_trading_engine.common.models import OptionChain, Option, TreasuryRates
 from algo_trading_engine.common.options_dtos import OptionBarDTO
-from abc import ABC, abstractmethod
+
+# Import Strategy from core
+from algo_trading_engine.core.strategy import Strategy as BaseStrategy
 
 class Benchmark():
     """
@@ -52,38 +54,16 @@ class OptionType(Enum):
     PUT = "P"
     CALL = "C"
 
-class Strategy(ABC):
+# Strategy is now in core.strategy, but we add helper methods here for backward compatibility
+# These methods extend the base Strategy with recommendation functionality
+class Strategy(BaseStrategy):
     """
-    Strategy is a class that represents a trading strategy.
-    """
-
-    def __init__(self, profit_target: float = None, stop_loss: float = None, start_date_offset: int = 0):
-        self.profit_target = profit_target
-        self.stop_loss = stop_loss
-        self.data = None
-        self.start_date_offset = start_date_offset
-
-    @abstractmethod
-    def on_new_date(self, date: datetime, positions: tuple['Position', ...], add_position: Callable[['Position'], None], remove_position: Callable[['Position'], None]):
-        """
-        On new date, execute strategy.
-        """
-
-    def on_new_date(self, date: datetime, positions: tuple['Position', ...]):
-        """
-        On new date, execute strategy.
-        """
+    Strategy class with additional helper methods for recommendations.
     
-        if len(positions) > 0:
-            print(f"\n{date}: Open positions:")
-            for position in positions:
-                print(f"  {position.__str__()}")
-
-    @abstractmethod
-    def on_end(self, positions: tuple['Position', ...], remove_position: Callable[['Position'], None], date: datetime):
-        """
-        On end, execute strategy.
-        """
+    This extends the core Strategy base class with methods for generating
+    position recommendations, which are useful for paper trading and
+    interactive recommendation systems.
+    """
 
     def recommend_open_position(self, date: datetime, current_price: float) -> Optional[Dict]:
         """
@@ -197,52 +177,8 @@ class Strategy(ABC):
         
         return positions_to_close
 
-    @abstractmethod
-    def validate_data(self, data: pd.DataFrame) -> bool:
-        """
-        Validate the data for this specific strategy.
-        
-        Args:
-            data: DataFrame with market data and features
-            
-        Returns:
-            bool: True if data is valid for this strategy, False otherwise
-        """
-
-    def set_profit_target(self, profit_target: float):
-        """
-        Set the profit target for the strategy.
-        """
-        self.profit_target = profit_target
-
-    def set_stop_loss(self, stop_loss: float):
-        """
-        Set the stop loss for the strategy.
-        """
-        self.stop_loss = stop_loss
-
-    def set_data(self, data: pd.DataFrame, treasury_data: Optional[TreasuryRates] = None):
-        """
-        Set the data for the strategy.
-        """
-        self.data = data
-        self.treasury_data = treasury_data
-
-    def _profit_target_hit(self, position: 'Position', exit_price: float) -> bool:
-        """
-        Check if the profit target has been hit for a position.
-        """
-        if self.profit_target is None:
-            return False
-        return position.profit_target_hit(self.profit_target, exit_price)
-
-    def _stop_loss_hit(self, position: 'Position', exit_price: float) -> bool:
-        """
-        Check if the stop loss has been hit for a position.
-        """
-        if self.stop_loss is None:
-            return False
-        return position.stop_loss_hit(self.stop_loss, exit_price)
+    # Note: validate_data, set_profit_target, set_stop_loss, set_data,
+    # _profit_target_hit, and _stop_loss_hit are inherited from BaseStrategy
 
 class StrategyType(Enum):
     """
