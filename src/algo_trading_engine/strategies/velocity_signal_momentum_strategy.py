@@ -6,7 +6,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
-from algo_trading_engine.backtest.models import Strategy, Position, StrategyType, OptionChain, TreasuryRates
+from algo_trading_engine.backtest.models import Strategy, Position, StrategyType, OptionChain
+from algo_trading_engine.common.models import TreasuryRates
 from algo_trading_engine.common.options_dtos import ExpirationRangeDTO, OptionsChainDTO
 from algo_trading_engine.common.progress_tracker import progress_print
 from algo_trading_engine.common.options_handler import OptionsHandler

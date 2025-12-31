@@ -82,7 +82,9 @@ def main():
     open_records = store.get_open_positions(symbol=args.symbol)
     if open_records:
         print(f"Open positions found: {len(open_records)}")
-        options_handler = OptionsHandler(args.symbol, use_free_tier=args.free)
+        # Get API key from environment or args if provided
+        api_key = getattr(args, 'api_key', None)
+        options_handler = OptionsHandler(args.symbol, api_key=api_key, use_free_tier=args.free)
         strategy = build_strategy(args.strategy, args.symbol, options_handler, stop_loss=args.stop_loss, profit_target=args.profit_target)
         recommender = InteractiveStrategyRecommender(strategy, options_handler, store, capital_manager, auto_yes=args.yes)
 
@@ -117,7 +119,9 @@ def main():
     print(f"No open positions found, running open flow")
 
     # Create options_handler first
-    options_handler = OptionsHandler(args.symbol, use_free_tier=args.free)
+    # Get API key from environment or args if provided
+    api_key = getattr(args, 'api_key', None)
+    options_handler = OptionsHandler(args.symbol, api_key=api_key, use_free_tier=args.free)
     
     # Prepare data around the run date to ensure the LSTM sequence/features exist
     lstm_start_date = (run_date.date() - timedelta(days=LOOKBACK_DAYS)).strftime("%Y-%m-%d")

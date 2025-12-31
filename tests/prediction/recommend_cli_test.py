@@ -6,11 +6,6 @@ Tests the --auto-close argument and its integration with the recommendation engi
 
 import unittest
 from unittest.mock import Mock, patch
-import sys
-import os
-
-# Add the algo_trading_engine directory to the path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'algo_trading_engine'))
 
 from algo_trading_engine.prediction.recommend_cli import main
 from algo_trading_engine.prediction.decision_store import JsonDecisionStore

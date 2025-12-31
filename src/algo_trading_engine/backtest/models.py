@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from typing import Callable, Dict, Optional, List
+from typing import Dict, Optional, List
 from datetime import datetime
-import pandas as pd
 from enum import Enum
-from algo_trading_engine.common.models import OptionChain, Option, TreasuryRates
+from algo_trading_engine.common.models import OptionChain, Option
 from algo_trading_engine.common.options_dtos import OptionBarDTO
 
 # Import Strategy from core

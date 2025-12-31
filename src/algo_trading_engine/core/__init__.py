@@ -9,12 +9,13 @@ from .strategy import Strategy
 from .engine import TradingEngine, PaperTradingEngine
 from .data_provider import DataProvider
 
-from algo_trading_engine.backtest.main import BacktestEngine
+# BacktestEngine is imported here for convenience, but defined in backtest.main
+# to avoid circular imports. Import it lazily or directly from backtest.main where needed.
+# from algo_trading_engine.backtest.main import BacktestEngine  # Removed to break circular import
 
 __all__ = [
     'Strategy',
     'TradingEngine',
-    'BacktestEngine',
     'PaperTradingEngine',
     'DataProvider',
 ]

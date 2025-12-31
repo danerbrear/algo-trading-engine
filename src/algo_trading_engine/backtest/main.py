@@ -1,7 +1,7 @@
 import os
 import pandas as pd
-from datetime import datetime
-from typing import List, Optional
+from datetime import datetime, timedelta
+from typing import List, Optional, Union
 import argparse
 import numpy as np
 
@@ -30,8 +30,8 @@ class BacktestEngine(TradingEngine):
                  enable_progress_tracking: bool = True,
                  quiet_mode: bool = True):
         self.data = data
-        self.strategy = strategy
-        self.capital = initial_capital
+        self._strategy = strategy
+        self._capital = initial_capital
         self.initial_capital = initial_capital  # Store initial capital for reporting
         self.start_date = start_date
         self.end_date = end_date
@@ -53,6 +53,104 @@ class BacktestEngine(TradingEngine):
         
         # Position tracking for statistics
         self.closed_positions = []
+
+    @property
+    def strategy(self) -> Strategy:
+        """Get the strategy being used by this engine."""
+        return self._strategy
+    
+    @strategy.setter
+    def strategy(self, value: Strategy):
+        """Set the strategy for this engine."""
+        self._strategy = value
+    
+    @property
+    def capital(self) -> float:
+        """Get current capital."""
+        return self._capital
+    
+    @capital.setter
+    def capital(self, value: float):
+        """Set the capital for this engine."""
+        self._capital = value
+
+    @classmethod
+    def from_config(cls, config: BacktestConfigDTO) -> 'BacktestEngine':
+        """
+        Create BacktestEngine from configuration.
+        
+        Handles all data fetching, strategy creation, and setup internally.
+        Child projects only need to provide configuration.
+        
+        Args:
+            config: BacktestConfig DTO with all necessary parameters
+            
+        Returns:
+            Configured BacktestEngine instance ready to run
+            
+        Raises:
+            ValueError: If configuration is invalid or data fetching fails
+        """
+        # Internal: Calculate LSTM start date (days before backtest start)
+        lstm_start_date = (config.start_date - timedelta(days=config.lstm_start_date_offset))
+        
+        # Internal: Create data retriever
+        retriever = DataRetriever(
+            symbol=config.symbol,
+            lstm_start_date=lstm_start_date.strftime("%Y-%m-%d"),
+            quiet_mode=config.quiet_mode,
+            use_free_tier=config.use_free_tier
+        )
+        
+        # Internal: Fetch data for backtest period
+        data = retriever.fetch_data_for_period(
+            config.start_date.strftime("%Y-%m-%d"),
+            'backtest'
+        )
+        
+        if data is None or len(data) == 0:
+            raise ValueError(f"Failed to fetch data for {config.symbol} from {config.start_date.date()} to {config.end_date.date()}")
+        
+        # Internal: Create options handler
+        options_handler = OptionsHandler(
+            symbol=config.symbol,
+            api_key=config.api_key,
+            use_free_tier=config.use_free_tier
+        )
+        
+        # Internal: Create or use provided strategy
+        if isinstance(config.strategy_type, str):
+            # Create strategy from string name
+            strategy = create_strategy_from_args(
+                strategy_name=config.strategy_type,
+                symbol=config.symbol,
+                options_handler=options_handler,
+                stop_loss=config.stop_loss,
+                profit_target=config.profit_target
+            )
+            if strategy is None:
+                raise ValueError(f"Failed to create strategy: {config.strategy_type}")
+        else:
+            # Strategy instance provided - inject options_handler if it has that attribute
+            strategy = config.strategy_type
+            if hasattr(strategy, 'options_handler'):
+                strategy.options_handler = options_handler
+        
+        # Internal: Set data on strategy
+        strategy.set_data(data, retriever.treasury_rates)
+        
+        # Create and return engine
+        return cls(
+            data=data,
+            strategy=strategy,
+            initial_capital=config.initial_capital,
+            start_date=config.start_date,
+            end_date=config.end_date,
+            max_position_size=config.max_position_size,
+            volume_config=config.volume_config,
+            enable_progress_tracking=config.enable_progress_tracking,
+            quiet_mode=config.quiet_mode
+        )
 
     def run(self) -> bool:
         """
@@ -626,8 +724,11 @@ if __name__ == "__main__":
         data = data_retriever.fetch_data_for_period(start_date, 'backtest')
 
         # Create options handler to inject into strategy
+        # Get API key from environment or args if provided
+        api_key = getattr(args, 'api_key', None)
         options_handler = OptionsHandler(
             symbol=args.symbol,
+            api_key=api_key,
             use_free_tier=args.free
         )
 

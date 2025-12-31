@@ -7,13 +7,8 @@ Tests that when using current date with market open, we calculate velocity using
 import unittest
 from unittest.mock import Mock, patch, MagicMock, call
 from datetime import datetime, timedelta
-import sys
-import os
 import pandas as pd
 import numpy as np
-
-# Add the src directory to the path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'algo_trading_engine'))
 
 from algo_trading_engine.prediction.recommend_cli import main, build_strategy
 from algo_trading_engine.prediction.decision_store import JsonDecisionStore

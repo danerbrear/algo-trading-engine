@@ -13,13 +13,8 @@ This should NOT happen - both scenarios should generate the same signal.
 import unittest
 from unittest.mock import Mock, patch
 from datetime import datetime, timedelta
-import sys
-import os
 import pandas as pd
 import numpy as np
-
-# Add the src directory to the path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'algo_trading_engine'))
 
 from algo_trading_engine.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
 

@@ -5,11 +5,15 @@ This module provides immutable value objects for tracking and reporting
 performance metrics.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Optional
 
-from algo_trading_engine.backtest.models import StrategyType
+# StrategyType is not imported here to avoid circular imports
+# With __future__.annotations, all type hints are strings, so no runtime import needed
+# Type checkers will resolve 'StrategyType' from algo_trading_engine.backtest.models
 
 
 @dataclass(frozen=True)
@@ -20,7 +24,7 @@ class PositionStats:
     This is an immutable value object representing performance
     metrics for one position.
     """
-    strategy_type: StrategyType
+    strategy_type: 'StrategyType'
     entry_date: datetime
     exit_date: datetime
     entry_price: float
@@ -46,7 +50,7 @@ class StrategyPerformanceStats:
     This aggregates performance metrics for all positions
     of a particular strategy type.
     """
-    strategy_type: StrategyType
+    strategy_type: 'StrategyType'
     positions_count: int
     win_rate: float  # Percentage (0-100)
     total_pnl: float

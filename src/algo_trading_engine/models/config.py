@@ -6,9 +6,12 @@ This module provides immutable configuration objects for engines and strategies.
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Union, TYPE_CHECKING
 
 from algo_trading_engine.backtest.config import VolumeConfig as BaseVolumeConfig, VolumeStats as BaseVolumeStats
+
+if TYPE_CHECKING:
+    from algo_trading_engine.core.strategy import Strategy
 
 
 # Re-export VolumeConfig and VolumeStats from backtest.config for backward compatibility
@@ -28,10 +31,16 @@ class BacktestConfig:
     start_date: datetime
     end_date: datetime
     symbol: str
+    strategy_type: Union[str, 'Strategy']  # Strategy name (str) or Strategy instance (from core.strategy)
     max_position_size: Optional[float] = None  # Fraction of capital (e.g., 0.4 = 40%)
     volume_config: Optional[VolumeConfig] = None
     enable_progress_tracking: bool = True
     quiet_mode: bool = True
+    api_key: Optional[str] = None  # Polygon.io API key (falls back to POLYGON_API_KEY env var)
+    use_free_tier: bool = False  # Use free tier rate limiting (13 second timeout)
+    lstm_start_date_offset: int = 120  # Days before start_date for LSTM data
+    stop_loss: Optional[float] = None  # Optional stop loss percentage
+    profit_target: Optional[float] = None  # Optional profit target percentage
     
     def __post_init__(self):
         """Validate configuration after initialization."""
@@ -61,6 +70,8 @@ class PaperTradingConfig:
     volume_config: Optional[VolumeConfig] = None
     execution_delay_seconds: int = 0  # Simulate execution delay
     slippage_model: Optional['SlippageModel'] = None  # Optional slippage simulation
+    api_key: Optional[str] = None  # Polygon.io API key (falls back to POLYGON_API_KEY env var)
+    use_free_tier: bool = False  # Use free tier rate limiting (13 second timeout)
     
     def __post_init__(self):
         """Validate configuration after initialization."""
