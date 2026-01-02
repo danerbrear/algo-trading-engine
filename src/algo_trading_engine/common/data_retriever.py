@@ -172,10 +172,41 @@ class DataRetriever:
         if self.ticker is None:
             self.ticker = yf.Ticker(self.symbol)
         
-        # Always fetch full history and filter manually (yfinance bug workaround)
-        data = self.ticker.history(period='max')
+        # Try to get ticker info first to validate symbol
+        try:
+            info = self.ticker.info
+            if not info or len(info) == 0:
+                raise ValueError(f"Invalid symbol or no info available for {self.symbol}")
+        except Exception as e:
+            raise ValueError(f"Failed to fetch ticker info for {self.symbol}: {e}")
+        
+        # Try period='max' first, then fallback to date range
+        try:
+            data = self.ticker.history(period='max')
+        except Exception as e:
+            print(f"⚠️  Failed to fetch with period='max', trying date range: {e}")
+            # Fallback: try with specific date range
+            start_date_ts = pd.Timestamp(start_date)
+            end_date_ts = pd.Timestamp.now()
+            data = self.ticker.history(start=start_date_ts, end=end_date_ts)
+        
         if data.empty:
-            raise ValueError(f"No data retrieved for {self.symbol} from {start_date}")
+            # Provide more diagnostic information
+            try:
+                info = self.ticker.info
+                symbol_name = info.get('longName', 'Unknown')
+                print(f"❌ Ticker info available: {symbol_name}")
+            except:
+                pass
+            raise ValueError(
+                f"No data retrieved for {self.symbol} from {start_date}. "
+                f"This could be due to:\n"
+                f"  1. Network/API connectivity issues with yfinance\n"
+                f"  2. Invalid or delisted symbol\n"
+                f"  3. Rate limiting from Yahoo Finance\n"
+                f"  4. yfinance version compatibility issues\n"
+                f"Try checking your internet connection and yfinance version."
+            )
         
         data.index = data.index.tz_localize(None)
         print(f"📊 Initial {data_type} data range: {data.index[0]} to {data.index[-1]}")
