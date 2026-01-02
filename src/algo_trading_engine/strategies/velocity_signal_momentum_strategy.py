@@ -65,15 +65,15 @@ class VelocitySignalMomentumStrategy(Strategy):
             # Calculate velocity changes for signal detection
             self.data['Velocity_Changes'] = self.data['MA_Velocity_15_30'].diff()
 
-    def on_new_date(self, date: datetime, positions: tuple['Position', ...], add_position: Callable[['Position'], None], remove_position: Callable[['Position'], None]):
-        super().on_new_date(date, positions)
+    def on_new_date(self, date: datetime, positions: tuple['Position', ...], add_position: Callable[['Position'], None], remove_position: Callable[[datetime, 'Position', float, Optional[float], Optional[list[int]]], None]):
+        # Base class on_new_date is abstract, so no need to call super()
 
         if len(positions) == 0:
             self._try_open_position(date, add_position)
             
         self._try_close_positions(date, positions, remove_position)
 
-    def on_end(self, positions: tuple['Position', ...], remove_position: Callable[['Position'], None], date: datetime):
+    def on_end(self, positions: tuple['Position', ...], remove_position: Callable[[datetime, 'Position', float, Optional[float], Optional[list[int]]], None], date: datetime):
         """
         Create a plot showing SPY price over time with position entry indicators and volatility overlay.
         """
@@ -609,7 +609,7 @@ class VelocitySignalMomentumStrategy(Strategy):
     
 
     # ==== Helper methods (closing) ====
-    def _try_close_positions(self, date: datetime, positions: tuple['Position', ...], remove_position: Callable[['Position'], None]):
+    def _try_close_positions(self, date: datetime, positions: tuple['Position', ...], remove_position: Callable[[datetime, 'Position', float, Optional[float], Optional[list[int]]], None]):
         current_underlying_price = self._get_current_underlying_price(date)
         progress_print(f"Current underlying price: {current_underlying_price}") 
         progress_print(f"🤖 Strategy evaluating {len(positions)} open position(s) for potential closure...")

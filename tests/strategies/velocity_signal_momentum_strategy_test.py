@@ -798,3 +798,267 @@ class TestVelocityStrategyFactory:
         # Verify the parameters are None when not specified
         assert strategy.profit_target is None
         assert strategy.stop_loss is None
+
+
+class TestVelocityStrategyMethodSignatures:
+    """Test cases to verify method signatures match the base Strategy class"""
+    
+    def test_on_new_date_signature_matches_base_class(self):
+        """Test that on_new_date can be called with the correct signature from base class"""
+        from typing import Callable, Optional
+        from algo_trading_engine.core.strategy import Strategy as BaseStrategy
+        
+        mock_options_handler = Mock()
+        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        
+        # Create sample data
+        dates = pd.date_range('2024-01-01', periods=50, freq='D')
+        data = pd.DataFrame({
+            'Close': [100 + i * 0.1 for i in range(50)],
+            'Open': [100 + i * 0.1 for i in range(50)],
+            'High': [101 + i * 0.1 for i in range(50)],
+            'Low': [99 + i * 0.1 for i in range(50)],
+            'Volume': [1000000] * 50
+        }, index=dates)
+        strategy.set_data(data)
+        
+        # Verify the method signature matches base class
+        import inspect
+        base_sig = inspect.signature(BaseStrategy.on_new_date)
+        strategy_sig = inspect.signature(strategy.on_new_date)
+        
+        # Check that parameter names match (excluding 'self')
+        base_params = [p for p in base_sig.parameters.keys() if p != 'self']
+        strategy_params = list(strategy_sig.parameters.keys())
+        
+        assert strategy_params == base_params, \
+            f"Parameter names don't match: {strategy_params} vs {base_params}"
+        
+        # Check that remove_position type hint is a Callable (exact string match may differ due to ForwardRef)
+        base_remove_position_type = base_sig.parameters['remove_position'].annotation
+        strategy_remove_position_type = strategy_sig.parameters['remove_position'].annotation
+        
+        # Both should be Callable types
+        assert 'Callable' in str(base_remove_position_type), \
+            f"remove_position should be Callable, got: {base_remove_position_type}"
+        assert 'Callable' in str(strategy_remove_position_type), \
+            f"remove_position should be Callable, got: {strategy_remove_position_type}"
+        
+        # Test that we can actually call the method with the correct signature
+        # This is the most important test - actual callability
+        date = datetime(2024, 1, 25)
+        positions = tuple()
+        
+        def mock_add_position(position: Position):
+            pass
+        
+        def mock_remove_position(date: datetime, position: Position, exit_price: float, 
+                                underlying_price: Optional[float] = None, 
+                                current_volumes: Optional[list[int]] = None):
+            pass
+        
+        # This should not raise any errors
+        try:
+            strategy.on_new_date(date, positions, mock_add_position, mock_remove_position)
+        except TypeError as e:
+            pytest.fail(f"on_new_date signature mismatch: {e}")
+    
+    def test_on_end_signature_matches_base_class(self):
+        """Test that on_end can be called with the correct signature from base class"""
+        from typing import Callable, Optional
+        from algo_trading_engine.core.strategy import Strategy as BaseStrategy
+        
+        mock_options_handler = Mock()
+        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        
+        # Create sample data
+        dates = pd.date_range('2024-01-01', periods=50, freq='D')
+        data = pd.DataFrame({
+            'Close': [100 + i * 0.1 for i in range(50)],
+            'Open': [100 + i * 0.1 for i in range(50)],
+            'High': [101 + i * 0.1 for i in range(50)],
+            'Low': [99 + i * 0.1 for i in range(50)],
+            'Volume': [1000000] * 50
+        }, index=dates)
+        strategy.set_data(data)
+        
+        # Verify the method signature matches base class
+        import inspect
+        base_sig = inspect.signature(BaseStrategy.on_end)
+        strategy_sig = inspect.signature(strategy.on_end)
+        
+        # Check that parameter names match (excluding 'self', order may differ)
+        base_param_names = {p for p in base_sig.parameters.keys() if p != 'self'}
+        strategy_param_names = set(strategy_sig.parameters.keys())
+        
+        assert strategy_param_names == base_param_names, \
+            f"Parameter names don't match: {strategy_param_names} vs {base_param_names}"
+        
+        # Check that remove_position type hint is a Callable (exact string match may differ due to ForwardRef)
+        base_remove_position_type = base_sig.parameters['remove_position'].annotation
+        strategy_remove_position_type = strategy_sig.parameters['remove_position'].annotation
+        
+        # Both should be Callable types
+        assert 'Callable' in str(base_remove_position_type), \
+            f"remove_position should be Callable, got: {base_remove_position_type}"
+        assert 'Callable' in str(strategy_remove_position_type), \
+            f"remove_position should be Callable, got: {strategy_remove_position_type}"
+        
+        # Test that we can actually call the method with the correct signature
+        # This is the most important test - actual callability
+        positions = tuple()
+        date = datetime(2024, 1, 25)
+        
+        def mock_remove_position(date: datetime, position: Position, exit_price: float, 
+                                underlying_price: Optional[float] = None, 
+                                current_volumes: Optional[list[int]] = None):
+            pass
+        
+        # Mock matplotlib to prevent plot from showing during tests
+        mock_fig = Mock()
+        mock_ax1 = Mock()
+        mock_ax2 = Mock()
+        mock_ax1.get_legend_handles_labels = Mock(return_value=([], []))
+        mock_ax2.get_legend_handles_labels = Mock(return_value=([], []))
+        mock_ax1.twinx = Mock(return_value=mock_ax2)
+        
+        with pytest.MonkeyPatch().context() as m:
+            m.setattr('matplotlib.pyplot.subplots', Mock(return_value=(mock_fig, mock_ax1)))
+            m.setattr('matplotlib.pyplot.show', Mock())
+            m.setattr('matplotlib.pyplot.tight_layout', Mock())
+            m.setattr('algo_trading_engine.strategies.velocity_signal_momentum_strategy.progress_print', Mock())
+            
+            # This should not raise any errors
+            try:
+                strategy.on_end(positions, mock_remove_position, date)
+            except TypeError as e:
+                pytest.fail(f"on_end signature mismatch: {e}")
+    
+    def test_try_close_positions_signature(self):
+        """Test that _try_close_positions uses the correct remove_position signature"""
+        from typing import Callable, Optional
+        
+        mock_options_handler = Mock()
+        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        
+        # Create sample data
+        dates = pd.date_range('2024-01-01', periods=50, freq='D')
+        data = pd.DataFrame({
+            'Close': [100 + i * 0.1 for i in range(50)],
+            'Open': [100 + i * 0.1 for i in range(50)],
+            'High': [101 + i * 0.1 for i in range(50)],
+            'Low': [99 + i * 0.1 for i in range(50)],
+            'Volume': [1000000] * 50
+        }, index=dates)
+        strategy.set_data(data)
+        
+        # Verify the method signature
+        import inspect
+        sig = inspect.signature(strategy._try_close_positions)
+        
+        # Check remove_position parameter type hint
+        remove_position_param = sig.parameters['remove_position']
+        expected_type = "Callable[[datetime, 'Position', float, Optional[float], Optional[list[int]]], None]"
+        
+        # The type hint should match the base class signature
+        assert 'datetime' in str(remove_position_param.annotation), \
+            f"remove_position should accept datetime as first parameter, got: {remove_position_param.annotation}"
+        assert 'Position' in str(remove_position_param.annotation), \
+            f"remove_position should accept Position as second parameter, got: {remove_position_param.annotation}"
+        assert 'float' in str(remove_position_param.annotation), \
+            f"remove_position should accept float as third parameter, got: {remove_position_param.annotation}"
+        
+        # Test that we can actually call the method with the correct signature
+        date = datetime(2024, 1, 25)
+        positions = tuple()
+        
+        def mock_remove_position(date: datetime, position: Position, exit_price: float, 
+                                underlying_price: Optional[float] = None, 
+                                current_volumes: Optional[list[int]] = None):
+            pass
+        
+        # Mock the options handler to prevent errors
+        strategy.new_options_handler.get_option_bar = Mock(return_value=None)
+        
+        # This should not raise any errors
+        try:
+            strategy._try_close_positions(date, positions, mock_remove_position)
+        except TypeError as e:
+            pytest.fail(f"_try_close_positions signature mismatch: {e}")
+    
+    def test_integration_with_backtest_engine_signature(self):
+        """Integration test: verify strategy can be called by backtest engine with correct signatures"""
+        from algo_trading_engine.backtest.main import BacktestEngine
+        from typing import Callable, Optional
+        
+        mock_options_handler = Mock()
+        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        
+        # Create sample data
+        dates = pd.date_range('2024-01-01', periods=50, freq='D')
+        data = pd.DataFrame({
+            'Close': [100 + i * 0.1 for i in range(50)],
+            'Open': [100 + i * 0.1 for i in range(50)],
+            'High': [101 + i * 0.1 for i in range(50)],
+            'Low': [99 + i * 0.1 for i in range(50)],
+            'Volume': [1000000] * 50
+        }, index=dates)
+        strategy.set_data(data)
+        
+        # Create a minimal backtest engine to test method calls
+        engine = BacktestEngine(
+            data=data,
+            strategy=strategy,
+            initial_capital=10000,
+            start_date=datetime(2024, 1, 1),
+            end_date=datetime(2024, 1, 10)
+        )
+        
+        # Verify that the engine's _add_position and _remove_position match what strategy expects
+        import inspect
+        
+        # Check _add_position signature
+        add_pos_sig = inspect.signature(engine._add_position)
+        assert len(add_pos_sig.parameters) == 1, \
+            f"_add_position should take 1 parameter (Position), got: {list(add_pos_sig.parameters.keys())}"
+        
+        # Check _remove_position signature
+        remove_pos_sig = inspect.signature(engine._remove_position)
+        remove_pos_params = list(remove_pos_sig.parameters.keys())
+        expected_params = ['date', 'position', 'exit_price', 'underlying_price', 'current_volumes']
+        
+        # Verify parameter names match (allowing for optional parameters)
+        assert remove_pos_params == expected_params or len(remove_pos_params) >= 3, \
+            f"_remove_position parameters don't match: {remove_pos_params} vs {expected_params}"
+        
+        # Test that we can call on_new_date through the engine's interface
+        # This simulates what happens in BacktestEngine.run()
+        test_date = datetime(2024, 1, 5)
+        positions_tuple = tuple(engine.positions)
+        
+        try:
+            # This is how BacktestEngine calls on_new_date
+            strategy.on_new_date(test_date, positions_tuple, engine._add_position, engine._remove_position)
+        except TypeError as e:
+            pytest.fail(f"Strategy.on_new_date cannot be called by BacktestEngine: {e}")
+        
+        # Test that we can call on_end through the engine's interface
+        # Mock matplotlib to prevent plot from showing during tests
+        mock_fig = Mock()
+        mock_ax1 = Mock()
+        mock_ax2 = Mock()
+        mock_ax1.get_legend_handles_labels = Mock(return_value=([], []))
+        mock_ax2.get_legend_handles_labels = Mock(return_value=([], []))
+        mock_ax1.twinx = Mock(return_value=mock_ax2)
+        
+        with pytest.MonkeyPatch().context() as m:
+            m.setattr('matplotlib.pyplot.subplots', Mock(return_value=(mock_fig, mock_ax1)))
+            m.setattr('matplotlib.pyplot.show', Mock())
+            m.setattr('matplotlib.pyplot.tight_layout', Mock())
+            m.setattr('algo_trading_engine.strategies.velocity_signal_momentum_strategy.progress_print', Mock())
+            
+            try:
+                # This is how BacktestEngine calls on_end
+                strategy.on_end(positions_tuple, engine._remove_position, test_date)
+            except TypeError as e:
+                pytest.fail(f"Strategy.on_end cannot be called by BacktestEngine: {e}")
