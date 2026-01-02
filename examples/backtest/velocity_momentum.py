@@ -15,9 +15,10 @@ def main():
     polygon_api_key = os.getenv("POLYGON_API_KEY")
     
     config = BacktestConfig(
-        initial_capital=100000,
+        initial_capital=3000,
         start_date=datetime(2025, 1, 2),
-        end_date=datetime(2026, 1, 1),
+        end_date=datetime(2026, 1, 2),
+        max_position_size=0.20,
         symbol="SPY",
         strategy_type="velocity_momentum",
         api_key=polygon_api_key

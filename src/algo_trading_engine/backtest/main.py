@@ -1,15 +1,13 @@
 import os
 import pandas as pd
 from datetime import datetime, timedelta
-from typing import List, Optional, Union
+from typing import List
 import argparse
-import numpy as np
 
 from algo_trading_engine.common.options_handler import OptionsHandler
 
 from .models import Benchmark, Strategy, Position, StrategyType
 from algo_trading_engine.common.data_retriever import DataRetriever
-from algo_trading_engine.common.functions import load_hmm_model, load_lstm_model
 from .config import VolumeConfig, VolumeStats, OverallPerformanceStats, StrategyPerformanceStats
 from algo_trading_engine.common.progress_tracker import ProgressTracker, set_global_progress_tracker, progress_print
 from .strategy_builder import StrategyFactory, create_strategy_from_args
