@@ -5,18 +5,19 @@ This module provides the abstract base class for trading engines
 and concrete implementations for backtesting and paper trading.
 """
 
-from abc import ABC, abstractmethod
+from abc import ABC, abstractmethod, abstractclassmethod
+from typing import List, Optional, Union, TYPE_CHECKING
 from datetime import datetime
-from typing import List, Optional, TYPE_CHECKING
 import pandas as pd
 
 from .strategy import Strategy
 from .data_provider import DataProvider
-from algo_trading_engine.models.config import BacktestConfig, PaperTradingConfig
-from algo_trading_engine.models.metrics import PerformanceMetrics
+from algo_trading_engine.models.config import PaperTradingConfig
 
 if TYPE_CHECKING:
     from algo_trading_engine.backtest.models import Position
+    from algo_trading_engine.common.models import OptionChain
+    from algo_trading_engine.models.config import BacktestConfig
 
 
 class TradingEngine(ABC):
@@ -34,16 +35,6 @@ class TradingEngine(ABC):
         
         Returns:
             True if execution completed successfully, False otherwise
-        """
-        pass
-    
-    @abstractmethod
-    def get_performance_metrics(self) -> PerformanceMetrics:
-        """
-        Get performance statistics for the trading session.
-        
-        Returns:
-            PerformanceMetrics object with all performance data
         """
         pass
     
@@ -68,11 +59,122 @@ class TradingEngine(ABC):
     def capital(self) -> float:
         """Get current capital."""
         pass
+    
+    @abstractclassmethod
+    def from_config(cls, config: Union['BacktestConfig', PaperTradingConfig]) -> 'TradingEngine':
+        """
+        Create trading engine from configuration.
+        
+        Factory method that handles all data fetching, strategy creation, and setup.
+        Child projects only need to provide configuration.
+        
+        Args:
+            config: Configuration DTO (BacktestConfig or PaperTradingConfig)
+            
+        Returns:
+            Configured TradingEngine instance ready to run
+            
+        Raises:
+            ValueError: If configuration is invalid or data fetching fails
+        """
+        pass
 
 
 # BacktestEngine is defined in backtest.main and implements TradingEngine
 # We'll import it here for convenience, but it's defined in backtest/main.py
 # to avoid circular imports
+
+
+class LiveDataProvider:
+    """
+    Data provider implementation that wraps DataRetriever and OptionsHandler
+    to provide live market data for paper trading.
+    """
+    
+    def __init__(self, data_retriever, options_handler):
+        """
+        Initialize live data provider.
+        
+        Args:
+            data_retriever: DataRetriever instance for market data
+            options_handler: OptionsHandler instance for options data
+        """
+        self._data_retriever = data_retriever
+        self._options_handler = options_handler
+    
+    def get_market_data(
+        self,
+        symbol: str,
+        start_date: datetime,
+        end_date: datetime
+    ) -> pd.DataFrame:
+        """
+        Fetch historical market data for a symbol and date range.
+        
+        Args:
+            symbol: Stock symbol (e.g., 'SPY')
+            start_date: Start date for data
+            end_date: End date for data
+            
+        Returns:
+            DataFrame with OHLCV data indexed by date
+        """
+        # Fetch data using DataRetriever
+        data = self._data_retriever.fetch_data_for_period(
+            start_date.strftime("%Y-%m-%d"),
+            'paper_trading'
+        )
+        if data is None or len(data) == 0:
+            raise ValueError(f"Failed to fetch data for {symbol} from {start_date.date()} to {end_date.date()}")
+        return data
+    
+    def get_current_price(self, symbol: str) -> float:
+        """
+        Get current/live price for a symbol.
+        
+        Args:
+            symbol: Stock symbol
+            
+        Returns:
+            Current price as float
+        """
+        price = self._data_retriever.get_live_price(symbol)
+        if price is None:
+            raise ValueError(f"Failed to fetch live price for {symbol}")
+        return price
+    
+    def get_option_chain(
+        self,
+        symbol: str,
+        date: datetime
+    ) -> Optional['OptionChain']:
+        """
+        Get options chain data for a symbol and date.
+        
+        Args:
+            symbol: Stock symbol
+            date: Date for options data
+            
+        Returns:
+            OptionChain object or None if unavailable
+        """
+        # Use OptionsHandler to get option chain
+        # This is a placeholder - actual implementation depends on OptionsHandler API
+        return None  # TODO: Implement when OptionsHandler API is available
+    
+    def load_treasury_rates(
+        self,
+        start_date: datetime,
+        end_date: Optional[datetime] = None
+    ) -> None:
+        """
+        Load treasury rates data.
+        
+        Args:
+            start_date: Start date for treasury rates
+            end_date: Optional end date for treasury rates
+        """
+        self._data_retriever.load_treasury_rates(start_date, end_date)
 
 
 class PaperTradingEngine(TradingEngine):
@@ -87,7 +189,8 @@ class PaperTradingEngine(TradingEngine):
         self,
         strategy: Strategy,
         data_provider: DataProvider,
-        config: PaperTradingConfig
+        config: PaperTradingConfig,
+        options_handler=None
     ):
         """
         Initialize paper trading engine.
@@ -96,6 +199,7 @@ class PaperTradingEngine(TradingEngine):
             strategy: Trading strategy to execute
             data_provider: Data provider for live market data
             config: Paper trading configuration
+            options_handler: Options handler instance (optional, will be extracted from strategy if not provided)
         """
         self._strategy = strategy
         self._data_provider = data_provider
@@ -104,6 +208,16 @@ class PaperTradingEngine(TradingEngine):
         self._positions: List['Position'] = []
         self._closed_positions: List[dict] = []
         self._running = False
+        
+        # Store options_handler for use in run()
+        if options_handler is not None:
+            self._options_handler = options_handler
+        elif hasattr(strategy, 'options_handler'):
+            self._options_handler = strategy.options_handler
+        elif hasattr(data_provider, '_options_handler'):
+            self._options_handler = data_provider._options_handler
+        else:
+            self._options_handler = None
     
     @property
     def strategy(self) -> Strategy:
@@ -117,21 +231,201 @@ class PaperTradingEngine(TradingEngine):
     
     def run(self) -> bool:
         """
-        Execute paper trading (placeholder implementation).
+        Execute paper trading using the recommendation engine.
         
-        TODO: Implement real-time paper trading logic.
+        Similar to recommend_cli.py, this runs the InteractiveStrategyRecommender
+        to produce recommendations for the current date.
+        
+        Returns:
+            True if execution completed successfully, False otherwise
         """
-        raise NotImplementedError("PaperTradingEngine.run() not yet implemented")
+        from datetime import datetime
+        from algo_trading_engine.prediction.decision_store import JsonDecisionStore
+        from algo_trading_engine.prediction.capital_manager import CapitalManager
+        from algo_trading_engine.prediction.recommendation_engine import InteractiveStrategyRecommender
+        
+        # Get options handler
+        if self._options_handler is None:
+            print("❌ ERROR: Options handler not available")
+            return False
+        
+        # Load capital allocation configuration
+        config_path = "config/strategies/capital_allocations.json"
+        try:
+            store = JsonDecisionStore()
+            capital_manager = CapitalManager.from_config_file(config_path, store)
+        except FileNotFoundError:
+            print(f"❌ ERROR: Capital allocation config not found: {config_path}")
+            print("   Please create the config file before using this feature.")
+            return False
+        except Exception as e:
+            print(f"❌ ERROR: Failed to load capital allocation config: {e}")
+            return False
+        
+        # Get current date
+        run_date = datetime.now()
+        
+        # Get strategy name from class
+        strategy_name = self._get_strategy_name_from_class()
+        
+        # Check for open positions
+        open_records = store.get_open_positions(symbol=self._config.symbol)
+        if open_records:
+            print(f"📊 Open positions found: {len(open_records)}")
+            
+            # Create recommender for close flow
+            recommender = InteractiveStrategyRecommender(
+                self._strategy,
+                self._options_handler,
+                store,
+                capital_manager,
+                auto_yes=False
+            )
+            
+            # Print current status for open positions
+            statuses = recommender.get_open_positions_status(run_date)
+            if statuses:
+                print("\n📈 Open position status:")
+                for s in statuses:
+                    pnl_dollars = f"${s['pnl_dollars']:.2f}" if s.get('pnl_dollars') is not None else "N/A"
+                    pnl_pct = f"{s['pnl_percent']:.1%}" if s.get('pnl_percent') is not None else "N/A"
+                    print(
+                        f"  - {s['symbol']} {s['strategy_type']} x{s['quantity']} | "
+                        f"Entry ${s['entry_price']:.2f}  Exit ${s['exit_price']:.2f} | "
+                        f"P&L {pnl_dollars} ({pnl_pct}) | Held {s['days_held']}d  DTE {s['dte']}d"
+                    )
+            
+            # Recommend closing positions
+            recommender.recommend_close_positions(run_date)
+            return True
+        
+        # No open positions - run open flow
+        print(f"📅 Running recommendation flow for {run_date.date()}")
+        
+        # Display capital status
+        print(capital_manager.get_status_summary(strategy_name))
+        print()
+        
+        # Create recommender and run
+        recommender = InteractiveStrategyRecommender(
+            self._strategy,
+            self._options_handler,
+            store,
+            capital_manager,
+            auto_yes=False
+        )
+        
+        try:
+            recommender.run(run_date, auto_yes=False)
+            return True
+        except Exception as e:
+            print(f"❌ ERROR: Failed to run recommendation engine: {e}")
+            return False
     
-    def get_performance_metrics(self) -> PerformanceMetrics:
+    def _get_strategy_name_from_class(self) -> str:
         """
-        Get performance statistics (placeholder implementation).
+        Get strategy name from strategy class for capital manager.
         
-        TODO: Implement performance metrics calculation.
+        Returns:
+            Strategy name string (e.g., 'credit_spread', 'velocity_momentum')
         """
-        raise NotImplementedError("PaperTradingEngine.get_performance_metrics() not yet implemented")
+        class_name = self._strategy.__class__.__name__.lower()
+        
+        # Map class names to strategy names
+        if 'credit' in class_name and 'spread' in class_name:
+            return 'credit_spread'
+        elif 'velocity' in class_name or 'momentum' in class_name:
+            return 'velocity_momentum'
+        else:
+            # Default: use class name as-is
+            return class_name
     
     def get_positions(self) -> List['Position']:
         """Get current open positions."""
         return self._positions.copy()
+    
+    @classmethod
+    def from_config(cls, config: PaperTradingConfig) -> 'PaperTradingEngine':
+        """
+        Create PaperTradingEngine from configuration.
+        
+        Handles all data fetching, strategy creation, and setup internally.
+        Child projects only need to provide configuration.
+        
+        Args:
+            config: PaperTradingConfig DTO with all necessary parameters
+            
+        Returns:
+            Configured PaperTradingEngine instance ready to run
+            
+        Raises:
+            ValueError: If configuration is invalid or data fetching fails
+        """
+        # Internal: Create data retriever
+        # For paper trading, we need recent historical data for strategy initialization
+        # Use a default lookback period (e.g., 120 days) for LSTM data
+        from datetime import timedelta
+        from algo_trading_engine.common.data_retriever import DataRetriever
+        from algo_trading_engine.common.options_handler import OptionsHandler
+        from algo_trading_engine.backtest.strategy_builder import create_strategy_from_args
+        
+        # Calculate start date for data retrieval (120 days back from today)
+        today = datetime.now()
+        lstm_start_date = (today - timedelta(days=120)).strftime("%Y-%m-%d")
+        
+        retriever = DataRetriever(
+            symbol=config.symbol,
+            lstm_start_date=lstm_start_date,
+            quiet_mode=True,
+            use_free_tier=config.use_free_tier
+        )
+        
+        # Internal: Fetch recent data for strategy initialization
+        # For paper trading, we fetch data up to today
+        data = retriever.fetch_data_for_period(
+            lstm_start_date,
+            'paper_trading'
+        )
+        
+        if data is None or len(data) == 0:
+            raise ValueError(f"Failed to fetch data for {config.symbol}")
+        
+        # Internal: Create options handler
+        options_handler = OptionsHandler(
+            symbol=config.symbol,
+            api_key=config.api_key,
+            use_free_tier=config.use_free_tier
+        )
+        
+        # Internal: Create or use provided strategy
+        if isinstance(config.strategy_type, str):
+            # Create strategy from string name
+            strategy = create_strategy_from_args(
+                strategy_name=config.strategy_type,
+                symbol=config.symbol,
+                options_handler=options_handler,
+                stop_loss=config.stop_loss,
+                profit_target=config.profit_target
+            )
+            if strategy is None:
+                raise ValueError(f"Failed to create strategy: {config.strategy_type}")
+        else:
+            # Strategy instance provided - inject options_handler if it has that attribute
+            strategy = config.strategy_type
+            if hasattr(strategy, 'options_handler'):
+                strategy.options_handler = options_handler
+        
+        # Internal: Set data on strategy
+        strategy.set_data(data, retriever.treasury_rates)
+        
+        # Internal: Create live data provider
+        data_provider = LiveDataProvider(retriever, options_handler)
+        
+        # Create and return engine
+        return cls(
+            strategy=strategy,
+            data_provider=data_provider,
+            config=config,
+            options_handler=options_handler
+        )
 

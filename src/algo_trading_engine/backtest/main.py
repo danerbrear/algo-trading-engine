@@ -678,10 +678,10 @@ def parse_arguments():
                        help='Initial capital for backtesting')
     parser.add_argument('--max-position-size', type=float, default=0.40,
                        help='Maximum position size as fraction of capital')
-    parser.add_argument('--start-date', type=str, default='2024-08-01',
-                       help='Start date for backtest (YYYY-MM-DD)')
-    parser.add_argument('--end-date', type=str, default='2025-10-15',
-                       help='End date for backtest (YYYY-MM-DD)')
+    parser.add_argument('--start-date', type=str, default=None,
+                       help='Start date for backtest (YYYY-MM-DD). Defaults to one year before today if not provided.')
+    parser.add_argument('--end-date', type=str, default=None,
+                       help='End date for backtest (YYYY-MM-DD). Defaults to today if not provided.')
     parser.add_argument('--symbol', type=str, default='SPY',
                        help='Symbol to trade')
     parser.add_argument('--verbose', action='store_true', default=False,
@@ -692,81 +692,68 @@ def parse_arguments():
     return parser.parse_args()
 
 if __name__ == "__main__":
+    import os
+    
     # Parse command line arguments
     args = parse_arguments()
     
-    # Convert date strings to datetime objects
-    start_date = datetime.strptime(args.start_date, '%Y-%m-%d')
-    end_date = datetime.strptime(args.end_date, '%Y-%m-%d')
+    # Set default dates if not provided
+    today = datetime.now()
+    if args.start_date is None:
+        # Default to one year before today
+        start_date = today - timedelta(days=365)
+    else:
+        start_date = datetime.strptime(args.start_date, '%Y-%m-%d')
+    
+    if args.end_date is None:
+        # Default to today
+        end_date = today
+    else:
+        end_date = datetime.strptime(args.end_date, '%Y-%m-%d')
+    
+    # Get API key from environment
+    api_key = os.getenv("POLYGON_API_KEY")
+    
+    # Create configuration using BacktestConfig (same as examples)
+    config = BacktestConfigDTO(
+        initial_capital=args.initial_capital,
+        start_date=start_date,
+        end_date=end_date,
+        symbol=args.symbol,
+        strategy_type=args.strategy,
+        max_position_size=args.max_position_size,
+        api_key=api_key,
+        use_free_tier=args.free,
+        quiet_mode=not args.verbose,
+        lstm_start_date_offset=args.start_date_offset,
+        stop_loss=args.stop_loss,
+        profit_target=args.profit_target
+    )
     
     print(f"🚀 Starting backtest with strategy: {args.strategy}")
     print(f"   Date range: {start_date.date()} to {end_date.date()}")
     print(f"   Symbol: {args.symbol}")
     print(f"   Initial capital: ${args.initial_capital:,.2f}")
     print(f"   Max position size: {args.max_position_size * 100:.1f}%")
-    print(f"   Stop loss: {args.stop_loss * 100:.1f}%") if args.stop_loss else print("   Stop loss: None")
+    if args.stop_loss:
+        print(f"   Stop loss: {args.stop_loss * 100:.1f}%")
     if args.profit_target:
         print(f"   Profit target: {args.profit_target * 100:.1f}%")
     print()
 
-    data_retriever = DataRetriever(
-        symbol=args.symbol, 
-        hmm_start_date=start_date, 
-        lstm_start_date=start_date, 
-        use_free_tier=args.free, 
-        quiet_mode=not args.verbose
-    )
-
-    # Load treasury rates before starting backtest
-    data_retriever.load_treasury_rates(start_date, end_date)
-
     try:
-        data = data_retriever.fetch_data_for_period(start_date, 'backtest')
-
-        # Create options handler to inject into strategy
-        # Get API key from environment or args if provided
-        api_key = getattr(args, 'api_key', None)
-        options_handler = OptionsHandler(
-            symbol=args.symbol,
-            api_key=api_key,
-            use_free_tier=args.free
-        )
-
-        strategy = create_strategy_from_args(
-            strategy_name=args.strategy,
-            symbol=args.symbol,
-            options_handler=options_handler,
-            start_date_offset=args.start_date_offset,
-            stop_loss=args.stop_loss,
-            profit_target=args.profit_target
-        )
+        # Create and run engine using from_config (same as examples)
+        engine = BacktestEngine.from_config(config)
+        success = engine.run()
         
-        if strategy is None:
-            print("❌ Failed to create strategy")
-            exit(1)
-
-        if (args.strategy == 'credit_spread'):
-            data = data_retriever.prepare_data_for_lstm()
-        
-        strategy.set_data(data, data_retriever.treasury_rates)
-
-        backtester = BacktestEngine(
-            data=data, 
-            strategy=strategy,
-            initial_capital=args.initial_capital,
-            start_date=start_date,
-            end_date=end_date,
-            max_position_size=args.max_position_size,
-            quiet_mode=not args.verbose
-        )
-        
-        success = backtester.run()
         if success:
             print("✅ Backtest completed successfully!")
         else:
             print("❌ Backtest failed!")
+            exit(1)
             
     except Exception as e:
         print(f"❌ Error during backtest: {e}")
         import traceback
         traceback.print_exc()
+        exit(1)

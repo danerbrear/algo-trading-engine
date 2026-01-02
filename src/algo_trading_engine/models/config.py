@@ -66,12 +66,12 @@ class PaperTradingConfig:
     """
     initial_capital: float
     symbol: str
+    strategy_type: Union[str, 'Strategy']  # Strategy name (str) or Strategy instance (from core.strategy)
     max_position_size: Optional[float] = None  # Fraction of capital
-    volume_config: Optional[VolumeConfig] = None
-    execution_delay_seconds: int = 0  # Simulate execution delay
-    slippage_model: Optional['SlippageModel'] = None  # Optional slippage simulation
     api_key: Optional[str] = None  # Polygon.io API key (falls back to POLYGON_API_KEY env var)
     use_free_tier: bool = False  # Use free tier rate limiting (13 second timeout)
+    stop_loss: Optional[float] = None  # Optional stop loss percentage
+    profit_target: Optional[float] = None  # Optional profit target percentage
     
     def __post_init__(self):
         """Validate configuration after initialization."""
@@ -80,11 +80,6 @@ class PaperTradingConfig:
         if self.max_position_size is not None:
             if not 0 < self.max_position_size <= 1:
                 raise ValueError("Max position size must be between 0 and 1")
-        if self.execution_delay_seconds < 0:
-            raise ValueError("Execution delay cannot be negative")
-        if self.volume_config is None:
-            # Set default volume config
-            object.__setattr__(self, 'volume_config', VolumeConfig())
 
 
 # Placeholder for future slippage model
