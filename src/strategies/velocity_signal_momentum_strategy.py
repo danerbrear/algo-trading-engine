@@ -564,15 +564,15 @@ class VelocitySignalMomentumStrategy(Strategy):
                 progress_print("⚠️  No contracts found for the date")
                 return None
             
-            # Extract unique expiration dates from contracts
-            expirations = set(str(contract.expiration_date) for contract in contracts)
+            # Extract unique expiration dates from contracts and sort for deterministic behavior
+            expirations = sorted(set(str(contract.expiration_date) for contract in contracts))
             progress_print(f"🔍 Found {len(expirations)} expirations from contracts")
             
             if not expirations:
                 progress_print("⚠️  No expirations found in option chain")
                 return None
                 
-            # Calculate days out for each expiration and select closest to target (7 days)
+            # Calculate days out for each expiration and select closest to target (14 days)
             valid_expirations = [(e, days_out(e)) for e in expirations]
             valid_expirations = [(e, d) for e, d in valid_expirations if d > 0]
             
@@ -580,8 +580,17 @@ class VelocitySignalMomentumStrategy(Strategy):
                 progress_print("⚠️  No future expirations available")
                 return None
                 
-            # Select the expiration closest to target (7 days)
-            best_expiration = min(valid_expirations, key=lambda x: abs(x[1] - target_days))[0]
+            # Select the expiration closest to target (14 days)
+            # Use a tie-breaker: if multiple expirations are equidistant from target,
+            # prefer the one with more days out (later expiration), then date string for determinism
+            best_expiration = min(
+                valid_expirations, 
+                key=lambda x: (
+                    abs(x[1] - target_days),  # Primary: distance from target
+                    -x[1],  # Secondary: prefer more days out (later expiration) if tied
+                    x[0]  # Tertiary: date string for final deterministic tie-breaker
+                )
+            )[0]
             days_to_exp = days_out(best_expiration)
             progress_print(f"✅ Selected expiration: {best_expiration} ({days_to_exp} days out)")
             
