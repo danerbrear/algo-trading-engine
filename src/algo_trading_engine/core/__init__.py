@@ -1,17 +1,13 @@
 """
 Core interfaces for the trading engine.
 
-This package provides abstract base classes and protocols for strategies,
-engines, and data providers.
+Internal implementation details - use the public API through the main package:
+    from algo_trading_engine import Strategy, PaperTradingEngine
 """
 
 from .strategy import Strategy
 from .engine import TradingEngine, PaperTradingEngine
 from .data_provider import DataProvider
-
-# BacktestEngine is imported here for convenience, but defined in backtest.main
-# to avoid circular imports. Import it lazily or directly from backtest.main where needed.
-# from algo_trading_engine.backtest.main import BacktestEngine  # Removed to break circular import
 
 __all__ = [
     'Strategy',

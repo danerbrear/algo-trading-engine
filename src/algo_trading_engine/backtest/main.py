@@ -689,8 +689,11 @@ def parse_arguments():
     
     return parser.parse_args()
 
-if __name__ == "__main__":
+
+def main():
+    """Main entry point for backtest CLI."""
     import os
+    import sys
     
     # Parse command line arguments
     args = parse_arguments()
@@ -746,12 +749,17 @@ if __name__ == "__main__":
         
         if success:
             print("✅ Backtest completed successfully!")
+            sys.exit(0)
         else:
             print("❌ Backtest failed!")
-            exit(1)
+            sys.exit(1)
             
     except Exception as e:
         print(f"❌ Error during backtest: {e}")
         import traceback
         traceback.print_exc()
-        exit(1)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
