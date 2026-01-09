@@ -228,7 +228,7 @@ Total: 2.5–3.5 days
 ### Agentic Standards
 - No deprecated functions; new modules are clean additions
 - New classes covered by unit tests
-- No new third-party libs required; if added, will be listed in `requirements.txt`
+- No new third-party libs required; if added, will be listed in `pyproject.toml`
 - All imports are used and validated
 
 ### DTO Rules
