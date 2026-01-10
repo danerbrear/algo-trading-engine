@@ -264,6 +264,9 @@ python -m pytest tests/test_velocity_strategy.py -v
 
 ## 📚 Documentation
 
+### API Documentation
+- **[Public API Organization](docs/public_api_organization.md)** - Guide to the public API structure and usage patterns
+
 ### Component Documentation
 - **[Model Documentation](algo_trading_engine/model/README.md)** - ML models, training, and evaluation
 - **[Strategy Documentation](algo_trading_engine/strategies/README.md)** - Trading strategy implementations

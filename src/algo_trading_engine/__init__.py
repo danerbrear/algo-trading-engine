@@ -21,9 +21,14 @@ Metrics:
     - PerformanceMetrics: Performance statistics from backtesting
     - PositionStats: Statistics for individual positions
 
+Sub-packages:
+    - dto: Data Transfer Objects for API communication
+    - types: Runtime types, value objects, and enums
+
 Example Usage:
 --------------
     from algo_trading_engine import BacktestEngine, BacktestConfig
+    from algo_trading_engine.types import StrategyType, Position
     from datetime import datetime
     
     config = BacktestConfig(
@@ -56,8 +61,9 @@ from algo_trading_engine.models.metrics import (
     PerformanceMetrics,
     PositionStats,
 )
-# Import DTO sub-package for easy access
+# Import sub-packages for easy access
 from algo_trading_engine import dto
+from algo_trading_engine import types
 
 # Define public API
 __all__ = [
@@ -74,8 +80,9 @@ __all__ = [
     # Metrics
     "PerformanceMetrics",
     "PositionStats",
-    # DTO sub-package (for strategy development)
+    # Sub-packages (for strategy development)
     "dto",
+    "types",
 ]
 
 __version__ = "0.0.3"
