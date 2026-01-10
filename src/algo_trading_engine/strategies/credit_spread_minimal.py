@@ -10,7 +10,7 @@ from algo_trading_engine.common.progress_tracker import progress_print
 from algo_trading_engine.common.options_dtos import ExpirationRangeDTO, StrikeRangeDTO, StrikePrice, ExpirationDate
 from algo_trading_engine.model.lstm_model import LSTMModel
 from decimal import Decimal
-from algo_trading_engine.common.options_handler import OptionsHandler
+from typing import Callable
 
 class CreditSpreadStrategy(Strategy):
     """
@@ -21,13 +21,17 @@ class CreditSpreadStrategy(Strategy):
 
     holding_period = 25
 
-    def __init__(self, options_handler: OptionsHandler, lstm_model, lstm_scaler, symbol: str = 'SPY', start_date_offset: int = 0):
+    def __init__(self, get_contract_list_for_date: Callable, get_option_bar: Callable, get_options_chain: Callable, lstm_model, lstm_scaler, symbol: str = 'SPY', start_date_offset: int = 0, options_handler=None):
         super().__init__(stop_loss=0.6, start_date_offset=start_date_offset)
         self.lstm_model = lstm_model
         self.lstm_scaler = lstm_scaler
         self.symbol = symbol
         
-        self.options_handler = options_handler
+        self.get_contract_list_for_date = get_contract_list_for_date
+        self.get_option_bar = get_option_bar
+        self.get_options_chain = get_options_chain
+        # Store options_handler for LSTMModel compatibility (temporary bridge)
+        self._options_handler = options_handler
 
         self.error_count = 0
     
@@ -35,9 +39,12 @@ class CreditSpreadStrategy(Strategy):
         super().set_data(data, treasury_data)
 
         # Use LSTMModel static methods with options_handler
+        # Note: LSTMModel.calculate_option_features expects OptionsHandler
+        if self._options_handler is None:
+            raise ValueError("options_handler is required for LSTMModel compatibility")
         self.data = LSTMModel.calculate_option_features(
             self.data, 
-            self.options_handler
+            self._options_handler
         )
         self.data = LSTMModel.calculate_option_signals(self.data)
 
@@ -79,8 +86,8 @@ class CreditSpreadStrategy(Strategy):
             max_days = max_dte if max_dte is not None else 60
             expiration_range = ExpirationRangeDTO(min_days=min_days, max_days=max_days)
             
-            # Fetch options chain using options_handler
-            chain_dto = self.options_handler.get_options_chain(
+            # Fetch options chain
+            chain_dto = self.get_options_chain(
                 date=date,
                 current_price=current_price,
                 strike_range=strike_range,
@@ -268,7 +275,7 @@ class CreditSpreadStrategy(Strategy):
         # Get available expiration dates using get_contract_list_for_date with ExpirationRangeDTO
         try:
             expiration_range = ExpirationRangeDTO(min_days=min_days, max_days=max_days)
-            contracts = self.options_handler.get_contract_list_for_date(date, expiration_range=expiration_range)
+            contracts = self.get_contract_list_for_date(date, expiration_range=expiration_range)
             expirations = sorted(set(str(contract.expiration_date) for contract in contracts))
             
             if not expirations:
@@ -400,7 +407,7 @@ class CreditSpreadStrategy(Strategy):
             strike_range = StrikeRangeDTO(min_strike=strike_price, max_strike=strike_price)
             expiration_range = ExpirationRangeDTO(target_date=expiration_date, current_date=date.date())
             
-            contracts = self.options_handler.get_contract_list_for_date(
+            contracts = self.get_contract_list_for_date(
                 date,
                 strike_range=strike_range,
                 expiration_range=expiration_range
@@ -416,7 +423,7 @@ class CreditSpreadStrategy(Strategy):
                 return None
             
             # Get price/volume data using get_option_bar
-            bar = self.options_handler.get_option_bar(contract_dto, date)
+            bar = self.get_option_bar(contract_dto, date)
             if bar is None:
                 return None
             
@@ -660,7 +667,7 @@ class CreditSpreadStrategy(Strategy):
         
         # Create position using the best spread
         position = Position(
-            symbol=self.options_handler.symbol,
+            symbol=self.symbol,
             expiration_date=datetime.strptime(atm_option.expiration, '%Y-%m-%d'),
             strategy_type=StrategyType.CALL_CREDIT_SPREAD,
             strike_price=best_spread['atm_strike'],
@@ -714,7 +721,7 @@ class CreditSpreadStrategy(Strategy):
         
         # Create position using the best spread
         position = Position(
-            symbol=self.options_handler.symbol,
+            symbol=self.symbol,
             expiration_date=datetime.strptime(atm_option.expiration, '%Y-%m-%d'),
             strategy_type=StrategyType.PUT_CREDIT_SPREAD,
             strike_price=best_spread['atm_strike'],
@@ -878,11 +885,11 @@ class CreditSpreadStrategy(Strategy):
                 live_price = self.data_retriever.get_live_price()
                 if live_price is not None:
                     return live_price
-            elif hasattr(self.options_handler, 'symbol'):
+            else:
                 # Fallback: create a temporary DataRetriever for live price
                 from algo_trading_engine.common.data_retriever import DataRetriever
-                temp_retriever = DataRetriever(symbol=self.options_handler.symbol, use_free_tier=True, quiet_mode=True)
-                temp_retriever.options_handler = self.options_handler
+                temp_retriever = DataRetriever(symbol=self.symbol, use_free_tier=True, quiet_mode=True)
+                # Note: We can't set options_handler on DataRetriever anymore, but symbol should be sufficient
                 live_price = temp_retriever.get_live_price()
                 if live_price is not None:
                     return live_price

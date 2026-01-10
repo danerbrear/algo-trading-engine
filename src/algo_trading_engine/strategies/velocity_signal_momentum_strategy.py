@@ -10,12 +10,12 @@ from algo_trading_engine.backtest.models import Strategy, Position, StrategyType
 from algo_trading_engine.common.models import TreasuryRates
 from algo_trading_engine.common.options_dtos import ExpirationRangeDTO, OptionsChainDTO
 from algo_trading_engine.common.progress_tracker import progress_print
-from algo_trading_engine.common.options_handler import OptionsHandler
 from algo_trading_engine.common.options_helpers import OptionsRetrieverHelper
 from algo_trading_engine.common.models import OptionType
 from algo_trading_engine.common.options_dtos import StrikeRangeDTO, StrikePrice
 from algo_trading_engine.common.data_retriever import DataRetriever
 from decimal import Decimal
+from typing import Callable
 
 class VelocitySignalMomentumStrategy(Strategy):
     """
@@ -26,10 +26,12 @@ class VelocitySignalMomentumStrategy(Strategy):
     # Configurable holding period in trading days
     holding_period = 4
 
-    def __init__(self, options_handler: OptionsHandler, start_date_offset: int = 60, stop_loss: float = None, profit_target: float = None):
+    def __init__(self, get_contract_list_for_date: Callable, get_option_bar: Callable, get_options_chain: Callable, start_date_offset: int = 60, stop_loss: float = None, profit_target: float = None):
         super().__init__(start_date_offset=start_date_offset, stop_loss=stop_loss, profit_target=profit_target)
 
-        self.new_options_handler = options_handler
+        self.get_contract_list_for_date = get_contract_list_for_date
+        self.get_option_bar = get_option_bar
+        self.get_options_chain = get_options_chain
         
         # Track position entries for plotting
         self._position_entries = []
@@ -358,7 +360,7 @@ class VelocitySignalMomentumStrategy(Strategy):
                 max_strike=StrikePrice(Decimal(str(current_price + 1)))    # current_price + 1
             )
             
-            contracts = self.new_options_handler.get_contract_list_for_date(date, strike_range=strike_range, expiration_range=expiration_range)
+            contracts = self.get_contract_list_for_date(date, strike_range=strike_range, expiration_range=expiration_range)
 
             if not contracts:
                 progress_print("⚠️  No contracts found for the date")
@@ -418,8 +420,8 @@ class VelocitySignalMomentumStrategy(Strategy):
             progress_print(f"✅ Verified: Both legs have same expiration {expiration} (vertical spread)")
             
             # Get bar data to calculate net credit
-            atm_bar = self.new_options_handler.get_option_bar(atm_put, date)
-            otm_bar = self.new_options_handler.get_option_bar(otm_put, date)
+            atm_bar = self.get_option_bar(atm_put, date)
+            otm_bar = self.get_option_bar(otm_put, date)
             
             if not atm_bar or not otm_bar:
                 progress_print("⚠️  No bar data available for credit calculation")
@@ -507,16 +509,12 @@ class VelocitySignalMomentumStrategy(Strategy):
         current_date = datetime.now().date()
         if date.date() == current_date:
             # Initialize DataRetriever when needed
-            # Try to get symbol from options handler first, then data index name, then default to SPY
-            symbol = None
+            # Get symbol from data index name or default to SPY
+            symbol = self.data.index.name if self.data.index.name else 'SPY'
             
-            # Try options handler first (most reliable)
-            if hasattr(self, 'new_options_handler') and hasattr(self.new_options_handler, 'symbol'):
-                symbol = self.new_options_handler.symbol
-            
-            # Default to SPY if symbol not found
-            if symbol is None:
-                raise ValueError("Symbol not found in options handler or data index name.")
+            # If data index name is not set, try to infer from data columns or use default
+            if symbol is None or symbol == '':
+                symbol = 'SPY'
             
             try:
                 data_retriever = DataRetriever(symbol=symbol, use_free_tier=True, quiet_mode=True)
@@ -541,7 +539,7 @@ class VelocitySignalMomentumStrategy(Strategy):
             max_strike=StrikePrice(Decimal(str(current_price + 1)))    # current_price + 1
         )
 
-        live_chain = self.new_options_handler.get_options_chain(date, current_price, strike_range=strike_range, expiration_range=expiration_range)
+        live_chain = self.get_options_chain(date, current_price, strike_range=strike_range, expiration_range=expiration_range)
         if live_chain and (live_chain.get_calls() or live_chain.get_puts()):
             progress_print(f"✅ Successfully fetched live option chain with {len(live_chain.get_calls())} calls and {len(live_chain.get_puts())} puts")
             self.options_data[date_key] = live_chain
@@ -552,7 +550,7 @@ class VelocitySignalMomentumStrategy(Strategy):
 
     def _select_week_expiration(self, date: datetime) -> Optional[str]:
         """
-        Select the best expiration date for the strategy using new_options_handler.
+        Select the best expiration date for the strategy using options_retriever.
         Prefer expirations 5-10 days out, else nearest > 0 days, target 7 days.
         """
         progress_print(f"🔍 _select_week_expiration called for {date.strftime('%Y-%m-%d')}")
@@ -565,16 +563,16 @@ class VelocitySignalMomentumStrategy(Strategy):
             except Exception:
                 return -9999
         
-        # Try to get expirations from new_options_handler
+        # Try to get expirations from options_retriever
         try:
-            progress_print("🔍 Fetching expirations from new_options_handler for 5-10 day window...")
+            progress_print("🔍 Fetching expirations from options_retriever for 5-10 day window...")
             
             # Use new_options_handler to get available expirations
             from algo_trading_engine.common.options_dtos import ExpirationRangeDTO
             expiration_range = ExpirationRangeDTO(min_days=5, max_days=10)
             
             # Get contracts for the date (already filtered by expiration range)
-            contracts = self.new_options_handler.get_contract_list_for_date(date, expiration_range=expiration_range)
+            contracts = self.get_contract_list_for_date(date, expiration_range=expiration_range)
             
             if not contracts:
                 progress_print("⚠️  No contracts found for the date")
@@ -604,7 +602,7 @@ class VelocitySignalMomentumStrategy(Strategy):
             return best_expiration
             
         except Exception as e:
-            progress_print(f"❌ Error fetching expirations from new_options_handler: {str(e)}")
+            progress_print(f"❌ Error fetching expirations from options_retriever: {str(e)}")
             return None
     
 
@@ -666,7 +664,7 @@ class VelocitySignalMomentumStrategy(Strategy):
         progress_print(f"✅ Strategy evaluation complete - no positions closed on {date.strftime('%Y-%m-%d')}")
 
     def _compute_exit_price(self, date: datetime, position: Position) -> tuple[Optional[float], bool]:
-        """Compute exit price using new_options_handler.get_option_bar and calculate_exit_price_from_bars"""
+        """Compute exit price using options_retriever.get_option_bar and calculate_exit_price_from_bars"""
         try:
             if not position.spread_options or len(position.spread_options) != 2:
                 progress_print("⚠️  Position doesn't have valid spread options")
@@ -675,9 +673,9 @@ class VelocitySignalMomentumStrategy(Strategy):
             atm_option, otm_option = position.spread_options
             progress_print(f"🔍 Attempting to get bar data for {date.strftime('%Y-%m-%d')} - ATM: {atm_option.ticker}, OTM: {otm_option.ticker}")
             
-            # Get bar data for both options using new_options_handler
-            atm_bar = self.new_options_handler.get_option_bar(atm_option, date)
-            otm_bar = self.new_options_handler.get_option_bar(otm_option, date)
+            # Get bar data for both options
+            atm_bar = self.get_option_bar(atm_option, date)
+            otm_bar = self.get_option_bar(otm_option, date)
             
             progress_print(f"🔍 Bar data results - ATM bar: {atm_bar is not None}, OTM bar: {otm_bar is not None}")
             
@@ -726,13 +724,13 @@ class VelocitySignalMomentumStrategy(Strategy):
 
     def get_current_volumes_for_position(self, position: Position, date: datetime) -> list[int]:
         """
-        Fetch current date volume data for all options in a position using new_options_handler.
+        Fetch current date volume data for all options in a position using options_retriever.
         """
         current_volumes = []
         for option in position.spread_options:
             try:
-                # Use new_options_handler.get_bar to get current volume data
-                bar_data = self.new_options_handler.get_option_bar(option, date)
+                # Get current volume data
+                bar_data = self.get_option_bar(option, date)
                 
                 if bar_data and bar_data.volume is not None:
                     current_volumes.append(bar_data.volume)

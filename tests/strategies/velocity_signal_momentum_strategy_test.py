@@ -15,7 +15,15 @@ class TestVelocitySignalMomentumStrategy:
         """Set up test data"""
         # Create a mock options handler for testing
         mock_options_handler = Mock()
-        self.strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        # Create callables from options_handler methods
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
+        self.strategy = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         
         # Create sample market data
         dates = pd.date_range('2021-01-01', '2021-01-30', freq='D')
@@ -74,10 +82,15 @@ class TestVelocitySignalMomentumStrategy:
     def test_profit_target_and_stop_loss_initialization(self):
         """Test that profit_target and stop_loss are properly initialized"""
         mock_options_handler = Mock()
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
         
         # Test with both parameters
         strategy_with_params = VelocitySignalMomentumStrategy(
-            options_handler=mock_options_handler,
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain,
             profit_target=0.25,
             stop_loss=0.60
         )
@@ -86,7 +99,9 @@ class TestVelocitySignalMomentumStrategy:
         
         # Test with None (default)
         strategy_without_params = VelocitySignalMomentumStrategy(
-            options_handler=mock_options_handler
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
         )
         assert strategy_without_params.profit_target is None
         assert strategy_without_params.stop_loss is None
@@ -94,8 +109,13 @@ class TestVelocitySignalMomentumStrategy:
     def test_should_close_due_to_profit_target(self):
         """Test that profit target check works correctly"""
         mock_options_handler = Mock()
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
         strategy = VelocitySignalMomentumStrategy(
-            options_handler=mock_options_handler,
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain,
             profit_target=0.20
         )
         
@@ -112,7 +132,9 @@ class TestVelocitySignalMomentumStrategy:
         
         # Should not close when profit_target is None
         strategy_no_target = VelocitySignalMomentumStrategy(
-            options_handler=mock_options_handler,
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain,
             profit_target=None
         )
         assert strategy_no_target._should_close_due_to_profit_target(position, 1.5) == False
@@ -120,8 +142,13 @@ class TestVelocitySignalMomentumStrategy:
     def test_should_close_due_to_stop_loss(self):
         """Test that stop loss check works correctly"""
         mock_options_handler = Mock()
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
         strategy = VelocitySignalMomentumStrategy(
-            options_handler=mock_options_handler,
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain,
             stop_loss=0.60
         )
         
@@ -138,19 +165,28 @@ class TestVelocitySignalMomentumStrategy:
         
         # Should not close when stop_loss is None
         strategy_no_stop = VelocitySignalMomentumStrategy(
-            options_handler=mock_options_handler,
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain,
             stop_loss=None
         )
         assert strategy_no_stop._should_close_due_to_stop(position, 1.5) == False
 
     def test_select_week_expiration_prefers_5_to_10_days(self):
         mock_options_handler = Mock()
-        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
+        strategy = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         
-        # Mock the new_options_handler to return contracts with different expirations
-        strategy.new_options_handler = Mock()
-        from algo_trading_engine.common.options_dtos import OptionContractDTO
+        # Mock the callables to return contracts with different expirations
+        from algo_trading_engine.common.options_dtos import OptionContractDTO, StrikePrice, ExpirationDate
         from algo_trading_engine.common.models import OptionType as CommonOptionType
+        from decimal import Decimal
         
         # Create mock contracts with different expiration dates
         contracts = [
@@ -158,41 +194,32 @@ class TestVelocitySignalMomentumStrategy:
                 ticker='O:SPY240103P100',
                 underlying_ticker='SPY',
                 contract_type=CommonOptionType.PUT,
-                strike_price=100.0,
-                expiration_date='2024-01-03',  # 2 days
+                strike_price=StrikePrice(Decimal('100.0')),
+                expiration_date=ExpirationDate(datetime(2024, 1, 3).date()),  # 2 days
                 exercise_style='american',
-                shares_per_contract=100,
-                primary_exchange='BATO',
-                cfi='OCASPS',
-                additional_underlyings=None
+                shares_per_contract=100
             ),
             OptionContractDTO(
                 ticker='O:SPY240108P100',
                 underlying_ticker='SPY',
                 contract_type=CommonOptionType.PUT,
-                strike_price=100.0,
-                expiration_date='2024-01-08',  # 7 days (preferred)
+                strike_price=StrikePrice(Decimal('100.0')),
+                expiration_date=ExpirationDate(datetime(2024, 1, 8).date()),  # 7 days (preferred)
                 exercise_style='american',
-                shares_per_contract=100,
-                primary_exchange='BATO',
-                cfi='OCASPS',
-                additional_underlyings=None
+                shares_per_contract=100
             ),
             OptionContractDTO(
                 ticker='O:SPY240120P100',
                 underlying_ticker='SPY',
                 contract_type=CommonOptionType.PUT,
-                strike_price=100.0,
-                expiration_date='2024-01-20',  # 19 days
+                strike_price=StrikePrice(Decimal('100.0')),
+                expiration_date=ExpirationDate(datetime(2024, 1, 20).date()),  # 19 days
                 exercise_style='american',
-                shares_per_contract=100,
-                primary_exchange='BATO',
-                cfi='OCASPS',
-                additional_underlyings=None
+                shares_per_contract=100
             )
         ]
         
-        strategy.new_options_handler.get_contract_list_for_date.return_value = contracts
+        strategy.get_contract_list_for_date = Mock(return_value=contracts)
         
         date = datetime(2024, 1, 1)
         picked = strategy._select_week_expiration(date)
@@ -200,7 +227,14 @@ class TestVelocitySignalMomentumStrategy:
 
     def test_get_current_underlying_price(self):
         mock_options_handler = Mock()
-        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
+        strategy = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         dates = pd.date_range('2024-01-01', periods=3)
         data = pd.DataFrame({'Close': [100.0, 101.0, 102.0]}, index=dates)
         strategy.set_data(data)
@@ -212,7 +246,14 @@ class TestVelocitySignalMomentumStrategy:
 
     def test_sanitize_exit_price(self):
         mock_options_handler = Mock()
-        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
+        strategy = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         assert strategy._sanitize_exit_price(-1.234) == 0.0
         assert strategy._sanitize_exit_price(0.004) == 0.0
         assert strategy._sanitize_exit_price(1.235) == 1.24
@@ -220,7 +261,14 @@ class TestVelocitySignalMomentumStrategy:
 
     def test_should_close_predicates(self):
         mock_options_handler = Mock()
-        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
+        strategy = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         # Use the existing position fixture
         pos = self.position
         # Entry 2021-01-15; test date 2021-01-20 -> 5 days
@@ -230,14 +278,20 @@ class TestVelocitySignalMomentumStrategy:
 
     def test_compute_exit_price_with_chain_and_missing_contracts(self):
         mock_options_handler = Mock()
-        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
+        strategy = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         
-        # Mock the new_options_handler to return bar data
-        strategy.new_options_handler = Mock()
+        # Mock the callables to return bar data
         from algo_trading_engine.common.options_dtos import OptionBarDTO
+        from decimal import Decimal
         
         # Create mock bar data
-        from decimal import Decimal
         atm_bar = OptionBarDTO(
             ticker='O:SPY240115P100',
             timestamp=datetime(2024, 1, 1),
@@ -261,7 +315,7 @@ class TestVelocitySignalMomentumStrategy:
             number_of_transactions=50
         )
         
-        strategy.new_options_handler.get_option_bar.side_effect = lambda option, date: atm_bar if option.strike == 100.0 else otm_bar
+        strategy.get_option_bar = Mock(side_effect=lambda option, date: atm_bar if option.strike == 100.0 else otm_bar)
         
         date = datetime(2024, 1, 1)
         # Position with both legs - use tickers that match the bar data
@@ -289,7 +343,14 @@ class TestVelocitySignalMomentumStrategy:
     def test_get_risk_free_rate_without_treasury_data(self):
         """Test getting risk-free rate when treasury data is not available."""
         mock_options_handler = Mock()
-        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
+        strategy = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         strategy.set_data(pd.DataFrame({'Close': [100, 101, 102]}))
         
         rate = strategy._get_risk_free_rate(datetime.now())
@@ -300,45 +361,42 @@ class TestVelocitySignalMomentumStrategy:
     def test_create_test_put_credit_spread_success(self):
         """Test creating a test put credit spread successfully."""
         mock_options_handler = Mock()
-        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
+        strategy = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         
-        # Mock the new_options_handler to return contracts
-        strategy.new_options_handler = Mock()
-        from algo_trading_engine.common.options_dtos import OptionContractDTO
+        # Mock the callables to return contracts
+        from algo_trading_engine.common.options_dtos import OptionContractDTO, StrikePrice, ExpirationDate
         from algo_trading_engine.common.models import OptionType as CommonOptionType
-        
-        # Create mock contracts
-        from algo_trading_engine.common.options_dtos import StrikePrice, ExpirationDate
-        
         from datetime import date as date_type
+        from decimal import Decimal
         
         atm_contract = OptionContractDTO(
             ticker='O:SPY240115P100',
             underlying_ticker='SPY',
             contract_type=CommonOptionType.PUT,
-            strike_price=StrikePrice(100.0),
+            strike_price=StrikePrice(Decimal('100.0')),
             expiration_date=ExpirationDate(date_type(2024, 1, 15)),
             exercise_style='american',
-            shares_per_contract=100,
-            primary_exchange='BATO',
-            cfi='OCASPS',
-            additional_underlyings=None
+            shares_per_contract=100
         )
         
         otm_contract = OptionContractDTO(
             ticker='O:SPY240115P90',
             underlying_ticker='SPY',
             contract_type=CommonOptionType.PUT,
-            strike_price=StrikePrice(90.0),
+            strike_price=StrikePrice(Decimal('90.0')),
             expiration_date=ExpirationDate(date_type(2024, 1, 15)),
             exercise_style='american',
-            shares_per_contract=100,
-            primary_exchange='BATO',
-            cfi='OCASPS',
-            additional_underlyings=None
+            shares_per_contract=100
         )
         
-        strategy.new_options_handler.get_contract_list_for_date.return_value = [atm_contract, otm_contract]
+        strategy.get_contract_list_for_date = Mock(return_value=[atm_contract, otm_contract])
         
         # Mock get_option_bar to return OptionBarDTO with proper close_price
         from algo_trading_engine.common.options_dtos import OptionBarDTO
@@ -368,7 +426,7 @@ class TestVelocitySignalMomentumStrategy:
             number_of_transactions=80
         )
         
-        strategy.new_options_handler.get_option_bar = Mock(side_effect=lambda opt, date: atm_bar if '100' in opt.ticker else otm_bar)
+        strategy.get_option_bar = Mock(side_effect=lambda opt, date: atm_bar if '100' in opt.ticker else otm_bar)
         
         # Create mock data
         data = pd.DataFrame({
@@ -397,7 +455,14 @@ class TestVelocitySignalMomentumStrategy:
     def test_create_test_put_credit_spread_no_credit(self):
         """Test creating a test put credit spread when no credit is received."""
         mock_options_handler = Mock()
-        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
+        strategy = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         
         # Create mock data
         data = pd.DataFrame({
@@ -431,7 +496,7 @@ class TestVelocitySignalMomentumStrategy:
         )
         
         # Note: options_data is no longer passed to set_data in the current implementation
-        # The strategy uses new_options_handler to fetch options data on demand
+        # The strategy uses callables (get_contract_list_for_date, get_option_bar) to fetch options data on demand
         
         # Create mock treasury data
         treasury_data = TreasuryRates(pd.DataFrame({
@@ -452,7 +517,14 @@ class TestVelocitySignalMomentumStrategy:
     def test_has_buy_signal_valid_uptrend(self):
         """Test _has_buy_signal with a valid upward trend using MA velocity."""
         mock_options_handler = Mock()
-        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
+        strategy = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         
         # Create market data with a clear upward trend that would trigger MA velocity signal
         # Need at least 30 days of data for SMA 30
@@ -478,7 +550,14 @@ class TestVelocitySignalMomentumStrategy:
     def test_has_buy_signal_no_data(self):
         """Test _has_buy_signal when no data is available."""
         mock_options_handler = Mock()
-        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
+        strategy = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         
         # No data set
         result = strategy._has_buy_signal(datetime(2024, 1, 20))
@@ -487,7 +566,14 @@ class TestVelocitySignalMomentumStrategy:
     def test_has_buy_signal_insufficient_history(self):
         """Test _has_buy_signal when there's insufficient historical data."""
         mock_options_handler = Mock()
-        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
+        strategy = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         
         # Create market data with only 20 days (less than 30 required for SMA 30)
         dates = pd.date_range('2024-01-01', '2024-01-20', freq='D')
@@ -504,7 +590,14 @@ class TestVelocitySignalMomentumStrategy:
     def test_has_buy_signal_trend_too_short(self):
         """Test _has_buy_signal when trend duration is less than 3 days."""
         mock_options_handler = Mock()
-        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
+        strategy = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         
         # Create market data where the trend is only 2 days long
         dates = pd.date_range('2024-01-01', '2024-03-10', freq='D')
@@ -524,7 +617,14 @@ class TestVelocitySignalMomentumStrategy:
     def test_has_buy_signal_trend_too_long(self):
         """Test _has_buy_signal when trend duration exceeds 60 days."""
         mock_options_handler = Mock()
-        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
+        strategy = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         
         # Create market data where the trend is longer than 60 days
         # Start with a long period of low prices, then a very long uptrend
@@ -549,7 +649,14 @@ class TestVelocitySignalMomentumStrategy:
     def test_has_buy_signal_no_velocity_increase(self):
         """Test _has_buy_signal when there's no MA velocity increase."""
         mock_options_handler = Mock()
-        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
+        strategy = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         
         # Create market data with declining prices (no velocity increase)
         dates = pd.date_range('2024-01-01', '2024-03-10', freq='D')
@@ -570,7 +677,14 @@ class TestVelocitySignalMomentumStrategy:
     def test_has_buy_signal_significant_reversal(self):
         """Test _has_buy_signal when there's a significant reversal (>2% drop)."""
         mock_options_handler = Mock()
-        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
+        strategy = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         
         # Create market data with a significant reversal
         # Start at 100, dip to 95, rise to 110, then drop to 107 (>2% drop from 110)
@@ -591,7 +705,14 @@ class TestVelocitySignalMomentumStrategy:
     def test_has_buy_signal_invalid_date(self):
         """Test _has_buy_signal with an invalid date."""
         mock_options_handler = Mock()
-        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
+        strategy = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         
         # Create market data
         dates = pd.date_range('2024-01-01', '2024-03-10', freq='D')
@@ -608,7 +729,14 @@ class TestVelocitySignalMomentumStrategy:
     def test_has_buy_signal_edge_case_minimal_reversal(self):
         """Test _has_buy_signal with a minimal reversal that doesn't exceed 2%."""
         mock_options_handler = Mock()
-        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
+        strategy = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         
         # Create market data with a minimal reversal (1.5% drop, under 2% threshold)
         # Start at 100, dip to 95, rise to 110, then drop to 108.35 (1.5% drop from 110)
@@ -631,7 +759,14 @@ class TestVelocitySignalMomentumStrategy:
     def test_set_data_pre_calculates_moving_averages(self):
         """Test that set_data pre-calculates moving averages and velocity."""
         mock_options_handler = Mock()
-        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
+        strategy = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         
         # Create market data
         dates = pd.date_range('2024-01-01', '2024-03-10', freq='D')
@@ -661,7 +796,14 @@ class TestVelocitySignalMomentumStrategy:
     def test_position_entries_tracking(self):
         """Test that position entries are tracked correctly for plotting."""
         mock_options_handler = Mock()
-        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
+        strategy = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         
         # Create market data
         dates = pd.date_range('2024-01-01', '2024-03-10', freq='D')
@@ -694,7 +836,14 @@ class TestVelocitySignalMomentumStrategy:
     def test_on_end_plotting_with_no_data(self):
         """Test on_end method when no data is available."""
         mock_options_handler = Mock()
-        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
+        strategy = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         
         # Mock the progress_print function to capture output
         mock_progress_print = Mock()
@@ -710,7 +859,14 @@ class TestVelocitySignalMomentumStrategy:
     def test_on_end_plotting_with_data(self):
         """Test on_end method with valid data (without actually showing plot)."""
         mock_options_handler = Mock()
-        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
+        strategy = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         
         # Create market data
         dates = pd.date_range('2024-01-01', '2024-01-10', freq='D')
@@ -770,11 +926,17 @@ class TestVelocityStrategyFactory:
         from algo_trading_engine.backtest.strategy_builder import StrategyFactory
         
         mock_options_handler = Mock()
+        # Extract callables from mock options_handler
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
         
         # Create strategy via factory with profit_target and stop_loss
         strategy = StrategyFactory.create_strategy(
             'velocity_momentum',
-            options_handler=mock_options_handler,
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain,
             profit_target=0.20,
             stop_loss=0.60
         )
@@ -788,11 +950,17 @@ class TestVelocityStrategyFactory:
         from algo_trading_engine.backtest.strategy_builder import StrategyFactory
         
         mock_options_handler = Mock()
+        # Extract callables from mock options_handler
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
         
         # Create strategy via factory without profit_target or stop_loss
         strategy = StrategyFactory.create_strategy(
             'velocity_momentum',
-            options_handler=mock_options_handler
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
         )
         
         # Verify the parameters are None when not specified
@@ -809,7 +977,14 @@ class TestVelocityStrategyMethodSignatures:
         from algo_trading_engine.core.strategy import Strategy as BaseStrategy
         
         mock_options_handler = Mock()
-        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
+        strategy = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         
         # Create sample data
         dates = pd.date_range('2024-01-01', periods=50, freq='D')
@@ -869,7 +1044,14 @@ class TestVelocityStrategyMethodSignatures:
         from algo_trading_engine.core.strategy import Strategy as BaseStrategy
         
         mock_options_handler = Mock()
-        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
+        strategy = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         
         # Create sample data
         dates = pd.date_range('2024-01-01', periods=50, freq='D')
@@ -939,7 +1121,14 @@ class TestVelocityStrategyMethodSignatures:
         from typing import Callable, Optional
         
         mock_options_handler = Mock()
-        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
+        strategy = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         
         # Create sample data
         dates = pd.date_range('2024-01-01', periods=50, freq='D')
@@ -978,7 +1167,7 @@ class TestVelocityStrategyMethodSignatures:
             pass
         
         # Mock the options handler to prevent errors
-        strategy.new_options_handler.get_option_bar = Mock(return_value=None)
+        strategy.get_option_bar = Mock(return_value=None)
         
         # This should not raise any errors
         try:
@@ -992,7 +1181,14 @@ class TestVelocityStrategyMethodSignatures:
         from typing import Callable, Optional
         
         mock_options_handler = Mock()
-        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
+        strategy = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         
         # Create sample data
         dates = pd.date_range('2024-01-01', periods=50, freq='D')

@@ -121,8 +121,12 @@ class TestBacktestEngineFactory:
         # Verify strategy instance was used (not created)
         assert engine.strategy == mock_strategy
         
-        # Verify options_handler was injected
-        assert mock_strategy.options_handler is not None
+        # Verify callables were injected (if strategy has those attributes)
+        if hasattr(mock_strategy, 'get_contract_list_for_date'):
+            assert mock_strategy.get_contract_list_for_date is not None
+        elif hasattr(mock_strategy, 'options_handler'):
+            # Backward compatibility check
+            assert mock_strategy.options_handler is not None
         
         # Verify strategy.set_data was called
         mock_strategy.set_data.assert_called_once()

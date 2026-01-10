@@ -43,7 +43,15 @@ class TestVelocityLivePrice(unittest.TestCase):
         mock_options_handler.symbol = 'SPY'
         
         # Create strategy instance
-        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        # Create callables from options_handler methods
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
+        strategy = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         
         # Set up test data
         strategy.set_data(self.test_data.copy(), {})
@@ -85,7 +93,15 @@ class TestVelocityLivePrice(unittest.TestCase):
         mock_options_handler = Mock()
         mock_options_handler.symbol = 'SPY'
         
-        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        # Create callables from options_handler methods
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
+        strategy = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         strategy.set_data(self.test_data.copy())
         
         # Store original data length
@@ -114,7 +130,15 @@ class TestVelocityLivePrice(unittest.TestCase):
         mock_options_handler = Mock()
         mock_options_handler.symbol = 'SPY'
         
-        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        # Create callables from options_handler methods
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
+        strategy = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         strategy.set_data(self.test_data.copy())
         
         # Get velocity before adding live data
@@ -152,7 +176,15 @@ class TestVelocityLivePrice(unittest.TestCase):
         mock_options_handler = Mock()
         mock_options_handler.symbol = 'SPY'
         
-        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        # Create callables from options_handler methods
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
+        strategy = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         strategy.set_data(self.test_data.copy())
         
         # Mock DataRetriever creation and get_live_price
@@ -182,7 +214,15 @@ class TestVelocityLivePrice(unittest.TestCase):
         mock_data_retriever = Mock()
         mock_data_retriever.get_live_price.return_value = None
         
-        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        # Create callables from options_handler methods
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
+        strategy = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         strategy.set_data(self.test_data.copy())
         strategy.data_retriever = mock_data_retriever
         
@@ -203,7 +243,15 @@ class TestVelocityLivePrice(unittest.TestCase):
         mock_options_handler = Mock()
         mock_options_handler.symbol = 'SPY'
         
-        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        # Create callables from options_handler methods
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
+        strategy = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         strategy.set_data(self.test_data.copy())
         
         # Use a date from the past (not current date)
@@ -226,7 +274,15 @@ class TestVelocityLivePrice(unittest.TestCase):
         mock_options_handler = Mock()
         mock_options_handler.symbol = 'SPY'
         
-        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        # Create callables from options_handler methods
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
+        strategy = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         
         # Create test data with upward trend leading to current date
         dates = pd.date_range(end=datetime.now() - timedelta(days=1), periods=90, freq='D')
@@ -270,7 +326,15 @@ class TestVelocityLivePrice(unittest.TestCase):
         mock_options_handler = Mock()
         mock_options_handler.symbol = 'SPY'
         
-        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        # Create callables from options_handler methods
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
+        strategy = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         strategy.set_data(self.test_data.copy())
         
         original_length = len(strategy.data)

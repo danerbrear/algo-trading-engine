@@ -6,9 +6,8 @@ trading strategies with flexible parameter selection and validation.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Type, List, Optional
+from typing import Dict, Type, List, Callable
 
-from algo_trading_engine.common.options_handler import OptionsHandler
 try:
     from .models import Strategy
 except ImportError:
@@ -28,8 +27,8 @@ class StrategyBuilder(ABC):
         pass
 
     @abstractmethod
-    def set_options_handler(self, options_handler: OptionsHandler):
-        """Set the options handler"""
+    def set_options_callables(self, get_contract_list_for_date: Callable, get_option_bar: Callable, get_options_chain: Callable, options_handler=None):
+        """Set the options callables (methods from OptionsHandler as callables)"""
         pass
     
     @abstractmethod
@@ -60,6 +59,9 @@ class CreditSpreadStrategyBuilder(StrategyBuilder):
         self._lstm_model = None
         self._lstm_scaler = None
         self._symbol = None
+        self._get_contract_list_for_date = None
+        self._get_option_bar = None
+        self._get_options_chain = None
         self._options_handler = None
         self._start_date_offset = 0
         self._stop_loss = 0.6
@@ -78,8 +80,11 @@ class CreditSpreadStrategyBuilder(StrategyBuilder):
         self._symbol = symbol
         return self
     
-    def set_options_handler(self, options_handler):
-        """Set the options handler to inject into the strategy"""
+    def set_options_callables(self, get_contract_list_for_date: Callable, get_option_bar: Callable, get_options_chain: Callable, options_handler=None):
+        """Set the options callables (methods from OptionsHandler as callables)"""
+        self._get_contract_list_for_date = get_contract_list_for_date
+        self._get_option_bar = get_option_bar
+        self._get_options_chain = get_options_chain
         self._options_handler = options_handler
         return self
     
@@ -119,11 +124,14 @@ class CreditSpreadStrategyBuilder(StrategyBuilder):
                 raise ValueError(f"Failed to load LSTM model for symbol {self._symbol}: {e}")
         
         strategy = CreditSpreadStrategy(
-            options_handler=self._options_handler,
+            get_contract_list_for_date=self._get_contract_list_for_date,
+            get_option_bar=self._get_option_bar,
+            get_options_chain=self._get_options_chain,
             lstm_model=self._lstm_model,
             lstm_scaler=self._lstm_scaler,
             symbol=self._symbol,
-            start_date_offset=self._start_date_offset
+            start_date_offset=self._start_date_offset,
+            options_handler=self._options_handler
         )
         
         if self._profit_target:
@@ -138,14 +146,18 @@ class VelocitySignalMomentumStrategyBuilder(StrategyBuilder):
     
     def reset(self):
         self._symbol = 'SPY'
-        self._options_handler = None
+        self._get_contract_list_for_date = None
+        self._get_option_bar = None
+        self._get_options_chain = None
         self._start_date_offset = 60
         self._stop_loss = None
         self._profit_target = None
     
-    def set_options_handler(self, options_handler):
-        """Set the options handler to inject into the strategy"""
-        self._options_handler = options_handler
+    def set_options_callables(self, get_contract_list_for_date: Callable, get_option_bar: Callable, get_options_chain: Callable, options_handler=None):
+        """Set the options callables (methods from OptionsHandler as callables)"""
+        self._get_contract_list_for_date = get_contract_list_for_date
+        self._get_option_bar = get_option_bar
+        self._get_options_chain = get_options_chain
         return self
     
     def set_start_date_offset(self, offset: int):
@@ -168,7 +180,9 @@ class VelocitySignalMomentumStrategyBuilder(StrategyBuilder):
             from algo_trading_engine.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
         
         strategy = VelocitySignalMomentumStrategy(
-            options_handler=self._options_handler,
+            get_contract_list_for_date=self._get_contract_list_for_date,
+            get_option_bar=self._get_option_bar,
+            get_options_chain=self._get_options_chain,
             start_date_offset=self._start_date_offset,
             stop_loss=self._stop_loss,
             profit_target=self._profit_target
@@ -240,7 +254,10 @@ def create_strategy_from_args(strategy_name: str, **kwargs):
         strategy_name: Name of the strategy to create
         **kwargs: Additional configuration parameters
             - symbol: Required for credit_spread strategy
-            - options_handler: Optional, options handler to inject
+            - get_contract_list_for_date: Callable for getting contract list
+            - get_option_bar: Callable for getting option bar
+            - get_options_chain: Callable for getting options chain
+            - options_handler: Optional, OptionsHandler instance (needed for CreditSpreadStrategy with LSTM)
             - start_date_offset: Optional, defaults to 60
             - stop_loss: Optional
             - profit_target: Optional
@@ -252,8 +269,13 @@ def create_strategy_from_args(strategy_name: str, **kwargs):
         builder = StrategyFactory.get_builder(strategy_name)
         
         # Set common parameters
-        if 'options_handler' in kwargs:
-            builder.set_options_handler(kwargs['options_handler'])
+        if all(k in kwargs for k in ['get_contract_list_for_date', 'get_option_bar', 'get_options_chain']):
+            builder.set_options_callables(
+                kwargs['get_contract_list_for_date'],
+                kwargs['get_option_bar'],
+                kwargs['get_options_chain'],
+                kwargs.get('options_handler') # Backward compatibility: if strategy still uses options_handler, inject it
+            )
         if 'start_date_offset' in kwargs:
             builder.set_start_date_offset(kwargs['start_date_offset'])
         if 'stop_loss' in kwargs and kwargs['stop_loss'] is not None:

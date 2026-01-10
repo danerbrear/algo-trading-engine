@@ -17,8 +17,14 @@ class TestVelocitySignalMomentumStrategyEnhancements:
     def setup_method(self):
         """Set up test fixtures"""
         self.options_handler = Mock()
+        # Create callables from options_handler methods
+        self.get_contract_list_for_date = self.options_handler.get_contract_list_for_date
+        self.get_option_bar = self.options_handler.get_option_bar
+        self.get_options_chain = self.options_handler.get_options_chain
         self.strategy = VelocitySignalMomentumStrategy(
-            options_handler=self.options_handler,
+            get_contract_list_for_date=self.get_contract_list_for_date,
+            get_option_bar=self.get_option_bar,
+            get_options_chain=self.get_options_chain,
             start_date_offset=60
         )
         
@@ -70,7 +76,7 @@ class TestVelocitySignalMomentumStrategyEnhancements:
         mock_datetime.now.return_value = current_date
         
         # Mock options handler with symbol
-        self.strategy.new_options_handler.symbol = 'SPY'
+        self.strategy.symbol = 'SPY'
         
         # Mock DataRetriever to return None for live price
         mock_data_retriever = Mock()
@@ -171,12 +177,20 @@ class TestCreditSpreadStrategyEnhancements:
         self.lstm_model = Mock()
         self.lstm_scaler = Mock()
         self.options_handler = Mock()
+        # Create callables from options_handler methods
+        self.get_contract_list_for_date = self.options_handler.get_contract_list_for_date
+        self.get_option_bar = self.options_handler.get_option_bar
+        self.get_options_chain = self.options_handler.get_options_chain
         
         self.strategy = CreditSpreadStrategy(
+            get_contract_list_for_date=self.get_contract_list_for_date,
+            get_option_bar=self.get_option_bar,
+            get_options_chain=self.get_options_chain,
             lstm_model=self.lstm_model,
             lstm_scaler=self.lstm_scaler,
-            options_handler=self.options_handler,
-            start_date_offset=0
+            symbol='SPY',
+            start_date_offset=0,
+            options_handler=self.options_handler  # Still needed for LSTMModel
         )
         
         # Create sample data
@@ -208,8 +222,8 @@ class TestCreditSpreadStrategyEnhancements:
         current_date = datetime(2024, 1, 20)
         mock_datetime.now.return_value = current_date
         
-        # Mock options handler symbol
-        self.strategy.options_handler.symbol = 'SPY'
+        # Strategy should have symbol attribute
+        self.strategy.symbol = 'SPY'
         
         # Mock DataRetriever creation and get_live_price
         mock_data_retriever = Mock()
@@ -321,15 +335,16 @@ class TestCreditSpreadStrategyEnhancements:
                 return bar2
             return None
         
-        self.options_handler.get_contract_list_for_date = Mock(side_effect=mock_get_contract_list_for_date)
-        self.options_handler.get_option_bar = Mock(side_effect=mock_get_option_bar)
+        # Update the callables on the strategy
+        self.strategy.get_contract_list_for_date = Mock(side_effect=mock_get_contract_list_for_date)
+        self.strategy.get_option_bar = Mock(side_effect=mock_get_option_bar)
         
         test_date = datetime(2024, 1, 16)
         volumes = self.strategy.get_current_volumes_for_position(position, test_date)
         
         assert volumes == [200, 250]
-        assert self.options_handler.get_contract_list_for_date.call_count == 2
-        assert self.options_handler.get_option_bar.call_count == 2
+        assert self.strategy.get_contract_list_for_date.call_count == 2
+        assert self.strategy.get_option_bar.call_count == 2
     
     def test_get_current_volumes_for_position_api_failure(self):
         """Test get_current_volumes_for_position with API failures"""
@@ -354,8 +369,8 @@ class TestCreditSpreadStrategyEnhancements:
             spread_options=[option1]
         )
         
-        # Mock options handler to raise exception
-        self.options_handler.get_contract_list_for_date.side_effect = Exception("API Error")
+        # Mock callables to raise exception
+        self.strategy.get_contract_list_for_date = Mock(side_effect=Exception("API Error"))
         
         test_date = datetime(2024, 1, 16)
         volumes = self.strategy.get_current_volumes_for_position(position, test_date)
@@ -403,8 +418,8 @@ class TestCreditSpreadStrategyEnhancements:
         
         # Mock the new API methods
         # When there's no volume data, get_option_bar should return None
-        self.options_handler.get_contract_list_for_date.return_value = [contract1]
-        self.options_handler.get_option_bar.return_value = None  # No bar data = no volume
+        self.strategy.get_contract_list_for_date = Mock(return_value=[contract1])
+        self.strategy.get_option_bar = Mock(return_value=None)  # No bar data = no volume
         
         test_date = datetime(2024, 1, 16)
         volumes = self.strategy.get_current_volumes_for_position(position, test_date)

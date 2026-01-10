@@ -21,9 +21,8 @@ class InteractiveStrategyRecommender:
     `get_current_volumes_for_position`).
     """
 
-    def __init__(self, strategy: Strategy, options_handler, decision_store: JsonDecisionStore, capital_manager: CapitalManager, auto_yes: bool = False):
+    def __init__(self, strategy: Strategy, decision_store: JsonDecisionStore, capital_manager: CapitalManager, auto_yes: bool = False):
         self.strategy = strategy
-        self.options_handler = options_handler
         self.decision_store = decision_store
         self.capital_manager = capital_manager
         self.auto_yes = auto_yes
@@ -51,9 +50,14 @@ class InteractiveStrategyRecommender:
         if date.date() == current_date:
             # Use live price from Polygon API
             print(f"📡 Fetching live price for {date.date()} (current date)")
-            if hasattr(self.options_handler, 'symbol'):
+            # Get symbol from strategy
+            symbol = None
+            if hasattr(self.strategy, 'symbol'):
+                symbol = self.strategy.symbol
+            
+            if symbol:
                 from algo_trading_engine.common.data_retriever import DataRetriever
-                temp_retriever = DataRetriever(symbol=self.options_handler.symbol, use_free_tier=True, quiet_mode=True)
+                temp_retriever = DataRetriever(symbol=symbol, use_free_tier=True, quiet_mode=True)
                 current_price = temp_retriever.get_live_price()
             
             if current_price is None:
@@ -100,7 +104,7 @@ class InteractiveStrategyRecommender:
 
         # Build proposal DTO
         proposal = ProposedPositionRequest(
-            symbol=self.options_handler.symbol,
+            symbol=self.strategy.symbol if hasattr(self.strategy, 'symbol') else 'SPY',
             strategy_type=strategy_type,
             legs=legs,
             credit=float(credit),
@@ -366,9 +370,9 @@ class InteractiveStrategyRecommender:
                 fetch_date = date - timedelta(days=1)
                 print(f"📅 Current date detected, fetching previous day's data: {fetch_date.strftime('%Y-%m-%d')}")
             
-            # Get bar data for both options using new_options_handler
-            atm_bar = self.strategy.new_options_handler.get_option_bar(atm_option, fetch_date)
-            otm_bar = self.strategy.new_options_handler.get_option_bar(otm_option, fetch_date)
+            # Get bar data for both options
+            atm_bar = self.strategy.get_option_bar(atm_option, fetch_date)
+            otm_bar = self.strategy.get_option_bar(otm_option, fetch_date)
             
             if not atm_bar or not otm_bar:
                 print(f"⚠️  No bar data available for options on {fetch_date.strftime('%Y-%m-%d')}")
@@ -426,9 +430,9 @@ class InteractiveStrategyRecommender:
                 from datetime import timedelta
                 fetch_date = date - timedelta(days=1)
             
-            # Get bar data for both options using new_options_handler
-            atm_bar = self.strategy.new_options_handler.get_option_bar(atm_option, fetch_date)
-            otm_bar = self.strategy.new_options_handler.get_option_bar(otm_option, fetch_date)
+            # Get bar data for both options
+            atm_bar = self.strategy.get_option_bar(atm_option, fetch_date)
+            otm_bar = self.strategy.get_option_bar(otm_option, fetch_date)
             
             if not atm_bar or not otm_bar:
                 return None

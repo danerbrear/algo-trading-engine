@@ -79,7 +79,15 @@ class TestVelocityLiveVsCloseConsistency(unittest.TestCase):
         mock_options_handler_1 = Mock()
         mock_options_handler_1.symbol = 'SPY'
         
-        strategy_live = VelocitySignalMomentumStrategy(options_handler=mock_options_handler_1)
+        # Create callables from options_handler methods
+        get_contract_list_for_date = mock_options_handler_1.get_contract_list_for_date
+        get_option_bar = mock_options_handler_1.get_option_bar
+        get_options_chain = mock_options_handler_1.get_options_chain
+        strategy_live = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         strategy_live.set_data(self.historical_data.copy())
         
         print(f"Historical data ends: {strategy_live.data.index[-1].date()}")
@@ -107,7 +115,15 @@ class TestVelocityLiveVsCloseConsistency(unittest.TestCase):
         mock_options_handler_2 = Mock()
         mock_options_handler_2.symbol = 'SPY'
         
-        strategy_close = VelocitySignalMomentumStrategy(options_handler=mock_options_handler_2)
+        # Create callables from options_handler methods
+        get_contract_list_for_date = mock_options_handler_2.get_contract_list_for_date
+        get_option_bar = mock_options_handler_2.get_option_bar
+        get_options_chain = mock_options_handler_2.get_options_chain
+        strategy_close = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         
         # Create data that includes today's close price (as it would be after market close)
         data_with_close = self.historical_data.copy()
@@ -192,7 +208,15 @@ class TestVelocityLiveVsCloseConsistency(unittest.TestCase):
         mock_options_handler = Mock()
         mock_options_handler.symbol = 'SPY'
         
-        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        # Create callables from options_handler methods
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
+        strategy = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         strategy.set_data(data_with_stale_current)
         
         print(f"\nCurrent date: {self.current_date.date()}")

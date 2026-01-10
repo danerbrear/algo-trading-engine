@@ -116,22 +116,35 @@ class BacktestEngine(TradingEngine):
             use_free_tier=config.use_free_tier
         )
         
+        # Internal: Extract methods as callables (no imports needed by child repos)
+        get_contract_list_for_date = options_handler.get_contract_list_for_date
+        get_option_bar = options_handler.get_option_bar
+        get_options_chain = options_handler.get_options_chain
+        
         # Internal: Create or use provided strategy
         if isinstance(config.strategy_type, str):
             # Create strategy from string name
             strategy = create_strategy_from_args(
                 strategy_name=config.strategy_type,
                 symbol=config.symbol,
-                options_handler=options_handler,
+                get_contract_list_for_date=get_contract_list_for_date,
+                get_option_bar=get_option_bar,
+                get_options_chain=get_options_chain,
+                options_handler=options_handler,  # Needed for CreditSpreadStrategy with LSTM
                 stop_loss=config.stop_loss,
                 profit_target=config.profit_target
             )
             if strategy is None:
                 raise ValueError(f"Failed to create strategy: {config.strategy_type}")
         else:
-            # Strategy instance provided - inject options_handler if it has that attribute
+            # Strategy instance provided - inject callables if strategy expects them
             strategy = config.strategy_type
-            if hasattr(strategy, 'options_handler'):
+            if hasattr(strategy, 'get_contract_list_for_date'):
+                strategy.get_contract_list_for_date = get_contract_list_for_date
+                strategy.get_option_bar = get_option_bar
+                strategy.get_options_chain = get_options_chain
+            elif hasattr(strategy, 'options_handler'):
+                # Backward compatibility: if strategy still uses options_handler, inject it
                 strategy.options_handler = options_handler
         
         # Internal: Set data on strategy

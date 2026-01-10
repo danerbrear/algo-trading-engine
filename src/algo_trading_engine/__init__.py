@@ -56,6 +56,8 @@ from algo_trading_engine.models.metrics import (
     PerformanceMetrics,
     PositionStats,
 )
+# Import DTO sub-package for easy access
+from algo_trading_engine import dto
 
 # Define public API
 __all__ = [
@@ -72,6 +74,8 @@ __all__ = [
     # Metrics
     "PerformanceMetrics",
     "PositionStats",
+    # DTO sub-package (for strategy development)
+    "dto",
 ]
 
 __version__ = "0.0.3"

@@ -28,8 +28,15 @@ class TestVelocityVerticalSpread:
         have the same expiration date (vertical spread, not diagonal).
         """
         # Setup
+        mock_options_handler = Mock()
+        # Create callables from options_handler methods
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
         strategy = VelocitySignalMomentumStrategy(
-            options_handler=Mock(),
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain,
             start_date_offset=60
         )
         
@@ -131,8 +138,8 @@ class TestVelocityVerticalSpread:
             number_of_transactions=80
         )
         
-        # Mock the new_options_handler methods
-        strategy.new_options_handler.get_contract_list_for_date = Mock(return_value=mock_contracts)
+        # Mock the callable methods
+        strategy.get_contract_list_for_date = Mock(return_value=mock_contracts)
         
         # Mock get_option_bar to return appropriate bars based on contract
         def mock_get_option_bar(option, date):
@@ -142,7 +149,7 @@ class TestVelocityVerticalSpread:
                 return mock_bar_579
             return None
         
-        strategy.new_options_handler.get_option_bar = Mock(side_effect=mock_get_option_bar)
+        strategy.get_option_bar = Mock(side_effect=mock_get_option_bar)
         
         # Set up data for the strategy (required for position creation)
         import pandas as pd
@@ -195,8 +202,15 @@ class TestVelocityVerticalSpread:
         Test that the strategy returns None if it cannot find contracts
         with the target expiration for both legs.
         """
+        mock_options_handler = Mock()
+        # Create callables from options_handler methods
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
         strategy = VelocitySignalMomentumStrategy(
-            options_handler=Mock(),
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain,
             start_date_offset=60
         )
         
@@ -220,7 +234,7 @@ class TestVelocityVerticalSpread:
             ),
         ]
         
-        strategy.new_options_handler.get_contract_list_for_date = Mock(return_value=mock_contracts)
+        strategy.get_contract_list_for_date = Mock(return_value=mock_contracts)
         
         # Execute
         position = strategy._create_put_credit_spread(
