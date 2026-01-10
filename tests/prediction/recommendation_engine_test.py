@@ -66,6 +66,7 @@ def test_recommender_open_accept(monkeypatch, tmp_path):
     # Strategy mock
     strategy = MagicMock()
     strategy.data = MagicMock()
+    strategy.symbol = 'SPY'  # Set symbol attribute
     date = datetime(2025, 8, 8)
     strategy.data.loc.__getitem__.return_value = {'Close': 500}
     # Set proper class name for strategy name extraction
@@ -110,7 +111,7 @@ def test_recommender_open_accept(monkeypatch, tmp_path):
     }
     capital_manager = CapitalManager(allocations_config, store)
 
-    rec = InteractiveStrategyRecommender(strategy, options_handler, store, capital_manager, auto_yes=True).recommend_open_position(date)
+    rec = InteractiveStrategyRecommender(strategy, store, capital_manager, auto_yes=True).recommend_open_position(date)
     assert rec is not None
     opens = store.get_open_positions()
     assert len(opens) == 1
@@ -188,7 +189,7 @@ def test_recommender_close_accept(monkeypatch, tmp_path):
     capital_manager = CapitalManager(allocations_config, store)
     
     # Monkeypatch prompt to auto-yes
-    rec_engine = InteractiveStrategyRecommender(strategy, options_handler, store, capital_manager, auto_yes=True)
+    rec_engine = InteractiveStrategyRecommender(strategy, store, capital_manager, auto_yes=True)
     closed = rec_engine.recommend_close_positions(datetime(2025, 8, 8))
 
     assert len(closed) == 1

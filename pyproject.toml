@@ -7,9 +7,9 @@ name = "algo-trading-engine"
 version = "0.0.3"
 description = "Options trading backtesting and prediction framework"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
-    "yfinance>=0.2.36,<0.2.45",
+    "yfinance>=1.0.0",
     "pandas>=2.2.0",
     "numpy>=1.24.0",
     "scikit-learn>=1.4.0",
@@ -29,14 +29,18 @@ dev = [
     "pytest>=7.0.0",
 ]
 
+[project.scripts]
+algo-backtest = "algo_trading_engine.backtest.main:main"
+algo-paper-trade = "algo_trading_engine.prediction.recommend_cli:main"
+
 [tool.setuptools]
-# Packages are at root level
+package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
-where = ["."]
+where = ["src"]
 include = ["algo_trading_engine*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
-
+pythonpath = ["src"]

@@ -8,3 +8,4 @@ predictions/*
 !predictions/decisions/
 .pytest_cache
 backup
+*.egg-info

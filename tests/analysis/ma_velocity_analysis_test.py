@@ -9,11 +9,6 @@ import pytest
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-import sys
-import os
-
-# Add src to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'algo_trading_engine'))
 
 from algo_trading_engine.analysis.ma_velocity_analysis import MAVelocityAnalyzer, TrendSignal, MAVelocityResult
 

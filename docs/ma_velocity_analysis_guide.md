@@ -45,7 +45,7 @@ The goal is to find MA combinations where changes in this velocity ratio best si
 Ensure you have the required dependencies installed:
 
 ```bash
-pip install -r requirements.txt
+pip install -e .
 ```
 
 ### Data Requirements

@@ -20,11 +20,19 @@ class TestStrategyCurrentDateVolumeValidation:
         self.mock_lstm_model = Mock()
         self.mock_lstm_scaler = Mock()
         self.mock_options_handler = Mock()
+        # Create callables from options_handler methods
+        self.get_contract_list_for_date = self.mock_options_handler.get_contract_list_for_date
+        self.get_option_bar = self.mock_options_handler.get_option_bar
+        self.get_options_chain = self.mock_options_handler.get_options_chain
         
         self.strategy = CreditSpreadStrategy(
+            get_contract_list_for_date=self.get_contract_list_for_date,
+            get_option_bar=self.get_option_bar,
+            get_options_chain=self.get_options_chain,
             lstm_model=self.mock_lstm_model,
             lstm_scaler=self.mock_lstm_scaler,
-            options_handler=self.mock_options_handler
+            symbol='SPY',
+            options_handler=self.mock_options_handler  # Still needed for LSTMModel
         )
         
         # Create test options
@@ -290,12 +298,21 @@ class TestStrategyCurrentDateVolumeValidation:
         self.mock_options_handler.get_option_bar.assert_not_called()
     
     def test_get_current_volumes_for_position_none_options_handler(self):
-        """Test handling when options_handler is None."""
-        # Create strategy without options_handler
+        """Test handling when callables are None or raise errors."""
+        # Create strategy with callables that raise errors
+        def failing_get_contract_list_for_date(*args, **kwargs):
+            raise AttributeError("options_handler is None")
+        
+        def failing_get_option_bar(*args, **kwargs):
+            raise AttributeError("options_handler is None")
+        
         strategy_no_handler = CreditSpreadStrategy(
+            get_contract_list_for_date=failing_get_contract_list_for_date,
+            get_option_bar=failing_get_option_bar,
+            get_options_chain=lambda *args, **kwargs: None,
             lstm_model=self.mock_lstm_model,
             lstm_scaler=self.mock_lstm_scaler,
-            options_handler=None
+            options_handler=None  # Still pass None for backward compatibility
         )
         
         # Call the method - should handle gracefully and return None values

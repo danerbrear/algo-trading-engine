@@ -27,11 +27,19 @@ class TestPhase2Integration:
         self.mock_lstm_model = Mock()
         self.mock_lstm_scaler = Mock()
         self.mock_options_handler = Mock()
+        # Create callables from options_handler methods
+        self.get_contract_list_for_date = self.mock_options_handler.get_contract_list_for_date
+        self.get_option_bar = self.mock_options_handler.get_option_bar
+        self.get_options_chain = self.mock_options_handler.get_options_chain
         
         self.strategy = CreditSpreadStrategy(
+            get_contract_list_for_date=self.get_contract_list_for_date,
+            get_option_bar=self.get_option_bar,
+            get_options_chain=self.get_options_chain,
             lstm_model=self.mock_lstm_model,
             lstm_scaler=self.mock_lstm_scaler,
-            options_handler=self.mock_options_handler
+            symbol='SPY',
+            options_handler=self.mock_options_handler  # Still needed for LSTMModel
         )
         
         # Create test options
