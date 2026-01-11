@@ -21,6 +21,9 @@ Metrics:
     - PerformanceMetrics: Performance statistics from backtesting
     - PositionStats: Statistics for individual positions
 
+Helpers:
+    - OptionsRetrieverHelper: Static utility methods for filtering, finding, and calculating options data
+
 Sub-packages:
     - dto: Data Transfer Objects for API communication
     - types: Runtime types, value objects, and enums
@@ -61,6 +64,7 @@ from algo_trading_engine.models.metrics import (
     PerformanceMetrics,
     PositionStats,
 )
+from algo_trading_engine.common.options_helpers import OptionsRetrieverHelper
 # Import sub-packages for easy access
 from algo_trading_engine import dto
 from algo_trading_engine import types
@@ -80,6 +84,8 @@ __all__ = [
     # Metrics
     "PerformanceMetrics",
     "PositionStats",
+    # Helpers
+    "OptionsRetrieverHelper",
     # Sub-packages (for strategy development)
     "dto",
     "types",
