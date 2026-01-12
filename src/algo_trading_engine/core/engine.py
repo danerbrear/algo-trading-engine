@@ -27,6 +27,13 @@ class TradingEngine(ABC):
     Both backtesting and paper trading engines implement this interface,
     allowing for unified usage patterns.
     """
+
+    def __init__(self, strategy: Strategy):
+        self._strategy = strategy
+
+        if not hasattr(strategy, 'get_current_underlying_price'):
+            # Add as new method if strategy doesn't have it
+            strategy.get_current_underlying_price = self._get_current_underlying_price
     
     @abstractmethod
     def run(self) -> bool:
@@ -79,6 +86,45 @@ class TradingEngine(ABC):
         """
         pass
 
+    def _get_current_underlying_price(self, date: datetime, symbol: str) -> Optional[float]:
+        """
+        Fetch and return the live price if the date is the current date, otherwise return last_price for the date.
+        
+        This method is injected into strategies so they can get current underlying prices
+        without needing to manage DataRetriever themselves.
+        
+        Args:
+            date: Date to get price for
+            symbol: Symbol to fetch price for (e.g., 'SPY')
+            
+        Returns:
+            Current underlying price as float, or None if unavailable
+            
+        Raises:
+            ValueError: If live price fetch fails and date is current date
+        """
+        current_date = datetime.now().date()
+        if date.date() == current_date:
+            try:
+                data_retriever = DataRetriever(symbol=symbol, use_free_tier=True, quiet_mode=True)
+                live_price = data_retriever.get_live_price()
+            except Exception as e:
+                raise ValueError(f"Failed to fetch live price from DataRetriever: {e}")
+
+            if live_price is not None:
+                return live_price
+            else:
+                raise ValueError("Failed to fetch live price from DataRetriever.")
+        else:
+            # Historical date - return Close price from data
+            try:
+                return float(self.data.loc[date]['Close'])
+            except (KeyError, IndexError):
+                # If exact date not found, try to get closest available date
+                try:
+                    return float(self.data.loc[self.data.index <= date]['Close'].iloc[-1])
+                except (IndexError, KeyError):
+                    raise ValueError(f"Could not find price data for date {date.date()}")
 
 # BacktestEngine is defined in backtest.main and implements TradingEngine
 # We'll import it here for convenience, but it's defined in backtest/main.py
@@ -201,7 +247,7 @@ class PaperTradingEngine(TradingEngine):
             config: Paper trading configuration
             options_handler: Options handler instance (optional, will be extracted from strategy if not provided)
         """
-        self._strategy = strategy
+        super().__init__(strategy)
         self._data_provider = data_provider
         self._config = config
         self._capital = config.initial_capital
