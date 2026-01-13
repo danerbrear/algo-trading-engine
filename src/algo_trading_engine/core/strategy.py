@@ -11,7 +11,6 @@ import pandas as pd
 
 from algo_trading_engine.common.models import TreasuryRates
 
-
 class Strategy(ABC):
     """
     Abstract base class for trading strategies.
@@ -84,6 +83,12 @@ class Strategy(ABC):
             True if data is valid, False otherwise
         """
         pass
+
+    def get_current_underlying_price(self, date: datetime, symbol: str) -> Optional[float]:
+        """
+        Get the current underlying price for a given date and symbol. Assigned via the TradingEngine.
+        """
+        raise NotImplementedError("get_current_underlying_price is not implemented in the base Strategy class.")
 
     def set_data(self, data: pd.DataFrame, treasury_data: Optional[TreasuryRates] = None):
         """

@@ -30,10 +30,7 @@ class TradingEngine(ABC):
 
     def __init__(self, strategy: Strategy):
         self._strategy = strategy
-
-        if not hasattr(strategy, 'get_current_underlying_price'):
-            # Add as new method if strategy doesn't have it
-            strategy.get_current_underlying_price = self._get_current_underlying_price
+        strategy.get_current_underlying_price = self._get_current_underlying_price
     
     @abstractmethod
     def run(self) -> bool:
