@@ -13,7 +13,6 @@ from algo_trading_engine.common.progress_tracker import progress_print
 from algo_trading_engine.common.options_helpers import OptionsRetrieverHelper
 from algo_trading_engine.common.models import OptionType
 from algo_trading_engine.common.options_dtos import StrikeRangeDTO, StrikePrice
-from algo_trading_engine.common.data_retriever import DataRetriever
 from decimal import Decimal
 from typing import Callable
 
@@ -195,7 +194,8 @@ class VelocitySignalMomentumStrategy(Strategy):
         # If it's the current date, always fetch live price (even if date exists in cache)
         # to ensure we're using the most recent data during market hours
         if is_current_date:
-            live_price = self._get_current_underlying_price(date)
+            symbol = self.data.index.name if self.data.index.name else 'SPY'
+            live_price = self.get_current_underlying_price(date, symbol)
             if live_price is not None:
                 # Check if current date already exists in data (from stale cache)
                 if date in self.data.index:
@@ -479,7 +479,8 @@ class VelocitySignalMomentumStrategy(Strategy):
             return
         progress_print(f"📈 Buy signal detected for {date.strftime('%Y-%m-%d')}")
 
-        current_price = self._get_current_underlying_price(date)
+        symbol = self.data.index.name if self.data.index.name else 'SPY'
+        current_price = self.get_current_underlying_price(date, symbol)
         if current_price is None:
             print("⚠️  Failed to get current price.")
             return
@@ -501,33 +502,6 @@ class VelocitySignalMomentumStrategy(Strategy):
         self._position_entries.append(date)
         
         add_position(position)
-
-    def _get_current_underlying_price(self, date: datetime) -> Optional[float]:
-        """
-        Fetch and return the live price if the date is the current date, otherwise return last_price for the date
-        """
-        current_date = datetime.now().date()
-        if date.date() == current_date:
-            # Initialize DataRetriever when needed
-            # Get symbol from data index name or default to SPY
-            symbol = self.data.index.name if self.data.index.name else 'SPY'
-            
-            # If data index name is not set, try to infer from data columns or use default
-            if symbol is None or symbol == '':
-                symbol = 'SPY'
-            
-            try:
-                data_retriever = DataRetriever(symbol=symbol, use_free_tier=True, quiet_mode=True)
-                live_price = data_retriever.get_live_price()
-            except Exception as e:
-                raise ValueError(f"Failed to fetch live price from DataRetriever: {e}")
-
-            if live_price is not None:
-                return live_price
-            else:
-                raise ValueError("Failed to fetch live price from DataRetriever.")
-        else:
-            return float(self.data.loc[date]['Close'])
 
     def _get_option_chain(self, date: datetime, current_price: float) -> Optional[OptionsChainDTO]:
         date_key = date.strftime('%Y-%m-%d')
@@ -608,7 +582,8 @@ class VelocitySignalMomentumStrategy(Strategy):
 
     # ==== Helper methods (closing) ====
     def _try_close_positions(self, date: datetime, positions: tuple['Position', ...], remove_position: Callable[[datetime, 'Position', float, Optional[float], Optional[list[int]]], None]):
-        current_underlying_price = self._get_current_underlying_price(date)
+        symbol = self.data.index.name if self.data.index.name else 'SPY'
+        current_underlying_price = self.get_current_underlying_price(date, symbol)
         progress_print(f"Current underlying price: {current_underlying_price}") 
         progress_print(f"🤖 Strategy evaluating {len(positions)} open position(s) for potential closure...")
                

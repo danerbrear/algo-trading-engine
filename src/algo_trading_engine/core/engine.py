@@ -11,7 +11,6 @@ from datetime import datetime
 import pandas as pd
 
 from .strategy import Strategy
-from .data_provider import DataProvider
 from algo_trading_engine.models.config import PaperTradingConfig
 
 if TYPE_CHECKING:
@@ -28,8 +27,9 @@ class TradingEngine(ABC):
     allowing for unified usage patterns.
     """
 
-    def __init__(self, strategy: Strategy):
+    def __init__(self, strategy: Strategy, data: pd.DataFrame):
         self._strategy = strategy
+        self._data = data
         strategy.get_current_underlying_price = self._get_current_underlying_price
     
     @abstractmethod
@@ -51,6 +51,11 @@ class TradingEngine(ABC):
             List of currently open Position objects
         """
         pass
+    
+    @property
+    def data(self) -> pd.DataFrame:
+        """Get the market data."""
+        return self._data
     
     @property
     @abstractmethod
@@ -103,6 +108,7 @@ class TradingEngine(ABC):
         current_date = datetime.now().date()
         if date.date() == current_date:
             try:
+                from algo_trading_engine.common.data_retriever import DataRetriever
                 data_retriever = DataRetriever(symbol=symbol, use_free_tier=True, quiet_mode=True)
                 live_price = data_retriever.get_live_price()
             except Exception as e:
@@ -128,98 +134,6 @@ class TradingEngine(ABC):
 # to avoid circular imports
 
 
-class LiveDataProvider:
-    """
-    Data provider implementation that wraps DataRetriever and OptionsHandler
-    to provide live market data for paper trading.
-    """
-    
-    def __init__(self, data_retriever, options_handler):
-        """
-        Initialize live data provider.
-        
-        Args:
-            data_retriever: DataRetriever instance for market data
-            options_handler: OptionsHandler instance for options data
-        """
-        self._data_retriever = data_retriever
-        self._options_handler = options_handler
-    
-    def get_market_data(
-        self,
-        symbol: str,
-        start_date: datetime,
-        end_date: datetime
-    ) -> pd.DataFrame:
-        """
-        Fetch historical market data for a symbol and date range.
-        
-        Args:
-            symbol: Stock symbol (e.g., 'SPY')
-            start_date: Start date for data
-            end_date: End date for data
-            
-        Returns:
-            DataFrame with OHLCV data indexed by date
-        """
-        # Fetch data using DataRetriever
-        data = self._data_retriever.fetch_data_for_period(
-            start_date.strftime("%Y-%m-%d"),
-            'paper_trading'
-        )
-        if data is None or len(data) == 0:
-            raise ValueError(f"Failed to fetch data for {symbol} from {start_date.date()} to {end_date.date()}")
-        return data
-    
-    def get_current_price(self, symbol: str) -> float:
-        """
-        Get current/live price for a symbol.
-        
-        Args:
-            symbol: Stock symbol
-            
-        Returns:
-            Current price as float
-        """
-        price = self._data_retriever.get_live_price(symbol)
-        if price is None:
-            raise ValueError(f"Failed to fetch live price for {symbol}")
-        return price
-    
-    def get_option_chain(
-        self,
-        symbol: str,
-        date: datetime
-    ) -> Optional['OptionChain']:
-        """
-        Get options chain data for a symbol and date.
-        
-        Args:
-            symbol: Stock symbol
-            date: Date for options data
-            
-        Returns:
-            OptionChain object or None if unavailable
-        """
-        # Use OptionsHandler to get option chain
-        # This is a placeholder - actual implementation depends on OptionsHandler API
-        return None  # TODO: Implement when OptionsHandler API is available
-    
-    def load_treasury_rates(
-        self,
-        start_date: datetime,
-        end_date: Optional[datetime] = None
-    ) -> None:
-        """
-        Load treasury rates data.
-        
-        Args:
-            start_date: Start date for treasury rates
-            end_date: Optional end date for treasury rates
-        """
-        self._data_retriever.load_treasury_rates(start_date, end_date)
-
-
 class PaperTradingEngine(TradingEngine):
     """
     Paper trading engine implementation.
@@ -231,7 +145,6 @@ class PaperTradingEngine(TradingEngine):
     def __init__(
         self,
         strategy: Strategy,
-        data_provider: DataProvider,
         config: PaperTradingConfig,
         options_handler=None
     ):
@@ -240,12 +153,16 @@ class PaperTradingEngine(TradingEngine):
         
         Args:
             strategy: Trading strategy to execute
-            data_provider: Data provider for live market data
             config: Paper trading configuration
             options_handler: Options handler instance (optional, will be extracted from strategy if not provided)
         """
-        super().__init__(strategy)
-        self._data_provider = data_provider
+        # PaperTradingEngine doesn't have its own data - use strategy's data
+        # If strategy doesn't have data yet, create empty DataFrame
+        strategy_data = getattr(strategy, 'data', None)
+        if strategy_data is None:
+            import pandas as pd
+            strategy_data = pd.DataFrame()
+        super().__init__(strategy, strategy_data)
         self._config = config
         self._capital = config.initial_capital
         self._positions: List['Position'] = []
@@ -257,8 +174,6 @@ class PaperTradingEngine(TradingEngine):
             self._options_handler = options_handler
         elif hasattr(strategy, 'options_handler'):
             self._options_handler = strategy.options_handler
-        elif hasattr(data_provider, '_options_handler'):
-            self._options_handler = data_provider._options_handler
         else:
             self._options_handler = None
     
@@ -474,13 +389,9 @@ class PaperTradingEngine(TradingEngine):
         # Internal: Set data on strategy
         strategy.set_data(data, retriever.treasury_rates)
         
-        # Internal: Create live data provider
-        data_provider = LiveDataProvider(retriever, options_handler)
-        
         # Create and return engine
         return cls(
             strategy=strategy,
-            data_provider=data_provider,
             config=config,
             options_handler=options_handler
         )

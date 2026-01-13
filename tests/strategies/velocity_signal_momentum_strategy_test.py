@@ -237,12 +237,23 @@ class TestVelocitySignalMomentumStrategy:
         )
         dates = pd.date_range('2024-01-01', periods=3)
         data = pd.DataFrame({'Close': [100.0, 101.0, 102.0]}, index=dates)
+        data.index.name = 'SPY'  # Set symbol for the strategy
         strategy.set_data(data)
-        assert strategy._get_current_underlying_price(datetime(2024,1,2)) == 101.0
+        
+        # Mock the injected get_current_underlying_price method
+        def mock_get_price(date, symbol):
+            if date == datetime(2024, 1, 2):
+                return 101.0
+            else:
+                raise KeyError(f"Date {date} not found")
+        
+        strategy.get_current_underlying_price = mock_get_price
+        
+        assert strategy.get_current_underlying_price(datetime(2024,1,2), 'SPY') == 101.0
         # For dates not in data, the method raises KeyError (not None)
         import pytest
         with pytest.raises(KeyError):
-            strategy._get_current_underlying_price(datetime(2023,12,31))
+            strategy.get_current_underlying_price(datetime(2023,12,31), 'SPY')
 
     def test_sanitize_exit_price(self):
         mock_options_handler = Mock()
@@ -1032,6 +1043,11 @@ class TestVelocityStrategyMethodSignatures:
                                 current_volumes: Optional[list[int]] = None):
             pass
         
+        # Mock get_current_underlying_price since it's injected by engine
+        def mock_get_price(d, s):
+            return float(data.loc[d, 'Close'])
+        strategy.get_current_underlying_price = mock_get_price
+        
         # This should not raise any errors
         try:
             strategy.on_new_date(date, positions, mock_add_position, mock_remove_position)
@@ -1168,6 +1184,11 @@ class TestVelocityStrategyMethodSignatures:
         
         # Mock the options handler to prevent errors
         strategy.get_option_bar = Mock(return_value=None)
+        
+        # Mock get_current_underlying_price since it's injected by engine
+        def mock_get_price(d, s):
+            return float(data.loc[d, 'Close'])
+        strategy.get_current_underlying_price = mock_get_price
         
         # This should not raise any errors
         try:

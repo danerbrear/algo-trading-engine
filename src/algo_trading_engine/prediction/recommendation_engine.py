@@ -48,17 +48,21 @@ class InteractiveStrategyRecommender:
         # Check if the specified date is the current date
         current_date = datetime.now().date()
         if date.date() == current_date:
-            # Use live price from Polygon API
+            # Use live price via strategy's injected method
             print(f"📡 Fetching live price for {date.date()} (current date)")
             # Get symbol from strategy
             symbol = None
             if hasattr(self.strategy, 'symbol'):
                 symbol = self.strategy.symbol
+            elif hasattr(self.strategy, 'data') and self.strategy.data is not None:
+                symbol = self.strategy.data.index.name if self.strategy.data.index.name else 'SPY'
             
             if symbol:
-                from algo_trading_engine.common.data_retriever import DataRetriever
-                temp_retriever = DataRetriever(symbol=symbol, use_free_tier=True, quiet_mode=True)
-                current_price = temp_retriever.get_live_price()
+                try:
+                    current_price = self.strategy.get_current_underlying_price(date, symbol)
+                except Exception as e:
+                    print(f"⚠️ Could not fetch live price via strategy method: {e}")
+                    current_price = None
             
             if current_price is None:
                 print("⚠️ Could not fetch live price, falling back to cached data")

@@ -209,7 +209,7 @@ class CreditSpreadStrategy(Strategy):
                 try:
                     if position.get_days_to_expiration(date) < 1:
                         print(f"Position {position.__str__()} expired or near expiration")
-                        underlying_price = self._get_current_underlying_price(date)
+                        underlying_price = self.get_current_underlying_price(date, self.symbol)
                         if underlying_price is not None:
                             print(f"    Underlying price: {underlying_price}")
                             remove_position(date, position, exit_price, underlying_price)
@@ -639,7 +639,7 @@ class CreditSpreadStrategy(Strategy):
 
     def _create_call_credit_spread_from_chain(self, date: datetime, prediction: dict) -> Position:
         """Create a call credit spread using the options chain data"""
-        current_price = self._get_current_underlying_price(date)
+        current_price = self.get_current_underlying_price(date, self.symbol)
         if current_price is None:
             print("⚠️  Failed to get current price")
             return None
@@ -689,7 +689,7 @@ class CreditSpreadStrategy(Strategy):
     def _create_put_credit_spread_from_chain(self, date: datetime, prediction: dict) -> Position:
         """Create a put credit spread using the options chain data"""
             
-        current_price = self._get_current_underlying_price(date)
+        current_price = self.get_current_underlying_price(date, self.symbol)
         if current_price is None:
             print("⚠️  Failed to get current price")
             return None
@@ -875,32 +875,6 @@ class CreditSpreadStrategy(Strategy):
             "expiration_date": best["expiry"].strftime("%Y-%m-%d"),
         }
 
-    def _get_current_underlying_price(self, date: datetime) -> Optional[float]:
-        """Get current underlying price, using live price if date is current date."""
-        # Check if the specified date is the current date
-        current_date = datetime.now().date()
-        if date.date() == current_date:
-            # Use live price from DataRetriever if available
-            if hasattr(self, 'data_retriever') and self.data_retriever:
-                live_price = self.data_retriever.get_live_price()
-                if live_price is not None:
-                    return live_price
-            else:
-                # Fallback: create a temporary DataRetriever for live price
-                from algo_trading_engine.common.data_retriever import DataRetriever
-                temp_retriever = DataRetriever(symbol=self.symbol, use_free_tier=True, quiet_mode=True)
-                # Note: We can't set options_handler on DataRetriever anymore, but symbol should be sufficient
-                live_price = temp_retriever.get_live_price()
-                if live_price is not None:
-                    return live_price
-        
-        # Fallback to cached data if live price failed or date is not current
-        if self.data is None or self.data.empty or date not in self.data.index:
-            return None
-        try:
-            return float(self.data.loc[date]['Close'])
-        except Exception:
-            return None
 
     def get_current_volumes_for_position(self, position: Position, date: datetime) -> list[int]:
         """

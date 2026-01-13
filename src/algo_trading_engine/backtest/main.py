@@ -27,8 +27,7 @@ class BacktestEngine(TradingEngine):
                  volume_config: VolumeConfig = None,
                  enable_progress_tracking: bool = True,
                  quiet_mode: bool = True):
-        super().__init__(strategy)
-        self.data = data
+        super().__init__(strategy, data)
         self._capital = initial_capital
         self.initial_capital = initial_capital  # Store initial capital for reporting
         self.start_date = start_date

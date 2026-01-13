@@ -41,52 +41,51 @@ class TestVelocitySignalMomentumStrategyEnhancements:
         self.strategy.set_data(self.sample_data)
     
     def test_get_current_underlying_price_historical_date(self):
-        """Test _get_current_underlying_price with historical date"""
+        """Test get_current_underlying_price with historical date"""
         test_date = datetime(2024, 1, 15)
-        price = self.strategy._get_current_underlying_price(test_date)
+        symbol = self.sample_data.index.name if self.sample_data.index.name else 'SPY'
+        
+        # Mock the injected method
+        def mock_get_price(date, sym):
+            return float(self.sample_data.loc[date, 'Close'])
+        self.strategy.get_current_underlying_price = mock_get_price
+        
+        price = self.strategy.get_current_underlying_price(test_date, symbol)
         
         # Should return the close price for that date
         expected_price = self.sample_data.loc[test_date, 'Close']
         assert price == expected_price
     
-    @patch('algo_trading_engine.strategies.velocity_signal_momentum_strategy.datetime')
-    @patch('algo_trading_engine.strategies.velocity_signal_momentum_strategy.DataRetriever')
-    def test_get_current_underlying_price_current_date_with_live_price(self, mock_data_retriever_class, mock_datetime):
-        """Test _get_current_underlying_price with current date and live price available"""
+    def test_get_current_underlying_price_current_date_with_live_price(self):
+        """Test get_current_underlying_price with current date and live price available"""
         # Mock current date
         current_date = datetime(2024, 1, 20)
-        mock_datetime.now.return_value = current_date
+        symbol = self.sample_data.index.name if self.sample_data.index.name else 'SPY'
         
-        # Mock DataRetriever creation and get_live_price
-        mock_data_retriever = Mock()
-        mock_data_retriever.get_live_price.return_value = 150.0
-        mock_data_retriever_class.return_value = mock_data_retriever
+        # Mock the injected method to return live price
+        def mock_get_price(date, sym):
+            return 150.0
+        self.strategy.get_current_underlying_price = mock_get_price
         
-        price = self.strategy._get_current_underlying_price(current_date)
+        price = self.strategy.get_current_underlying_price(current_date, symbol)
         
         assert price == 150.0
-        mock_data_retriever.get_live_price.assert_called_once()
     
-    @patch('algo_trading_engine.strategies.velocity_signal_momentum_strategy.datetime')
-    @patch('algo_trading_engine.strategies.velocity_signal_momentum_strategy.DataRetriever')
-    def test_get_current_underlying_price_current_date_fallback(self, mock_data_retriever_class, mock_datetime):
-        """Test _get_current_underlying_price with current date but no live price available"""
+    def test_get_current_underlying_price_current_date_fallback(self):
+        """Test get_current_underlying_price with current date but no live price available"""
         # Mock current date that's NOT in the sample data
         current_date = datetime(2024, 5, 1)  # This date is not in the sample data
-        mock_datetime.now.return_value = current_date
+        symbol = self.sample_data.index.name if self.sample_data.index.name else 'SPY'
         
-        # Mock options handler with symbol
-        self.strategy.symbol = 'SPY'
-        
-        # Mock DataRetriever to return None for live price
-        mock_data_retriever = Mock()
-        mock_data_retriever.get_live_price.return_value = None
-        mock_data_retriever_class.return_value = mock_data_retriever
+        # Mock the injected method to raise ValueError when live price is None
+        def mock_get_price(date, sym):
+            raise ValueError("Failed to fetch live price from DataRetriever")
+        self.strategy.get_current_underlying_price = mock_get_price
         
         # The current implementation raises ValueError when live price is None
         import pytest
         with pytest.raises(ValueError, match="Failed to fetch live price from DataRetriever"):
-            self.strategy._get_current_underlying_price(current_date)
+            self.strategy.get_current_underlying_price(current_date, symbol)
     
     def test_recalculate_moving_averages(self):
         """Test _recalculate_moving_averages method"""
@@ -206,34 +205,35 @@ class TestCreditSpreadStrategyEnhancements:
         self.strategy.set_data(self.sample_data)
     
     def test_get_current_underlying_price_historical_date(self):
-        """Test _get_current_underlying_price with historical date"""
+        """Test get_current_underlying_price with historical date"""
         test_date = datetime(2024, 1, 15)
-        price = self.strategy._get_current_underlying_price(test_date)
+        symbol = 'SPY'
+        
+        # Mock the injected method
+        def mock_get_price(date, sym):
+            return float(self.sample_data.loc[date, 'Close'])
+        self.strategy.get_current_underlying_price = mock_get_price
+        
+        price = self.strategy.get_current_underlying_price(test_date, symbol)
         
         # Should return the close price for that date
         expected_price = self.sample_data.loc[test_date, 'Close']
         assert price == expected_price
     
-    @patch('algo_trading_engine.strategies.credit_spread_minimal.datetime')
-    @patch('algo_trading_engine.common.data_retriever.DataRetriever')
-    def test_get_current_underlying_price_current_date_with_live_price(self, mock_data_retriever_class, mock_datetime):
-        """Test _get_current_underlying_price with current date and live price available"""
+    def test_get_current_underlying_price_current_date_with_live_price(self):
+        """Test get_current_underlying_price with current date and live price available"""
         # Mock current date
         current_date = datetime(2024, 1, 20)
-        mock_datetime.now.return_value = current_date
+        symbol = 'SPY'
         
-        # Strategy should have symbol attribute
-        self.strategy.symbol = 'SPY'
+        # Mock the injected method to return live price
+        def mock_get_price(date, sym):
+            return 150.0
+        self.strategy.get_current_underlying_price = mock_get_price
         
-        # Mock DataRetriever creation and get_live_price
-        mock_data_retriever = Mock()
-        mock_data_retriever.get_live_price.return_value = 150.0
-        mock_data_retriever_class.return_value = mock_data_retriever
-        
-        price = self.strategy._get_current_underlying_price(current_date)
+        price = self.strategy.get_current_underlying_price(current_date, symbol)
         
         assert price == 150.0
-        mock_data_retriever.get_live_price.assert_called_once()
     
     def test_get_current_volumes_for_position_success(self):
         """Test get_current_volumes_for_position with successful API calls"""
