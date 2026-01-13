@@ -5,7 +5,7 @@ This module contains static utility methods for common options operations
 as specified in features/improved_data_fetching.md Phase 4.
 """
 
-from typing import List, Tuple, Optional, Dict, Any
+from typing import Callable, List, Tuple, Optional, Dict, Any
 from decimal import Decimal
 from datetime import date, datetime
 
@@ -812,4 +812,123 @@ class OptionsRetrieverHelper:
                     monthly_expirations.append(exp_str)
         
         return sorted(monthly_expirations)
+    
+    @staticmethod
+    def find_best_credit_spread(
+        contracts: List[OptionContractDTO],
+        current_price: float,
+        expiration: str,
+        get_bar_fn: Callable[[OptionContractDTO, datetime], Optional[OptionBarDTO]],
+        date: datetime,
+        min_spread_width: int = 4,
+        max_spread_width: int = 10,
+        max_strike_difference: float = 2.0,
+        option_type: OptionType = OptionType.PUT
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Find the best credit spread from a list of contracts that maximizes credit/width ratio.
+        
+        Evaluates spreads from min_spread_width to max_spread_width and selects the one
+        with the highest credit/width ratio.
+        
+        Args:
+            contracts: List of option contracts to evaluate
+            current_price: Current underlying price
+            expiration: Target expiration date string (YYYY-MM-DD)
+            get_bar_fn: Function to get bar data: (contract: OptionContractDTO, date: datetime) -> Optional[OptionBarDTO]
+            date: Date to get bar data for
+            min_spread_width: Minimum spread width to evaluate (default: 4)
+            max_spread_width: Maximum spread width to evaluate (default: 10)
+            max_strike_difference: Maximum acceptable difference from target strike (default: 2.0)
+            option_type: Option type to use (PUT or CALL, default: PUT)
+            
+        Returns:
+            Dict with keys:
+                - 'atm_contract': OptionContractDTO for ATM leg
+                - 'otm_contract': OptionContractDTO for OTM leg
+                - 'atm_bar': OptionBarDTO for ATM leg
+                - 'otm_bar': OptionBarDTO for OTM leg
+                - 'credit': float, net credit received
+                - 'width': float, actual spread width
+                - 'credit_width_ratio': float, credit/width ratio
+            Or None if no valid spread found
+        """
+        # Filter contracts for the target expiration
+        contracts_for_expiration = [
+            c for c in contracts 
+            if str(c.expiration_date) == expiration and c.contract_type == option_type
+        ]
+        
+        if not contracts_for_expiration:
+            return None
+        
+        # Find ATM contract
+        atm_strike = round(current_price)
+        atm_contract = None
+        
+        if option_type == OptionType.PUT:
+            _, atm_contract = OptionsRetrieverHelper.find_atm_contracts(contracts_for_expiration, current_price)
+        else:  # CALL
+            atm_contract, _ = OptionsRetrieverHelper.find_atm_contracts(contracts_for_expiration, current_price)
+        
+        if not atm_contract:
+            return None
+        
+        best_spread = None
+        best_credit_width_ratio = -1.0
+        
+        # Evaluate spreads from min to max width
+        for spread_width in range(min_spread_width, max_spread_width + 1):
+            if option_type == OptionType.PUT:
+                target_otm_strike = atm_strike - spread_width
+            else:  # CALL
+                target_otm_strike = atm_strike + spread_width
+            
+            # Find the contract with the closest strike to the target OTM strike
+            otm_contract = min(
+                contracts_for_expiration,
+                key=lambda c: abs(float(c.strike_price.value) - target_otm_strike)
+            )
+            
+            strike_difference = abs(float(otm_contract.strike_price.value) - target_otm_strike)
+            
+            # Skip if strike is too far from target
+            if strike_difference > max_strike_difference:
+                continue
+            
+            # Verify both legs have the same expiration (vertical spread check)
+            if str(atm_contract.expiration_date) != str(otm_contract.expiration_date):
+                continue
+            
+            # Get bar data to calculate net credit
+            atm_bar = get_bar_fn(atm_contract, date)
+            otm_bar = get_bar_fn(otm_contract, date)
+            
+            if not atm_bar or not otm_bar:
+                continue
+            
+            # Calculate net credit (sell ATM, buy OTM)
+            net_credit = float(atm_bar.close_price) - float(otm_bar.close_price)
+            
+            if net_credit <= 0:
+                continue
+            
+            # Calculate actual spread width and credit/width ratio
+            actual_spread_width = abs(float(atm_contract.strike_price.value) - float(otm_contract.strike_price.value))
+            credit_width_ratio = net_credit / actual_spread_width
+            
+            # Track the best spread (highest credit/width ratio)
+            if credit_width_ratio > best_credit_width_ratio:
+                best_credit_width_ratio = credit_width_ratio
+                best_spread = {
+                    'atm_contract': atm_contract,
+                    'otm_contract': otm_contract,
+                    'atm_bar': atm_bar,
+                    'otm_bar': otm_bar,
+                    'credit': net_credit,
+                    'width': actual_spread_width,
+                    'credit_width_ratio': credit_width_ratio
+                }
+        
+        return best_spread
 
