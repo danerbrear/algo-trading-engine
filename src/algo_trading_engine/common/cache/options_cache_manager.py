@@ -11,7 +11,7 @@ from typing import List, Dict, Optional
 from datetime import date
 
 from .cache_manager import CacheManager
-from ..options_dtos import OptionContractDTO, OptionBarDTO
+from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO
 
 
 class OptionsCacheManager(CacheManager):

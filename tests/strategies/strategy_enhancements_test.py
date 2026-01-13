@@ -237,7 +237,7 @@ class TestCreditSpreadStrategyEnhancements:
     
     def test_get_current_volumes_for_position_success(self):
         """Test get_current_volumes_for_position with successful API calls"""
-        from algo_trading_engine.common.options_dtos import OptionContractDTO, OptionBarDTO
+        from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO
         from algo_trading_engine.common.models import OptionType as CommonOptionType
         from decimal import Decimal
         
@@ -272,7 +272,7 @@ class TestCreditSpreadStrategyEnhancements:
         )
         
         # Mock contract DTOs
-        from algo_trading_engine.common.options_dtos import StrikePrice, ExpirationDate
+        from algo_trading_engine.vo import StrikePrice, ExpirationDate
         contract1 = OptionContractDTO(
             ticker='O:SPY240119C00450000',
             underlying_ticker='SPY',
@@ -316,35 +316,23 @@ class TestCreditSpreadStrategyEnhancements:
             number_of_transactions=80
         )
         
-        # Mock the new API methods
-        def mock_get_contract_list_for_date(date, strike_range=None, expiration_range=None):
-            # Return contracts matching the strike prices
-            # StrikePrice uses .value attribute to get the Decimal value
-            if strike_range and hasattr(strike_range.min_strike, 'value'):
-                strike_val = strike_range.min_strike.value
-                if strike_val == Decimal('450.0'):
-                    return [contract1]
-                elif strike_val == Decimal('455.0'):
-                    return [contract2]
-            return []
-        
-        def mock_get_option_bar(contract, date):
-            if contract.ticker == 'O:SPY240119C00450000':
-                return bar1
-            elif contract.ticker == 'O:SPY240119C00455000':
-                return bar2
+        # Mock _get_option_with_bar which is what get_current_volumes_for_position actually calls
+        def mock_get_option_with_bar(strike, expiry_date, option_type, date):
+            # Return Option objects with volume data
+            if strike == 450.0 and expiry_date == datetime(2024, 1, 19).date() and option_type == OptionType.CALL:
+                return Option.from_contract_and_bar(contract1, bar1)
+            elif strike == 455.0 and expiry_date == datetime(2024, 1, 19).date() and option_type == OptionType.CALL:
+                return Option.from_contract_and_bar(contract2, bar2)
             return None
         
-        # Update the callables on the strategy
-        self.strategy.get_contract_list_for_date = Mock(side_effect=mock_get_contract_list_for_date)
-        self.strategy.get_option_bar = Mock(side_effect=mock_get_option_bar)
+        # Update the method on the strategy
+        self.strategy._get_option_with_bar = Mock(side_effect=mock_get_option_with_bar)
         
         test_date = datetime(2024, 1, 16)
         volumes = self.strategy.get_current_volumes_for_position(position, test_date)
         
         assert volumes == [200, 250]
-        assert self.strategy.get_contract_list_for_date.call_count == 2
-        assert self.strategy.get_option_bar.call_count == 2
+        assert self.strategy._get_option_with_bar.call_count == 2
     
     def test_get_current_volumes_for_position_api_failure(self):
         """Test get_current_volumes_for_position with API failures"""
@@ -379,7 +367,7 @@ class TestCreditSpreadStrategyEnhancements:
     
     def test_get_current_volumes_for_position_no_volume_data(self):
         """Test get_current_volumes_for_position when fresh option has no volume"""
-        from algo_trading_engine.common.options_dtos import OptionContractDTO, OptionBarDTO
+        from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO
         from algo_trading_engine.common.models import OptionType as CommonOptionType
         from decimal import Decimal
         
@@ -405,7 +393,7 @@ class TestCreditSpreadStrategyEnhancements:
         )
         
         # Mock contract DTO
-        from algo_trading_engine.common.options_dtos import StrikePrice, ExpirationDate
+        from algo_trading_engine.vo import StrikePrice, ExpirationDate
         contract1 = OptionContractDTO(
             ticker='O:SPY240119C00450000',
             underlying_ticker='SPY',

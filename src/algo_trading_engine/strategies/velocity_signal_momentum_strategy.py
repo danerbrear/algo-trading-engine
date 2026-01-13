@@ -8,11 +8,11 @@ import matplotlib.dates as mdates
 
 from algo_trading_engine.backtest.models import Strategy, Position, StrategyType, OptionChain
 from algo_trading_engine.common.models import TreasuryRates
-from algo_trading_engine.common.options_dtos import ExpirationRangeDTO, OptionsChainDTO
+from algo_trading_engine.dto import ExpirationRangeDTO, OptionsChainDTO, StrikeRangeDTO
+from algo_trading_engine.vo import StrikePrice
 from algo_trading_engine.common.progress_tracker import progress_print
 from algo_trading_engine.common.options_helpers import OptionsRetrieverHelper
 from algo_trading_engine.common.models import OptionType
-from algo_trading_engine.common.options_dtos import StrikeRangeDTO, StrikePrice
 from decimal import Decimal
 from typing import Callable
 
@@ -25,12 +25,13 @@ class VelocitySignalMomentumStrategy(Strategy):
     # Configurable holding period in trading days
     holding_period = 4
 
-    def __init__(self, get_contract_list_for_date: Callable, get_option_bar: Callable, get_options_chain: Callable, start_date_offset: int = 60, stop_loss: float = None, profit_target: float = None):
+    def __init__(self, get_contract_list_for_date: Callable, get_option_bar: Callable, get_options_chain: Callable, start_date_offset: int = 60, stop_loss: float = None, profit_target: float = None, symbol: str = 'SPY'):
         super().__init__(start_date_offset=start_date_offset, stop_loss=stop_loss, profit_target=profit_target)
 
         self.get_contract_list_for_date = get_contract_list_for_date
         self.get_option_bar = get_option_bar
         self.get_options_chain = get_options_chain
+        self.symbol = symbol
         
         # Track position entries for plotting
         self._position_entries = []
@@ -194,8 +195,7 @@ class VelocitySignalMomentumStrategy(Strategy):
         # If it's the current date, always fetch live price (even if date exists in cache)
         # to ensure we're using the most recent data during market hours
         if is_current_date:
-            symbol = self.data.index.name if self.data.index.name else 'SPY'
-            live_price = self.get_current_underlying_price(date, symbol)
+            live_price = self.get_current_underlying_price(date, self.symbol)
             if live_price is not None:
                 # Check if current date already exists in data (from stale cache)
                 if date in self.data.index:
@@ -393,9 +393,10 @@ class VelocitySignalMomentumStrategy(Strategy):
             otm_strike = atm_strike - 6
             
             # Filter for puts only (already filtered by expiration)
+            # Use .value comparison to handle test isolation issues where enum identity might differ
             puts_for_expiration = [
                 c for c in contracts_for_expiration 
-                if c.contract_type == OptionType.PUT
+                if c.contract_type.value == OptionType.PUT.value
             ]
             
             if not puts_for_expiration:
@@ -432,13 +433,14 @@ class VelocitySignalMomentumStrategy(Strategy):
             
             if net_credit > 0:  # Only consider if we receive a credit
                 # Convert OptionContractDTO to Option using the new conversion method
+                # Use the same import path as Position to ensure class identity
                 from algo_trading_engine.common.models import Option
                 atm_option = Option.from_contract_and_bar(atm_put, atm_bar)
                 otm_option = Option.from_contract_and_bar(otm_put, otm_bar)
                 
                 # Create test position
                 position = Position(
-                    symbol=self.data.index.name if self.data.index.name else 'SPY',
+                    symbol=self.symbol,
                     expiration_date=datetime.strptime(expiration, '%Y-%m-%d'),
                     strategy_type=StrategyType.PUT_CREDIT_SPREAD,
                     strike_price=atm_strike,
@@ -479,8 +481,7 @@ class VelocitySignalMomentumStrategy(Strategy):
             return
         progress_print(f"📈 Buy signal detected for {date.strftime('%Y-%m-%d')}")
 
-        symbol = self.data.index.name if self.data.index.name else 'SPY'
-        current_price = self.get_current_underlying_price(date, symbol)
+        current_price = self.get_current_underlying_price(date, self.symbol)
         if current_price is None:
             print("⚠️  Failed to get current price.")
             return
@@ -542,7 +543,7 @@ class VelocitySignalMomentumStrategy(Strategy):
             progress_print("🔍 Fetching expirations from options_retriever for 5-10 day window...")
             
             # Use new_options_handler to get available expirations
-            from algo_trading_engine.common.options_dtos import ExpirationRangeDTO
+            from algo_trading_engine.dto import ExpirationRangeDTO
             expiration_range = ExpirationRangeDTO(min_days=5, max_days=10)
             
             # Get contracts for the date (already filtered by expiration range)
@@ -582,8 +583,7 @@ class VelocitySignalMomentumStrategy(Strategy):
 
     # ==== Helper methods (closing) ====
     def _try_close_positions(self, date: datetime, positions: tuple['Position', ...], remove_position: Callable[[datetime, 'Position', float, Optional[float], Optional[list[int]]], None]):
-        symbol = self.data.index.name if self.data.index.name else 'SPY'
-        current_underlying_price = self.get_current_underlying_price(date, symbol)
+        current_underlying_price = self.get_current_underlying_price(date, self.symbol)
         progress_print(f"Current underlying price: {current_underlying_price}") 
         progress_print(f"🤖 Strategy evaluating {len(positions)} open position(s) for potential closure...")
                

@@ -50,7 +50,7 @@ class StockPredictor:
         self.data_retriever.calculate_features_for_data(hmm_data)
         
         print(f"\n🎯 Phase 2: Training HMM on market data ({len(hmm_data)} samples)")
-        from algo_trading_engine.model.market_state_classifier import MarketStateClassifier
+        from algo_trading_engine.ml_models.market_state_classifier import MarketStateClassifier
         self.state_classifier = MarketStateClassifier()
         states = self.state_classifier.train_hmm_model(hmm_data)
         print(f"✅ HMM model trained with {states} optimal states")

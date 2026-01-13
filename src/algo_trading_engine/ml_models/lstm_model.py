@@ -518,7 +518,8 @@ class LSTMModel:
                 # Get current price
                 current_price = data.loc[current_date, 'Close']
                 
-                from ..common.options_dtos import StrikeRangeDTO, ExpirationRangeDTO, StrikePrice
+                from algo_trading_engine.dto import StrikeRangeDTO, ExpirationRangeDTO
+                from algo_trading_engine.vo import StrikePrice
                 from ..common.models import Option, OptionType
                 
                 # Find ATM strike (closest to current price)

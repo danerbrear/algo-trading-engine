@@ -4,7 +4,7 @@ Common utility functions used across the project.
 
 import os
 import pickle
-from algo_trading_engine.model.market_state_classifier import MarketStateClassifier
+from algo_trading_engine.ml_models.market_state_classifier import MarketStateClassifier
 
 def load_hmm_model(model_dir):
     """
@@ -69,12 +69,12 @@ def load_lstm_model(model_dir, return_lstm_instance=False):
             print(f"WARNING: LSTM scaler not found at {scaler_path}")
         if return_lstm_instance:
             try:
-                from algo_trading_engine.model.lstm_model import LSTMModel
+                from algo_trading_engine.ml_models.lstm_model import LSTMModel
                 lstm_instance = LSTMModel(sequence_length=60, n_features=29)  # Default values
                 lstm_instance.model = keras_model
                 return lstm_instance, scaler
             except ImportError:
-                from algo_trading_engine.model.lstm_model import LSTMModel
+                from algo_trading_engine.ml_models.lstm_model import LSTMModel
                 lstm_instance = LSTMModel(sequence_length=60, n_features=29)
                 lstm_instance.model = keras_model
                 return lstm_instance, scaler

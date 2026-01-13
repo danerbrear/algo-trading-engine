@@ -41,20 +41,35 @@ from algo_trading_engine.dto import (
 )
 ```
 
-### 3. Runtime Types and Value Objects
+### 3. Enums
+For strategy development:
+
+```python
+from algo_trading_engine.enums import (
+    StrategyType,
+    OptionType,
+    MarketStateType,
+    SignalType,
+)
+```
+
+### 4. Value Objects and Runtime Types
 For strategy development and domain models:
 
 ```python
-from algo_trading_engine.types import (
-    # Enums
-    StrategyType,
-    
+from algo_trading_engine.vo import (
     # Runtime Objects
     Position,
     Option,
     
     # Value Objects
     TreasuryRates,
+    StrikePrice,
+    ExpirationDate,
+    MarketState,
+    TradingSignal,
+    PriceRange,
+    Volatility,
 )
 ```
 
@@ -82,7 +97,8 @@ engine.run()
 
 ```python
 from algo_trading_engine import BacktestEngine
-from algo_trading_engine.types import StrategyType, Position
+from algo_trading_engine.enums import StrategyType
+from algo_trading_engine.vo import Position
 
 # After running a backtest
 engine = BacktestEngine.from_config(config)
@@ -98,7 +114,8 @@ for position in engine.positions:
 
 ```python
 from algo_trading_engine import Strategy
-from algo_trading_engine.types import Position, StrategyType, Option, TreasuryRates
+from algo_trading_engine.enums import StrategyType
+from algo_trading_engine.vo import Position, Option, TreasuryRates
 from algo_trading_engine.dto import OptionsChainDTO
 from typing import Optional
 
@@ -125,7 +142,7 @@ class MyCustomStrategy(Strategy):
 ### Working with Options
 
 ```python
-from algo_trading_engine.types import Option
+from algo_trading_engine.vo import Option
 from algo_trading_engine.dto import OptionContractDTO
 
 # Use DTOs for fetching data from APIs
@@ -149,17 +166,19 @@ option = Option(
 ### Separation of Concerns
 - **Top-level API**: Execution engines and configurations
 - **dto package**: External data representation (API responses, serialization)
-- **types package**: Internal domain models (business logic, calculations)
+- **enums package**: Public enums for strategy development
+- **vo package**: Value objects and runtime types (business logic, calculations)
 
 ### Import Patterns
 ```python
 # ✅ Recommended: Explicit imports
 from algo_trading_engine import BacktestEngine, BacktestConfig
-from algo_trading_engine.types import StrategyType, Position
+from algo_trading_engine.enums import StrategyType
+from algo_trading_engine.vo import Position
 from algo_trading_engine.dto import OptionContractDTO
 
 # ✅ Also valid: Sub-package imports
-from algo_trading_engine import types, dto
+from algo_trading_engine import vo, enums, dto
 position = types.Position(...)
 option_dto = dto.OptionContractDTO(...)
 
@@ -169,7 +188,7 @@ from algo_trading_engine.backtest.models import Position  # Internal detail
 ```
 
 ### Backward Compatibility
-All existing code continues to work. The new `types` sub-package is an addition, not a breaking change.
+The `vo` and `enums` sub-packages replace the previous `types` sub-package. Update imports from `algo_trading_engine.types` to use `algo_trading_engine.vo` and `algo_trading_engine.enums` instead.
 
 ## Package Structure
 
@@ -178,8 +197,11 @@ algo_trading_engine/
 ├── __init__.py              # Core API exports
 ├── dto/
 │   └── __init__.py          # DTOs for API communication
-├── types/
-│   └── __init__.py          # Runtime types and value objects
+├── enums/
+│   └── __init__.py          # Public enums
+├── vo/
+│   ├── __init__.py          # Value objects and runtime types
+│   └── value_objects.py     # Public value objects
 ├── models/
 │   ├── config.py            # Configuration DTOs
 │   └── metrics.py           # Metrics DTOs
@@ -194,16 +216,17 @@ algo_trading_engine/
 When adding new types to the public API:
 
 1. **For DTOs** (external data): Add to `dto/__init__.py`
-2. **For runtime types/VOs**: Add to `types/__init__.py`
-3. **For configs/metrics**: Add to `models/` package
-4. **Update tests**: Add to `test_types_subpackage.py` or `test_public_api.py`
+2. **For enums**: Add to `enums/__init__.py`
+3. **For runtime types/VOs**: Add to `vo/__init__.py` and `vo/value_objects.py`
+4. **For configs/metrics**: Add to `models/` package
+5. **Update tests**: Add to `test_types_subpackage.py` or `test_public_api.py`
 
 ## Testing
 
 All public API functionality is tested:
 
 ```bash
-# Test types sub-package
+# Test vo and enums sub-packages
 pytest tests/test_types_subpackage.py -v
 
 # Test overall public API

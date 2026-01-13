@@ -1,95 +1,21 @@
 """
-Data Transfer Objects and Value Objects for Options data management.
+Public Data Transfer Objects (DTOs) for Options data.
 
-This module contains all DTOs and VOs needed for the refactored OptionsHandler,
-following the requirements in features/improved_data_fetching.md.
+These DTOs are part of the public API and can be imported via:
+    from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO, etc.
+
+Note: StrikePrice and ExpirationDate are Value Objects, not DTOs,
+and are located in algo_trading_engine.vo.value_objects
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, date, timedelta
+from datetime import datetime, date
 from decimal import Decimal
 from typing import Optional, List, Dict, Any
 import re
 
-from .models import OptionType
-
-
-@dataclass(frozen=True)
-class StrikePrice:
-    """
-    Value Object representing a strike price with validation.
-    
-    This encapsulates strike price logic and provides domain-specific
-    methods for strike price operations.
-    """
-    value: Decimal
-    
-    def __post_init__(self):
-        if self.value <= 0:
-            raise ValueError("Strike price must be positive")
-        if self.value > Decimal('10000'):  # Reasonable upper limit
-            raise ValueError("Strike price cannot exceed $10,000")
-    
-    def __str__(self) -> str:
-        return f"${self.value}"
-    
-    def __repr__(self) -> str:
-        return f"StrikePrice({self.value})"
-    
-    def is_atm(self, current_price: Decimal, tolerance: Decimal = Decimal('0.01')) -> bool:
-        """Check if this strike is at-the-money within tolerance."""
-        return abs(self.value - current_price) <= tolerance
-    
-    def is_itm(self, current_price: Decimal, option_type: OptionType) -> bool:
-        """Check if this strike is in-the-money."""
-        if option_type == OptionType.CALL:
-            return self.value < current_price
-        else:  # PUT
-            return self.value > current_price
-    
-    def is_otm(self, current_price: Decimal, option_type: OptionType) -> bool:
-        """Check if this strike is out-of-the-money."""
-        return not self.is_itm(current_price, option_type) and not self.is_atm(current_price)
-
-
-@dataclass(frozen=True)
-class ExpirationDate:
-    """
-    Value Object representing an expiration date with validation.
-    
-    This encapsulates expiration date logic and provides domain-specific
-    methods for expiration date operations.
-    """
-    date: date
-    
-    def __post_init__(self):
-        pass
-    
-    def __str__(self) -> str:
-        return self.date.strftime('%Y-%m-%d')
-    
-    def __repr__(self) -> str:
-        return f"ExpirationDate({self.date})"
-    
-    def days_to_expiration(self, current_date: Optional['date'] = None) -> int:
-        """Calculate days to expiration from current date."""
-        if current_date is None:
-            current_date = date.today()
-        return (self.date - current_date).days
-    
-    def is_weekly(self) -> bool:
-        """Check if this is a weekly expiration (Friday)."""
-        return self.date.weekday() == 4  # Friday
-    
-    def is_monthly(self) -> bool:
-        """Check if this is a monthly expiration (third Friday)."""
-        if not self.is_weekly():
-            return False
-        # Third Friday of the month
-        first_day = self.date.replace(day=1)
-        first_friday = first_day + timedelta(days=(4 - first_day.weekday()) % 7)
-        third_friday = first_friday + timedelta(days=14)
-        return self.date == third_friday
+from algo_trading_engine.vo import StrikePrice, ExpirationDate
+from algo_trading_engine.common.models import OptionType
 
 
 @dataclass(frozen=True)

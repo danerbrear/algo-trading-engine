@@ -13,7 +13,8 @@ from typing import Dict, List, Optional, Any
 import pandas as pd
 
 from .cache.options_cache_manager import OptionsCacheManager
-from .options_dtos import OptionContractDTO, OptionBarDTO, StrikePrice, ExpirationDate
+from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO
+from algo_trading_engine.vo import StrikePrice, ExpirationDate
 from .models import OptionType, Option, OptionChain
 
 
@@ -279,7 +280,7 @@ class OptionsCacheMigrator:
             
             # For migration, we need to allow past dates, so we'll create the ExpirationDate
             # by temporarily bypassing the validation using object.__setattr__
-            from algo_trading_engine.common.options_dtos import ExpirationDate
+            from algo_trading_engine.vo import ExpirationDate
             exp_date = ExpirationDate.__new__(ExpirationDate)
             object.__setattr__(exp_date, 'date', exp_date_obj)
             
@@ -329,7 +330,7 @@ class OptionsCacheMigrator:
             
             # For migration, we need to allow past dates, so we'll create the ExpirationDate
             # by temporarily bypassing the validation using object.__setattr__
-            from algo_trading_engine.common.options_dtos import ExpirationDate
+            from algo_trading_engine.vo import ExpirationDate
             exp_date = ExpirationDate.__new__(ExpirationDate)
             object.__setattr__(exp_date, 'date', exp_date_obj)
             

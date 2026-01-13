@@ -48,7 +48,7 @@
 
 #### Package Structure Guidelines
 
-##### 1. **model/** - Machine Learning Models
+##### 1. **ml_models/** - Machine Learning Models
 - **Purpose**: Core ML models and training logic
 - **Structure**:
   - `main.py` - Entry point for training and evaluation
@@ -263,10 +263,13 @@
 ### Structure and Organization
 
 #### 7. **Location in Project**
-- Place Value Objects in `src/common/models.py` for shared domain objects
-- Create package-specific Value Objects in their respective packages
-- Use `src/model/` for model-specific Value Objects
-- Use `src/strategies/` for strategy-specific Value Objects
+- **Public Value Objects**: Must be in `algo_trading_engine.vo` package (e.g., `StrikePrice`, `ExpirationDate`, `MarketState`, `TradingSignal`, `PriceRange`, `Volatility`)
+- **Public Enums**: Must be in `algo_trading_engine.enums` package (e.g., `StrategyType`, `OptionType`, `MarketStateType`, `SignalType`)
+- **Internal Value Objects**: Stay in their respective modules
+- **Location Rules**:
+  - Public VOs go in `vo/value_objects.py` and are exported via `vo/__init__.py`
+  - Public enums go in `enums/__init__.py` (imported from their source modules)
+  - Internal VOs remain in their module (e.g., `Option`, `OptionChain`, `TreasuryRates` in `common/models.py` if they're runtime objects, not pure VOs)
 
 #### 8. **Package Organization**
 ```python
@@ -571,12 +574,16 @@ def test_market_state_validation():
 ### Naming Conventions
 
 #### 4. **Consistent Naming**
+- **All DTO class names must end with "DTO" suffix**
 - Use descriptive, domain-specific names
 - Follow language conventions:
   - **C#/Java**: `UserDto`, `CreateUserRequest`, `UserResponse`
   - **TypeScript**: `UserDTO`, `CreateUserRequest`, `UserResponse`
-  - **Python**: `UserDTO`, `CreateUserRequest`, `UserResponse`
-- Suffix with purpose: `Request`, `Response`, `Command`, `Query`
+  - **Python**: `UserDTO`, `CreateUserRequestDTO`, `UserResponseDTO`
+- Suffix with purpose: `Request`, `Response`, `Command`, `Query` (all must end with DTO)
+- **Location Rules**:
+  - **Public DTOs**: Must be in `algo_trading_engine.dto` package (e.g., `OptionContractDTO`, `OptionBarDTO`)
+  - **Internal DTOs**: Stay in their respective modules (e.g., `ProposedPositionRequestDTO` in `prediction/decision_store.py`)
 
 #### 5. **Clear Intent**
 - Request DTOs: `CreateUserRequest`, `UpdateUserRequest`

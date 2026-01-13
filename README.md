@@ -11,15 +11,15 @@ Add `algo-trading-engine` to your project's `pyproject.toml`:
 ```toml
 [project]
 dependencies = [
-    "algo-trading-engine @ git+https://github.com/yourusername/algo-trading-engine.git@main",
+    "algo-trading-engine @ git+https://github.com/danerbrear/algo-trading-engine.git@main",
     # Or for a specific version/tag:
-    # "algo-trading-engine @ git+https://github.com/yourusername/algo-trading-engine.git@v0.0.3",
+    # "algo-trading-engine @ git+https://github.com/danerbrear/algo-trading-engine.git@v0.0.3",
 ]
 ```
 
 Or install directly:
 ```bash
-pip install git+https://github.com/yourusername/algo-trading-engine.git@main
+pip install git+https://github.com/danerbrear/algo-trading-engine.git@main
 ```
 
 ### Basic Backtesting Example
@@ -77,10 +77,10 @@ The system operates in two main stages:
 
 ### Core Components
 
-- **`algo_trading_engine/model/`** - Machine learning models and training logic
+- **`algo_trading_engine/ml_models/`** - Machine learning models and training logic
   - Market analysis models
   - Strategy prediction models
-  - See [Model Documentation](algo_trading_engine/model/README.md) for details
+  - See [Model Documentation](algo_trading_engine/ml_models/README.md) for details
 
 - **`algo_trading_engine/strategies/`** - Trading strategy implementations
   - Various options trading strategies
@@ -109,7 +109,7 @@ The system operates in two main stages:
 ```
 lstm_poc/
 ├── algo_trading_engine/      # Source code directory (Python package)
-│   ├── model/                # ML models and training
+│   ├── ml_models/            # ML models and training
 │   │   ├── README.md         # Model-specific documentation
 │   │   ├── main.py           # Training entry point
 │   │   ├── lstm_model.py     # Strategy prediction model
@@ -172,7 +172,7 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 3. **Train models:**
 ```bash
-python -m src.model.main --free --save
+python -m src.ml_models.main --free --save
 ```
 5. **Run backtests:**
 ```bash
@@ -268,7 +268,7 @@ python -m pytest tests/test_velocity_strategy.py -v
 - **[Public API Organization](docs/public_api_organization.md)** - Guide to the public API structure and usage patterns
 
 ### Component Documentation
-- **[Model Documentation](algo_trading_engine/model/README.md)** - ML models, training, and evaluation
+- **[Model Documentation](algo_trading_engine/ml_models/README.md)** - ML models, training, and evaluation
 - **[Strategy Documentation](algo_trading_engine/strategies/README.md)** - Trading strategy implementations
 - **[Prediction Documentation](algo_trading_engine/prediction/README.md)** - Recommendation CLI and equity curve analysis
 - **[Backtest Documentation](algo_trading_engine/backtest/README.md)** - Backtesting framework and usage

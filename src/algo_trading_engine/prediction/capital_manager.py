@@ -12,7 +12,7 @@ from pathlib import Path
 import json
 
 from algo_trading_engine.backtest.models import StrategyType
-from algo_trading_engine.prediction.decision_store import JsonDecisionStore, DecisionResponse
+from algo_trading_engine.prediction.decision_store import JsonDecisionStore, DecisionResponseDTO
 
 
 class CapitalManager:

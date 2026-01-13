@@ -153,6 +153,11 @@ class VelocitySignalMomentumStrategyBuilder(StrategyBuilder):
         self._stop_loss = None
         self._profit_target = None
     
+    def set_symbol(self, symbol: str):
+        """Set the symbol for the strategy"""
+        self._symbol = symbol
+        return self
+    
     def set_options_callables(self, get_contract_list_for_date: Callable, get_option_bar: Callable, get_options_chain: Callable, options_handler=None):
         """Set the options callables (methods from OptionsHandler as callables)"""
         self._get_contract_list_for_date = get_contract_list_for_date
@@ -185,7 +190,8 @@ class VelocitySignalMomentumStrategyBuilder(StrategyBuilder):
             get_options_chain=self._get_options_chain,
             start_date_offset=self._start_date_offset,
             stop_loss=self._stop_loss,
-            profit_target=self._profit_target
+            profit_target=self._profit_target,
+            symbol=self._symbol
         )
         
         self.reset()
@@ -276,6 +282,8 @@ def create_strategy_from_args(strategy_name: str, **kwargs):
                 kwargs['get_options_chain'],
                 kwargs.get('options_handler') # Backward compatibility: if strategy still uses options_handler, inject it
             )
+        if 'symbol' in kwargs:
+            builder.set_symbol(kwargs['symbol'])
         if 'start_date_offset' in kwargs:
             builder.set_start_date_offset(kwargs['start_date_offset'])
         if 'stop_loss' in kwargs and kwargs['stop_loss'] is not None:

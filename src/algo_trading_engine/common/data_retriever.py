@@ -14,14 +14,14 @@ sys.path.insert(0, package_dir)
 
 # Add try/except for linter compatibility
 try:
-    from algo_trading_engine.model.market_state_classifier import MarketStateClassifier
-    from algo_trading_engine.model.calendar_features import CalendarFeatureProcessor
+    from algo_trading_engine.ml_models.market_state_classifier import MarketStateClassifier
+    from algo_trading_engine.ml_models.calendar_features import CalendarFeatureProcessor
     from algo_trading_engine.common.cache.cache_manager import CacheManager
 except ImportError:
     # Fallback for direct script execution
     sys.path.insert(0, os.path.join(package_dir, '..'))
-    from algo_trading_engine.model.market_state_classifier import MarketStateClassifier
-    from algo_trading_engine.model.calendar_features import CalendarFeatureProcessor
+    from algo_trading_engine.ml_models.market_state_classifier import MarketStateClassifier
+    from algo_trading_engine.ml_models.calendar_features import CalendarFeatureProcessor
     from algo_trading_engine.common.cache.cache_manager import CacheManager
 from algo_trading_engine.common.models import TreasuryRates
 

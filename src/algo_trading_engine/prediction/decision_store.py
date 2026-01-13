@@ -15,7 +15,7 @@ DecisionOutcome = Literal["accepted", "rejected"]
 
 
 @dataclass(frozen=True)
-class ProposedPositionRequest:
+class ProposedPositionRequestDTO:
     """Represents a proposed position to open.
 
     Legs reuse the existing Option VO for clarity and compatibility with the
@@ -49,8 +49,8 @@ class ProposedPositionRequest:
         }
 
     @staticmethod
-    def from_dict(data: dict) -> "ProposedPositionRequest":
-        return ProposedPositionRequest(
+    def from_dict(data: dict) -> "ProposedPositionRequestDTO":
+        return ProposedPositionRequestDTO(
             symbol=data["symbol"],
             strategy_type=StrategyType(data["strategy_type"]),
             legs=tuple(Option.from_dict(opt) for opt in data.get("legs", [])),
@@ -65,7 +65,7 @@ class ProposedPositionRequest:
 
 
 @dataclass(frozen=True)
-class DecisionResponse:
+class DecisionResponseDTO:
     """Immutable record of a decision outcome for a proposal.
 
     When outcome is "accepted" for an open decision, the record represents an
@@ -73,7 +73,7 @@ class DecisionResponse:
     """
 
     id: str
-    proposal: ProposedPositionRequest
+    proposal: ProposedPositionRequestDTO
     outcome: DecisionOutcome
     decided_at: str
     rationale: str
@@ -96,10 +96,10 @@ class DecisionResponse:
         }
 
     @staticmethod
-    def from_dict(data: dict) -> "DecisionResponse":
-        return DecisionResponse(
+    def from_dict(data: dict) -> "DecisionResponseDTO":
+        return DecisionResponseDTO(
             id=str(data["id"]),
-            proposal=ProposedPositionRequest.from_dict(data["proposal"]),
+            proposal=ProposedPositionRequestDTO.from_dict(data["proposal"]),
             outcome=data["outcome"],
             decided_at=str(data["decided_at"]),
             rationale=str(data["rationale"]),
@@ -110,7 +110,7 @@ class DecisionResponse:
         )
 
 
-def generate_decision_id(proposal: ProposedPositionRequest, decided_at_iso: str) -> str:
+def generate_decision_id(proposal: ProposedPositionRequestDTO, decided_at_iso: str) -> str:
     """Generate a deterministic ID for a decision.
 
     Incorporates symbol, strategy_type, legs signature (type/strike/expiration),
@@ -151,7 +151,7 @@ class JsonDecisionStore:
         self.base_dir = base_dir
         self._ensure_base_dir()
 
-    def append_decision(self, record: DecisionResponse) -> None:
+    def append_decision(self, record: DecisionResponseDTO) -> None:
         """Append a decision to the file for the decision date.
 
         Chooses the file based on `record.decided_at` date.
@@ -171,16 +171,16 @@ class JsonDecisionStore:
         self,
         symbol: Optional[str] = None,
         strategy_type: Optional[StrategyType] = None,
-    ) -> List[DecisionResponse]:
+    ) -> List[DecisionResponseDTO]:
         """Return all accepted-but-not-closed decisions across all files.
 
         Filter by symbol and/or strategy_type if provided.
         """
-        results: List[DecisionResponse] = []
+        results: List[DecisionResponseDTO] = []
         for path in self._list_decision_files():
             for rec in self._read_records(path):
                 try:
-                    record = DecisionResponse.from_dict(rec)
+                    record = DecisionResponseDTO.from_dict(rec)
                 except Exception:
                     continue
                 if record.outcome != "accepted" or record.closed_at is not None:
@@ -196,16 +196,16 @@ class JsonDecisionStore:
         self,
         strategy_name: Optional[str] = None,
         symbol: Optional[str] = None,
-    ) -> List[DecisionResponse]:
+    ) -> List[DecisionResponseDTO]:
         """Return all accepted decisions (both open and closed) across all files.
         
         Filter by strategy_name and/or symbol if provided.
         """
-        results: List[DecisionResponse] = []
+        results: List[DecisionResponseDTO] = []
         for path in self._list_decision_files():
             for rec in self._read_records(path):
                 try:
-                    record = DecisionResponse.from_dict(rec)
+                    record = DecisionResponseDTO.from_dict(rec)
                 except Exception:
                     continue
                 if record.outcome != "accepted":

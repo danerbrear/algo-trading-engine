@@ -234,7 +234,6 @@ class PaperTradingEngine(TradingEngine):
             # Create recommender for close flow
             recommender = InteractiveStrategyRecommender(
                 self._strategy,
-                self._options_handler,
                 store,
                 capital_manager,
                 auto_yes=False
@@ -267,7 +266,6 @@ class PaperTradingEngine(TradingEngine):
         # Create recommender and run
         recommender = InteractiveStrategyRecommender(
             self._strategy,
-            self._options_handler,
             store,
             capital_manager,
             auto_yes=False

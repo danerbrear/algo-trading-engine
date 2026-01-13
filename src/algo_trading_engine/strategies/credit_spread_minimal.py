@@ -7,8 +7,9 @@ import pandas as pd
 from algo_trading_engine.backtest.models import Position, Strategy, StrategyType
 from algo_trading_engine.common.models import Option, OptionType, TreasuryRates
 from algo_trading_engine.common.progress_tracker import progress_print
-from algo_trading_engine.common.options_dtos import ExpirationRangeDTO, StrikeRangeDTO, StrikePrice, ExpirationDate
-from algo_trading_engine.model.lstm_model import LSTMModel
+from algo_trading_engine.dto import ExpirationRangeDTO, StrikeRangeDTO
+from algo_trading_engine.vo import StrikePrice, ExpirationDate
+from algo_trading_engine.ml_models.lstm_model import LSTMModel
 from decimal import Decimal
 from typing import Callable
 

@@ -31,7 +31,7 @@ The HMM identifies distinct market regimes based on core market features.
 
 #### Training Process
 ```python
-from src.model.market_state_classifier import MarketStateClassifier
+from src.ml_models.market_state_classifier import MarketStateClassifier
 
 # Initialize classifier
 classifier = MarketStateClassifier()
@@ -74,7 +74,7 @@ The LSTM predicts optimal options trading strategies from three classes.
 
 #### Training Process
 ```python
-from src.model.lstm_model import LSTMModel
+from src.ml_models.lstm_model import LSTMModel
 
 # Initialize model
 model = LSTMModel(sequence_length=60, num_features=50)
@@ -96,10 +96,10 @@ The main training script orchestrates the entire training process:
 
 ```bash
 # Basic training
-python -m src.model.main
+python -m src.ml_models.main
 
 # Training with options
-python -m src.model.main --symbol QQQ --free --save --verbose
+python -m src.ml_models.main --symbol QQQ --free --save --verbose
 ```
 
 #### Command Line Options
@@ -140,8 +140,8 @@ data, options_data = retriever.prepare_data_for_lstm(
 Processes options data and calculates strategy-specific features:
 
 ```python
-from src.model.options_handler import OptionsHandler
-from src.model.lstm_model import LSTMModel
+from src.common.options_handler import OptionsHandler
+from src.ml_models.lstm_model import LSTMModel
 
 # Initialize handler
 handler = OptionsHandler(symbol='SPY')
@@ -179,7 +179,7 @@ data = LSTMModel.calculate_option_signals(data)
 ### Saving Models
 ```bash
 # Save models during training
-python -m src.model.main --save --mode production
+python -m src.ml_models.main --save --mode production
 ```
 
 ### Loading Models
@@ -269,7 +269,7 @@ HMM_CONFIG = {
 Handles API requests with retry logic and rate limiting:
 
 ```python
-from src.model.api_retry_handler import APIRetryHandler
+from src.ml_models.api_retry_handler import APIRetryHandler
 
 # Initialize handler
 handler = APIRetryHandler(api_key='your_key', use_free_tier=True)

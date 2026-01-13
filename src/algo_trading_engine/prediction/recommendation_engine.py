@@ -6,8 +6,8 @@ from typing import Optional, List
 from algo_trading_engine.backtest.models import Position, StrategyType, Strategy
 from algo_trading_engine.prediction.decision_store import (
     JsonDecisionStore,
-    ProposedPositionRequest,
-    DecisionResponse,
+    ProposedPositionRequestDTO,
+    DecisionResponseDTO,
     generate_decision_id,
 )
 from algo_trading_engine.prediction.capital_manager import CapitalManager
@@ -35,7 +35,7 @@ class InteractiveStrategyRecommender:
 
     # ---------- Open recommendation ----------
 
-    def recommend_open_position(self, date: datetime) -> Optional[DecisionResponse]:
+    def recommend_open_position(self, date: datetime) -> Optional[DecisionResponseDTO]:
         """Use the strategy to propose an opening trade for the date and capture decision."""
         # Require strategy data
         if getattr(self.strategy, "data", None) is None:
@@ -107,7 +107,7 @@ class InteractiveStrategyRecommender:
         strategy_name = self._get_strategy_name_from_class()
 
         # Build proposal DTO
-        proposal = ProposedPositionRequest(
+        proposal = ProposedPositionRequestDTO(
             symbol=self.strategy.symbol if hasattr(self.strategy, 'symbol') else 'SPY',
             strategy_type=strategy_type,
             legs=legs,
@@ -142,7 +142,7 @@ class InteractiveStrategyRecommender:
             return None
 
         decided_at = datetime.now(timezone.utc).isoformat()
-        record = DecisionResponse(
+        record = DecisionResponseDTO(
             id=generate_decision_id(proposal, decided_at),
             proposal=proposal,
             outcome="accepted",
@@ -156,10 +156,10 @@ class InteractiveStrategyRecommender:
 
     # ---------- Close recommendation ----------
 
-    def recommend_close_positions(self, date: datetime) -> List[DecisionResponse]:
+    def recommend_close_positions(self, date: datetime) -> List[DecisionResponseDTO]:
         """Check open decisions and recommend closure when rules trigger."""
         open_records = self.decision_store.get_open_positions()
-        closed_records: List[DecisionResponse] = []
+        closed_records: List[DecisionResponseDTO] = []
 
         if not open_records:
             return closed_records
@@ -197,7 +197,7 @@ class InteractiveStrategyRecommender:
                     # Mark closed in the store
                     self.decision_store.mark_closed(rec.id, exit_price=exit_price, closed_at=date)
                     # Return an updated record instance for the caller
-                    updated = DecisionResponse(
+                    updated = DecisionResponseDTO(
                         id=rec.id,
                         proposal=rec.proposal,
                         outcome=rec.outcome,
@@ -262,7 +262,7 @@ class InteractiveStrategyRecommender:
         answer = input(f"{message} [y/N]: ").strip().lower()
         return answer in {"y", "yes"}
 
-    def _position_from_decision(self, rec: DecisionResponse) -> Position:
+    def _position_from_decision(self, rec: DecisionResponseDTO) -> Position:
         # Determine representative strike for display based on strategy type
         legs = list(rec.proposal.legs)
         strike = legs[0].strike if legs else 0.0
@@ -285,7 +285,7 @@ class InteractiveStrategyRecommender:
         position.set_quantity(int(rec.quantity) if rec.quantity is not None else 1)
         return position
 
-    def _format_open_summary(self, proposal: ProposedPositionRequest, best: dict, max_risk: float, premium_amount: float, premium_label: str, risk_message: str) -> str:
+    def _format_open_summary(self, proposal: ProposedPositionRequestDTO, best: dict, max_risk: float, premium_amount: float, premium_label: str, risk_message: str) -> str:
         legs_str = ", ".join(
             [f"{leg.option_type.value.upper()} {int(leg.strike)} exp {leg.expiration}" for leg in proposal.legs]
         )

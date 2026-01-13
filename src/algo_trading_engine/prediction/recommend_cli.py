@@ -4,7 +4,7 @@ import argparse
 import os
 import sys
 
-from algo_trading_engine.core import PaperTradingEngine
+from algo_trading_engine.core.engine import PaperTradingEngine
 from algo_trading_engine.models import PaperTradingConfig
 
 

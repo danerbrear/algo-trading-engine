@@ -26,12 +26,14 @@ Helpers:
 
 Sub-packages:
     - dto: Data Transfer Objects for API communication
-    - types: Runtime types, value objects, and enums
+    - vo: Value Objects and runtime types
+    - enums: Public enums
 
 Example Usage:
 --------------
     from algo_trading_engine import BacktestEngine, BacktestConfig
-    from algo_trading_engine.types import StrategyType, Position
+    from algo_trading_engine.enums import StrategyType
+    from algo_trading_engine.vo import Position
     from datetime import datetime
     
     config = BacktestConfig(
@@ -67,7 +69,7 @@ from algo_trading_engine.models.metrics import (
 from algo_trading_engine.common.options_helpers import OptionsRetrieverHelper
 # Import sub-packages for easy access
 from algo_trading_engine import dto
-from algo_trading_engine import types
+from algo_trading_engine import vo, enums
 
 # Define public API
 __all__ = [
@@ -88,7 +90,8 @@ __all__ = [
     "OptionsRetrieverHelper",
     # Sub-packages (for strategy development)
     "dto",
-    "types",
+    "vo",
+    "enums",
 ]
 
 __version__ = "0.0.3"

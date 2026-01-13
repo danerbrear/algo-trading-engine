@@ -1,5 +1,5 @@
 """
-Test the types sub-package exports.
+Test the vo and enums sub-package exports.
 
 This ensures that runtime types, value objects, and enums are properly
 exposed through the public API.
@@ -8,15 +8,21 @@ exposed through the public API.
 import pytest
 
 
-def test_types_subpackage_import():
-    """Test that types sub-package can be imported."""
-    from algo_trading_engine import types
-    assert types is not None
+def test_vo_subpackage_import():
+    """Test that vo sub-package can be imported."""
+    from algo_trading_engine import vo
+    assert vo is not None
+
+
+def test_enums_subpackage_import():
+    """Test that enums sub-package can be imported."""
+    from algo_trading_engine import enums
+    assert enums is not None
 
 
 def test_strategy_type_import():
-    """Test that StrategyType can be imported from types."""
-    from algo_trading_engine.types import StrategyType
+    """Test that StrategyType can be imported from enums."""
+    from algo_trading_engine.enums import StrategyType
     
     # Verify enum values exist
     assert StrategyType.CALL_CREDIT_SPREAD
@@ -25,8 +31,8 @@ def test_strategy_type_import():
 
 
 def test_position_import():
-    """Test that Position can be imported from types."""
-    from algo_trading_engine.types import Position
+    """Test that Position can be imported from vo."""
+    from algo_trading_engine.vo import Position
     from datetime import datetime
     
     # Verify Position class exists and can be instantiated
@@ -35,43 +41,55 @@ def test_position_import():
 
 
 def test_option_import():
-    """Test that Option can be imported from types."""
-    from algo_trading_engine.types import Option
+    """Test that Option can be imported from vo."""
+    from algo_trading_engine.vo import Option
     
     # Verify Option class exists
     assert Option is not None
 
 
 def test_treasury_rates_import():
-    """Test that TreasuryRates can be imported from types."""
-    from algo_trading_engine.types import TreasuryRates
+    """Test that TreasuryRates can be imported from vo."""
+    from algo_trading_engine.vo import TreasuryRates
     
     # Verify TreasuryRates class exists
     assert TreasuryRates is not None
 
 
-def test_types_all_exports():
-    """Test that __all__ is properly defined in types sub-package."""
-    from algo_trading_engine import types
+def test_vo_all_exports():
+    """Test that __all__ is properly defined in vo sub-package."""
+    from algo_trading_engine import vo
     
     # Verify __all__ contains expected exports
-    assert hasattr(types, '__all__')
-    expected_exports = ['StrategyType', 'Position', 'Option', 'TreasuryRates']
+    assert hasattr(vo, '__all__')
+    expected_exports = ['Position', 'Option', 'TreasuryRates', 'StrikePrice', 'ExpirationDate']
     for export in expected_exports:
-        assert export in types.__all__, f"{export} not in types.__all__"
+        assert export in vo.__all__, f"{export} not in vo.__all__"
 
 
-def test_types_usage_pattern():
-    """Test the recommended usage pattern for types sub-package."""
-    # Pattern 1: Import sub-package
-    from algo_trading_engine import types
-    assert hasattr(types, 'StrategyType')
-    assert hasattr(types, 'Position')
-    assert hasattr(types, 'Option')
-    assert hasattr(types, 'TreasuryRates')
+def test_enums_all_exports():
+    """Test that __all__ is properly defined in enums sub-package."""
+    from algo_trading_engine import enums
+    
+    # Verify __all__ contains expected exports
+    assert hasattr(enums, '__all__')
+    expected_exports = ['StrategyType', 'OptionType', 'MarketStateType', 'SignalType']
+    for export in expected_exports:
+        assert export in enums.__all__, f"{export} not in enums.__all__"
+
+
+def test_vo_and_enums_usage_pattern():
+    """Test the recommended usage pattern for vo and enums sub-packages."""
+    # Pattern 1: Import sub-packages
+    from algo_trading_engine import vo, enums
+    assert hasattr(enums, 'StrategyType')
+    assert hasattr(vo, 'Position')
+    assert hasattr(vo, 'Option')
+    assert hasattr(vo, 'TreasuryRates')
     
     # Pattern 2: Import specific types
-    from algo_trading_engine.types import StrategyType, Position, Option, TreasuryRates
+    from algo_trading_engine.enums import StrategyType
+    from algo_trading_engine.vo import Position, Option, TreasuryRates
     assert StrategyType is not None
     assert Position is not None
     assert Option is not None
@@ -83,7 +101,7 @@ def test_backward_compatibility_with_existing_code():
     Test that existing imports still work.
     
     This ensures we haven't broken any existing functionality by
-    introducing the types sub-package.
+    introducing the vo and enums sub-packages.
     """
     # Main API imports should still work
     from algo_trading_engine import (

@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 
 from algo_trading_engine.prediction.capital_manager import CapitalManager
-from algo_trading_engine.prediction.decision_store import JsonDecisionStore, ProposedPositionRequest, DecisionResponse, generate_decision_id
+from algo_trading_engine.prediction.decision_store import JsonDecisionStore, ProposedPositionRequestDTO, DecisionResponseDTO, generate_decision_id
 from algo_trading_engine.backtest.models import StrategyType
 from algo_trading_engine.common.models import Option
 from datetime import datetime
@@ -115,7 +115,7 @@ def test_get_max_allowed_risk_with_open_position(allocations_config, decision_st
         _make_option('OPT1', 500, '2025-09-06', 'call', 20.0),
         _make_option('OPT2', 505, '2025-09-06', 'call', 1.0),
     )
-    proposal = ProposedPositionRequest(
+    proposal = ProposedPositionRequestDTO(
         symbol='SPY',
         strategy_type=StrategyType.LONG_CALL,
         legs=legs,
@@ -127,7 +127,7 @@ def test_get_max_allowed_risk_with_open_position(allocations_config, decision_st
         created_at=datetime.now().isoformat(),
         strategy_name='credit_spread',
     )
-    record = DecisionResponse(
+    record = DecisionResponseDTO(
         id=generate_decision_id(proposal, datetime.now().isoformat()),
         proposal=proposal,
         outcome='accepted',
@@ -192,7 +192,7 @@ def test_get_remaining_capital_with_credit_position(allocations_config, decision
         _make_option('OPT1', 500, '2025-09-06', 'put', 2.0),
         _make_option('OPT2', 495, '2025-09-06', 'put', 1.0),
     )
-    proposal = ProposedPositionRequest(
+    proposal = ProposedPositionRequestDTO(
         symbol='SPY',
         strategy_type=StrategyType.PUT_CREDIT_SPREAD,
         legs=legs,
@@ -204,7 +204,7 @@ def test_get_remaining_capital_with_credit_position(allocations_config, decision
         created_at=datetime.now().isoformat(),
         strategy_name='credit_spread',
     )
-    record = DecisionResponse(
+    record = DecisionResponseDTO(
         id=generate_decision_id(proposal, datetime.now().isoformat()),
         proposal=proposal,
         outcome='accepted',
@@ -229,7 +229,7 @@ def test_get_remaining_capital_with_debit_position(allocations_config, decision_
         _make_option('OPT1', 500, '2025-09-06', 'call', 2.0),
         _make_option('OPT2', 505, '2025-09-06', 'call', 1.0),
     )
-    proposal = ProposedPositionRequest(
+    proposal = ProposedPositionRequestDTO(
         symbol='SPY',
         strategy_type=StrategyType.LONG_CALL,
         legs=legs,
@@ -241,7 +241,7 @@ def test_get_remaining_capital_with_debit_position(allocations_config, decision_
         created_at=datetime.now().isoformat(),
         strategy_name='credit_spread',
     )
-    record = DecisionResponse(
+    record = DecisionResponseDTO(
         id=generate_decision_id(proposal, datetime.now().isoformat()),
         proposal=proposal,
         outcome='accepted',
@@ -266,7 +266,7 @@ def test_get_remaining_capital_with_closed_credit_position(allocations_config, d
         _make_option('OPT1', 500, '2025-09-06', 'put', 2.0),
         _make_option('OPT2', 495, '2025-09-06', 'put', 1.0),
     )
-    proposal = ProposedPositionRequest(
+    proposal = ProposedPositionRequestDTO(
         symbol='SPY',
         strategy_type=StrategyType.PUT_CREDIT_SPREAD,
         legs=legs,
@@ -278,7 +278,7 @@ def test_get_remaining_capital_with_closed_credit_position(allocations_config, d
         created_at=datetime.now().isoformat(),
         strategy_name='credit_spread',
     )
-    record = DecisionResponse(
+    record = DecisionResponseDTO(
         id=generate_decision_id(proposal, datetime.now().isoformat()),
         proposal=proposal,
         outcome='accepted',
@@ -308,7 +308,7 @@ def test_get_remaining_capital_with_closed_debit_position(allocations_config, de
         _make_option('OPT1', 500, '2025-09-06', 'call', 2.0),
         _make_option('OPT2', 505, '2025-09-06', 'call', 1.0),
     )
-    proposal = ProposedPositionRequest(
+    proposal = ProposedPositionRequestDTO(
         symbol='SPY',
         strategy_type=StrategyType.LONG_CALL,
         legs=legs,
@@ -320,7 +320,7 @@ def test_get_remaining_capital_with_closed_debit_position(allocations_config, de
         created_at=datetime.now().isoformat(),
         strategy_name='credit_spread',
     )
-    record = DecisionResponse(
+    record = DecisionResponseDTO(
         id=generate_decision_id(proposal, datetime.now().isoformat()),
         proposal=proposal,
         outcome='accepted',
@@ -354,7 +354,7 @@ def test_get_remaining_capital_multiple_positions(allocations_config, decision_s
             _make_option(f'OPT{i}1', 500, '2025-09-06', 'put', 2.0),
             _make_option(f'OPT{i}2', 495, '2025-09-06', 'put', 1.0),
         )
-        proposal = ProposedPositionRequest(
+        proposal = ProposedPositionRequestDTO(
             symbol='SPY',
             strategy_type=StrategyType.PUT_CREDIT_SPREAD,
             legs=legs,
@@ -366,7 +366,7 @@ def test_get_remaining_capital_multiple_positions(allocations_config, decision_s
             created_at=decided_at,
             strategy_name='credit_spread',
         )
-        record = DecisionResponse(
+        record = DecisionResponseDTO(
             id=generate_decision_id(proposal, decided_at),
             proposal=proposal,
             outcome='accepted',
@@ -400,7 +400,7 @@ def test_check_risk_threshold_insufficient_capital(allocations_config, decision_
         _make_option('OPT1', 500, '2025-09-06', 'call', 95.0),
         _make_option('OPT2', 505, '2025-09-06', 'call', 1.0),
     )
-    proposal = ProposedPositionRequest(
+    proposal = ProposedPositionRequestDTO(
         symbol='SPY',
         strategy_type=StrategyType.LONG_CALL,
         legs=legs,
@@ -412,7 +412,7 @@ def test_check_risk_threshold_insufficient_capital(allocations_config, decision_
         created_at=datetime.now().isoformat(),
         strategy_name='credit_spread',
     )
-    record = DecisionResponse(
+    record = DecisionResponseDTO(
         id=generate_decision_id(proposal, datetime.now().isoformat()),
         proposal=proposal,
         outcome='accepted',

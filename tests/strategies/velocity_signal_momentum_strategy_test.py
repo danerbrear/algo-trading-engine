@@ -184,7 +184,8 @@ class TestVelocitySignalMomentumStrategy:
         )
         
         # Mock the callables to return contracts with different expirations
-        from algo_trading_engine.common.options_dtos import OptionContractDTO, StrikePrice, ExpirationDate
+        from algo_trading_engine.dto import OptionContractDTO
+        from algo_trading_engine.vo import StrikePrice, ExpirationDate
         from algo_trading_engine.common.models import OptionType as CommonOptionType
         from decimal import Decimal
         
@@ -299,7 +300,7 @@ class TestVelocitySignalMomentumStrategy:
         )
         
         # Mock the callables to return bar data
-        from algo_trading_engine.common.options_dtos import OptionBarDTO
+        from algo_trading_engine.dto import OptionBarDTO
         from decimal import Decimal
         
         # Create mock bar data
@@ -382,15 +383,18 @@ class TestVelocitySignalMomentumStrategy:
         )
         
         # Mock the callables to return contracts
-        from algo_trading_engine.common.options_dtos import OptionContractDTO, StrikePrice, ExpirationDate
-        from algo_trading_engine.common.models import OptionType as CommonOptionType
+        from algo_trading_engine.dto import OptionContractDTO
+        from algo_trading_engine.vo import StrikePrice, ExpirationDate
+        from algo_trading_engine.common.models import OptionType
         from datetime import date as date_type
         from decimal import Decimal
         
+        # Strategy looks for ATM put (100.0) and OTM put (94.0 = 100 - 6)
+        # But it will accept the closest available strike, so provide 94.0 for OTM
         atm_contract = OptionContractDTO(
             ticker='O:SPY240115P100',
             underlying_ticker='SPY',
-            contract_type=CommonOptionType.PUT,
+            contract_type=OptionType.PUT,
             strike_price=StrikePrice(Decimal('100.0')),
             expiration_date=ExpirationDate(date_type(2024, 1, 15)),
             exercise_style='american',
@@ -398,19 +402,26 @@ class TestVelocitySignalMomentumStrategy:
         )
         
         otm_contract = OptionContractDTO(
-            ticker='O:SPY240115P90',
+            ticker='O:SPY240115P94',
             underlying_ticker='SPY',
-            contract_type=CommonOptionType.PUT,
-            strike_price=StrikePrice(Decimal('90.0')),
+            contract_type=OptionType.PUT,
+            strike_price=StrikePrice(Decimal('94.0')),
             expiration_date=ExpirationDate(date_type(2024, 1, 15)),
             exercise_style='american',
             shares_per_contract=100
         )
         
-        strategy.get_contract_list_for_date = Mock(return_value=[atm_contract, otm_contract])
+        # Mock get_contract_list_for_date to return contracts when called with filters
+        # The strategy will filter by expiration_range, so we need to return contracts that match
+        def mock_get_contract_list_for_date(date, strike_range=None, expiration_range=None):
+            # Return all contracts (filters are applied by the strategy)
+            # The strategy filters by expiration, so return contracts that match the target expiration
+            return [atm_contract, otm_contract]
+        
+        strategy.get_contract_list_for_date = Mock(side_effect=mock_get_contract_list_for_date)
         
         # Mock get_option_bar to return OptionBarDTO with proper close_price
-        from algo_trading_engine.common.options_dtos import OptionBarDTO
+        from algo_trading_engine.dto import OptionBarDTO
         from decimal import Decimal
         
         atm_bar = OptionBarDTO(
@@ -426,7 +437,7 @@ class TestVelocitySignalMomentumStrategy:
         )
         
         otm_bar = OptionBarDTO(
-            ticker='O:SPY240115P90',
+            ticker='O:SPY240115P94',
             timestamp=datetime(2024, 1, 1),
             open_price=Decimal('0.50'),
             high_price=Decimal('0.60'),

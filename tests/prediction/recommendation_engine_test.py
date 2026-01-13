@@ -1,7 +1,7 @@
 from datetime import datetime
 from unittest.mock import MagicMock
 
-from algo_trading_engine.prediction.decision_store import JsonDecisionStore, ProposedPositionRequest, DecisionResponse, generate_decision_id
+from algo_trading_engine.prediction.decision_store import JsonDecisionStore, ProposedPositionRequestDTO, DecisionResponseDTO, generate_decision_id
 from algo_trading_engine.prediction.recommendation_engine import InteractiveStrategyRecommender
 from algo_trading_engine.prediction.capital_manager import CapitalManager
 from algo_trading_engine.backtest.models import StrategyType
@@ -29,7 +29,7 @@ def test_store_append_and_read(tmp_path):
         _make_option('OPT1', 500, '2025-09-06', 'call', 2.0),
         _make_option('OPT2', 505, '2025-09-06', 'call', 1.0),
     )
-    proposal = ProposedPositionRequest(
+    proposal = ProposedPositionRequestDTO(
         symbol='SPY',
         strategy_type=StrategyType.CALL_CREDIT_SPREAD,
         legs=legs,
@@ -41,7 +41,7 @@ def test_store_append_and_read(tmp_path):
         created_at=date.isoformat(),
     )
     rec_id = generate_decision_id(proposal, date.isoformat())
-    record = DecisionResponse(
+    record = DecisionResponseDTO(
         id=rec_id,
         proposal=proposal,
         outcome='accepted',
@@ -123,7 +123,7 @@ def test_recommender_close_accept(monkeypatch, tmp_path):
         _make_option('A', 500, '2025-09-06', 'call', 2.0, 500),
         _make_option('B', 505, '2025-09-06', 'call', 1.0, 500),
     )
-    proposal = ProposedPositionRequest(
+    proposal = ProposedPositionRequestDTO(
         symbol='SPY',
         strategy_type=StrategyType.CALL_CREDIT_SPREAD,
         legs=legs,
@@ -136,7 +136,7 @@ def test_recommender_close_accept(monkeypatch, tmp_path):
     )
     decided_at = datetime(2025, 7, 1).isoformat()
     rec_id = generate_decision_id(proposal, decided_at)
-    record = DecisionResponse(
+    record = DecisionResponseDTO(
         id=rec_id,
         proposal=proposal,
         outcome='accepted',

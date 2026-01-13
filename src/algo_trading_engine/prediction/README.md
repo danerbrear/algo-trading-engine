@@ -324,7 +324,7 @@ If you encounter floating point exceptions when generating plots:
 
 - **[Strategy Documentation](../strategies/README.md)** - Trading strategy implementations
 - **[Backtest Documentation](../backtest/README.md)** - Backtesting framework
-- **[Model Documentation](../model/README.md)** - ML models and training
+- **[Model Documentation](../ml_models/README.md)** - ML models and training
 
 ---
 

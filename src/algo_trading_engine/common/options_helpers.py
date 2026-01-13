@@ -9,7 +9,7 @@ from typing import Callable, List, Tuple, Optional, Dict, Any
 from decimal import Decimal
 from datetime import date, datetime
 
-from .options_dtos import OptionContractDTO, StrikeRangeDTO, ExpirationRangeDTO, OptionBarDTO, OptionsChainDTO
+from algo_trading_engine.dto import OptionContractDTO, StrikeRangeDTO, ExpirationRangeDTO, OptionBarDTO, OptionsChainDTO
 from .models import OptionType
 
 
@@ -69,8 +69,9 @@ class OptionsRetrieverHelper:
         current_decimal = Decimal(str(current_price))
         
         # Find call and put contracts with minimum distance from current price
-        call_contracts = [c for c in contracts if c.contract_type == OptionType.CALL]
-        put_contracts = [c for c in contracts if c.contract_type == OptionType.PUT]
+        # Use .value comparison to handle test isolation issues where enum identity might differ
+        call_contracts = [c for c in contracts if c.contract_type.value == OptionType.CALL.value]
+        put_contracts = [c for c in contracts if c.contract_type.value == OptionType.PUT.value]
         
         call_contract = (
             min(call_contracts, key=lambda c: abs(Decimal(str(c.strike_price.value)) - current_decimal))
