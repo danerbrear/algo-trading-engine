@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 
 from algo_trading_engine.prediction.capital_manager import CapitalManager
-from algo_trading_engine.prediction.decision_store import JsonDecisionStore, ProposedPositionRequest, DecisionResponse, generate_decision_id
+from algo_trading_engine.prediction.decision_store import JsonDecisionStore, ProposedPositionRequestDTO, DecisionResponseDTO, generate_decision_id
 from algo_trading_engine.backtest.models import StrategyType
 from algo_trading_engine.common.models import Option
 from datetime import datetime
@@ -115,7 +115,7 @@ def test_get_max_allowed_risk_with_open_position(allocations_config, decision_st
         _make_option('OPT1', 500, '2025-09-06', 'call', 20.0),
         _make_option('OPT2', 505, '2025-09-06', 'call', 1.0),
     )
-    proposal = ProposedPositionRequest(
+    proposal = ProposedPositionRequestDTO(
         symbol='SPY',
         strategy_type=StrategyType.LONG_CALL,
         legs=legs,
@@ -127,7 +127,7 @@ def test_get_max_allowed_risk_with_open_position(allocations_config, decision_st
         created_at=datetime.now().isoformat(),
         strategy_name='credit_spread',
     )
-    record = DecisionResponse(
+    record = DecisionResponseDTO(
         id=generate_decision_id(proposal, datetime.now().isoformat()),
         proposal=proposal,
         outcome='accepted',
@@ -192,7 +192,7 @@ def test_get_remaining_capital_with_credit_position(allocations_config, decision
         _make_option('OPT1', 500, '2025-09-06', 'put', 2.0),
         _make_option('OPT2', 495, '2025-09-06', 'put', 1.0),
     )
-    proposal = ProposedPositionRequest(
+    proposal = ProposedPositionRequestDTO(
         symbol='SPY',
         strategy_type=StrategyType.PUT_CREDIT_SPREAD,
         legs=legs,
@@ -204,7 +204,7 @@ def test_get_remaining_capital_with_credit_position(allocations_config, decision
         created_at=datetime.now().isoformat(),
         strategy_name='credit_spread',
     )
-    record = DecisionResponse(
+    record = DecisionResponseDTO(
         id=generate_decision_id(proposal, datetime.now().isoformat()),
         proposal=proposal,
         outcome='accepted',
@@ -229,7 +229,7 @@ def test_get_remaining_capital_with_debit_position(allocations_config, decision_
         _make_option('OPT1', 500, '2025-09-06', 'call', 2.0),
         _make_option('OPT2', 505, '2025-09-06', 'call', 1.0),
     )
-    proposal = ProposedPositionRequest(
+    proposal = ProposedPositionRequestDTO(
         symbol='SPY',
         strategy_type=StrategyType.LONG_CALL,
         legs=legs,
@@ -241,7 +241,7 @@ def test_get_remaining_capital_with_debit_position(allocations_config, decision_
         created_at=datetime.now().isoformat(),
         strategy_name='credit_spread',
     )
-    record = DecisionResponse(
+    record = DecisionResponseDTO(
         id=generate_decision_id(proposal, datetime.now().isoformat()),
         proposal=proposal,
         outcome='accepted',
@@ -266,7 +266,7 @@ def test_get_remaining_capital_with_closed_credit_position(allocations_config, d
         _make_option('OPT1', 500, '2025-09-06', 'put', 2.0),
         _make_option('OPT2', 495, '2025-09-06', 'put', 1.0),
     )
-    proposal = ProposedPositionRequest(
+    proposal = ProposedPositionRequestDTO(
         symbol='SPY',
         strategy_type=StrategyType.PUT_CREDIT_SPREAD,
         legs=legs,
@@ -278,7 +278,7 @@ def test_get_remaining_capital_with_closed_credit_position(allocations_config, d
         created_at=datetime.now().isoformat(),
         strategy_name='credit_spread',
     )
-    record = DecisionResponse(
+    record = DecisionResponseDTO(
         id=generate_decision_id(proposal, datetime.now().isoformat()),
         proposal=proposal,
         outcome='accepted',
@@ -308,7 +308,7 @@ def test_get_remaining_capital_with_closed_debit_position(allocations_config, de
         _make_option('OPT1', 500, '2025-09-06', 'call', 2.0),
         _make_option('OPT2', 505, '2025-09-06', 'call', 1.0),
     )
-    proposal = ProposedPositionRequest(
+    proposal = ProposedPositionRequestDTO(
         symbol='SPY',
         strategy_type=StrategyType.LONG_CALL,
         legs=legs,
@@ -320,7 +320,7 @@ def test_get_remaining_capital_with_closed_debit_position(allocations_config, de
         created_at=datetime.now().isoformat(),
         strategy_name='credit_spread',
     )
-    record = DecisionResponse(
+    record = DecisionResponseDTO(
         id=generate_decision_id(proposal, datetime.now().isoformat()),
         proposal=proposal,
         outcome='accepted',
@@ -354,7 +354,7 @@ def test_get_remaining_capital_multiple_positions(allocations_config, decision_s
             _make_option(f'OPT{i}1', 500, '2025-09-06', 'put', 2.0),
             _make_option(f'OPT{i}2', 495, '2025-09-06', 'put', 1.0),
         )
-        proposal = ProposedPositionRequest(
+        proposal = ProposedPositionRequestDTO(
             symbol='SPY',
             strategy_type=StrategyType.PUT_CREDIT_SPREAD,
             legs=legs,
@@ -366,7 +366,7 @@ def test_get_remaining_capital_multiple_positions(allocations_config, decision_s
             created_at=decided_at,
             strategy_name='credit_spread',
         )
-        record = DecisionResponse(
+        record = DecisionResponseDTO(
             id=generate_decision_id(proposal, decided_at),
             proposal=proposal,
             outcome='accepted',
@@ -400,7 +400,7 @@ def test_check_risk_threshold_insufficient_capital(allocations_config, decision_
         _make_option('OPT1', 500, '2025-09-06', 'call', 95.0),
         _make_option('OPT2', 505, '2025-09-06', 'call', 1.0),
     )
-    proposal = ProposedPositionRequest(
+    proposal = ProposedPositionRequestDTO(
         symbol='SPY',
         strategy_type=StrategyType.LONG_CALL,
         legs=legs,
@@ -412,7 +412,7 @@ def test_check_risk_threshold_insufficient_capital(allocations_config, decision_
         created_at=datetime.now().isoformat(),
         strategy_name='credit_spread',
     )
-    record = DecisionResponse(
+    record = DecisionResponseDTO(
         id=generate_decision_id(proposal, datetime.now().isoformat()),
         proposal=proposal,
         outcome='accepted',
@@ -430,3 +430,169 @@ def test_check_risk_threshold_insufficient_capital(allocations_config, decision_
     assert is_allowed is False
     assert "exceeds" in message
 
+
+def test_ensure_config_file_exists_creates_file(tmp_path):
+    """Test that ensure_config_file_exists creates a new file with correct structure."""
+    config_path = tmp_path / "config" / "strategies" / "capital_allocations.json"
+    assert not config_path.exists()
+    
+    CapitalManager.ensure_config_file_exists(str(config_path))
+    
+    assert config_path.exists()
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+    assert config == {"strategies": {}}
+
+
+def test_ensure_config_file_exists_preserves_existing_file(tmp_path):
+    """Test that ensure_config_file_exists doesn't overwrite existing file."""
+    config_path = tmp_path / "capital_allocations.json"
+    existing_config = {
+        "strategies": {
+            "test_strategy": {
+                "allocated_capital": 5000.0,
+                "max_risk_percentage": 0.10
+            }
+        }
+    }
+    with open(config_path, 'w') as f:
+        json.dump(existing_config, f)
+    
+    CapitalManager.ensure_config_file_exists(str(config_path))
+    
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+    assert config == existing_config
+
+
+def test_ensure_strategy_exists_adds_strategy(tmp_path):
+    """Test that ensure_strategy_exists adds a new strategy with defaults."""
+    config_path = tmp_path / "capital_allocations.json"
+    initial_config = {"strategies": {}}
+    with open(config_path, 'w') as f:
+        json.dump(initial_config, f)
+    
+    CapitalManager.ensure_strategy_exists(str(config_path), "new_strategy")
+    
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+    assert "new_strategy" in config["strategies"]
+    assert config["strategies"]["new_strategy"]["allocated_capital"] == 10000.0
+    assert config["strategies"]["new_strategy"]["max_risk_percentage"] == 0.05
+
+
+def test_ensure_strategy_exists_with_custom_defaults(tmp_path):
+    """Test that ensure_strategy_exists uses custom default values."""
+    config_path = tmp_path / "capital_allocations.json"
+    initial_config = {"strategies": {}}
+    with open(config_path, 'w') as f:
+        json.dump(initial_config, f)
+    
+    CapitalManager.ensure_strategy_exists(
+        str(config_path), 
+        "custom_strategy",
+        default_capital=25000.0,
+        default_max_risk_pct=0.10
+    )
+    
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+    assert config["strategies"]["custom_strategy"]["allocated_capital"] == 25000.0
+    assert config["strategies"]["custom_strategy"]["max_risk_percentage"] == 0.10
+
+
+def test_ensure_strategy_exists_preserves_existing_strategy(tmp_path):
+    """Test that ensure_strategy_exists doesn't overwrite existing strategy."""
+    config_path = tmp_path / "capital_allocations.json"
+    initial_config = {
+        "strategies": {
+            "existing_strategy": {
+                "allocated_capital": 5000.0,
+                "max_risk_percentage": 0.03
+            }
+        }
+    }
+    with open(config_path, 'w') as f:
+        json.dump(initial_config, f)
+    
+    CapitalManager.ensure_strategy_exists(str(config_path), "existing_strategy")
+    
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+    # Should preserve existing values
+    assert config["strategies"]["existing_strategy"]["allocated_capital"] == 5000.0
+    assert config["strategies"]["existing_strategy"]["max_risk_percentage"] == 0.03
+
+
+def test_ensure_strategy_exists_preserves_other_strategies(tmp_path):
+    """Test that ensure_strategy_exists doesn't affect other strategies."""
+    config_path = tmp_path / "capital_allocations.json"
+    initial_config = {
+        "strategies": {
+            "strategy_one": {
+                "allocated_capital": 5000.0,
+                "max_risk_percentage": 0.03
+            },
+            "strategy_two": {
+                "allocated_capital": 8000.0,
+                "max_risk_percentage": 0.04
+            }
+        }
+    }
+    with open(config_path, 'w') as f:
+        json.dump(initial_config, f)
+    
+    CapitalManager.ensure_strategy_exists(str(config_path), "strategy_three")
+    
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+    # Should preserve existing strategies
+    assert config["strategies"]["strategy_one"]["allocated_capital"] == 5000.0
+    assert config["strategies"]["strategy_two"]["allocated_capital"] == 8000.0
+    # Should add new strategy
+    assert config["strategies"]["strategy_three"]["allocated_capital"] == 10000.0
+
+
+def test_initialize_config_for_strategy_creates_everything(tmp_path):
+    """Test that initialize_config_for_strategy creates file and strategy."""
+    config_path = tmp_path / "config" / "strategies" / "capital_allocations.json"
+    assert not config_path.exists()
+    
+    CapitalManager.initialize_config_for_strategy(str(config_path), "new_strategy")
+    
+    assert config_path.exists()
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+    assert "new_strategy" in config["strategies"]
+    assert config["strategies"]["new_strategy"]["allocated_capital"] == 10000.0
+    assert config["strategies"]["new_strategy"]["max_risk_percentage"] == 0.05
+
+
+def test_initialize_config_for_strategy_with_existing_file(tmp_path):
+    """Test initialize_config_for_strategy with existing file."""
+    config_path = tmp_path / "capital_allocations.json"
+    initial_config = {
+        "strategies": {
+            "existing_strategy": {
+                "allocated_capital": 5000.0,
+                "max_risk_percentage": 0.03
+            }
+        }
+    }
+    with open(config_path, 'w') as f:
+        json.dump(initial_config, f)
+    
+    CapitalManager.initialize_config_for_strategy(
+        str(config_path), 
+        "new_strategy",
+        default_capital=15000.0,
+        default_max_risk_pct=0.08
+    )
+    
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+    # Should preserve existing strategy
+    assert config["strategies"]["existing_strategy"]["allocated_capital"] == 5000.0
+    # Should add new strategy with custom defaults
+    assert config["strategies"]["new_strategy"]["allocated_capital"] == 15000.0
+    assert config["strategies"]["new_strategy"]["max_risk_percentage"] == 0.08

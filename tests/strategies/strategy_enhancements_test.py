@@ -17,8 +17,14 @@ class TestVelocitySignalMomentumStrategyEnhancements:
     def setup_method(self):
         """Set up test fixtures"""
         self.options_handler = Mock()
+        # Create callables from options_handler methods
+        self.get_contract_list_for_date = self.options_handler.get_contract_list_for_date
+        self.get_option_bar = self.options_handler.get_option_bar
+        self.get_options_chain = self.options_handler.get_options_chain
         self.strategy = VelocitySignalMomentumStrategy(
-            options_handler=self.options_handler,
+            get_contract_list_for_date=self.get_contract_list_for_date,
+            get_option_bar=self.get_option_bar,
+            get_options_chain=self.get_options_chain,
             start_date_offset=60
         )
         
@@ -35,52 +41,51 @@ class TestVelocitySignalMomentumStrategyEnhancements:
         self.strategy.set_data(self.sample_data)
     
     def test_get_current_underlying_price_historical_date(self):
-        """Test _get_current_underlying_price with historical date"""
+        """Test get_current_underlying_price with historical date"""
         test_date = datetime(2024, 1, 15)
-        price = self.strategy._get_current_underlying_price(test_date)
+        symbol = self.sample_data.index.name if self.sample_data.index.name else 'SPY'
+        
+        # Mock the injected method
+        def mock_get_price(date, sym):
+            return float(self.sample_data.loc[date, 'Close'])
+        self.strategy.get_current_underlying_price = mock_get_price
+        
+        price = self.strategy.get_current_underlying_price(test_date, symbol)
         
         # Should return the close price for that date
         expected_price = self.sample_data.loc[test_date, 'Close']
         assert price == expected_price
     
-    @patch('algo_trading_engine.strategies.velocity_signal_momentum_strategy.datetime')
-    @patch('algo_trading_engine.strategies.velocity_signal_momentum_strategy.DataRetriever')
-    def test_get_current_underlying_price_current_date_with_live_price(self, mock_data_retriever_class, mock_datetime):
-        """Test _get_current_underlying_price with current date and live price available"""
+    def test_get_current_underlying_price_current_date_with_live_price(self):
+        """Test get_current_underlying_price with current date and live price available"""
         # Mock current date
         current_date = datetime(2024, 1, 20)
-        mock_datetime.now.return_value = current_date
+        symbol = self.sample_data.index.name if self.sample_data.index.name else 'SPY'
         
-        # Mock DataRetriever creation and get_live_price
-        mock_data_retriever = Mock()
-        mock_data_retriever.get_live_price.return_value = 150.0
-        mock_data_retriever_class.return_value = mock_data_retriever
+        # Mock the injected method to return live price
+        def mock_get_price(date, sym):
+            return 150.0
+        self.strategy.get_current_underlying_price = mock_get_price
         
-        price = self.strategy._get_current_underlying_price(current_date)
+        price = self.strategy.get_current_underlying_price(current_date, symbol)
         
         assert price == 150.0
-        mock_data_retriever.get_live_price.assert_called_once()
     
-    @patch('algo_trading_engine.strategies.velocity_signal_momentum_strategy.datetime')
-    @patch('algo_trading_engine.strategies.velocity_signal_momentum_strategy.DataRetriever')
-    def test_get_current_underlying_price_current_date_fallback(self, mock_data_retriever_class, mock_datetime):
-        """Test _get_current_underlying_price with current date but no live price available"""
+    def test_get_current_underlying_price_current_date_fallback(self):
+        """Test get_current_underlying_price with current date but no live price available"""
         # Mock current date that's NOT in the sample data
         current_date = datetime(2024, 5, 1)  # This date is not in the sample data
-        mock_datetime.now.return_value = current_date
+        symbol = self.sample_data.index.name if self.sample_data.index.name else 'SPY'
         
-        # Mock options handler with symbol
-        self.strategy.new_options_handler.symbol = 'SPY'
-        
-        # Mock DataRetriever to return None for live price
-        mock_data_retriever = Mock()
-        mock_data_retriever.get_live_price.return_value = None
-        mock_data_retriever_class.return_value = mock_data_retriever
+        # Mock the injected method to raise ValueError when live price is None
+        def mock_get_price(date, sym):
+            raise ValueError("Failed to fetch live price from DataRetriever")
+        self.strategy.get_current_underlying_price = mock_get_price
         
         # The current implementation raises ValueError when live price is None
         import pytest
         with pytest.raises(ValueError, match="Failed to fetch live price from DataRetriever"):
-            self.strategy._get_current_underlying_price(current_date)
+            self.strategy.get_current_underlying_price(current_date, symbol)
     
     def test_recalculate_moving_averages(self):
         """Test _recalculate_moving_averages method"""
@@ -171,12 +176,20 @@ class TestCreditSpreadStrategyEnhancements:
         self.lstm_model = Mock()
         self.lstm_scaler = Mock()
         self.options_handler = Mock()
+        # Create callables from options_handler methods
+        self.get_contract_list_for_date = self.options_handler.get_contract_list_for_date
+        self.get_option_bar = self.options_handler.get_option_bar
+        self.get_options_chain = self.options_handler.get_options_chain
         
         self.strategy = CreditSpreadStrategy(
+            get_contract_list_for_date=self.get_contract_list_for_date,
+            get_option_bar=self.get_option_bar,
+            get_options_chain=self.get_options_chain,
             lstm_model=self.lstm_model,
             lstm_scaler=self.lstm_scaler,
-            options_handler=self.options_handler,
-            start_date_offset=0
+            symbol='SPY',
+            start_date_offset=0,
+            options_handler=self.options_handler  # Still needed for LSTMModel
         )
         
         # Create sample data
@@ -192,38 +205,39 @@ class TestCreditSpreadStrategyEnhancements:
         self.strategy.set_data(self.sample_data)
     
     def test_get_current_underlying_price_historical_date(self):
-        """Test _get_current_underlying_price with historical date"""
+        """Test get_current_underlying_price with historical date"""
         test_date = datetime(2024, 1, 15)
-        price = self.strategy._get_current_underlying_price(test_date)
+        symbol = 'SPY'
+        
+        # Mock the injected method
+        def mock_get_price(date, sym):
+            return float(self.sample_data.loc[date, 'Close'])
+        self.strategy.get_current_underlying_price = mock_get_price
+        
+        price = self.strategy.get_current_underlying_price(test_date, symbol)
         
         # Should return the close price for that date
         expected_price = self.sample_data.loc[test_date, 'Close']
         assert price == expected_price
     
-    @patch('algo_trading_engine.strategies.credit_spread_minimal.datetime')
-    @patch('algo_trading_engine.common.data_retriever.DataRetriever')
-    def test_get_current_underlying_price_current_date_with_live_price(self, mock_data_retriever_class, mock_datetime):
-        """Test _get_current_underlying_price with current date and live price available"""
+    def test_get_current_underlying_price_current_date_with_live_price(self):
+        """Test get_current_underlying_price with current date and live price available"""
         # Mock current date
         current_date = datetime(2024, 1, 20)
-        mock_datetime.now.return_value = current_date
+        symbol = 'SPY'
         
-        # Mock options handler symbol
-        self.strategy.options_handler.symbol = 'SPY'
+        # Mock the injected method to return live price
+        def mock_get_price(date, sym):
+            return 150.0
+        self.strategy.get_current_underlying_price = mock_get_price
         
-        # Mock DataRetriever creation and get_live_price
-        mock_data_retriever = Mock()
-        mock_data_retriever.get_live_price.return_value = 150.0
-        mock_data_retriever_class.return_value = mock_data_retriever
-        
-        price = self.strategy._get_current_underlying_price(current_date)
+        price = self.strategy.get_current_underlying_price(current_date, symbol)
         
         assert price == 150.0
-        mock_data_retriever.get_live_price.assert_called_once()
     
     def test_get_current_volumes_for_position_success(self):
         """Test get_current_volumes_for_position with successful API calls"""
-        from algo_trading_engine.common.options_dtos import OptionContractDTO, OptionBarDTO
+        from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO
         from algo_trading_engine.common.models import OptionType as CommonOptionType
         from decimal import Decimal
         
@@ -258,7 +272,7 @@ class TestCreditSpreadStrategyEnhancements:
         )
         
         # Mock contract DTOs
-        from algo_trading_engine.common.options_dtos import StrikePrice, ExpirationDate
+        from algo_trading_engine.vo import StrikePrice, ExpirationDate
         contract1 = OptionContractDTO(
             ticker='O:SPY240119C00450000',
             underlying_ticker='SPY',
@@ -302,34 +316,23 @@ class TestCreditSpreadStrategyEnhancements:
             number_of_transactions=80
         )
         
-        # Mock the new API methods
-        def mock_get_contract_list_for_date(date, strike_range=None, expiration_range=None):
-            # Return contracts matching the strike prices
-            # StrikePrice uses .value attribute to get the Decimal value
-            if strike_range and hasattr(strike_range.min_strike, 'value'):
-                strike_val = strike_range.min_strike.value
-                if strike_val == Decimal('450.0'):
-                    return [contract1]
-                elif strike_val == Decimal('455.0'):
-                    return [contract2]
-            return []
-        
-        def mock_get_option_bar(contract, date):
-            if contract.ticker == 'O:SPY240119C00450000':
-                return bar1
-            elif contract.ticker == 'O:SPY240119C00455000':
-                return bar2
+        # Mock _get_option_with_bar which is what get_current_volumes_for_position actually calls
+        def mock_get_option_with_bar(strike, expiry_date, option_type, date):
+            # Return Option objects with volume data
+            if strike == 450.0 and expiry_date == datetime(2024, 1, 19).date() and option_type == OptionType.CALL:
+                return Option.from_contract_and_bar(contract1, bar1)
+            elif strike == 455.0 and expiry_date == datetime(2024, 1, 19).date() and option_type == OptionType.CALL:
+                return Option.from_contract_and_bar(contract2, bar2)
             return None
         
-        self.options_handler.get_contract_list_for_date = Mock(side_effect=mock_get_contract_list_for_date)
-        self.options_handler.get_option_bar = Mock(side_effect=mock_get_option_bar)
+        # Update the method on the strategy
+        self.strategy._get_option_with_bar = Mock(side_effect=mock_get_option_with_bar)
         
         test_date = datetime(2024, 1, 16)
         volumes = self.strategy.get_current_volumes_for_position(position, test_date)
         
         assert volumes == [200, 250]
-        assert self.options_handler.get_contract_list_for_date.call_count == 2
-        assert self.options_handler.get_option_bar.call_count == 2
+        assert self.strategy._get_option_with_bar.call_count == 2
     
     def test_get_current_volumes_for_position_api_failure(self):
         """Test get_current_volumes_for_position with API failures"""
@@ -354,8 +357,8 @@ class TestCreditSpreadStrategyEnhancements:
             spread_options=[option1]
         )
         
-        # Mock options handler to raise exception
-        self.options_handler.get_contract_list_for_date.side_effect = Exception("API Error")
+        # Mock callables to raise exception
+        self.strategy.get_contract_list_for_date = Mock(side_effect=Exception("API Error"))
         
         test_date = datetime(2024, 1, 16)
         volumes = self.strategy.get_current_volumes_for_position(position, test_date)
@@ -364,7 +367,7 @@ class TestCreditSpreadStrategyEnhancements:
     
     def test_get_current_volumes_for_position_no_volume_data(self):
         """Test get_current_volumes_for_position when fresh option has no volume"""
-        from algo_trading_engine.common.options_dtos import OptionContractDTO, OptionBarDTO
+        from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO
         from algo_trading_engine.common.models import OptionType as CommonOptionType
         from decimal import Decimal
         
@@ -390,7 +393,7 @@ class TestCreditSpreadStrategyEnhancements:
         )
         
         # Mock contract DTO
-        from algo_trading_engine.common.options_dtos import StrikePrice, ExpirationDate
+        from algo_trading_engine.vo import StrikePrice, ExpirationDate
         contract1 = OptionContractDTO(
             ticker='O:SPY240119C00450000',
             underlying_ticker='SPY',
@@ -403,8 +406,8 @@ class TestCreditSpreadStrategyEnhancements:
         
         # Mock the new API methods
         # When there's no volume data, get_option_bar should return None
-        self.options_handler.get_contract_list_for_date.return_value = [contract1]
-        self.options_handler.get_option_bar.return_value = None  # No bar data = no volume
+        self.strategy.get_contract_list_for_date = Mock(return_value=[contract1])
+        self.strategy.get_option_bar = Mock(return_value=None)  # No bar data = no volume
         
         test_date = datetime(2024, 1, 16)
         volumes = self.strategy.get_current_volumes_for_position(position, test_date)

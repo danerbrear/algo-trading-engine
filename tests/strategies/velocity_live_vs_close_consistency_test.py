@@ -13,13 +13,8 @@ This should NOT happen - both scenarios should generate the same signal.
 import unittest
 from unittest.mock import Mock, patch
 from datetime import datetime, timedelta
-import sys
-import os
 import pandas as pd
 import numpy as np
-
-# Add the src directory to the path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'algo_trading_engine'))
 
 from algo_trading_engine.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
 
@@ -31,7 +26,8 @@ class TestVelocityLiveVsCloseConsistency(unittest.TestCase):
     def setUpClass(cls):
         """Set up class-level mocks to prevent real API calls."""
         # Mock DataRetriever to prevent yfinance API calls
-        cls.data_retriever_patcher = patch('algo_trading_engine.strategies.velocity_signal_momentum_strategy.DataRetriever')
+        # Note: DataRetriever is now used in engine.py, not in the strategy module
+        cls.data_retriever_patcher = patch('algo_trading_engine.common.data_retriever.DataRetriever')
         cls.mock_data_retriever_class = cls.data_retriever_patcher.start()
         
         # Configure the mock instance
@@ -84,14 +80,27 @@ class TestVelocityLiveVsCloseConsistency(unittest.TestCase):
         mock_options_handler_1 = Mock()
         mock_options_handler_1.symbol = 'SPY'
         
-        strategy_live = VelocitySignalMomentumStrategy(options_handler=mock_options_handler_1)
+        # Create callables from options_handler methods
+        get_contract_list_for_date = mock_options_handler_1.get_contract_list_for_date
+        get_option_bar = mock_options_handler_1.get_option_bar
+        get_options_chain = mock_options_handler_1.get_options_chain
+        strategy_live = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         strategy_live.set_data(self.historical_data.copy())
+        
+        # Mock get_current_underlying_price to return live price
+        def mock_get_price_live(date, symbol):
+            return self.live_price
+        strategy_live.get_current_underlying_price = mock_get_price_live
         
         print(f"Historical data ends: {strategy_live.data.index[-1].date()}")
         print(f"Current date: {self.current_date.date()}")
         print(f"Live price: ${self.live_price}")
         
-        # No need to mock _get_current_underlying_price - DataRetriever is already mocked
+        # Mock _check_trend_success
         with patch.object(strategy_live, '_check_trend_success', return_value=(True, 5, 0.03)):
             signal_during_market_hours = strategy_live._has_buy_signal(self.current_date)
         
@@ -112,7 +121,15 @@ class TestVelocityLiveVsCloseConsistency(unittest.TestCase):
         mock_options_handler_2 = Mock()
         mock_options_handler_2.symbol = 'SPY'
         
-        strategy_close = VelocitySignalMomentumStrategy(options_handler=mock_options_handler_2)
+        # Create callables from options_handler methods
+        get_contract_list_for_date = mock_options_handler_2.get_contract_list_for_date
+        get_option_bar = mock_options_handler_2.get_option_bar
+        get_options_chain = mock_options_handler_2.get_options_chain
+        strategy_close = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         
         # Create data that includes today's close price (as it would be after market close)
         data_with_close = self.historical_data.copy()
@@ -126,6 +143,11 @@ class TestVelocityLiveVsCloseConsistency(unittest.TestCase):
         data_with_close = pd.concat([data_with_close, current_date_close])
         
         strategy_close.set_data(data_with_close)
+        
+        # Mock get_current_underlying_price to return close price from data
+        def mock_get_price_close(date, symbol):
+            return float(strategy_close.data.loc[date, 'Close'])
+        strategy_close.get_current_underlying_price = mock_get_price_close
         
         print(f"Historical data ends: {strategy_close.data.index[-1].date()}")
         print(f"Close price: ${self.close_price}")
@@ -197,8 +219,21 @@ class TestVelocityLiveVsCloseConsistency(unittest.TestCase):
         mock_options_handler = Mock()
         mock_options_handler.symbol = 'SPY'
         
-        strategy = VelocitySignalMomentumStrategy(options_handler=mock_options_handler)
+        # Create callables from options_handler methods
+        get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
+        get_option_bar = mock_options_handler.get_option_bar
+        get_options_chain = mock_options_handler.get_options_chain
+        strategy = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain
+        )
         strategy.set_data(data_with_stale_current)
+        
+        # Mock get_current_underlying_price to return live price (should override stale data)
+        def mock_get_price_stale(date, symbol):
+            return self.live_price
+        strategy.get_current_underlying_price = mock_get_price_stale
         
         print(f"\nCurrent date: {self.current_date.date()}")
         print(f"Stale cached price for current date: ${stale_price}")

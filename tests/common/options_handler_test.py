@@ -16,9 +16,8 @@ from algo_trading_engine.common.options_handler import OptionsHandler
 from algo_trading_engine.common.cache.options_cache_manager import OptionsCacheManager
 from algo_trading_engine.common.options_cache_migration import OptionsCacheMigrator
 from algo_trading_engine.common.options_helpers import OptionsRetrieverHelper
-from algo_trading_engine.common.options_dtos import (
-    OptionContractDTO, OptionBarDTO, StrikePrice, ExpirationDate
-)
+from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO
+from algo_trading_engine.vo import StrikePrice, ExpirationDate
 from algo_trading_engine.common.models import OptionType, SignalType
 
 
@@ -560,10 +559,8 @@ from pathlib import Path
 
 from algo_trading_engine.common.options_handler import OptionsHandler
 from algo_trading_engine.common.cache.options_cache_manager import OptionsCacheManager
-from algo_trading_engine.common.options_dtos import (
-    OptionContractDTO, OptionBarDTO, StrikeRangeDTO, ExpirationRangeDTO,
-    StrikePrice, ExpirationDate
-)
+from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO, StrikeRangeDTO, ExpirationRangeDTO
+from algo_trading_engine.vo import StrikePrice, ExpirationDate
 from algo_trading_engine.common.models import OptionType
 
 
@@ -1082,10 +1079,8 @@ from decimal import Decimal
 from unittest.mock import Mock, patch
 
 from algo_trading_engine.common.options_handler import OptionsHandler
-from algo_trading_engine.common.options_dtos import (
-    OptionContractDTO, OptionBarDTO, StrikeRangeDTO, ExpirationRangeDTO,
-    StrikePrice, ExpirationDate
-)
+from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO, StrikeRangeDTO, ExpirationRangeDTO
+from algo_trading_engine.vo import StrikePrice, ExpirationDate
 from algo_trading_engine.common.models import OptionType
 
 
@@ -1406,10 +1401,11 @@ import time
 import os
 
 from algo_trading_engine.common.options_handler import OptionsHandler
-from algo_trading_engine.common.options_dtos import (
+from algo_trading_engine.dto import (
     OptionContractDTO, OptionBarDTO, StrikeRangeDTO, ExpirationRangeDTO,
-    OptionsChainDTO, StrikePrice, ExpirationDate
+    OptionsChainDTO
 )
+from algo_trading_engine.vo import StrikePrice, ExpirationDate
 from algo_trading_engine.common.options_helpers import OptionsRetrieverHelper
 from algo_trading_engine.common.models import OptionType
 from algo_trading_engine.common.cache.options_cache_manager import OptionsCacheManager
@@ -1955,9 +1951,9 @@ class TestOptionsHandlerErrorHandling:
     
     def test_invalid_contract_parameters(self, options_handler):
         """Test error handling for invalid contract parameters."""
-        from algo_trading_engine.common.options_dtos import OptionContractDTO
+        from algo_trading_engine.dto import OptionContractDTO
         from algo_trading_engine.common.models import OptionType
-        from algo_trading_engine.common.options_dtos import StrikePrice, ExpirationDate
+        from algo_trading_engine.vo import StrikePrice, ExpirationDate
         
         # Create a valid contract for testing
         valid_contract = OptionContractDTO(

@@ -85,6 +85,7 @@ def test_recommender_with_capital_manager_risk_check_pass(
     """Test recommendation with capital manager when risk check passes."""
     date = datetime(2025, 8, 8)
     strategy_mock.data.loc.__getitem__.return_value = {'Close': 500}
+    strategy_mock.symbol = 'SPY'  # Set symbol attribute
     
     atm_option = _make_option('A', 500, '2025-09-06', 'put', 2.0)
     otm_option = _make_option('B', 495, '2025-09-06', 'put', 1.0)
@@ -101,7 +102,7 @@ def test_recommender_with_capital_manager_risk_check_pass(
     }
     
     recommender = InteractiveStrategyRecommender(
-        strategy_mock, options_handler_mock, decision_store, capital_manager, auto_yes=True
+        strategy_mock, decision_store, capital_manager, auto_yes=True
     )
     
     result = recommender.recommend_open_position(date)
@@ -117,6 +118,7 @@ def test_recommender_with_capital_manager_risk_check_fail(
     """Test recommendation with capital manager when risk check fails."""
     date = datetime(2025, 8, 8)
     strategy_mock.data.loc.__getitem__.return_value = {'Close': 500}
+    strategy_mock.symbol = 'SPY'  # Set symbol attribute
     
     atm_option = _make_option('A', 500, '2025-09-06', 'put', 2.0)
     otm_option = _make_option('B', 490, '2025-09-06', 'put', 1.0)
@@ -134,7 +136,7 @@ def test_recommender_with_capital_manager_risk_check_fail(
     }
     
     recommender = InteractiveStrategyRecommender(
-        strategy_mock, options_handler_mock, decision_store, capital_manager, auto_yes=True
+        strategy_mock, decision_store, capital_manager, auto_yes=True
     )
     
     result = recommender.recommend_open_position(date)
@@ -149,6 +151,7 @@ def test_recommender_calculates_max_risk_correctly(
     """Test that max risk is calculated correctly for credit spreads."""
     date = datetime(2025, 8, 8)
     strategy_mock.data.loc.__getitem__.return_value = {'Close': 500}
+    strategy_mock.symbol = 'SPY'  # Set symbol attribute
     
     atm_option = _make_option('A', 500, '2025-09-06', 'put', 2.0)
     otm_option = _make_option('B', 495, '2025-09-06', 'put', 1.0)
@@ -165,7 +168,7 @@ def test_recommender_calculates_max_risk_correctly(
     }
     
     recommender = InteractiveStrategyRecommender(
-        strategy_mock, options_handler_mock, decision_store, capital_manager, auto_yes=True
+        strategy_mock, decision_store, capital_manager, auto_yes=True
     )
     
     with patch('builtins.print') as mock_print:
@@ -184,6 +187,7 @@ def test_recommender_displays_premium_info(
     """Test that premium information is displayed for credit strategies."""
     date = datetime(2025, 8, 8)
     strategy_mock.data.loc.__getitem__.return_value = {'Close': 500}
+    strategy_mock.symbol = 'SPY'  # Set symbol attribute
     
     atm_option = _make_option('A', 500, '2025-09-06', 'put', 2.0)
     otm_option = _make_option('B', 495, '2025-09-06', 'put', 1.0)
@@ -200,7 +204,7 @@ def test_recommender_displays_premium_info(
     }
     
     recommender = InteractiveStrategyRecommender(
-        strategy_mock, options_handler_mock, decision_store, capital_manager, auto_yes=True
+        strategy_mock, decision_store, capital_manager, auto_yes=True
     )
     
     with patch('builtins.print'):
@@ -223,6 +227,7 @@ def test_recommender_strategy_name_mapping(
     strategy_mock = MagicMock()
     strategy_mock.data = MagicMock()
     strategy_mock.data.loc.__getitem__.return_value = {'Close': 500}
+    strategy_mock.symbol = 'SPY'  # Set symbol attribute
     # Create a mock class for VelocitySignalMomentumStrategy
     mock_class = type('VelocitySignalMomentumStrategy', (), {})
     strategy_mock.__class__ = mock_class
@@ -242,7 +247,7 @@ def test_recommender_strategy_name_mapping(
     }
     
     recommender = InteractiveStrategyRecommender(
-        strategy_mock, options_handler_mock, decision_store, capital_manager, auto_yes=True
+        strategy_mock, decision_store, capital_manager, auto_yes=True
     )
     
     result = recommender.recommend_open_position(date)

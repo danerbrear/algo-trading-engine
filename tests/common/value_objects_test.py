@@ -3,10 +3,10 @@ Unit tests for Value Objects defined in src/common/models.py
 """
 import pytest
 from decimal import Decimal
-from algo_trading_engine.common.models import (
-    MarketState, MarketStateType, TradingSignal, SignalType, 
-    PriceRange, Volatility
+from algo_trading_engine.vo import (
+    MarketState, TradingSignal, PriceRange, Volatility
 )
+from algo_trading_engine.enums import MarketStateType, SignalType
 
 
 class TestMarketState:

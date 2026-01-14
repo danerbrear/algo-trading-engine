@@ -1,378 +1,185 @@
 #!/usr/bin/env python3
 """
-Unit tests for the recommend_cli auto-close functionality.
-Tests the --auto-close argument and its integration with the recommendation engine.
+Unit tests for the recommend_cli with new public API.
+Tests the paper trading CLI using PaperTradingEngine.from_config().
 """
 
 import unittest
 from unittest.mock import Mock, patch
-import sys
 import os
 
-# Add the algo_trading_engine directory to the path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'algo_trading_engine'))
-
 from algo_trading_engine.prediction.recommend_cli import main
-from algo_trading_engine.prediction.decision_store import JsonDecisionStore
-from algo_trading_engine.backtest.models import StrategyType
-from algo_trading_engine.common.models import Option, OptionType
 
 
-class TestRecommendCliAutoClose(unittest.TestCase):
-    """Test cases for the --auto-close functionality in recommend_cli."""
+class TestRecommendCli(unittest.TestCase):
+    """Test cases for the recommend CLI using the new public API."""
     
-    def setUp(self):
-        """Set up test fixtures before each test method."""
-        # Mock the decision store
-        self.mock_decision_store = Mock(spec=JsonDecisionStore)
-        
-        # Create test open position record
-        self.test_decision_record = Mock()
-        self.test_decision_record.id = "test_decision_123"
-        self.test_decision_record.proposal = Mock()
-        self.test_decision_record.proposal.symbol = "SPY"
-        self.test_decision_record.proposal.strategy_type = StrategyType.PUT_CREDIT_SPREAD
-        self.test_decision_record.proposal.legs = [
-            Option(
-                ticker="O:SPY250930P00666000",
-                symbol="SPY",
-                strike=666.0,
-                expiration="2025-09-30",
-                option_type=OptionType.PUT,
-                last_price=5.18
-            ),
-            Option(
-                ticker="O:SPY250930P00657000",
-                symbol="SPY", 
-                strike=657.0,
-                expiration="2025-09-30",
-                option_type=OptionType.PUT,
-                last_price=1.93
-            )
-        ]
-        self.test_decision_record.entry_price = 2.35
-        self.test_decision_record.quantity = 1
-        self.test_decision_record.decided_at = "2025-09-22T17:06:46.176650+00:00"
-
-    @patch('algo_trading_engine.prediction.recommend_cli.JsonDecisionStore')
-    @patch('algo_trading_engine.prediction.recommend_cli.OptionsHandler')
-    @patch('algo_trading_engine.prediction.recommend_cli.build_strategy')
-    @patch('algo_trading_engine.prediction.recommend_cli.InteractiveStrategyRecommender')
-    def test_auto_close_mode_with_open_positions(self, mock_recommender_class, mock_build_strategy, 
-                                                mock_options_handler, mock_decision_store):
-        """Test that --auto-close mode works with open positions."""
+    @patch('algo_trading_engine.prediction.recommend_cli.PaperTradingEngine')
+    @patch('os.getenv')
+    def test_paper_trading_cli_creates_config_and_engine(self, mock_getenv, mock_engine_class):
+        """Test that CLI creates correct config and engine."""
         # Setup mocks
-        mock_decision_store.return_value.get_open_positions.return_value = [self.test_decision_record]
-        mock_strategy = Mock()
-        mock_build_strategy.return_value = mock_strategy
-        mock_recommender = Mock()
-        mock_recommender_class.return_value = mock_recommender
-        mock_recommender.get_open_positions_status.return_value = [
-            {
-                'symbol': 'SPY',
-                'strategy_type': 'put_credit_spread',
-                'quantity': 1,
-                'entry_price': 2.35,
-                'exit_price': 3.25,
-                'pnl_dollars': -90.0,
-                'pnl_percent': -0.383,
-                'days_held': 1,
-                'dte': 7
-            }
-        ]
-        mock_recommender.recommend_close_positions.return_value = [Mock()]  # One position closed
+        mock_getenv.return_value = 'test_api_key'
+        mock_engine = Mock()
+        mock_engine.run.return_value = True
+        mock_engine_class.from_config.return_value = mock_engine
         
-        # Mock sys.argv to simulate --auto-close argument
-        with patch('sys.argv', ['recommend_cli.py', '--strategy', 'velocity_momentum', '--auto-close']):
+        # Mock sys.argv
+        with patch('sys.argv', ['recommend_cli.py', '--strategy', 'velocity_momentum', '--symbol', 'SPY']):
             with patch('sys.exit'):  # Prevent actual exit
                 main()
         
-        # Assertions
-        mock_decision_store.return_value.get_open_positions.assert_called_once_with(symbol='SPY')
-        # Verify build_strategy was called with correct arguments (no stop_loss/profit_target by default)
-        mock_build_strategy.assert_called_once_with('velocity_momentum', 'SPY', mock_options_handler.return_value, stop_loss=None, profit_target=None)
-        mock_recommender_class.assert_called_once()
-        mock_recommender.auto_yes = True  # Should be set to True for auto-close
-        mock_recommender.recommend_close_positions.assert_called_once()
-
-    @patch('algo_trading_engine.prediction.recommend_cli.JsonDecisionStore')
-    @patch('algo_trading_engine.prediction.recommend_cli.OptionsHandler')
-    @patch('algo_trading_engine.prediction.recommend_cli.build_strategy')
-    @patch('algo_trading_engine.prediction.recommend_cli.InteractiveStrategyRecommender')
-    def test_auto_close_mode_no_positions_to_close(self, mock_recommender_class, mock_build_strategy,
-                                                  mock_options_handler, mock_decision_store):
-        """Test that --auto-close mode handles case when no positions need closing."""
-        # Setup mocks
-        mock_decision_store.return_value.get_open_positions.return_value = [self.test_decision_record]
-        mock_strategy = Mock()
-        mock_build_strategy.return_value = mock_strategy
-        mock_recommender = Mock()
-        mock_recommender_class.return_value = mock_recommender
-        mock_recommender.get_open_positions_status.return_value = [
-            {
-                'symbol': 'SPY',
-                'strategy_type': 'put_credit_spread',
-                'quantity': 1,
-                'entry_price': 2.35,
-                'exit_price': 3.25,
-                'pnl_dollars': -90.0,
-                'pnl_percent': -0.383,
-                'days_held': 1,
-                'dte': 7
-            }
-        ]
-        mock_recommender.recommend_close_positions.return_value = []  # No positions closed
+        # Verify engine was created from config
+        mock_engine_class.from_config.assert_called_once()
+        config = mock_engine_class.from_config.call_args[0][0]
         
-        # Mock sys.argv to simulate --auto-close argument
-        with patch('sys.argv', ['recommend_cli.py', '--strategy', 'velocity_momentum', '--auto-close']):
-            with patch('sys.exit'):  # Prevent actual exit
+        # Verify config parameters
+        self.assertEqual(config.symbol, 'SPY')
+        self.assertEqual(config.strategy_type, 'velocity_momentum')
+        self.assertEqual(config.api_key, 'test_api_key')
+        
+        # Verify engine.run was called
+        mock_engine.run.assert_called_once()
+
+    @patch('algo_trading_engine.prediction.recommend_cli.PaperTradingEngine')
+    @patch('os.getenv')
+    def test_paper_trading_cli_with_all_parameters(self, mock_getenv, mock_engine_class):
+        """Test CLI with all parameters."""
+        # Setup mocks
+        mock_getenv.return_value = 'test_api_key'
+        mock_engine = Mock()
+        mock_engine.run.return_value = True
+        mock_engine_class.from_config.return_value = mock_engine
+        
+        # Mock sys.argv with all parameters
+        # Note: initial_capital removed - managed via config/strategies/capital_allocations.json
+        with patch('sys.argv', [
+            'recommend_cli.py',
+            '--strategy', 'credit_spread',
+            '--symbol', 'DIA',
+            '--max-position-size', '0.25',
+            '--stop-loss', '0.6',
+            '--profit-target', '0.5',
+            '--free'
+        ]):
+            with patch('sys.exit'):
                 main()
         
-        # Assertions
-        # Verify build_strategy was called with correct arguments (no stop_loss/profit_target by default)
-        mock_build_strategy.assert_called_once_with('velocity_momentum', 'SPY', mock_options_handler.return_value, stop_loss=None, profit_target=None)
-        mock_recommender.recommend_close_positions.assert_called_once()
-
-    @patch('algo_trading_engine.prediction.recommend_cli.JsonDecisionStore')
-    @patch('algo_trading_engine.prediction.recommend_cli.OptionsHandler')
-    @patch('algo_trading_engine.prediction.recommend_cli.build_strategy')
-    @patch('algo_trading_engine.prediction.recommend_cli.InteractiveStrategyRecommender')
-    def test_interactive_mode_default_behavior(self, mock_recommender_class, mock_build_strategy,
-                                             mock_options_handler, mock_decision_store):
-        """Test that default behavior (no --auto-close) uses interactive mode."""
-        # Setup mocks
-        mock_decision_store.return_value.get_open_positions.return_value = [self.test_decision_record]
-        mock_strategy = Mock()
-        mock_build_strategy.return_value = mock_strategy
-        mock_recommender = Mock()
-        mock_recommender_class.return_value = mock_recommender
-        mock_recommender.get_open_positions_status.return_value = []
-        mock_recommender.recommend_close_positions.return_value = []
+        # Verify config was created correctly
+        mock_engine_class.from_config.assert_called_once()
+        config = mock_engine_class.from_config.call_args[0][0]
         
-        # Mock sys.argv without --auto-close
-        with patch('sys.argv', ['recommend_cli.py', '--strategy', 'velocity_momentum']):
-            with patch('sys.exit'):  # Prevent actual exit
+        self.assertEqual(config.symbol, 'DIA')
+        self.assertEqual(config.strategy_type, 'credit_spread')
+        self.assertEqual(config.max_position_size, 0.25)
+        self.assertEqual(config.stop_loss, 0.6)
+        self.assertEqual(config.profit_target, 0.5)
+        self.assertEqual(config.use_free_tier, True)
+
+    @patch('algo_trading_engine.prediction.recommend_cli.PaperTradingEngine')
+    @patch('os.getenv')
+    def test_paper_trading_cli_with_defaults(self, mock_getenv, mock_engine_class):
+        """Test CLI uses correct defaults."""
+        # Setup mocks
+        mock_getenv.return_value = 'test_api_key'
+        mock_engine = Mock()
+        mock_engine.run.return_value = True
+        mock_engine_class.from_config.return_value = mock_engine
+        
+        # Mock sys.argv with minimal parameters
+        with patch('sys.argv', ['recommend_cli.py']):
+            with patch('sys.exit'):
                 main()
         
-        # Assertions
-        mock_recommender_class.assert_called_once()
-        # Should not set auto_yes to True (default is False)
-        mock_recommender.recommend_close_positions.assert_called_once()
-
-    @patch('algo_trading_engine.prediction.recommend_cli.JsonDecisionStore')
-    @patch('algo_trading_engine.prediction.recommend_cli.OptionsHandler')
-    @patch('algo_trading_engine.prediction.recommend_cli.build_strategy')
-    @patch('algo_trading_engine.prediction.recommend_cli.InteractiveStrategyRecommender')
-    def test_auto_close_with_verbose_flag(self, mock_recommender_class, mock_build_strategy,
-                                        mock_options_handler, mock_decision_store):
-        """Test that --auto-close works with --verbose flag."""
-        # Setup mocks
-        mock_decision_store.return_value.get_open_positions.return_value = [self.test_decision_record]
-        mock_strategy = Mock()
-        mock_build_strategy.return_value = mock_strategy
-        mock_recommender = Mock()
-        mock_recommender_class.return_value = mock_recommender
-        mock_recommender.get_open_positions_status.return_value = []
-        mock_recommender.recommend_close_positions.return_value = []
+        # Verify config defaults
+        # Note: initial_capital removed - managed via config/strategies/capital_allocations.json
+        mock_engine_class.from_config.assert_called_once()
+        config = mock_engine_class.from_config.call_args[0][0]
         
-        # Mock sys.argv with both --auto-close and --verbose
-        with patch('sys.argv', ['recommend_cli.py', '--strategy', 'velocity_momentum', '--auto-close', '--verbose']):
-            with patch('sys.exit'):  # Prevent actual exit
+        self.assertEqual(config.symbol, 'SPY')
+        self.assertEqual(config.strategy_type, 'credit_spread')
+        self.assertEqual(config.max_position_size, 0.40)
+        self.assertIsNone(config.stop_loss)
+        self.assertIsNone(config.profit_target)
+        self.assertEqual(config.use_free_tier, False)
+
+    @patch('algo_trading_engine.prediction.recommend_cli.PaperTradingEngine')
+    @patch('os.getenv')
+    def test_paper_trading_cli_engine_success(self, mock_getenv, mock_engine_class):
+        """Test CLI handles successful engine execution."""
+        # Setup mocks
+        mock_getenv.return_value = 'test_api_key'
+        mock_engine = Mock()
+        mock_engine.run.return_value = True
+        mock_engine_class.from_config.return_value = mock_engine
+        
+        # Mock sys.argv
+        with patch('sys.argv', ['recommend_cli.py']):
+            with patch('sys.exit') as mock_exit:
+                main()
+                
+                # Should not exit or exit with 0
+                if mock_exit.called:
+                    self.assertEqual(mock_exit.call_args[0][0], 0)
+
+    @patch('algo_trading_engine.prediction.recommend_cli.PaperTradingEngine')
+    @patch('os.getenv')
+    def test_paper_trading_cli_engine_failure(self, mock_getenv, mock_engine_class):
+        """Test CLI handles engine execution failure."""
+        # Setup mocks
+        mock_getenv.return_value = 'test_api_key'
+        mock_engine = Mock()
+        mock_engine.run.return_value = False  # Failure
+        mock_engine_class.from_config.return_value = mock_engine
+        
+        # Mock sys.argv
+        with patch('sys.argv', ['recommend_cli.py']):
+            with patch('sys.exit') as mock_exit:
+                main()
+                
+                # Should exit with 1
+                mock_exit.assert_called_once_with(1)
+
+    @patch('algo_trading_engine.prediction.recommend_cli.PaperTradingEngine')
+    @patch('os.getenv')
+    def test_paper_trading_cli_engine_exception(self, mock_getenv, mock_engine_class):
+        """Test CLI handles engine exceptions."""
+        # Setup mocks
+        mock_getenv.return_value = 'test_api_key'
+        mock_engine_class.from_config.side_effect = Exception("Test error")
+        
+        # Mock sys.argv
+        with patch('sys.argv', ['recommend_cli.py']):
+            with patch('sys.exit') as mock_exit:
+                main()
+                
+                # Should exit with 1
+                mock_exit.assert_called_once_with(1)
+
+    @patch('algo_trading_engine.prediction.recommend_cli.PaperTradingEngine')
+    @patch('os.getenv')
+    def test_argument_parsing(self, mock_getenv, mock_engine_class):
+        """Test that CLI parses arguments correctly."""
+        # Setup mocks
+        mock_getenv.return_value = 'test_api_key'
+        mock_engine = Mock()
+        mock_engine.run.return_value = True
+        mock_engine_class.from_config.return_value = mock_engine
+        
+        # Test with custom stop-loss and profit-target
+        with patch('sys.argv', [
+            'recommend_cli.py',
+            '--strategy', 'velocity_momentum',
+            '--stop-loss', '0.7',
+            '--profit-target', '0.3'
+        ]):
+            with patch('sys.exit'):
                 main()
         
-        # Assertions
-        mock_decision_store.return_value.get_open_positions.assert_called_once_with(symbol='SPY')
-        # Verify build_strategy was called with correct arguments (no stop_loss/profit_target by default)
-        mock_build_strategy.assert_called_once_with('velocity_momentum', 'SPY', mock_options_handler.return_value, stop_loss=None, profit_target=None)
-        mock_recommender_class.assert_called_once()
-
-    @patch('algo_trading_engine.prediction.recommend_cli.JsonDecisionStore')
-    @patch('algo_trading_engine.prediction.recommend_cli.OptionsHandler')
-    @patch('algo_trading_engine.prediction.recommend_cli.build_strategy')
-    @patch('algo_trading_engine.prediction.recommend_cli.InteractiveStrategyRecommender')
-    def test_auto_close_with_custom_date(self, mock_recommender_class, mock_build_strategy,
-                                            mock_options_handler, mock_decision_store):
-        """Test that --auto-close works with custom date."""
-        # Setup mocks
-        mock_decision_store.return_value.get_open_positions.return_value = [self.test_decision_record]
-        mock_strategy = Mock()
-        mock_build_strategy.return_value = mock_strategy
-        mock_recommender = Mock()
-        mock_recommender_class.return_value = mock_recommender
-        mock_recommender.get_open_positions_status.return_value = []
-        mock_recommender.recommend_close_positions.return_value = []
-        
-        # Mock sys.argv with --auto-close and custom date
-        with patch('sys.argv', ['recommend_cli.py', '--strategy', 'velocity_momentum', '--auto-close', '--date', '2025-09-23']):
-            with patch('sys.exit'):  # Prevent actual exit
-                main()
-        
-        # Assertions
-        mock_decision_store.return_value.get_open_positions.assert_called_once_with(symbol='SPY')
-        # Verify build_strategy was called with correct arguments (no stop_loss/profit_target by default)
-        mock_build_strategy.assert_called_once_with('velocity_momentum', 'SPY', mock_options_handler.return_value, stop_loss=None, profit_target=None)
-        mock_recommender_class.assert_called_once()
-
-    def test_auto_close_argument_parsing(self):
-        """Test that --auto-close argument is parsed correctly."""
-        import argparse
-        
-        # Test argument parser
-        parser = argparse.ArgumentParser()
-        parser.add_argument("--auto-close", action="store_true", default=False, 
-                          help="Automatically close any open positions recommended to close using previous day's prices")
-        
-        # Test with --auto-close
-        args_with_auto_close = parser.parse_args(['--auto-close'])
-        self.assertTrue(args_with_auto_close.auto_close)
-        
-        # Test without --auto-close
-        args_without_auto_close = parser.parse_args([])
-        self.assertFalse(args_without_auto_close.auto_close)
-
-    @patch('algo_trading_engine.prediction.recommend_cli.JsonDecisionStore')
-    @patch('algo_trading_engine.prediction.recommend_cli.OptionsHandler')
-    @patch('algo_trading_engine.prediction.recommend_cli.build_strategy')
-    @patch('algo_trading_engine.prediction.recommend_cli.InteractiveStrategyRecommender')
-    def test_auto_close_with_free_tier_flag(self, mock_recommender_class, mock_build_strategy,
-                                         mock_options_handler, mock_decision_store):
-        """Test that --auto-close works with --free flag."""
-        # Setup mocks
-        mock_decision_store.return_value.get_open_positions.return_value = [self.test_decision_record]
-        mock_strategy = Mock()
-        mock_build_strategy.return_value = mock_strategy
-        mock_recommender = Mock()
-        mock_recommender_class.return_value = mock_recommender
-        mock_recommender.get_open_positions_status.return_value = []
-        mock_recommender.recommend_close_positions.return_value = []
-        
-        # Mock sys.argv with --auto-close and --free
-        with patch('sys.argv', ['recommend_cli.py', '--strategy', 'velocity_momentum', '--auto-close', '--free']):
-            with patch('sys.exit'):  # Prevent actual exit
-                main()
-        
-        # Assertions
-        mock_decision_store.return_value.get_open_positions.assert_called_once_with(symbol='SPY')
-        # Verify build_strategy was called with correct arguments (no stop_loss/profit_target by default)
-        mock_build_strategy.assert_called_once_with('velocity_momentum', 'SPY', mock_options_handler.return_value, stop_loss=None, profit_target=None)
-        mock_recommender_class.assert_called_once()
-
-    @patch('algo_trading_engine.prediction.recommend_cli.JsonDecisionStore')
-    @patch('algo_trading_engine.prediction.recommend_cli.OptionsHandler')
-    @patch('algo_trading_engine.prediction.recommend_cli.build_strategy')
-    @patch('algo_trading_engine.prediction.recommend_cli.InteractiveStrategyRecommender')
-    def test_build_strategy_with_stop_loss_and_profit_target_close_flow(self, mock_recommender_class, mock_build_strategy,
-                                                                        mock_options_handler, mock_decision_store):
-        """Test that build_strategy is called with stop_loss and profit_target in close flow."""
-        # Setup mocks
-        mock_decision_store.return_value.get_open_positions.return_value = [self.test_decision_record]
-        mock_strategy = Mock()
-        mock_build_strategy.return_value = mock_strategy
-        mock_recommender = Mock()
-        mock_recommender_class.return_value = mock_recommender
-        mock_recommender.get_open_positions_status.return_value = []
-        mock_recommender.recommend_close_positions.return_value = []
-        
-        # Mock sys.argv with stop_loss and profit_target
-        with patch('sys.argv', ['recommend_cli.py', '--strategy', 'velocity_momentum', '--stop-loss', '0.6', '--profit-target', '0.4']):
-            with patch('sys.exit'):  # Prevent actual exit
-                main()
-        
-        # Assertions
-        mock_decision_store.return_value.get_open_positions.assert_called_once_with(symbol='SPY')
-        # Verify build_strategy was called with stop_loss and profit_target
-        mock_build_strategy.assert_called_once_with('velocity_momentum', 'SPY', mock_options_handler.return_value, stop_loss=0.6, profit_target=0.4)
-        mock_recommender_class.assert_called_once()
-
-    @patch('algo_trading_engine.prediction.recommend_cli.JsonDecisionStore')
-    @patch('algo_trading_engine.prediction.recommend_cli.OptionsHandler')
-    @patch('algo_trading_engine.prediction.recommend_cli.DataRetriever')
-    @patch('algo_trading_engine.prediction.recommend_cli.build_strategy')
-    @patch('algo_trading_engine.prediction.recommend_cli.InteractiveStrategyRecommender')
-    def test_build_strategy_with_stop_loss_and_profit_target_open_flow(self, mock_recommender_class, mock_build_strategy,
-                                                                       mock_data_retriever, mock_options_handler, mock_decision_store):
-        """Test that build_strategy is called with stop_loss and profit_target in open flow."""
-        # Setup mocks
-        mock_decision_store.return_value.get_open_positions.return_value = []  # No open positions
-        mock_strategy = Mock()
-        mock_build_strategy.return_value = mock_strategy
-        mock_recommender = Mock()
-        mock_recommender_class.return_value = mock_recommender
-        
-        # Mock DataRetriever
-        import pandas as pd
-        mock_retriever = Mock()
-        mock_data = pd.DataFrame({'Close': [100, 101, 102]}, index=pd.date_range('2025-01-01', periods=3))
-        mock_retriever.fetch_data_for_period.return_value = mock_data
-        mock_data_retriever.return_value = mock_retriever
-        
-        # Mock CapitalManager
-        with patch('algo_trading_engine.prediction.recommend_cli.CapitalManager') as mock_capital_manager_class:
-            mock_capital_manager = Mock()
-            mock_capital_manager.get_status_summary.return_value = "Capital status"
-            mock_capital_manager_class.from_config_file.return_value = mock_capital_manager
-            
-            # Mock sys.argv with stop_loss and profit_target
-            with patch('sys.argv', ['recommend_cli.py', '--strategy', 'velocity_momentum', '--stop-loss', '0.5', '--profit-target', '0.3']):
-                with patch('sys.exit'):  # Prevent actual exit
-                    main()
-            
-            # Assertions
-            mock_decision_store.return_value.get_open_positions.assert_called_once_with(symbol='SPY')
-            # Verify build_strategy was called with stop_loss and profit_target
-            # Note: In open flow, build_strategy uses keyword arguments (symbol=, options_handler=)
-            mock_build_strategy.assert_called_once_with('velocity_momentum', symbol='SPY', options_handler=mock_options_handler.return_value, stop_loss=0.5, profit_target=0.3)
-            mock_recommender_class.assert_called_once()
-
-    @patch('algo_trading_engine.prediction.recommend_cli.JsonDecisionStore')
-    @patch('algo_trading_engine.prediction.recommend_cli.OptionsHandler')
-    @patch('algo_trading_engine.prediction.recommend_cli.build_strategy')
-    @patch('algo_trading_engine.prediction.recommend_cli.InteractiveStrategyRecommender')
-    def test_build_strategy_with_only_stop_loss(self, mock_recommender_class, mock_build_strategy,
-                                               mock_options_handler, mock_decision_store):
-        """Test that build_strategy is called with only stop_loss (no profit_target)."""
-        # Setup mocks
-        mock_decision_store.return_value.get_open_positions.return_value = [self.test_decision_record]
-        mock_strategy = Mock()
-        mock_build_strategy.return_value = mock_strategy
-        mock_recommender = Mock()
-        mock_recommender_class.return_value = mock_recommender
-        mock_recommender.get_open_positions_status.return_value = []
-        mock_recommender.recommend_close_positions.return_value = []
-        
-        # Mock sys.argv with only stop_loss
-        with patch('sys.argv', ['recommend_cli.py', '--strategy', 'velocity_momentum', '--stop-loss', '0.6']):
-            with patch('sys.exit'):  # Prevent actual exit
-                main()
-        
-        # Assertions
-        # Verify build_strategy was called with stop_loss but None for profit_target
-        mock_build_strategy.assert_called_once_with('velocity_momentum', 'SPY', mock_options_handler.return_value, stop_loss=0.6, profit_target=None)
-
-    @patch('algo_trading_engine.prediction.recommend_cli.JsonDecisionStore')
-    @patch('algo_trading_engine.prediction.recommend_cli.OptionsHandler')
-    @patch('algo_trading_engine.prediction.recommend_cli.build_strategy')
-    @patch('algo_trading_engine.prediction.recommend_cli.InteractiveStrategyRecommender')
-    def test_build_strategy_with_only_profit_target(self, mock_recommender_class, mock_build_strategy,
-                                                   mock_options_handler, mock_decision_store):
-        """Test that build_strategy is called with only profit_target (no stop_loss)."""
-        # Setup mocks
-        mock_decision_store.return_value.get_open_positions.return_value = [self.test_decision_record]
-        mock_strategy = Mock()
-        mock_build_strategy.return_value = mock_strategy
-        mock_recommender = Mock()
-        mock_recommender_class.return_value = mock_recommender
-        mock_recommender.get_open_positions_status.return_value = []
-        mock_recommender.recommend_close_positions.return_value = []
-        
-        # Mock sys.argv with only profit_target
-        with patch('sys.argv', ['recommend_cli.py', '--strategy', 'velocity_momentum', '--profit-target', '0.4']):
-            with patch('sys.exit'):  # Prevent actual exit
-                main()
-        
-        # Assertions
-        # Verify build_strategy was called with profit_target but None for stop_loss
-        mock_build_strategy.assert_called_once_with('velocity_momentum', 'SPY', mock_options_handler.return_value, stop_loss=None, profit_target=0.4)
+        # Verify arguments were parsed correctly
+        config = mock_engine_class.from_config.call_args[0][0]
+        self.assertEqual(config.stop_loss, 0.7)
+        self.assertEqual(config.profit_target, 0.3)
 
 
 if __name__ == '__main__':

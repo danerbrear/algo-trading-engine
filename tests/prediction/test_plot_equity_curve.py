@@ -2,11 +2,9 @@
 Tests for equity curve plotting functionality with overlay features.
 """
 
-import pytest
 from datetime import datetime, timedelta
 from unittest.mock import Mock, patch, MagicMock
 import pandas as pd
-import numpy as np
 
 from algo_trading_engine.prediction.plot_equity_curve import (
     ClosedPosition,
