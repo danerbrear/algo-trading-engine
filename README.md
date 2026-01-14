@@ -69,22 +69,17 @@ engine.run()
 
 See [examples/](examples/) for complete working examples including custom strategies.
 
-## 🏗️ Project Architecture
-
-The system operates in two main stages:
-1. **Market Analysis** - Identifies market conditions and trends
-2. **Strategy Prediction** - Determines optimal trading strategies
+## 📁 Project Structure
 
 ### Core Components
 
 - **`algo_trading_engine/ml_models/`** - Machine learning models and training logic
-  - Market analysis models
-  - Strategy prediction models
+  - Market analysis machine learning models
+  - Strategy prediction machine learning models
   - See [Model Documentation](algo_trading_engine/ml_models/README.md) for details
 
 - **`algo_trading_engine/strategies/`** - Trading strategy implementations
   - Various options trading strategies
-  - Risk management and position sizing
   - See [Strategy Documentation](algo_trading_engine/strategies/README.md) for details
 
 - **`algo_trading_engine/backtest/`** - Backtesting framework
@@ -104,11 +99,11 @@ The system operates in two main stages:
   - Equity curve visualization
   - See [Prediction Documentation](algo_trading_engine/prediction/README.md) for details
 
-## 📁 Project Structure
+### File Structure
 
 ```
-lstm_poc/
-├── algo_trading_engine/      # Source code directory (Python package)
+/
+├── src/algo_trading_engine/      # Source code directory (Python package)
 │   ├── ml_models/            # ML models and training
 │   │   ├── README.md         # Model-specific documentation
 │   │   ├── main.py           # Training entry point
@@ -133,18 +128,22 @@ lstm_poc/
 │       ├── recommendation_engine.py  # InteractiveStrategyRecommender
 │       ├── decision_store.py         # JSON decision store
 │       └── ...
-├── data_cache/               # Cached market data
-│   ├── stocks/               # Stock price data
-│   ├── options/              # Options chain data
-│   ├── treasury/             # Treasury yield data
-│   └── calendar/             # Economic calendar data
-├── tests/                    # Unit tests
-├── docs/                     # Documentation
-├── predictions/              # Prediction outputs
-├── Trained_Models/           # Saved models
-├── pyproject.toml            # Package configuration and dependencies
-├── setup_env.py              # Environment setup
-└── README.md                 # This file
+├── data_cache/                          # Cached market data
+│   ├── stocks/                          # Stock price data
+│   ├── options/                         # Options chain data
+│   ├── treasury/                        # Treasury yield data
+│   └── calendar/                        # Economic calendar data
+├── config/                              # Configuration files
+│   ├── strategies/                      # Config specific to custom strategies
+│   |   ├── capital_allocations.json     # Specify amount of capital and max position risk for each custom strategy
+│   │   └── ...
+├── tests/                               # Unit tests
+├── docs/                                # Documentation
+├── predictions/                         # Prediction outputs
+├── Trained_Models/                      # Saved models
+├── pyproject.toml                       # Package configuration and dependencies
+├── setup_env.py                         # Environment setup
+└── README.md                            # This file
 ```
 
 ## 🚀 Quick Start

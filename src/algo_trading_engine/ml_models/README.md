@@ -96,10 +96,10 @@ The main training script orchestrates the entire training process:
 
 ```bash
 # Basic training
-python -m src.ml_models.main
+python -m src.algo_trading_engine.ml_models.main
 
 # Training with options
-python -m src.ml_models.main --symbol QQQ --free --save --verbose
+python -m src.algo_trading_engine.ml_models.main --symbol QQQ --free --save --verbose
 ```
 
 #### Command Line Options
@@ -109,49 +109,6 @@ python -m src.ml_models.main --symbol QQQ --free --save --verbose
 - `-f, --free`: Use free tier rate limiting
 - `-q, --quiet`: Suppress detailed output
 - `-v, --verbose`: Show detailed output
-
-### Data Preparation
-
-**File**: `data_retriever.py`
-
-Handles data fetching, feature engineering, and preparation:
-
-```python
-from src.common.data_retriever import DataRetriever
-
-# Initialize retriever
-retriever = DataRetriever(
-    symbol='SPY',
-    hmm_start_date='2010-01-01',
-    lstm_start_date='2020-01-01'
-)
-
-# Prepare data for training
-data, options_data = retriever.prepare_data_for_lstm(
-    sequence_length=60,
-    state_classifier=hmm_model
-)
-```
-
-### Options Data Processing
-
-**File**: `options_handler.py`
-
-Processes options data and calculates strategy-specific features:
-
-```python
-from src.common.options_handler import OptionsHandler
-from src.ml_models.lstm_model import LSTMModel
-
-# Initialize handler
-handler = OptionsHandler(symbol='SPY')
-
-# Calculate options features
-data = handler.calculate_option_features(data)
-
-# Calculate strategy signals (moved to LSTMModel)
-data = LSTMModel.calculate_option_signals(data)
-```
 
 ## Model Performance
 
@@ -262,22 +219,6 @@ HMM_CONFIG = {
 - Put/Call Ratio
 - Option Volume Ratio
 
-## API Integration
-
-**File**: `api_retry_handler.py`
-
-Handles API requests with retry logic and rate limiting:
-
-```python
-from src.ml_models.api_retry_handler import APIRetryHandler
-
-# Initialize handler
-handler = APIRetryHandler(api_key='your_key', use_free_tier=True)
-
-# Make API requests with retry logic
-data = handler.get_options_chain(symbol, date)
-```
-
 ## Testing
 
 Run model-specific tests:
@@ -300,27 +241,3 @@ python -m pytest tests/test_market_state_classifier.py -v
 5. **Monitoring**: Track training progress and model performance
 6. **Versioning**: Save model versions with timestamps
 7. **Documentation**: Document model architecture and hyperparameters
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Memory Issues**: Reduce batch size or sequence length
-2. **Overfitting**: Increase dropout rates or add more regularization
-3. **Poor Performance**: Check data quality and feature engineering
-4. **API Rate Limits**: Use free tier flag for rate limiting
-
-### Performance Optimization
-
-1. **GPU Acceleration**: Use GPU for LSTM training
-2. **Data Caching**: Cache API responses to reduce calls
-3. **Batch Processing**: Process data in batches for efficiency
-4. **Model Optimization**: Use model quantization for inference
-
-## Future Enhancements
-
-1. **Ensemble Methods**: Combine multiple models for better predictions
-2. **Attention Mechanisms**: Add attention layers to LSTM
-3. **Transformer Models**: Experiment with transformer architectures
-4. **Online Learning**: Implement online model updates
-5. **Multi-Asset**: Extend to multiple assets and correlations
