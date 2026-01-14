@@ -63,12 +63,6 @@ class TradingEngine(ABC):
         """Get the strategy being used by this engine."""
         pass
     
-    @property
-    @abstractmethod
-    def capital(self) -> float:
-        """Get current capital."""
-        pass
-    
     @abstractclassmethod
     def from_config(cls, config: Union['BacktestConfig', PaperTradingConfig]) -> 'TradingEngine':
         """
@@ -164,7 +158,6 @@ class PaperTradingEngine(TradingEngine):
             strategy_data = pd.DataFrame()
         super().__init__(strategy, strategy_data)
         self._config = config
-        self._capital = config.initial_capital
         self._positions: List['Position'] = []
         self._closed_positions: List[dict] = []
         self._running = False
@@ -181,11 +174,6 @@ class PaperTradingEngine(TradingEngine):
     def strategy(self) -> Strategy:
         """Get the strategy being used by this engine."""
         return self._strategy
-    
-    @property
-    def capital(self) -> float:
-        """Get current capital."""
-        return self._capital
     
     def run(self) -> bool:
         """
@@ -209,22 +197,27 @@ class PaperTradingEngine(TradingEngine):
         
         # Load capital allocation configuration
         config_path = "config/strategies/capital_allocations.json"
+        
+        # Get strategy name before trying to load config
+        strategy_name = self._get_strategy_name_from_class()
+        
         try:
+            # Ensure config file exists and strategy is initialized
+            CapitalManager.initialize_config_for_strategy(
+                config_path,
+                strategy_name,
+                default_capital=10000.0,
+                default_max_risk_pct=0.05
+            )
+            
             store = JsonDecisionStore()
             capital_manager = CapitalManager.from_config_file(config_path, store)
-        except FileNotFoundError:
-            print(f"❌ ERROR: Capital allocation config not found: {config_path}")
-            print("   Please create the config file before using this feature.")
-            return False
         except Exception as e:
             print(f"❌ ERROR: Failed to load capital allocation config: {e}")
             return False
         
         # Get current date
         run_date = datetime.now()
-        
-        # Get strategy name from class
-        strategy_name = self._get_strategy_name_from_class()
         
         # Check for open positions
         open_records = store.get_open_positions(symbol=self._config.symbol)
@@ -282,19 +275,24 @@ class PaperTradingEngine(TradingEngine):
         """
         Get strategy name from strategy class for capital manager.
         
-        Returns:
-            Strategy name string (e.g., 'credit_spread', 'velocity_momentum')
-        """
-        class_name = self._strategy.__class__.__name__.lower()
+        Uses the same logic as InteractiveStrategyRecommender to ensure consistency.
         
-        # Map class names to strategy names
-        if 'credit' in class_name and 'spread' in class_name:
-            return 'credit_spread'
-        elif 'velocity' in class_name or 'momentum' in class_name:
-            return 'velocity_momentum'
-        else:
-            # Default: use class name as-is
-            return class_name
+        Returns:
+            Strategy name string (e.g., 'credit_spread', 'velocity_momentum', 'my_custom')
+        """
+        import re
+        
+        # Remove "Strategy" suffix and convert CamelCase to snake_case
+        class_name = self._strategy.__class__.__name__.replace("Strategy", "")
+        strategy_name = re.sub(r'(?<!^)(?=[A-Z])', '_', class_name).lower()
+        
+        # Map class names to config keys for built-in strategies
+        name_mapping = {
+            "credit_spread": "credit_spread",
+            "velocity_signal_momentum": "velocity_momentum",
+        }
+        
+        return name_mapping.get(strategy_name, strategy_name)
     
     def get_positions(self) -> List['Position']:
         """Get current open positions."""

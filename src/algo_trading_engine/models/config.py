@@ -62,9 +62,9 @@ class PaperTradingConfig:
     Configuration for paper trading engine.
     
     This is an immutable DTO that contains all configuration needed
-    to run paper trading.
+    to run paper trading. Capital allocation is managed separately
+    through config/strategies/capital_allocations.json.
     """
-    initial_capital: float
     symbol: str
     strategy_type: Union[str, 'Strategy']  # Strategy name (str) or Strategy instance (from core.strategy)
     max_position_size: Optional[float] = None  # Fraction of capital
@@ -75,8 +75,6 @@ class PaperTradingConfig:
     
     def __post_init__(self):
         """Validate configuration after initialization."""
-        if self.initial_capital <= 0:
-            raise ValueError("Initial capital must be greater than 0")
         if self.max_position_size is not None:
             if not 0 < self.max_position_size <= 1:
                 raise ValueError("Max position size must be between 0 and 1")

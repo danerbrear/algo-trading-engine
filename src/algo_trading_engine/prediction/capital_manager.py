@@ -64,6 +64,88 @@ class CapitalManager:
         
         return cls(config, decision_store)
     
+    @staticmethod
+    def ensure_config_file_exists(config_path: str) -> None:
+        """Ensure capital allocation config file exists, creating it if necessary.
+        
+        Creates the file with an empty strategies dict if it doesn't exist.
+        
+        Args:
+            config_path: Path to capital_allocations.json file
+        """
+        path = Path(config_path)
+        
+        # Create parent directories if they don't exist
+        path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Create file with default structure if it doesn't exist
+        if not path.exists():
+            default_config = {
+                "strategies": {}
+            }
+            with open(path, 'w') as f:
+                json.dump(default_config, f, indent=2)
+    
+    @staticmethod
+    def ensure_strategy_exists(
+        config_path: str, 
+        strategy_name: str,
+        default_capital: float = 10000.0,
+        default_max_risk_pct: float = 0.05
+    ) -> None:
+        """Ensure a strategy exists in the config file, adding it with defaults if not.
+        
+        Args:
+            config_path: Path to capital_allocations.json file
+            strategy_name: Name of the strategy to ensure exists
+            default_capital: Default allocated capital if strategy doesn't exist
+            default_max_risk_pct: Default max risk percentage if strategy doesn't exist
+        """
+        path = Path(config_path)
+        
+        # Load current config
+        with open(path, 'r') as f:
+            config = json.load(f)
+        
+        # Check if strategy exists
+        strategies = config.get("strategies", {})
+        if strategy_name not in strategies:
+            # Add strategy with defaults
+            strategies[strategy_name] = {
+                "allocated_capital": default_capital,
+                "max_risk_percentage": default_max_risk_pct
+            }
+            config["strategies"] = strategies
+            
+            # Write back to file
+            with open(path, 'w') as f:
+                json.dump(config, f, indent=2)
+    
+    @staticmethod
+    def initialize_config_for_strategy(
+        config_path: str,
+        strategy_name: str,
+        default_capital: float = 10000.0,
+        default_max_risk_pct: float = 0.05
+    ) -> None:
+        """Initialize config file and ensure strategy exists.
+        
+        Convenience method that combines ensure_config_file_exists and ensure_strategy_exists.
+        
+        Args:
+            config_path: Path to capital_allocations.json file
+            strategy_name: Name of the strategy to ensure exists
+            default_capital: Default allocated capital if strategy doesn't exist
+            default_max_risk_pct: Default max risk percentage if strategy doesn't exist
+        """
+        CapitalManager.ensure_config_file_exists(config_path)
+        CapitalManager.ensure_strategy_exists(
+            config_path, 
+            strategy_name, 
+            default_capital, 
+            default_max_risk_pct
+        )
+    
     def get_allocated_capital(self, strategy_name: str) -> float:
         """Get the allocated capital for a strategy.
         

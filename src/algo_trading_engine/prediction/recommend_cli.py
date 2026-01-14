@@ -12,7 +12,6 @@ def main():
     parser = argparse.ArgumentParser(description="Run interactive recommendation flow for a given date")
     parser.add_argument("--symbol", default="SPY", help="Symbol to trade")
     parser.add_argument("--strategy", default="credit_spread", help="Strategy to run (default: credit_spread)")
-    parser.add_argument("--initial-capital", type=float, default=100000, help="Initial capital for paper trading")
     parser.add_argument("--max-position-size", type=float, default=0.40, help="Maximum position size as fraction of capital")
     parser.add_argument("--stop-loss", type=float, default=None, help="Stop loss percentage")
     parser.add_argument("--profit-target", type=float, default=None, help="Profit target percentage")
@@ -24,8 +23,8 @@ def main():
     api_key = os.getenv("POLYGON_API_KEY")
 
     # Create configuration
+    # Note: Capital is managed through config/strategies/capital_allocations.json
     config = PaperTradingConfig(
-        initial_capital=args.initial_capital,
         symbol=args.symbol,
         strategy_type=args.strategy,
         max_position_size=args.max_position_size,
@@ -38,7 +37,7 @@ def main():
     # Create and run engine using from_config (same as examples)
     print(f"🚀 Starting paper trading with strategy: {args.strategy}")
     print(f"   Symbol: {args.symbol}")
-    print(f"   Initial capital: ${args.initial_capital:,.2f}")
+    print(f"   Capital managed via config/strategies/capital_allocations.json")
     print(f"   Max position size: {args.max_position_size * 100:.1f}%")
     if args.stop_loss:
         print(f"   Stop loss: {args.stop_loss * 100:.1f}%")

@@ -55,8 +55,8 @@ print(f"Win Rate: {metrics.win_rate:.1f}%")
 from algo_trading_engine import PaperTradingEngine, PaperTradingConfig
 
 # Create configuration
+# Note: Capital is managed via config/strategies/capital_allocations.json
 config = PaperTradingConfig(
-    initial_capital=100000,
     symbol="SPY",
     strategy_type="velocity_momentum",
     api_key="your-polygon-api-key"

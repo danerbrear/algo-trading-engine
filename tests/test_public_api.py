@@ -90,12 +90,10 @@ def test_paper_trading_config_creation():
     
     # Test with minimal required parameters
     config = PaperTradingConfig(
-        initial_capital=100000,
         symbol="SPY",
         strategy_type="velocity_momentum"
     )
     
-    assert config.initial_capital == 100000
     assert config.symbol == "SPY"
     assert config.strategy_type == "velocity_momentum"
 
@@ -104,12 +102,12 @@ def test_paper_trading_config_validation():
     """Test PaperTradingConfig validation rules."""
     from algo_trading_engine import PaperTradingConfig
     
-    # Test that initial_capital must be positive
-    with pytest.raises(ValueError, match="Initial capital must be greater than 0"):
+    # Test that max_position_size validation works
+    with pytest.raises(ValueError, match="Max position size must be between 0 and 1"):
         PaperTradingConfig(
-            initial_capital=-1000,  # Negative
             symbol="SPY",
-            strategy_type="velocity_momentum"
+            strategy_type="velocity_momentum",
+            max_position_size=1.5  # Invalid: > 1
         )
 
 
@@ -223,8 +221,8 @@ def test_paper_trading_config_cli_parameters():
     from algo_trading_engine import PaperTradingConfig
     
     # Create config with all CLI-accessible parameters
+    # Note: Capital is managed via config/strategies/capital_allocations.json
     config = PaperTradingConfig(
-        initial_capital=100000,
         symbol="SPY",
         strategy_type="credit_spread",
         max_position_size=0.40,
@@ -235,7 +233,6 @@ def test_paper_trading_config_cli_parameters():
     )
     
     # Verify all parameters are set
-    assert config.initial_capital == 100000
     assert config.symbol == "SPY"
     assert config.strategy_type == "credit_spread"
     assert config.max_position_size == 0.40
