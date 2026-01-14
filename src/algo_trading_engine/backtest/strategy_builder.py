@@ -9,10 +9,10 @@ from abc import ABC, abstractmethod
 from typing import Dict, Type, List, Callable
 
 try:
-    from .models import Strategy
+    from ..core.strategy import Strategy
 except ImportError:
     # Fallback for direct execution
-    from algo_trading_engine.backtest.models import Strategy
+    from algo_trading_engine.core.strategy import Strategy
 
 
 class StrategyBuilder(ABC):

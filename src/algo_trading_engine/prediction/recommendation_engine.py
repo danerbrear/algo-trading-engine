@@ -3,7 +3,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Optional, List
 
-from algo_trading_engine.backtest.models import Position, StrategyType, Strategy
+from algo_trading_engine.core.strategy import Strategy
+from algo_trading_engine.backtest.models import Position, StrategyType
 from algo_trading_engine.prediction.decision_store import (
     JsonDecisionStore,
     ProposedPositionRequestDTO,

@@ -9,9 +9,18 @@ Strategy base class and using it with the BacktestEngine.
 import os
 from datetime import datetime
 from dotenv import load_dotenv
+from pathlib import Path
+import importlib.util
 
 # Import from the public API
 from algo_trading_engine import BacktestEngine, BacktestConfig
+
+# Import custom strategy using absolute path
+strategy_path = Path(__file__).parent.parent / "strategies" / "custom_strategy.py"
+spec = importlib.util.spec_from_file_location("custom_strategy", strategy_path)
+custom_strategy_module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(custom_strategy_module)
+MyCustomStrategy = custom_strategy_module.MyCustomStrategy
 
 # Load environment variables from .env file
 load_dotenv()
@@ -58,4 +67,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

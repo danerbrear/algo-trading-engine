@@ -118,7 +118,7 @@ To add a new strategy:
 
 1. **Create the strategy file**:
 ```python
-from src.backtest.models import Strategy
+from algo_trading_engine.core.strategy import Strategy
 
 class MyNewStrategy(Strategy):
     def __init__(self):

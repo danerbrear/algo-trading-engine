@@ -4,7 +4,8 @@ from datetime import datetime, date
 from typing import Callable, Optional
 import pandas as pd
 
-from algo_trading_engine.backtest.models import Position, Strategy, StrategyType
+from algo_trading_engine.core.strategy import Strategy
+from algo_trading_engine.backtest.models import Position, StrategyType
 from algo_trading_engine.common.models import Option, OptionType, TreasuryRates
 from algo_trading_engine.common.progress_tracker import progress_print
 from algo_trading_engine.dto import ExpirationRangeDTO, StrikeRangeDTO
