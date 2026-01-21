@@ -1,9 +1,9 @@
 [
   {
-    "closed_at": null,
+    "closed_at": "2026-01-20T22:24:52.956292",
     "decided_at": "2026-01-07T17:58:32.625905+00:00",
     "entry_price": 1.44,
-    "exit_price": null,
+    "exit_price": 3.10,
     "id": "a0f7c390e54d88ae",
     "outcome": "accepted",
     "proposal": {
