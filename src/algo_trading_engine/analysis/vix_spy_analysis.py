@@ -81,6 +81,7 @@ class VIXSPYAnalyzer:
         # HMM market state classifier
         self.state_classifier = None
         self.market_states = None  # Predicted market states for analysis period
+        self.market_state_filter = None  # Market state filter (if set)
         
     def load_data(self) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
@@ -428,6 +429,36 @@ class VIXSPYAnalyzer:
         
         return events
     
+    def filter_events_by_market_state(self, events: List[BigMoveEvent], target_state: int = 3) -> List[BigMoveEvent]:
+        """
+        Filter big move events to only include those occurring when market state matches target_state.
+        
+        Args:
+            events: List of BigMoveEvent objects
+            target_state: Market state ID to filter for (default: 3)
+            
+        Returns:
+            Filtered list of BigMoveEvent objects
+        """
+        if self.market_states is None or len(self.market_states) == 0:
+            print(f"⚠️  Warning: Market states not available. Returning all events.")
+            return events
+        
+        filtered_events = []
+        for event in events:
+            # Check if market state on the event date is the target state
+            if event.date in self.market_states.index:
+                state_on_date = self.market_states.loc[event.date]
+                if pd.notna(state_on_date) and int(state_on_date) == target_state:
+                    filtered_events.append(event)
+        
+        print(f"\nFiltered events by market state {target_state}:")
+        print(f"   Before: {len(events)} events")
+        print(f"   After:  {len(filtered_events)} events (state {target_state})")
+        print(f"   Removed: {len(events) - len(filtered_events)} events")
+        
+        return filtered_events
+    
     def round_to_nearest(self, value: float, increment: float = 0.002) -> float:
         """
         Round a value to the nearest increment (default 0.2% = 0.002).
@@ -768,10 +799,12 @@ class VIXSPYAnalyzer:
                             fontsize=9, fontweight='bold', verticalalignment='top',
                             bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.8))
         
-        fig.suptitle('Two-Sample Bootstrap Analysis: VIX Spikes vs Random Days\n' + 
-                     f'10,000 Bootstrap Iterations | n_spike={bootstrap_results[3]["n_spike"]}, ' +
-                     f'n_random={bootstrap_results[3]["n_random"]}',
-                     fontsize=16, fontweight='bold', y=0.995)
+        title_text = 'Two-Sample Bootstrap Analysis: VIX Spikes vs Random Days'
+        if self.market_state_filter is not None:
+            title_text += f' (Market State {self.market_state_filter} only)'
+        title_text += f'\n10,000 Bootstrap Iterations | n_spike={bootstrap_results[3]["n_spike"]}, ' + \
+                     f'n_random={bootstrap_results[3]["n_random"]}'
+        fig.suptitle(title_text, fontsize=16, fontweight='bold', y=0.995)
         
         plt.tight_layout()
         
@@ -1024,8 +1057,11 @@ class VIXSPYAnalyzer:
         
         ax_avg.set_xlabel('Days After Big VIX Move', fontsize=12, fontweight='bold')
         ax_avg.set_ylabel('SPY Return (%)', fontsize=12, fontweight='bold')
-        ax_avg.set_title('Average SPY Returns Following Big VIX Moves\n(VIX log return > 2 std deviations)', 
-                        fontsize=14, fontweight='bold', pad=20)
+        title_text = 'Average SPY Returns Following Big VIX Moves\n(VIX log return > 2 std deviations'
+        if self.market_state_filter is not None:
+            title_text += f', Market State {self.market_state_filter} only'
+        title_text += ')'
+        ax_avg.set_title(title_text, fontsize=14, fontweight='bold', pad=20)
         ax_avg.set_xticks(x)
         ax_avg.set_xticklabels([f'{d} Days' for d in days_list])
         ax_avg.legend(fontsize=10)
@@ -1072,9 +1108,11 @@ class VIXSPYAnalyzer:
             ax.tick_params(axis='x', rotation=45)
         
         # Overall title
-        fig.suptitle('VIX Big Move → SPY Return Analysis\n' + 
-                    f'Analysis Period: {self.start_date} to {self.vix_data.index[-1].strftime("%Y-%m-%d")}',
-                    fontsize=16, fontweight='bold', y=0.98)
+        title_text = 'VIX Big Move → SPY Return Analysis'
+        if self.market_state_filter is not None:
+            title_text += f' (Market State {self.market_state_filter} only)'
+        title_text += f'\nAnalysis Period: {self.start_date} to {self.vix_data.index[-1].strftime("%Y-%m-%d")}'
+        fig.suptitle(title_text, fontsize=16, fontweight='bold', y=0.98)
         
         plt.tight_layout()
         
@@ -1097,6 +1135,7 @@ class VIXSPYAnalyzer:
         print(f"\nAnalysis Period: {self.start_date} to {self.vix_data.index[-1].strftime('%Y-%m-%d')}")
         print(f"Big Move Definition: VIX log return > 2 std deviations from mean (1-3 days)")
         print(f"Cooldown Period: {self.cooldown_days} days (ensures independent signals)")
+        # Note: market_state_filter info is printed earlier in the pipeline
         print(f"Total Independent Signals Analyzed: {len(self.big_move_events)}")
         
         for days in [3, 6, 12]:
@@ -1120,7 +1159,8 @@ class VIXSPYAnalyzer:
         print("\n" + "="*80)
     
     def run_analysis(self, create_plot: bool = True, save_plot_path: str = None, 
-                     run_bootstrap: bool = True, n_bootstrap: int = 10000):
+                     run_bootstrap: bool = True, n_bootstrap: int = 10000,
+                     market_state_filter: int = None):
         """
         Run the complete VIX-SPY analysis pipeline.
         
@@ -1129,6 +1169,7 @@ class VIXSPYAnalyzer:
             save_plot_path: Optional path to save the plot (if None, will display)
             run_bootstrap: Whether to run bootstrap significance tests (default: True)
             n_bootstrap: Number of bootstrap iterations (default: 10000)
+            market_state_filter: Optional market state ID to filter events (default: None, no filter)
         """
         print("Starting VIX Big Move -> SPY Return Analysis\n")
         
@@ -1152,6 +1193,23 @@ class VIXSPYAnalyzer:
         if not events:
             print("No big move events found with complete data")
             return
+        
+        # Store filter value for use in plots
+        self.market_state_filter = market_state_filter
+        
+        # Filter events by market state if filter is specified
+        if market_state_filter is not None:
+            if self.market_states is not None and len(self.market_states) > 0:
+                print(f"\n🔍 Filtering events to only include market state {market_state_filter}...")
+                filtered_events = self.filter_events_by_market_state(events, target_state=market_state_filter)
+                if len(filtered_events) == 0:
+                    print(f"⚠️  Warning: No events found with market state {market_state_filter}. Using all events.")
+                    filtered_events = events
+                else:
+                    events = filtered_events
+                    self.big_move_events = events  # Update stored events for visualization
+            else:
+                print("⚠️  Warning: Market states not available. Cannot apply filter. Using all events.")
         
         # Calculate statistics
         stats = self.calculate_return_statistics(events)

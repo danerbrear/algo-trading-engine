@@ -13,6 +13,7 @@ Options:
     --bootstrap-iterations N: Number of bootstrap iterations (default: 10000)
     --lookback-years N: Years of historical data (default: 5)
     --cooldown-days N: Minimum days between signals (default: 12)
+    --market-state-filter N: Filter events to only include market state N (default: no filter)
 """
 
 import sys
@@ -46,6 +47,8 @@ def main():
                        help='Years of historical data to analyze (default: 5)')
     parser.add_argument('--cooldown-days', type=int, default=12,
                        help='Minimum days between independent signals (default: 12)')
+    parser.add_argument('--market-state-filter', type=int, default=None,
+                       help='Filter events to only include market state N (default: no filter)')
     
     args = parser.parse_args()
     
@@ -55,6 +58,9 @@ def main():
     print("\nThis analysis identifies big moves in VIX (log returns > 2 std deviations)")
     print("and calculates the average SPY returns in the 3, 6, and 12 days following.")
     print(f"\nCooldown period: {args.cooldown_days} days (ensures independent signals)")
+    
+    if args.market_state_filter is not None:
+        print(f"Market state filter: Only events with market state {args.market_state_filter}")
     
     if not args.no_bootstrap:
         print(f"Includes bootstrap significance testing ({args.bootstrap_iterations} iterations)")
@@ -85,7 +91,8 @@ def main():
         create_plot=create_plot, 
         save_plot_path=save_path,
         run_bootstrap=run_bootstrap,
-        n_bootstrap=args.bootstrap_iterations
+        n_bootstrap=args.bootstrap_iterations,
+        market_state_filter=args.market_state_filter
     )
     
     return analyzer, stats, bootstrap_results
