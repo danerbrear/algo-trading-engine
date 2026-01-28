@@ -21,6 +21,7 @@ import matplotlib.gridspec as gridspec
 
 # Import data retrieval classes
 from algo_trading_engine.common.data_retriever import DataRetriever
+from algo_trading_engine.ml_models.market_state_classifier import MarketStateClassifier
 
 
 @dataclass
@@ -77,6 +78,10 @@ class VIXSPYAnalyzer:
         self.big_move_events = []
         self.raw_signals = []  # Store raw signals before cooldown filter
         
+        # HMM market state classifier
+        self.state_classifier = None
+        self.market_states = None  # Predicted market states for analysis period
+        
     def load_data(self) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
         Load VIX and SPY daily close price data.
@@ -105,6 +110,142 @@ class VIXSPYAnalyzer:
         print(f"   Date range: {self.vix_data.index[0]} to {self.vix_data.index[-1]}")
         
         return self.vix_data, self.spy_data
+    
+    def train_hmm_model(self, hmm_lookback_years: int = 10):
+        """
+        Train HMM model on SPY data for market state classification.
+        
+        Args:
+            hmm_lookback_years: Number of years of historical data for HMM training (default: 10)
+        """
+        print(f"\n🎯 Training HMM model on {hmm_lookback_years} years of SPY data...")
+        
+        # Calculate HMM training start date (10 years back from today)
+        today = datetime.now()
+        hmm_start_date = (today - timedelta(days=hmm_lookback_years * 365)).strftime('%Y-%m-%d')
+        
+        # Create a separate data retriever for HMM training
+        hmm_retriever = DataRetriever(symbol='SPY', lstm_start_date=hmm_start_date)
+        
+        # Fetch SPY data for HMM training
+        hmm_training_data = hmm_retriever.fetch_data_for_period(hmm_start_date, 'hmm')
+        
+        if len(hmm_training_data) < 60:  # Need minimum data for feature calculation
+            raise ValueError(f"Insufficient data for HMM training: {len(hmm_training_data)} samples")
+        
+        # Calculate features needed for HMM
+        hmm_retriever.calculate_features_for_data(hmm_training_data)
+        
+        # Verify required columns exist
+        required_cols = ['Returns', 'Volatility', 'Price_to_SMA20', 'SMA20_to_SMA50', 'Volume_Ratio']
+        missing_cols = [col for col in required_cols if col not in hmm_training_data.columns]
+        if missing_cols:
+            raise ValueError(f"Missing required columns for HMM training: {missing_cols}")
+        
+        # Initialize and train the HMM model
+        self.state_classifier = MarketStateClassifier(max_states=5)
+        optimal_states = self.state_classifier.train_hmm_model(hmm_training_data)
+        
+        print(f"✅ HMM model trained with {optimal_states} optimal states")
+        
+        # Print descriptions for each market state
+        print(f"\n📊 Market State Descriptions:")
+        print("-" * 80)
+        
+        # Get predicted states for training data to generate descriptions
+        training_states = self.state_classifier.predict_states(hmm_training_data)
+        
+        # Print description for each state
+        for state_id in range(optimal_states):
+            description = self.state_classifier.get_state_description(
+                state_id, hmm_training_data, training_states
+            )
+            state_count = np.sum(training_states == state_id)
+            state_pct = (state_count / len(training_states)) * 100
+            print(f"  {description}")
+            print(f"    Occurrences: {state_count} ({state_pct:.1f}% of training period)")
+            print()
+        
+        print("-" * 80)
+        
+        return optimal_states
+    
+    def predict_market_states(self):
+        """
+        Predict market states for the current analysis period using trained HMM model.
+        
+        Returns:
+            numpy array of predicted market states
+        """
+        if self.state_classifier is None or not self.state_classifier.is_trained:
+            raise ValueError("HMM model not trained. Call train_hmm_model() first.")
+        
+        if self.spy_data is None:
+            raise ValueError("SPY data not loaded. Call load_data() first.")
+        
+        print(f"\n🔮 Predicting market states for analysis period...")
+        
+        # Create a data retriever to calculate features for the analysis period
+        analysis_retriever = DataRetriever(symbol='SPY', lstm_start_date=self.start_date)
+        
+        # Fetch and prepare data with features
+        analysis_data = analysis_retriever.fetch_data_for_period(self.start_date, 'vix_analysis')
+        analysis_retriever.calculate_features_for_data(analysis_data)
+        
+        # Align with our existing spy_data dates
+        common_dates = self.spy_data.index.intersection(analysis_data.index)
+        analysis_data = analysis_data.loc[common_dates]
+        
+        # Verify required columns exist
+        required_cols = ['Returns', 'Volatility', 'Price_to_SMA20', 'SMA20_to_SMA50', 'Volume_Ratio']
+        missing_cols = [col for col in required_cols if col not in analysis_data.columns]
+        if missing_cols:
+            raise ValueError(f"Missing required columns for state prediction: {missing_cols}")
+        
+        # Predict states
+        predicted_states = self.state_classifier.predict_states(analysis_data)
+        
+        # Create a Series aligned with spy_data index
+        self.market_states = pd.Series(predicted_states, index=analysis_data.index)
+        
+        print(f"✅ Predicted market states for {len(self.market_states)} days")
+        
+        # Print state distribution
+        state_counts = self.market_states.value_counts().sort_index()
+        print(f"\n📊 Market State Distribution in Analysis Period:")
+        print("-" * 80)
+        
+        for state_id, count in state_counts.items():
+            state_pct = (count / len(self.market_states)) * 100
+            # Get description for this state using training data characteristics
+            # We'll use a simplified description based on the state ID
+            print(f"  State {int(state_id)}: {count} days ({state_pct:.1f}% of analysis period)")
+        
+        print("-" * 80)
+        
+        # Print detailed descriptions for each unique state found
+        print(f"\n📋 Detailed Market State Descriptions for Analysis Period:")
+        print("-" * 80)
+        
+        # Convert predicted_states to Series with same index as analysis_data for proper alignment
+        predicted_states_series = pd.Series(predicted_states, index=analysis_data.index)
+        
+        unique_states = sorted(state_counts.index)
+        for state_id in unique_states:
+            # Get state description using analysis data
+            # Use the Series for boolean indexing to ensure proper alignment
+            description = self.state_classifier.get_state_description(
+                int(state_id), analysis_data, predicted_states_series
+            )
+            state_count = state_counts[state_id]
+            state_pct = (state_count / len(self.market_states)) * 100
+            print(f"  {description}")
+            print(f"    Occurrences: {state_count} days ({state_pct:.1f}% of analysis period)")
+            print()
+        
+        print("-" * 80)
+        
+        return self.market_states
     
     def calculate_log_returns(self, data: pd.DataFrame, periods: List[int] = [1, 2, 3]) -> pd.DataFrame:
         """
@@ -684,18 +825,61 @@ class VIXSPYAnalyzer:
     
     def plot_vix_timeline(self, raw_signals: List[Tuple] = None, save_path: str = None):
         """
-        Plot VIX and SPY over time with signal markers.
+        Plot VIX and SPY over time with signal markers and market states.
         
         Args:
             raw_signals: Optional list of raw signals before cooldown filter
             save_path: Optional path to save the plot (if None, will display)
         """
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(16, 10), height_ratios=[3, 1])
+        # Create figure with 3 subplots if market states available, otherwise 2
+        if self.market_states is not None:
+            fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(16, 12), height_ratios=[3, 1, 1])
+        else:
+            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(16, 10), height_ratios=[3, 1])
+        
+        # Add market state background colors if available
+        if self.market_states is not None and len(self.market_states) > 0:
+            # Define colors for different market states
+            state_colors = {
+                0: '#E8F5E9',  # Light green - Low volatility uptrend
+                1: '#C8E6C9',  # Medium green - Momentum uptrend
+                2: '#FFF9C4',  # Light yellow - Consolidation
+                3: '#FFCDD2',  # Light red - High volatility downtrend
+                4: '#F8BBD0',  # Light pink - High volatility rally
+            }
+            
+            # Align market states with vix_data dates
+            aligned_states = self.market_states.reindex(self.vix_data.index, method='ffill')
+            
+            # Create background regions for each state
+            prev_state = None
+            prev_date = None
+            for date in self.vix_data.index:
+                if date in aligned_states.index and pd.notna(aligned_states.loc[date]):
+                    current_state = int(aligned_states.loc[date])
+                    if current_state != prev_state:
+                        if prev_date is not None and prev_state is not None:
+                            # Fill region from previous date to current date
+                            ax1.axvspan(prev_date, date, 
+                                      color=state_colors.get(int(prev_state), '#FFFFFF'),
+                                      alpha=0.3, zorder=0)
+                        prev_state = current_state
+                        prev_date = date
+                    elif prev_date is None:
+                        # First valid state
+                        prev_state = current_state
+                        prev_date = date
+            
+            # Fill final region
+            if prev_date is not None and prev_state is not None:
+                ax1.axvspan(prev_date, self.vix_data.index[-1],
+                          color=state_colors.get(int(prev_state), '#FFFFFF'),
+                          alpha=0.3, zorder=0)
         
         # Plot VIX price on primary y-axis
         color_vix = '#2E86AB'
         ax1.plot(self.vix_data.index, self.vix_data['Close'], 
-                color=color_vix, linewidth=2, alpha=0.8, label='VIX')
+                color=color_vix, linewidth=2, alpha=0.8, label='VIX', zorder=3)
         ax1.set_xlabel('Date', fontsize=12, fontweight='bold')
         ax1.set_ylabel('VIX Level', fontsize=12, fontweight='bold', color=color_vix)
         ax1.tick_params(axis='y', labelcolor=color_vix)
@@ -751,7 +935,7 @@ class VIXSPYAnalyzer:
         lines2, labels2 = ax1_spy.get_legend_handles_labels()
         ax1.legend(lines1 + lines2, labels1 + labels2, fontsize=10, loc='upper left')
         
-        # Bottom panel: Signal distribution over time
+        # Middle panel: Signal distribution over time
         ax2.hist([event.date for event in self.big_move_events], 
                 bins=30, color='#A23B72', alpha=0.7, edgecolor='black', linewidth=0.5)
         ax2.set_xlabel('Date', fontsize=12, fontweight='bold')
@@ -770,6 +954,37 @@ class VIXSPYAnalyzer:
         ax2.text(0.02, 0.98, stats_text, transform=ax2.transAxes,
                 fontsize=10, verticalalignment='top',
                 bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+        
+        # Bottom panel: Market states over time (if available)
+        if self.market_states is not None and len(self.market_states) > 0:
+            # Align market states with vix_data dates
+            aligned_states = self.market_states.reindex(self.vix_data.index, method='ffill')
+            
+            # Filter out NaN values for plotting
+            valid_states = aligned_states.dropna()
+            
+            if len(valid_states) > 0:
+                # Plot market states as a line
+                ax3.plot(valid_states.index, valid_states.values, 
+                        color='#7B1FA2', linewidth=1.5, alpha=0.8, marker='o', markersize=2)
+                ax3.set_xlabel('Date', fontsize=12, fontweight='bold')
+                ax3.set_ylabel('Market State', fontsize=12, fontweight='bold')
+                ax3.set_title('HMM Market State Classification', fontsize=12, fontweight='bold')
+                
+                # Set y-ticks based on unique states
+                unique_states = sorted(valid_states.unique())
+                ax3.set_yticks(unique_states)
+                ax3.set_ylim(min(unique_states) - 0.5, max(unique_states) + 0.5)
+                
+                ax3.grid(True, alpha=0.3, linestyle='--', axis='y')
+                ax3.set_xlim(self.vix_data.index[0], self.vix_data.index[-1])
+                
+                # Add state distribution info
+                state_counts = valid_states.value_counts().sort_index()
+                state_info = f"States: {', '.join([f'{int(s)}: {c}' for s, c in state_counts.items()])}"
+                ax3.text(0.02, 0.98, state_info, transform=ax3.transAxes,
+                        fontsize=9, verticalalignment='top',
+                        bbox=dict(boxstyle='round', facecolor='lavender', alpha=0.5))
         
         plt.tight_layout()
         
@@ -919,6 +1134,17 @@ class VIXSPYAnalyzer:
         
         # Load data
         self.load_data()
+        
+        # Train HMM model on 10 years of data
+        try:
+            self.train_hmm_model(hmm_lookback_years=10)
+            # Predict market states for the analysis period
+            self.predict_market_states()
+        except Exception as e:
+            print(f"⚠️  Warning: Could not train/predict HMM market states: {str(e)}")
+            print("   Continuing analysis without market state visualization...")
+            self.state_classifier = None
+            self.market_states = None
         
         # Analyze big moves and calculate SPY returns
         events = self.analyze_big_moves()
