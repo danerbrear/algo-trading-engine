@@ -109,10 +109,15 @@ class MarketStateClassifier:
                     'model': model
                 })
                 
+                # Calculate per-sample log likelihood for interpretability
+                n_samples = len(scaled_features)
+                per_sample_ll = log_likelihood / n_samples
+                
                 print(f"\nEvaluating {n_states} states:")
                 print(f"AIC: {aic:.2f}")
                 print(f"BIC: {bic:.2f}")
-                print(f"Log Likelihood: {log_likelihood:.2f}")
+                print(f"Log Likelihood: {log_likelihood:.2f} (total, {n_samples} samples)")
+                print(f"Per-Sample Log Likelihood: {per_sample_ll:.4f} (higher is better)")
                 print(f"Min State Proportion: {min_state_prop:.2%}")
                 print(f"Transition Stability: {stability:.2f}")
                 print(f"Combined Score: {combined_score:.2f}")
