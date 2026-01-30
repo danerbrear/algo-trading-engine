@@ -2,6 +2,7 @@
 Runner script for VIX Big Move -> SPY Return Analysis
 
 This script executes the VIX-SPY analysis and displays the results.
+Only considers VIX big moves when SPY also goes down on the same day.
 
 Usage:
     python -m algo_trading_engine.analysis.run_vix_spy_analysis [OPTIONS]
@@ -13,7 +14,11 @@ Options:
     --bootstrap-iterations N: Number of bootstrap iterations (default: 10000)
     --lookback-years N: Years of historical data (default: 5)
     --cooldown-days N: Minimum days between signals (default: 12)
-    --market-state-filter N: Filter events to only include market state N (default: no filter)
+    --lag-days N: Days to lag SPY return calculation after VIX move (default: 0)
+    --return-threshold N: Minimum return to qualify as big move (default: 0.50 = 50%)
+    --market-state-filter N [N ...]: Filter events to include market state(s) (default: no filter)
+                                     Examples: --market-state-filter 0
+                                               --market-state-filter 0 1 2
 """
 
 import sys
@@ -47,20 +52,33 @@ def main():
                        help='Years of historical data to analyze (default: 5)')
     parser.add_argument('--cooldown-days', type=int, default=12,
                        help='Minimum days between independent signals (default: 12)')
-    parser.add_argument('--market-state-filter', type=int, default=None,
-                       help='Filter events to only include market state N (default: no filter)')
+    parser.add_argument('--lag-days', type=int, default=0,
+                       help='Number of days to lag SPY return calculation after VIX move (default: 0)')
+    parser.add_argument('--return-threshold', type=float, default=0.50,
+                       help='Minimum return (as decimal) to qualify as big move (default: 0.50 = 50%%)')
+    parser.add_argument('--market-state-filter', type=int, nargs='+', default=None,
+                       help='Filter events to only include market state(s) (e.g., --market-state-filter 0 1 2) (default: no filter)')
     
     args = parser.parse_args()
     
     print("="*80)
     print("VIX BIG MOVE -> SPY RETURN ANALYSIS")
     print("="*80)
-    print("\nThis analysis identifies big moves in VIX (log returns > 2 std deviations)")
+    print(f"\nThis analysis identifies big moves in VIX (returns > {args.return_threshold*100:.0f}%)")
     print("and calculates the average SPY returns in the 3, 6, and 12 days following.")
-    print(f"\nCooldown period: {args.cooldown_days} days (ensures independent signals)")
+    print(f"\nReturn threshold: {args.return_threshold*100:.0f}% over 1-3 days")
+    print(f"Cooldown period: {args.cooldown_days} days (ensures independent signals)")
+    
+    if args.lag_days > 0:
+        print(f"Lag period: {args.lag_days} day(s) - SPY returns start {args.lag_days} day(s) after VIX move")
+    else:
+        print(f"Lag period: 0 days - SPY returns start on the day of VIX move")
     
     if args.market_state_filter is not None:
-        print(f"Market state filter: Only events with market state {args.market_state_filter}")
+        if len(args.market_state_filter) == 1:
+            print(f"Market state filter: Only events with market state {args.market_state_filter[0]}")
+        else:
+            print(f"Market state filter: Only events with market states {args.market_state_filter}")
     
     if not args.no_bootstrap:
         print(f"Includes bootstrap significance testing ({args.bootstrap_iterations} iterations)")
@@ -69,7 +87,9 @@ def main():
     
     # Create analyzer with specified parameters
     analyzer = VIXSPYAnalyzer(lookback_years=args.lookback_years, 
-                             cooldown_days=args.cooldown_days)
+                             cooldown_days=args.cooldown_days,
+                             lag_days=args.lag_days,
+                             return_threshold=args.return_threshold)
     
     # Determine plot settings
     create_plot = not args.no_plot

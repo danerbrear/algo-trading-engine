@@ -140,14 +140,14 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Basic usage with defaults (SPY, 2010-01-01, max 5 states)
+  # Basic usage with defaults (SPY, 2010-01-01, max 3 states)
   python -m algo_trading_engine.ml_models.run_market_state_classifier
   
   # Custom symbol and date range
   python -m algo_trading_engine.ml_models.run_market_state_classifier --symbol QQQ --start-date 2015-01-01
   
   # More states to evaluate
-  python -m algo_trading_engine.ml_models.run_market_state_classifier --max-states 7
+  python -m algo_trading_engine.ml_models.run_market_state_classifier --max-states 5
         """
     )
     
@@ -168,8 +168,8 @@ Examples:
     parser.add_argument(
         '--max-states',
         type=int,
-        default=5,
-        help='Maximum number of states to evaluate (default: 5)'
+        default=3,
+        help='Maximum number of states to evaluate (default: 3)'
     )
     
     args = parser.parse_args()

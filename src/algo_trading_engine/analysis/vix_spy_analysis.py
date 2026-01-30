@@ -2,17 +2,19 @@
 VIX Big Move and SPY Return Analysis
 
 This module analyzes SPY returns following big moves in VIX.
-A "big move" is defined as a VIX log return greater than 2 standard deviations
-from its mean over 1-3 days.
+A "big move" is defined as a VIX return greater than a specified threshold
+(default: 50%) over 1-3 days, AND SPY must be down on the same day.
 
 The analysis calculates:
 - Average SPY returns for 3, 6, and 12 days following big VIX moves
 - Frequency distribution of SPY log returns (rounded to nearest 0.2%)
+- Optional lag period: delay SPY return calculation by N days after VIX move
+- Optional market state filter: include only events in specified market state(s)
 """
 
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 from collections import Counter
@@ -54,13 +56,15 @@ class VIXSPYAnalyzer:
     over 1-3 day periods, with cooldown filter to ensure independent signals.
     """
     
-    def __init__(self, lookback_years: int = 5, cooldown_days: int = 12):
+    def __init__(self, lookback_years: int = 5, cooldown_days: int = 12, lag_days: int = 0, return_threshold: float = 0.50):
         """
         Initialize the VIX-SPY Analyzer.
         
         Args:
             lookback_years: Number of years of historical data to analyze (default: 5)
             cooldown_days: Minimum days between independent signals (default: 12)
+            lag_days: Number of days to lag SPY return calculation after VIX move (default: 0)
+            return_threshold: Minimum return (as decimal) to qualify as big move (default: 0.50 = 50%)
         """
         # Calculate start date
         today = datetime.now()
@@ -68,6 +72,9 @@ class VIXSPYAnalyzer:
         self.start_date = start_date.strftime('%Y-%m-%d')
         self.lookback_years = lookback_years
         self.cooldown_days = cooldown_days
+        self.lag_days = lag_days
+        self.return_threshold = return_threshold
+        self.return_threshold_log = np.log(1 + return_threshold)  # Convert to log return threshold
         
         # Data retrievers for VIX and SPY
         self.vix_retriever = DataRetriever(symbol='^VIX', lstm_start_date=self.start_date)
@@ -112,30 +119,149 @@ class VIXSPYAnalyzer:
         
         return self.vix_data, self.spy_data
     
-    def train_hmm_model(self, hmm_lookback_years: int = 10):
+    def _fetch_vix_data(self, start_date: str) -> pd.DataFrame:
+        """Fetch VIX data using yfinance (matching run_market_state_classifier.py)"""
+        try:
+            import yfinance as yf
+        except ImportError:
+            raise ImportError("yfinance is required. Install with: pip install yfinance")
+        
+        print(f"📊 Fetching VIX data from {start_date}...")
+        vix_ticker = yf.Ticker('^VIX')
+        
+        # Try period='max' first, then fallback to date range
+        try:
+            vix_data = vix_ticker.history(period='max')
+        except Exception as e:
+            print(f"⚠️  Failed to fetch VIX with period='max', trying date range: {e}")
+            start_date_ts = pd.Timestamp(start_date)
+            end_date_ts = pd.Timestamp.now()
+            vix_data = vix_ticker.history(start=start_date_ts, end=end_date_ts)
+        
+        if vix_data.empty:
+            raise ValueError("No VIX data retrieved")
+        
+        # Normalize timezone - remove timezone info for easier date comparisons
+        if vix_data.index.tz is not None:
+            vix_data.index = pd.DatetimeIndex([ts.replace(tzinfo=None) for ts in vix_data.index])
+        
+        # Filter to start_date if needed
+        if start_date:
+            start_date_ts = pd.Timestamp(start_date)
+            vix_data = vix_data[vix_data.index >= start_date_ts]
+        
+        print(f"✅ Retrieved {len(vix_data)} VIX samples from {vix_data.index[0].date()} to {vix_data.index[-1].date()}")
+        return vix_data
+    
+    def _calculate_hmm_features(self, data: pd.DataFrame, vix_data: Optional[pd.DataFrame] = None, window=20) -> pd.DataFrame:
+        """Calculate technical features required for MarketStateClassifier (matching run_market_state_classifier.py)"""
+        # Basic returns
+        data['Returns'] = data['Close'].pct_change()
+        
+        # Volatility - use VIX Close price if available, otherwise fallback to calculated volatility
+        if vix_data is not None and not vix_data.empty:
+            # Merge VIX data with main data
+            vix_close = vix_data[['Close']].rename(columns={'Close': 'VIX'})
+            data = data.join(vix_close, how='left')
+            
+            # Use VIX price as Volatility
+            data['Volatility'] = data['VIX']
+            
+            # Forward fill missing VIX values (in case of market holidays)
+            data['Volatility'] = data['Volatility'].ffill()
+            
+            # If still missing, use backward fill
+            data['Volatility'] = data['Volatility'].bfill()
+            
+            # Drop VIX column as we've copied it to Volatility
+            data.drop(columns=['VIX'], inplace=True, errors='ignore')
+            
+            print(f"✅ Using VIX price for Volatility feature")
+        else:
+            # Fallback to calculated volatility
+            data['Volatility'] = data['Returns'].rolling(window=window, min_periods=1).std()
+            print(f"⚠️  VIX data not available, using calculated volatility")
+        
+        # Trend indicators
+        data['SMA20'] = data['Close'].rolling(window=window, min_periods=1).mean()
+        data['SMA50'] = data['Close'].rolling(window=50, min_periods=1).mean()
+        data['Price_to_SMA20'] = data['Close'] / data['SMA20']
+        data['SMA20_to_SMA50'] = data['SMA20'] / data['SMA50']
+        
+        # Volume features
+        data['Volume_SMA'] = data['Volume'].rolling(window=window, min_periods=1).mean()
+        data['Volume_Ratio'] = data['Volume'] / data['Volume_SMA']
+        
+        # Drop NaN values
+        data.dropna(inplace=True)
+        
+        return data
+    
+    def train_hmm_model(self, hmm_lookback_years: int = 10, max_states: int = 3):
         """
         Train HMM model on SPY data for market state classification.
+        Uses VIX price for volatility feature (matching run_market_state_classifier.py).
         
         Args:
             hmm_lookback_years: Number of years of historical data for HMM training (default: 10)
+            max_states: Maximum number of states to evaluate (default: 5)
         """
         print(f"\n🎯 Training HMM model on {hmm_lookback_years} years of SPY data...")
         
-        # Calculate HMM training start date (10 years back from today)
+        # Calculate HMM training start date
         today = datetime.now()
         hmm_start_date = (today - timedelta(days=hmm_lookback_years * 365)).strftime('%Y-%m-%d')
         
-        # Create a separate data retriever for HMM training
-        hmm_retriever = DataRetriever(symbol='SPY', lstm_start_date=hmm_start_date)
-        
         # Fetch SPY data for HMM training
-        hmm_training_data = hmm_retriever.fetch_data_for_period(hmm_start_date, 'hmm')
+        try:
+            import yfinance as yf
+        except ImportError:
+            raise ImportError("yfinance is required. Install with: pip install yfinance")
         
-        if len(hmm_training_data) < 60:  # Need minimum data for feature calculation
-            raise ValueError(f"Insufficient data for HMM training: {len(hmm_training_data)} samples")
+        print(f"📈 Fetching SPY data from {hmm_start_date}...")
+        spy_ticker = yf.Ticker('SPY')
         
-        # Calculate features needed for HMM
-        hmm_retriever.calculate_features_for_data(hmm_training_data)
+        try:
+            spy_data = spy_ticker.history(period='max')
+        except Exception as e:
+            print(f"⚠️  Failed to fetch with period='max', trying date range: {e}")
+            start_date_ts = pd.Timestamp(hmm_start_date)
+            end_date_ts = pd.Timestamp.now()
+            spy_data = spy_ticker.history(start=start_date_ts, end=end_date_ts)
+        
+        if spy_data.empty:
+            raise ValueError("No SPY data retrieved for HMM training")
+        
+        # Normalize timezone
+        if spy_data.index.tz is not None:
+            spy_data.index = pd.DatetimeIndex([ts.replace(tzinfo=None) for ts in spy_data.index])
+        
+        # Filter to start_date
+        if hmm_start_date:
+            start_date_ts = pd.Timestamp(hmm_start_date)
+            spy_data = spy_data[spy_data.index >= start_date_ts]
+        
+        print(f"✅ Retrieved {len(spy_data)} SPY samples from {spy_data.index[0].date()} to {spy_data.index[-1].date()}")
+        
+        if len(spy_data) < 60:
+            raise ValueError(f"Insufficient data for HMM training: {len(spy_data)} samples")
+        
+        # Fetch VIX data for volatility feature
+        try:
+            vix_data = self._fetch_vix_data(hmm_start_date)
+        except Exception as e:
+            print(f"⚠️  Warning: Could not fetch VIX data: {e}")
+            print(f"   Falling back to calculated volatility")
+            vix_data = None
+        
+        # Calculate features using VIX price for volatility
+        print(f"\n📊 Calculating features...")
+        hmm_training_data = self._calculate_hmm_features(spy_data.copy(), vix_data=vix_data)
+        
+        if len(hmm_training_data) < 50:
+            raise ValueError(f"Insufficient data after feature calculation: {len(hmm_training_data)} samples. Need at least 50.")
+        
+        print(f"✅ Prepared {len(hmm_training_data)} samples with features")
         
         # Verify required columns exist
         required_cols = ['Returns', 'Volatility', 'Price_to_SMA20', 'SMA20_to_SMA50', 'Volume_Ratio']
@@ -143,8 +269,30 @@ class VIXSPYAnalyzer:
         if missing_cols:
             raise ValueError(f"Missing required columns for HMM training: {missing_cols}")
         
+        # Analyze feature correlations
+        print(f"\n📊 Feature Correlation Analysis:")
+        feature_corr = hmm_training_data[required_cols].corr()
+        print(f"\nCorrelation Matrix:")
+        print(feature_corr.round(3))
+        
+        # Identify high correlations
+        high_corr_pairs = []
+        for i, col1 in enumerate(required_cols):
+            for col2 in required_cols[i+1:]:
+                corr = feature_corr.loc[col1, col2]
+                if abs(corr) > 0.7:
+                    high_corr_pairs.append((col1, col2, corr))
+        
+        if high_corr_pairs:
+            print(f"\n⚠️  High correlations (>0.7) detected:")
+            for col1, col2, corr in high_corr_pairs:
+                print(f"  {col1} ↔ {col2}: {corr:.3f}")
+            print(f"  (Consider removing one if correlation >0.8)")
+        else:
+            print(f"\n✅ No high correlations detected - features are well-separated")
+        
         # Initialize and train the HMM model
-        self.state_classifier = MarketStateClassifier(max_states=5)
+        self.state_classifier = MarketStateClassifier(max_states=max_states)
         optimal_states = self.state_classifier.train_hmm_model(hmm_training_data)
         
         print(f"✅ HMM model trained with {optimal_states} optimal states")
@@ -174,6 +322,7 @@ class VIXSPYAnalyzer:
     def predict_market_states(self):
         """
         Predict market states for the current analysis period using trained HMM model.
+        Uses VIX price for volatility feature (matching run_market_state_classifier.py).
         
         Returns:
             numpy array of predicted market states
@@ -186,16 +335,20 @@ class VIXSPYAnalyzer:
         
         print(f"\n🔮 Predicting market states for analysis period...")
         
-        # Create a data retriever to calculate features for the analysis period
-        analysis_retriever = DataRetriever(symbol='SPY', lstm_start_date=self.start_date)
+        # Use existing spy_data and calculate features with VIX
+        analysis_data = self.spy_data.copy()
         
-        # Fetch and prepare data with features
-        analysis_data = analysis_retriever.fetch_data_for_period(self.start_date, 'vix_analysis')
-        analysis_retriever.calculate_features_for_data(analysis_data)
+        # Fetch VIX data for the analysis period
+        try:
+            vix_data = self._fetch_vix_data(self.start_date)
+        except Exception as e:
+            print(f"⚠️  Warning: Could not fetch VIX data: {e}")
+            print(f"   Falling back to calculated volatility")
+            vix_data = None
         
-        # Align with our existing spy_data dates
-        common_dates = self.spy_data.index.intersection(analysis_data.index)
-        analysis_data = analysis_data.loc[common_dates]
+        # Calculate features using VIX price for volatility
+        print(f"\n📊 Calculating features for analysis period...")
+        analysis_data = self._calculate_hmm_features(analysis_data, vix_data=vix_data)
         
         # Verify required columns exist
         required_cols = ['Returns', 'Volatility', 'Price_to_SMA20', 'SMA20_to_SMA50', 'Volume_Ratio']
@@ -206,7 +359,7 @@ class VIXSPYAnalyzer:
         # Predict states
         predicted_states = self.state_classifier.predict_states(analysis_data)
         
-        # Create a Series aligned with spy_data index
+        # Create a Series aligned with analysis_data index
         self.market_states = pd.Series(predicted_states, index=analysis_data.index)
         
         print(f"✅ Predicted market states for {len(self.market_states)} days")
@@ -218,8 +371,6 @@ class VIXSPYAnalyzer:
         
         for state_id, count in state_counts.items():
             state_pct = (count / len(self.market_states)) * 100
-            # Get description for this state using training data characteristics
-            # We'll use a simplified description based on the state ID
             print(f"  State {int(state_id)}: {count} days ({state_pct:.1f}% of analysis period)")
         
         print("-" * 80)
@@ -300,52 +451,70 @@ class VIXSPYAnalyzer:
         
         return filtered
     
-    def identify_big_moves(self, vix_data: pd.DataFrame, std_threshold: float = 2.0, 
-                          cooldown_days: int = 12) -> List[Tuple[pd.Timestamp, int, float, float]]:
+    def identify_big_moves(self, vix_data: pd.DataFrame, cooldown_days: int = 12) -> List[Tuple[pd.Timestamp, int, float, float]]:
         """
-        Identify big moves in VIX (log returns > std_threshold standard deviations).
+        Identify big moves in VIX (returns > threshold).
+        
+        A big move is defined as a return exceeding the threshold (default: 50%) over 1-3 days.
         
         Applies cooldown period to ensure independent signals - after each signal,
         subsequent signals are ignored for cooldown_days.
         
         Args:
             vix_data: DataFrame with VIX data and log returns
-            std_threshold: Number of standard deviations to define a big move
             cooldown_days: Minimum days between signals (default: 12)
             
         Returns:
-            List of tuples: (date, period, log_return, std_devs_above_mean)
+            Tuple of (big_moves, raw_signals) where each is a list of tuples:
+            (date, period, log_return, return_pct)
         """
         big_moves = []
+        
+        print(f"\n🔍 Identifying big moves using {self.return_threshold*100:.0f}% return threshold (SPY down only)")
+        print(f"   Log return threshold: {self.return_threshold_log:.4f}")
+        
+        # Get SPY 1-day returns for filtering
+        spy_1d_returns = self.spy_data['log_return_1d'] if 'log_return_1d' in self.spy_data.columns else None
         
         for period in [1, 2, 3]:
             col = f'log_return_{period}d'
             if col not in vix_data.columns:
                 continue
             
-            # Calculate mean and std for this period's log returns
-            log_returns = vix_data[col].dropna()
-            mean_return = log_returns.mean()
-            std_return = log_returns.std()
-            
-            print(f"\nVIX {period}-day log return statistics:")
-            print(f"   Mean: {mean_return:.6f}")
-            print(f"   Std Dev: {std_return:.6f}")
-            print(f"   Threshold (mean + {std_threshold} * std): {mean_return + std_threshold * std_return:.6f}")
+            log_returns = vix_data[col]
             
             # Identify dates where log return exceeds threshold
-            threshold = mean_return + std_threshold * std_return
-            big_move_mask = vix_data[col] > threshold
+            big_move_mask = log_returns > self.return_threshold_log
             big_move_dates = vix_data[big_move_mask].index
             
-            print(f"   Found {len(big_move_dates)} raw signals")
+            # Calculate stats for reporting
+            max_return = log_returns.max()
+            mean_return = log_returns.mean()
             
+            print(f"\nVIX {period}-day returns:")
+            print(f"   Mean log return: {mean_return:.6f} ({(np.exp(mean_return)-1)*100:.2f}%)")
+            print(f"   Max log return: {max_return:.6f} ({(np.exp(max_return)-1)*100:.2f}%)")
+            print(f"   Threshold: >{self.return_threshold*100:.0f}% (log return > {self.return_threshold_log:.4f})")
+            print(f"   Found {len(big_move_dates)} raw VIX signals", end='')
+            
+            # Filter by SPY direction (only keep if SPY went down)
+            filtered_count = 0
             for date in big_move_dates:
+                # Check if SPY went down on this date
+                if spy_1d_returns is not None and date in spy_1d_returns.index:
+                    spy_return = spy_1d_returns.loc[date]
+                    if spy_return >= 0:  # SPY went up or flat, skip this signal
+                        filtered_count += 1
+                        continue
+                
                 log_return = vix_data.loc[date, col]
-                std_devs = (log_return - mean_return) / std_return
-                big_moves.append((date, period, log_return, std_devs))
+                # Convert log return back to percentage for reporting
+                pct_return = (np.exp(log_return) - 1) * 100
+                big_moves.append((date, period, log_return, pct_return))
+            
+            print(f" → {len(big_move_dates) - filtered_count} after SPY direction filter (removed {filtered_count} where SPY up/flat)")
         
-        print(f"\nTotal raw signals identified: {len(big_moves)}")
+        print(f"\nTotal raw signals identified: {len(big_moves)} (VIX up + SPY down)")
         
         # Store raw signals before filtering
         raw_signals = big_moves.copy()
@@ -358,9 +527,10 @@ class VIXSPYAnalyzer:
     def calculate_forward_spy_returns(self, date: pd.Timestamp, forward_days: List[int] = [3, 6, 12]) -> Dict[int, float]:
         """
         Calculate SPY log returns for specified forward periods from a given date.
+        Applies lag if configured (e.g., lag_days=1 means start calculation 1 day after the VIX move).
         
         Args:
-            date: Starting date
+            date: Starting date (VIX big move date)
             forward_days: List of forward periods to calculate returns
             
         Returns:
@@ -369,11 +539,20 @@ class VIXSPYAnalyzer:
         forward_returns = {}
         
         try:
-            start_price = self.spy_data.loc[date, 'Close']
             start_idx = self.spy_data.index.get_loc(date)
         except (KeyError, IndexError):
             # Date not in data
             return {days: None for days in forward_days}
+        
+        # Apply lag - start calculation lag_days after the VIX move
+        start_idx += self.lag_days
+        
+        if start_idx >= len(self.spy_data):
+            # Not enough data after lag
+            return {days: None for days in forward_days}
+        
+        start_date = self.spy_data.index[start_idx]
+        start_price = self.spy_data.loc[start_date, 'Close']
         
         for days in forward_days:
             target_idx = start_idx + days
@@ -429,13 +608,13 @@ class VIXSPYAnalyzer:
         
         return events
     
-    def filter_events_by_market_state(self, events: List[BigMoveEvent], target_state: int = 3) -> List[BigMoveEvent]:
+    def filter_events_by_market_state(self, events: List[BigMoveEvent], target_states) -> List[BigMoveEvent]:
         """
-        Filter big move events to only include those occurring when market state matches target_state.
+        Filter big move events to only include those occurring when market state matches target_state(s).
         
         Args:
             events: List of BigMoveEvent objects
-            target_state: Market state ID to filter for (default: 3)
+            target_states: Market state ID(s) to filter for - can be int, list of ints, or None
             
         Returns:
             Filtered list of BigMoveEvent objects
@@ -444,18 +623,28 @@ class VIXSPYAnalyzer:
             print(f"⚠️  Warning: Market states not available. Returning all events.")
             return events
         
+        # Convert single int to list for consistent handling
+        if isinstance(target_states, int):
+            target_states = [target_states]
+        
         filtered_events = []
         for event in events:
-            # Check if market state on the event date is the target state
+            # Check if market state on the event date is in target states
             if event.date in self.market_states.index:
                 state_on_date = self.market_states.loc[event.date]
-                if pd.notna(state_on_date) and int(state_on_date) == target_state:
+                if pd.notna(state_on_date) and int(state_on_date) in target_states:
                     filtered_events.append(event)
         
-        print(f"\nFiltered events by market state {target_state}:")
-        print(f"   Before: {len(events)} events")
-        print(f"   After:  {len(filtered_events)} events (state {target_state})")
-        print(f"   Removed: {len(events) - len(filtered_events)} events")
+        if len(target_states) == 1:
+            print(f"\nFiltered events by market state {target_states[0]}:")
+            print(f"   Before: {len(events)} events")
+            print(f"   After:  {len(filtered_events)} events (state {target_states[0]})")
+            print(f"   Removed: {len(events) - len(filtered_events)} events")
+        else:
+            print(f"\nFiltered events by market states {target_states}:")
+            print(f"   Before: {len(events)} events")
+            print(f"   After:  {len(filtered_events)} events (states {target_states})")
+            print(f"   Removed: {len(events) - len(filtered_events)} events")
         
         return filtered_events
     
@@ -801,7 +990,14 @@ class VIXSPYAnalyzer:
         
         title_text = 'Two-Sample Bootstrap Analysis: VIX Spikes vs Random Days'
         if self.market_state_filter is not None:
-            title_text += f' (Market State {self.market_state_filter} only)'
+            if isinstance(self.market_state_filter, list) and len(self.market_state_filter) > 1:
+                title_text += f' (Market States {self.market_state_filter} only)'
+            elif isinstance(self.market_state_filter, list):
+                title_text += f' (Market State {self.market_state_filter[0]} only)'
+            else:
+                title_text += f' (Market State {self.market_state_filter} only)'
+        if self.lag_days > 0:
+            title_text += f' ({self.lag_days}-day lag)'
         title_text += f'\n10,000 Bootstrap Iterations | n_spike={bootstrap_results[3]["n_spike"]}, ' + \
                      f'n_random={bootstrap_results[3]["n_random"]}'
         fig.suptitle(title_text, fontsize=16, fontweight='bold', y=0.995)
@@ -1057,9 +1253,16 @@ class VIXSPYAnalyzer:
         
         ax_avg.set_xlabel('Days After Big VIX Move', fontsize=12, fontweight='bold')
         ax_avg.set_ylabel('SPY Return (%)', fontsize=12, fontweight='bold')
-        title_text = 'Average SPY Returns Following Big VIX Moves\n(VIX log return > 2 std deviations'
+        title_text = f'Average SPY Returns Following Big VIX Moves\n(VIX return > {self.return_threshold*100:.0f}%'
         if self.market_state_filter is not None:
-            title_text += f', Market State {self.market_state_filter} only'
+            if isinstance(self.market_state_filter, list) and len(self.market_state_filter) > 1:
+                title_text += f', Market States {self.market_state_filter} only'
+            elif isinstance(self.market_state_filter, list):
+                title_text += f', Market State {self.market_state_filter[0]} only'
+            else:
+                title_text += f', Market State {self.market_state_filter} only'
+        if self.lag_days > 0:
+            title_text += f', {self.lag_days}-day lag'
         title_text += ')'
         ax_avg.set_title(title_text, fontsize=14, fontweight='bold', pad=20)
         ax_avg.set_xticks(x)
@@ -1099,8 +1302,12 @@ class VIXSPYAnalyzer:
             
             ax.set_xlabel('SPY Return (%)', fontsize=10, fontweight='bold')
             ax.set_ylabel('Frequency (Count)', fontsize=10, fontweight='bold')
-            ax.set_title(f'{days}-Day Forward Returns\n(n={stat.total_events} events)', 
-                        fontsize=11, fontweight='bold')
+            if self.lag_days > 0:
+                ax.set_title(f'{days}-Day Returns (Day {self.lag_days} to Day {self.lag_days + days})\n(n={stat.total_events} events)', 
+                            fontsize=11, fontweight='bold')
+            else:
+                ax.set_title(f'{days}-Day Forward Returns\n(n={stat.total_events} events)', 
+                            fontsize=11, fontweight='bold')
             ax.legend(fontsize=8, loc='upper right')
             ax.grid(axis='y', alpha=0.3, linestyle='--')
             
@@ -1110,7 +1317,14 @@ class VIXSPYAnalyzer:
         # Overall title
         title_text = 'VIX Big Move → SPY Return Analysis'
         if self.market_state_filter is not None:
-            title_text += f' (Market State {self.market_state_filter} only)'
+            if isinstance(self.market_state_filter, list) and len(self.market_state_filter) > 1:
+                title_text += f' (Market States {self.market_state_filter} only)'
+            elif isinstance(self.market_state_filter, list):
+                title_text += f' (Market State {self.market_state_filter[0]} only)'
+            else:
+                title_text += f' (Market State {self.market_state_filter} only)'
+        if self.lag_days > 0:
+            title_text += f' ({self.lag_days}-day lag)'
         title_text += f'\nAnalysis Period: {self.start_date} to {self.vix_data.index[-1].strftime("%Y-%m-%d")}'
         fig.suptitle(title_text, fontsize=16, fontweight='bold', y=0.98)
         
@@ -1133,15 +1347,23 @@ class VIXSPYAnalyzer:
         print("VIX BIG MOVE -> SPY RETURN ANALYSIS")
         print("="*80)
         print(f"\nAnalysis Period: {self.start_date} to {self.vix_data.index[-1].strftime('%Y-%m-%d')}")
-        print(f"Big Move Definition: VIX log return > 2 std deviations from mean (1-3 days)")
+        print(f"Big Move Definition: VIX return > {self.return_threshold*100:.0f}% over 1-3 days")
         print(f"Cooldown Period: {self.cooldown_days} days (ensures independent signals)")
+        if self.lag_days > 0:
+            print(f"Lag Period: {self.lag_days} day(s) - SPY returns start {self.lag_days} day(s) after VIX move")
+        else:
+            print(f"Lag Period: 0 days - SPY returns start on the day of VIX move")
         # Note: market_state_filter info is printed earlier in the pipeline
         print(f"Total Independent Signals Analyzed: {len(self.big_move_events)}")
         
         for days in [3, 6, 12]:
             stat = stats[days]
             print("\n" + "-"*80)
-            print(f"SPY RETURNS {days} DAYS AFTER BIG VIX MOVE")
+            if self.lag_days > 0:
+                print(f"SPY RETURNS OVER {days} DAYS, STARTING {self.lag_days} DAY(S) AFTER VIX MOVE")
+                print(f"(Period: Day {self.lag_days} to Day {self.lag_days + days} after VIX move)")
+            else:
+                print(f"SPY RETURNS {days} DAYS AFTER BIG VIX MOVE")
             print("-"*80)
             print(f"Average Return: {stat.average_return:.4f} ({stat.average_return*100:.2f}%)")
             print(f"Median Return:  {stat.median_return:.4f} ({stat.median_return*100:.2f}%)")
@@ -1160,7 +1382,7 @@ class VIXSPYAnalyzer:
     
     def run_analysis(self, create_plot: bool = True, save_plot_path: str = None, 
                      run_bootstrap: bool = True, n_bootstrap: int = 10000,
-                     market_state_filter: int = None):
+                     market_state_filter = None):
         """
         Run the complete VIX-SPY analysis pipeline.
         
@@ -1169,7 +1391,7 @@ class VIXSPYAnalyzer:
             save_plot_path: Optional path to save the plot (if None, will display)
             run_bootstrap: Whether to run bootstrap significance tests (default: True)
             n_bootstrap: Number of bootstrap iterations (default: 10000)
-            market_state_filter: Optional market state ID to filter events (default: None, no filter)
+            market_state_filter: Optional market state ID(s) to filter events - can be int or list of ints (default: None, no filter)
         """
         print("Starting VIX Big Move -> SPY Return Analysis\n")
         
@@ -1178,7 +1400,7 @@ class VIXSPYAnalyzer:
         
         # Train HMM model on 10 years of data
         try:
-            self.train_hmm_model(hmm_lookback_years=10)
+            self.train_hmm_model(hmm_lookback_years=15)
             # Predict market states for the analysis period
             self.predict_market_states()
         except Exception as e:
@@ -1200,10 +1422,16 @@ class VIXSPYAnalyzer:
         # Filter events by market state if filter is specified
         if market_state_filter is not None:
             if self.market_states is not None and len(self.market_states) > 0:
-                print(f"\n🔍 Filtering events to only include market state {market_state_filter}...")
-                filtered_events = self.filter_events_by_market_state(events, target_state=market_state_filter)
+                if isinstance(market_state_filter, list) and len(market_state_filter) > 1:
+                    print(f"\n🔍 Filtering events to only include market states {market_state_filter}...")
+                elif isinstance(market_state_filter, list):
+                    print(f"\n🔍 Filtering events to only include market state {market_state_filter[0]}...")
+                else:
+                    print(f"\n🔍 Filtering events to only include market state {market_state_filter}...")
+                filtered_events = self.filter_events_by_market_state(events, target_states=market_state_filter)
                 if len(filtered_events) == 0:
-                    print(f"⚠️  Warning: No events found with market state {market_state_filter}. Using all events.")
+                    filter_str = str(market_state_filter) if isinstance(market_state_filter, list) else market_state_filter
+                    print(f"⚠️  Warning: No events found with market state(s) {filter_str}. Using all events.")
                     filtered_events = events
                 else:
                     events = filtered_events
