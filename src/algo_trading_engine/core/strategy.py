@@ -10,6 +10,7 @@ from typing import Callable, Optional, Dict, List, TYPE_CHECKING
 import pandas as pd
 
 from algo_trading_engine.common.models import TreasuryRates
+from algo_trading_engine.core.indicators.indicator import Indicator
 
 if TYPE_CHECKING:
     from algo_trading_engine.backtest.models import Position
@@ -22,7 +23,7 @@ class Strategy(ABC):
     the required abstract methods.
     """
 
-    def __init__(self, profit_target: float = None, stop_loss: float = None, start_date_offset: int = 0):
+    def __init__(self, profit_target: float = None, stop_loss: float = None, start_date_offset: int = 0, indicators: List[Indicator] = None):
         """
         Initialize the strategy.
         
@@ -36,6 +37,7 @@ class Strategy(ABC):
         self.data: Optional[pd.DataFrame] = None
         self.start_date_offset = start_date_offset
         self.treasury_data: Optional[TreasuryRates] = None
+        self.indicators: List[Indicator] = indicators if indicators is not None else []
 
     @abstractmethod
     def on_new_date(
@@ -55,7 +57,9 @@ class Strategy(ABC):
             remove_position: Callback function to remove/close a position
                 Signature: (date, position, exit_price, underlying_price=None, current_volumes=None)
         """
-        pass
+        if not self._update_indicators(date):
+            print(f"Error updating indicators for date {date}, skipping execution")
+            return
 
     @abstractmethod
     def on_end(
@@ -268,3 +272,20 @@ class Strategy(ABC):
             return False
         return position.stop_loss_hit(self.stop_loss, exit_price)
 
+    def _update_indicators(self, date: datetime) -> bool:
+        """
+        Update the indicators for the strategy.
+        
+        Args:
+            date: Current date
+
+        Returns:
+            True if indicators were updated, False otherwise
+        """
+        for indicator in self.indicators:
+            try:
+                indicator.update(date, self.data)
+            except Exception as e:
+                print(f"Error updating indicator {indicator.name}: {e}")
+                return False
+        return True
