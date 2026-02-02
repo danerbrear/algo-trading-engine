@@ -219,6 +219,14 @@ class PaperTradingEngine(TradingEngine):
         # Get current date
         run_date = datetime.now()
         
+        # Create recommender (needed for position status checks)
+        recommender = InteractiveStrategyRecommender(
+            self._strategy,
+            store,
+            capital_manager,
+            auto_yes=False
+        )
+        
         # Check for open positions and display status
         open_records = store.get_open_positions(symbol=self._config.symbol)
         if open_records:
@@ -241,14 +249,6 @@ class PaperTradingEngine(TradingEngine):
         # Display capital status
         print(capital_manager.get_status_summary(strategy_name))
         print()
-        
-        # Create recommender and run (handles both opening and closing)
-        recommender = InteractiveStrategyRecommender(
-            self._strategy,
-            store,
-            capital_manager,
-            auto_yes=False
-        )
         
         try:
             # Run full recommendation flow (both open and close recommendations)
