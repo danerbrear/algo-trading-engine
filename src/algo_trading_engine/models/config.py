@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Optional, Union, TYPE_CHECKING
 
 from algo_trading_engine.backtest.config import VolumeConfig as BaseVolumeConfig, VolumeStats as BaseVolumeStats
+from algo_trading_engine.enums import BarTimeInterval
 
 if TYPE_CHECKING:
     from algo_trading_engine.core.strategy import Strategy
@@ -32,6 +33,7 @@ class BacktestConfig:
     end_date: datetime
     symbol: str
     strategy_type: Union[str, 'Strategy']  # Strategy name (str) or Strategy instance (from core.strategy)
+    bar_interval: BarTimeInterval = BarTimeInterval.DAY  # Time interval for market data bars
     max_position_size: Optional[float] = None  # Fraction of capital (e.g., 0.4 = 40%)
     volume_config: Optional[VolumeConfig] = None
     enable_progress_tracking: bool = True
@@ -54,6 +56,23 @@ class BacktestConfig:
         if self.volume_config is None:
             # Set default volume config
             object.__setattr__(self, 'volume_config', VolumeConfig())
+        
+        # Validate bar_interval for date range (yfinance limitations)
+        if self.bar_interval != BarTimeInterval.DAY:
+            days_diff = (self.end_date - self.start_date).days
+            
+            if self.bar_interval == BarTimeInterval.HOUR and days_diff > 729:
+                raise ValueError(
+                    f"Hourly bars are limited to 729 days (yfinance restriction). "
+                    f"Requested range: {days_diff} days ({self.start_date.date()} to {self.end_date.date()}). "
+                    f"Use daily bars or reduce the date range."
+                )
+            elif self.bar_interval == BarTimeInterval.MINUTE and days_diff > 59:
+                raise ValueError(
+                    f"Minute bars are limited to 59 days (yfinance restriction). "
+                    f"Requested range: {days_diff} days ({self.start_date.date()} to {self.end_date.date()}). "
+                    f"Use hourly/daily bars or reduce the date range."
+                )
 
 
 @dataclass(frozen=True)
@@ -67,6 +86,7 @@ class PaperTradingConfig:
     """
     symbol: str
     strategy_type: Union[str, 'Strategy']  # Strategy name (str) or Strategy instance (from core.strategy)
+    bar_interval: BarTimeInterval = BarTimeInterval.DAY  # Time interval for market data bars
     max_position_size: Optional[float] = None  # Fraction of capital
     api_key: Optional[str] = None  # Polygon.io API key (falls back to POLYGON_API_KEY env var)
     use_free_tier: bool = False  # Use free tier rate limiting (13 second timeout)

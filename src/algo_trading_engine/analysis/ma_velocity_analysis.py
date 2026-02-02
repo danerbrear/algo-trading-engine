@@ -79,7 +79,7 @@ class MAVelocityAnalyzer:
         print(f"📊 Loading {self.symbol} data from {self.start_date}...")
         
         # Fetch data using the existing data retriever
-        self.data = self.data_retriever.fetch_data_for_period(self.start_date, 'ma_analysis')
+        self.data = self.data_retriever.fetch_data_for_period(self.start_date)
         
         # Ensure we have Close prices
         if 'Close' not in self.data.columns:

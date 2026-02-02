@@ -827,57 +827,6 @@ class CreditSpreadStrategy(Strategy):
             print(f"⚠️  No volume data available for {option.symbol}")
             return None
 
-    def recommend_open_position(self, date: datetime, current_price: float) -> Optional[dict]:
-        """
-        Recommend opening a position for the given date and current price.
-        
-        Args:
-            date: Current date
-            current_price: Current underlying price
-            
-        Returns:
-            dict or None: Position recommendation with required keys, None if no position should be opened
-        """
-        # Get model prediction
-        prediction = self._make_prediction(date)
-        if prediction is None:
-            return None
-            
-        # Map prediction to strategy type
-        strategy_type = self.map_prediction_to_strategy_type(prediction)
-        if strategy_type is None:
-            return None
-        print(f"****Strategy type: {strategy_type.value}****")
-            
-        confidence = float(prediction.get("confidence", 0.5))
-        
-        # Find best spread
-        best = self._find_best_spread(current_price, strategy_type, confidence, date)
-        if not best:
-            print("No suitable spread found")
-            return None
-
-        # Ensure volume for both legs
-        atm_option = best["atm_option"]
-        otm_option = best["otm_option"]
-        atm_option = self._ensure_volume_data(atm_option, date)
-        otm_option = self._ensure_volume_data(otm_option, date)
-        if atm_option is None or otm_option is None:
-            print("Could not fetch volume data for options")
-            return None
-
-        # Return standardized recommendation dict
-        return {
-            "strategy_type": strategy_type,
-            "legs": (atm_option, otm_option),
-            "credit": float(best["credit"]),
-            "width": float(best["width"]),
-            "probability_of_profit": float(best.get("prob_profit", confidence)),
-            "confidence": confidence,
-            "expiration_date": best["expiry"].strftime("%Y-%m-%d"),
-        }
-
-
     def get_current_volumes_for_position(self, position: Position, date: datetime) -> list[int]:
         """
         Fetch current date volume data for all options in a position.

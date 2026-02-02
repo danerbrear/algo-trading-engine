@@ -46,7 +46,7 @@ class StockPredictor:
         """Prepare the data for training"""
         # First prepare HMM training data and train the HMM model
         print(f"\n📈 Phase 1: Preparing HMM training data from {self.data_retriever.hmm_start_date}")
-        hmm_data = self.data_retriever.fetch_data_for_period(self.data_retriever.hmm_start_date, 'hmm')
+        hmm_data = self.data_retriever.fetch_data_for_period(self.data_retriever.hmm_start_date)
         self.data_retriever.calculate_features_for_data(hmm_data)
         
         print(f"\n🎯 Phase 2: Training HMM on market data ({len(hmm_data)} samples)")

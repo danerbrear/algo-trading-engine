@@ -29,21 +29,74 @@ class InteractiveStrategyRecommender:
         self.auto_yes = auto_yes
 
     def run(self, date: datetime, auto_yes: Optional[bool] = None) -> None:
+        """Run recommendation flow by calling on_new_date once to handle both opens and closes.
+        
+        This ensures indicators are only updated once per bar, avoiding duplicate updates
+        that would occur if we called recommend_open_position and recommend_close_positions
+        separately (as they both call on_new_date internally).
+        """
         if auto_yes is not None:
             self.auto_yes = auto_yes
-        self.recommend_open_position(date)
-        self.recommend_close_positions(date)
-
-    # ---------- Open recommendation ----------
-
-    def recommend_open_position(self, date: datetime) -> Optional[DecisionResponseDTO]:
-        """Use the strategy to propose an opening trade for the date and capture decision."""
-        # Require strategy data
+        
+        # Validate strategy data
         if getattr(self.strategy, "data", None) is None:
             print("No data found for strategy")
-            return None
+            return
+        
+        # Get current price (needed for both opens and closes)
+        current_price = self._get_current_price(date)
+        if current_price is None:
+            return
+        
+        # Display recent prices for velocity strategies
+        if hasattr(self.strategy, '__class__') and 'velocity' in self.strategy.__class__.__name__.lower():
+            self._display_recent_underlying_prices(date)
+        
+        # Get open positions for closing logic
+        open_records = self.decision_store.get_open_positions()
+        strategy_positions = [self._position_from_decision(rec) for rec in open_records]
+        
+        # Capture both opens and closes in a single on_new_date call
+        recommended_position = None
+        positions_to_close = []
+        
+        def capture_add_position(position: Position):
+            """Capture the position created by the strategy's on_new_date logic"""
+            nonlocal recommended_position
+            recommended_position = position
+        
+        def capture_remove_position(date_arg: datetime, position: Position, exit_price: float, 
+                                   underlying_price: float = None, current_volumes: list = None):
+            """Capture the position closure decision from the strategy's on_new_date logic"""
+            positions_to_close.append({
+                "position": position,
+                "exit_price": exit_price,
+                "underlying_price": underlying_price,
+                "current_volumes": current_volumes,
+                "rationale": "strategy_decision"
+            })
+        
+        # Call on_new_date ONCE with both callbacks - indicators are updated once here
+        try:
+            self.strategy.on_new_date(date, tuple(strategy_positions), capture_add_position, capture_remove_position)
+        except Exception as e:
+            print(f"Error in strategy on_new_date: {e}")
+            raise e
+        
+        # Process captured open position (if any)
+        if recommended_position is not None:
+            self._process_open_recommendation(date, recommended_position, current_price)
+        else:
+            print("No recommendation found for strategy")
+        
+        # Process captured position closures (if any)
+        if positions_to_close:
+            self._process_close_recommendations(date, positions_to_close, open_records)
 
-        # Determine current price
+    # ---------- Helper methods for unified run() ----------
+    
+    def _get_current_price(self, date: datetime) -> Optional[float]:
+        """Determine current price for the given date."""
         current_price = None
         
         # Check if the specified date is the current date
@@ -84,45 +137,49 @@ class InteractiveStrategyRecommender:
                     else:
                         print("Strategy data is empty or None")
                     return None
-
-        # Display recent 5 days of underlying price for velocity_momentum strategy
-        if hasattr(self.strategy, '__class__') and 'velocity' in self.strategy.__class__.__name__.lower():
-            self._display_recent_underlying_prices(date)
-
-        # Delegate to strategy's recommend_open_position method
-        recommendation = self.strategy.recommend_open_position(date, current_price)
-        if recommendation is None:
-            print("No recommendation found for strategy")
+        
+        return current_price
+    
+    def _process_open_recommendation(self, date: datetime, position: Position, current_price: float) -> Optional[DecisionResponseDTO]:
+        """Process a captured open position recommendation."""
+        # Extract the recommendation details from the created position
+        if not position.spread_options or len(position.spread_options) != 2:
             return None
-
-        # Extract recommendation details
-        strategy_type = recommendation["strategy_type"]
-        legs = recommendation["legs"]
-        credit = recommendation["credit"]
-        width = recommendation["width"]
-        probability_of_profit = recommendation["probability_of_profit"]
-        confidence = recommendation["confidence"]
-        expiration_date = recommendation["expiration_date"]
-
+        
+        atm_option, otm_option = position.spread_options
+        width = abs(atm_option.strike - otm_option.strike)
+        
+        # Build recommendation dict
+        recommendation = {
+            "strategy_type": position.strategy_type,
+            "legs": (atm_option, otm_option),
+            "credit": position.entry_price,
+            "width": width,
+            "probability_of_profit": 0.7,  # Default confidence for rule-based strategies
+            "confidence": 0.7,  # Default confidence for rule-based strategies
+            "expiration_date": position.expiration_date.strftime("%Y-%m-%d"),
+            "risk_reward": 0.5,  # Default
+        }
+        
         # Get strategy name from class and map to config key
         strategy_name = self._get_strategy_name_from_class()
-
+        
         # Build proposal DTO
         proposal = ProposedPositionRequestDTO(
             symbol=self.strategy.symbol if hasattr(self.strategy, 'symbol') else 'SPY',
-            strategy_type=strategy_type,
-            legs=legs,
-            credit=float(credit),
+            strategy_type=position.strategy_type,
+            legs=(atm_option, otm_option),
+            credit=float(position.entry_price),
             width=float(width),
-            probability_of_profit=float(probability_of_profit),
-            confidence=float(confidence),
-            expiration_date=expiration_date,
+            probability_of_profit=0.7,
+            confidence=0.7,
+            expiration_date=position.expiration_date.strftime("%Y-%m-%d"),
             created_at=datetime.now(timezone.utc).isoformat(),
             strategy_name=strategy_name,
         )
-
+        
         # Calculate max risk
-        max_risk = self._calculate_max_risk(strategy_type, float(width), float(credit))
+        max_risk = self._calculate_max_risk(position.strategy_type, float(width), float(position.entry_price))
         
         # Check risk threshold
         is_allowed, risk_message = self.capital_manager.check_risk_threshold(strategy_name, max_risk)
@@ -133,15 +190,15 @@ class InteractiveStrategyRecommender:
             return None
         
         # Determine if credit or debit strategy
-        is_credit = self.capital_manager.is_credit_strategy(strategy_type)
-        premium_amount = float(credit) * 100  # Convert to dollars per contract
+        is_credit = self.capital_manager.is_credit_strategy(position.strategy_type)
+        premium_amount = float(position.entry_price) * 100  # Convert to dollars per contract
         premium_label = "Premium received" if is_credit else "Premium paid"
-
+        
         # Prompt user
         summary = self._format_open_summary(proposal, recommendation, max_risk, premium_amount, premium_label, risk_message)
         if not self.prompt(f"Open recommendation:\n{summary}\nOpen this position?"):
             return None
-
+        
         decided_at = datetime.now(timezone.utc).isoformat()
         record = DecisionResponseDTO(
             id=generate_decision_id(proposal, decided_at),
@@ -154,31 +211,11 @@ class InteractiveStrategyRecommender:
         )
         self.decision_store.append_decision(record)
         return record
-
-    # ---------- Close recommendation ----------
-
-    def recommend_close_positions(self, date: datetime) -> List[DecisionResponseDTO]:
-        """Check open decisions and recommend closure when rules trigger."""
-        open_records = self.decision_store.get_open_positions()
+    
+    def _process_close_recommendations(self, date: datetime, close_recommendations: List[dict], open_records: List[DecisionResponseDTO]) -> List[DecisionResponseDTO]:
+        """Process captured position closure recommendations."""
         closed_records: List[DecisionResponseDTO] = []
-
-        if not open_records:
-            return closed_records
-
-        # Convert open records to Position objects
-        strategy_positions = []
-        for rec in open_records:
-            position = self._position_from_decision(rec)
-            strategy_positions.append(position)
-
-        # Use the strategy's recommend_close_positions method
-        try:
-            close_recommendations = self.strategy.recommend_close_positions(date, strategy_positions)
-        except Exception as e:
-            print(f"Error in strategy recommend_close_positions: {e}")
-            raise e
-
-        # Process the strategy's recommendations
+        
         for recommendation in close_recommendations:
             position = recommendation["position"]
             exit_price = recommendation["exit_price"]
@@ -211,7 +248,7 @@ class InteractiveStrategyRecommender:
                     )
                     closed_records.append(updated)
                     break
-
+        
         return closed_records
 
     def get_open_positions_status(self, date: datetime) -> List[dict]:

@@ -24,11 +24,21 @@ except ImportError:
     from algo_trading_engine.ml_models.calendar_features import CalendarFeatureProcessor
     from algo_trading_engine.common.cache.cache_manager import CacheManager
 from algo_trading_engine.common.models import TreasuryRates
+from algo_trading_engine.enums import BarTimeInterval
+from pathlib import Path
 
 class DataRetriever:
     """Handles data retrieval, feature calculation, and preparation for LSTM and HMM models."""
     
-    def __init__(self, symbol='SPY', hmm_start_date='2010-01-01', lstm_start_date='2020-01-01', use_free_tier=False, quiet_mode=True):
+    def __init__(
+        self, 
+        symbol='SPY', 
+        hmm_start_date='2010-01-01', 
+        lstm_start_date='2020-01-01', 
+        use_free_tier=False, 
+        quiet_mode=True,
+        bar_interval: BarTimeInterval = BarTimeInterval.DAY
+    ):
         """Initialize DataRetriever with separate date ranges for HMM and LSTM
         
         Args:
@@ -37,11 +47,13 @@ class DataRetriever:
             lstm_start_date: Start date for LSTM training data (options signal prediction)
             use_free_tier: Whether to use free tier rate limiting (13 second timeout)
             quiet_mode: Whether to suppress detailed output for cleaner progress display
+            bar_interval: Time interval for market data bars (DAY, HOUR, or MINUTE)
         """
         self.symbol = symbol
         self.hmm_start_date = hmm_start_date
         self.lstm_start_date = lstm_start_date
         self.start_date = lstm_start_date  # Backward compatibility
+        self.bar_interval = bar_interval
         self.scaler = StandardScaler()
         self.data = None
         self.hmm_data = None  # Separate data for HMM training
@@ -51,6 +63,24 @@ class DataRetriever:
         self.cache_manager = CacheManager()
         self.calendar_processor = None  # Initialize lazily when needed
         self.treasury_rates: Optional[TreasuryRates] = None  # Store treasury rates data
+    
+    def _get_yfinance_interval(self) -> str:
+        """Convert BarTimeInterval enum to yfinance interval string."""
+        interval_map = {
+            BarTimeInterval.MINUTE: "1m",
+            BarTimeInterval.HOUR: "1h",
+            BarTimeInterval.DAY: "1d",
+        }
+        return interval_map[self.bar_interval]
+    
+    def _get_cache_interval_dir(self) -> str:
+        """Get the cache subdirectory name for the current bar interval."""
+        interval_dir_map = {
+            BarTimeInterval.MINUTE: "minute",
+            BarTimeInterval.HOUR: "hourly",
+            BarTimeInterval.DAY: "daily",
+        }
+        return interval_dir_map[self.bar_interval]
 
     def load_treasury_rates(self, start_date: datetime, end_date: datetime = None):
         """
@@ -113,6 +143,80 @@ class DataRetriever:
                 print(f"✅ Loaded closest treasury rates from {closest_file.name} (diff: {min_date_diff} days)")
         else:
             print("⚠️  Could not find any treasury rate files")
+    
+    def _load_cached_data_range(self, start_date: str, end_date: str = None) -> Optional[pd.DataFrame]:
+        """
+        Load cached data for a date range from the interval-specific cache directory.
+        
+        Args:
+            start_date: Start date (YYYY-MM-DD)
+            end_date: End date (YYYY-MM-DD), defaults to today
+            
+        Returns:
+            DataFrame with cached data, or None if cache is incomplete
+        """
+        if end_date is None:
+            end_date = pd.Timestamp.now().strftime('%Y-%m-%d')
+        
+        interval_dir = self._get_cache_interval_dir()
+        cache_base = self.cache_manager.get_cache_dir('stocks', self.symbol)
+        cache_dir = cache_base / interval_dir
+        
+        if not cache_dir.exists():
+            return None
+        
+        # For daily bars, use single file per start_date (like old implementation)
+        if self.bar_interval == BarTimeInterval.DAY:
+            # Look for a cache file that matches this start_date
+            cache_file = cache_dir / f"{start_date}.pkl"
+            if cache_file.exists():
+                try:
+                    data = pd.read_pickle(cache_file)
+                    # Filter to requested end_date if needed
+                    end_ts = pd.Timestamp(end_date)
+                    if data.index[-1] < end_ts:
+                        # Cache doesn't have enough data, need to re-fetch
+                        return None
+                    # Filter to exact range
+                    data = data[data.index <= end_ts]
+                    return data
+                except Exception as e:
+                    print(f"⚠️  Failed to load {cache_file.name}: {e}")
+                    return None
+            return None
+        
+        # For hourly/minute bars, load and concatenate granular files
+        cache_files = sorted(cache_dir.glob('*.pkl'))
+        
+        if not cache_files:
+            return None
+        
+        # Load and concatenate all cache files within the date range
+        dfs = []
+        start_ts = pd.Timestamp(start_date)
+        end_ts = pd.Timestamp(end_date)
+        
+        for cache_file in cache_files:
+            try:
+                # Extract date from filename
+                # Format: YYYY-MM-DD_HHMM.pkl (hourly/minute)
+                file_date_str = cache_file.stem.split('_')[0]  # Get date part
+                file_date = pd.Timestamp(file_date_str)
+                
+                if start_ts <= file_date <= end_ts:
+                    df = pd.read_pickle(cache_file)
+                    dfs.append(df)
+            except Exception as e:
+                # If any file fails to load, return None to trigger re-fetch
+                print(f"⚠️  Failed to load {cache_file.name}: {e}")
+                return None
+        
+        if not dfs:
+            return None
+        
+        # Concatenate and sort by index
+        result = pd.concat(dfs).sort_index()
+        return result
 
     def prepare_data_for_lstm(self, sequence_length=60, state_classifier=None):
         """Prepare data for LSTM model with basic features (no options features)
@@ -130,7 +234,7 @@ class DataRetriever:
         """
         print(f"\n📊 Phase 1: Preparing LSTM training data from {self.lstm_start_date}")
         # Fetch LSTM training data (more recent data for options trading)
-        self.lstm_data = self.fetch_data_for_period(self.lstm_start_date, 'lstm')
+        self.lstm_data = self.fetch_data_for_period(self.lstm_start_date)
         self.calculate_features_for_data(self.lstm_data)
 
         print(f"\n🔮 Phase 2: Applying trained HMM to LSTM data")
@@ -152,82 +256,97 @@ class DataRetriever:
 
         return self.lstm_data
 
-    def fetch_data_for_period(self, start_date: str, data_type: str = 'general'):
-        """Fetch data for a specific period with caching"""
-        cache_suffix = f'_{data_type}_data'
+    def fetch_data_for_period(self, start_date: str, end_date: str = None) -> pd.DataFrame:
+        """
+        Fetch data for a specific period with caching.
         
+        Args:
+            start_date: Start date (YYYY-MM-DD)
+            end_date: Optional end date (YYYY-MM-DD), defaults to today
+            
+        Returns:
+            DataFrame with OHLCV data for the specified period
+            
+        Note: Caching is now process-agnostic using interval-based subdirectories.
+        """
         # Try to load from cache first
-        cached_data = self.cache_manager.load_date_from_cache(
-            pd.Timestamp(start_date),
-            cache_suffix,
-            'stocks',
-            self.symbol
-        )
+        cached_data = self._load_cached_data_range(start_date, end_date)
         
         if cached_data is not None:
-            print(f"📋 Loading cached {data_type.upper()} data from {start_date} ({len(cached_data)} samples)")
+            interval_str = self._get_yfinance_interval()
+            print(f"📋 Loaded {len(cached_data)} cached {interval_str} bars")
             return cached_data
-            
-        print(f"🌐 Fetching {data_type.upper()} data from {start_date} onwards...")
+        
+        # Fetch from yfinance
+        interval_str = self._get_yfinance_interval()
+        interval_dir = self._get_cache_interval_dir()
+        
+        print(f"🌐 Fetching {interval_str} bars from {start_date} onwards...")
+        
         if self.ticker is None:
             self.ticker = yf.Ticker(self.symbol)
         
-        # Try to get ticker info first to validate symbol
-        try:
-            info = self.ticker.info
-            if not info or len(info) == 0:
-                raise ValueError(f"Invalid symbol or no info available for {self.symbol}")
-        except Exception as e:
-            raise ValueError(f"Failed to fetch ticker info for {self.symbol}: {e}")
+        # Validate ticker exists
+        info = self.ticker.info
+        if not info or len(info) == 0:
+            raise ValueError(f"Invalid symbol or no info available for {self.symbol}")
         
-        # Try period='max' first, then fallback to date range
-        try:
-            data = self.ticker.history(period='max')
-        except Exception as e:
-            print(f"⚠️  Failed to fetch with period='max', trying date range: {e}")
-            # Fallback: try with specific date range
-            start_date_ts = pd.Timestamp(start_date)
+        # Determine end date
+        if end_date is None:
             end_date_ts = pd.Timestamp.now()
-            data = self.ticker.history(start=start_date_ts, end=end_date_ts)
+        else:
+            end_date_ts = pd.Timestamp(end_date)
+        
+        start_date_ts = pd.Timestamp(start_date)
+        
+        # Fetch with interval parameter
+        data = self.ticker.history(
+            start=start_date_ts,
+            end=end_date_ts,
+            interval=interval_str
+        )
         
         if data.empty:
-            # Provide more diagnostic information
-            try:
-                info = self.ticker.info
-                symbol_name = info.get('longName', 'Unknown')
-                print(f"❌ Ticker info available: {symbol_name}")
-            except:
-                pass
             raise ValueError(
-                f"No data retrieved for {self.symbol} from {start_date}. "
+                f"No data retrieved for {self.symbol} from {start_date} with interval '{interval_str}'. "
                 f"This could be due to:\n"
-                f"  1. Network/API connectivity issues with yfinance\n"
-                f"  2. Invalid or delisted symbol\n"
-                f"  3. Rate limiting from Yahoo Finance\n"
-                f"  4. yfinance version compatibility issues\n"
-                f"Try checking your internet connection and yfinance version."
+                f"  1. Invalid date range for this interval\n"
+                f"  2. Network/API connectivity issues\n"
+                f"  3. Rate limiting from Yahoo Finance"
             )
         
         data.index = data.index.tz_localize(None)
-        print(f"📊 Initial {data_type} data range: {data.index[0]} to {data.index[-1]}")
+        print(f"📊 Fetched {len(data)} {interval_str} bars from {data.index[0]} to {data.index[-1]}")
         
-        # Filter data to start from the specified date
-        start_date_ts = pd.Timestamp(start_date).tz_localize(None)
-        mask = data.index >= start_date_ts
-        data = data[mask].copy()
-        print(f"✂️ Filtered {data_type} data range: {data.index[0]} to {data.index[-1]} ({len(data)} samples)")
-
+        # Filter to requested date range
+        data = data[(data.index >= start_date_ts) & (data.index <= end_date_ts)].copy()
+        
         if data.empty:
-            raise ValueError(f"No data available after filtering for dates >= {start_date}")
-
-        # Cache the filtered data
-        self.cache_manager.save_date_to_cache(
-            pd.Timestamp(start_date),
-            data,
-            cache_suffix,
-            'stocks',
-            self.symbol
-        )
+            raise ValueError(f"No data available after filtering for date range {start_date} to {end_date_ts.date()}")
+        
+        # Save to cache using new structure
+        cache_base = self.cache_manager.get_cache_dir('stocks', self.symbol)
+        cache_dir = cache_base / interval_dir
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        
+        if self.bar_interval == BarTimeInterval.DAY:
+            # For daily bars, save one file per start_date (like old implementation)
+            # This avoids reading hundreds of files for large backtests
+            cache_file = cache_dir / f"{start_date}.pkl"
+            data.to_pickle(cache_file)
+            print(f"💾 Cached {len(data)} daily bars to {interval_dir}/{start_date}.pkl")
+        else:
+            # For hourly/minute, save each bar separately (granular caching)
+            # This makes sense for intraday data with smaller date ranges
+            for idx, row in data.iterrows():
+                date_str = idx.strftime('%Y-%m-%d')
+                time_str = idx.strftime('%H%M')  # e.g., '0930' for 9:30 AM
+                cache_file = cache_dir / f"{date_str}_{time_str}.pkl"
+                
+                # Save single row as DataFrame
+                pd.DataFrame([row]).to_pickle(cache_file)
+                
+            print(f"💾 Cached {len(data)} {interval_str} bars to {interval_dir}/")
         
         return data
 

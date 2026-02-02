@@ -69,6 +69,55 @@ engine.run()
 
 See [examples/](examples/) for complete working examples including custom strategies.
 
+### Bar Interval Support
+
+The system supports multiple bar intervals for backtesting and paper trading:
+
+```python
+from algo_trading_engine import BacktestConfig, BarTimeInterval
+
+# Daily bars (default) - best for swing/position trading
+config = BacktestConfig(
+    initial_capital=10000,
+    start_date=datetime(2024, 1, 1),
+    end_date=datetime(2026, 1, 1),
+    symbol="SPY",
+    strategy_type="velocity_momentum",
+    bar_interval=BarTimeInterval.DAY  # Default
+)
+
+# Hourly bars - best for intraday trading
+# Note: yfinance limits hourly data to 729 days (~2 years)
+config = BacktestConfig(
+    initial_capital=10000,
+    start_date=datetime(2024, 1, 1),
+    end_date=datetime(2024, 12, 31),  # Within 729 day limit
+    symbol="SPY",
+    strategy_type="velocity_momentum",
+    bar_interval=BarTimeInterval.HOUR
+)
+
+# Minute bars - best for day trading/scalping
+# Note: yfinance limits minute data to 59 days
+config = BacktestConfig(
+    initial_capital=10000,
+    start_date=datetime(2024, 11, 1),
+    end_date=datetime(2024, 12, 20),  # Within 59 day limit
+    symbol="SPY",
+    strategy_type="velocity_momentum",
+    bar_interval=BarTimeInterval.MINUTE
+)
+```
+
+**Key Points:**
+- **Daily bars**: No date range limit, best for position/swing trading
+- **Hourly bars**: Max 729 days (yfinance limit), ~6.5x more data points than daily
+- **Minute bars**: Max 59 days (yfinance limit), ~390x more data points than daily
+- **Cache structure**: Interval-specific subdirectories (`daily/`, `hourly/`, `minute/`)
+- **Performance**: Daily bars are fastest; minute bars require significantly more processing
+
+See [examples/backtest/](examples/backtest/) for complete examples of each interval type.
+
 ## 📁 Project Structure
 
 ### Core Components

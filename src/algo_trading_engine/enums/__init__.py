@@ -25,6 +25,7 @@ from algo_trading_engine.common.models import (
     OptionType,
     MarketStateType,
     SignalType,
+    BarTimeInterval,
 )
 
 # Define public API
@@ -33,4 +34,5 @@ __all__ = [
     "OptionType",
     "MarketStateType",
     "SignalType",
+    "BarTimeInterval",
 ]

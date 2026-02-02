@@ -29,6 +29,12 @@ class SignalType(Enum):
     LONG_PUT = "long_put"
     SHORT_PUT = "short_put"
 
+class BarTimeInterval(Enum):
+    """Enum for bar time intervals"""
+    MINUTE = "minute"
+    HOUR = "hour"
+    DAY = "day"
+
 @dataclass(frozen=True)
 class Option:
     """

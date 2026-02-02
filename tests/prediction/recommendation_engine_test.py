@@ -72,32 +72,26 @@ def test_recommender_open_accept(monkeypatch, tmp_path):
     # Set proper class name for strategy name extraction
     mock_class = type('CreditSpreadStrategy', (), {})
     strategy.__class__ = mock_class
-    strategy._make_prediction.return_value = {'strategy': 2, 'confidence': 0.7}
-    strategy.recommend_open_position.return_value = {
-        'strategy_type': StrategyType.PUT_CREDIT_SPREAD,
-        'legs': [atm_option, otm_option],
-        'credit': 1.05,
-        'width': 5,
-        'probability_of_profit': 0.68,
-        'confidence': 0.7,
-        'expiration_date': '2025-09-06'
-    }
     
-    strategy._find_best_spread.return_value = {
-        'expiry': datetime(2025, 9, 6),
-        'width': 5,
-        'atm_strike': 500,
-        'otm_strike': 495,
-        'atm_option': atm_option,
-        'otm_option': otm_option,
-        'credit': 1.05,
-        'risk_reward': 0.45,
-        'prob_profit': 0.68,
-    }
-    strategy._ensure_volume_data.side_effect = lambda opt, d: opt
+    # Mock on_new_date to create a position via add_position callback
+    from algo_trading_engine.backtest.models import Position
+    def mock_on_new_date(date_arg, positions, add_position, remove_position):
+        if len(positions) == 0:
+            # Create a position and call add_position
+            position = Position(
+                symbol='SPY',
+                expiration_date=datetime(2025, 9, 6),
+                strategy_type=StrategyType.PUT_CREDIT_SPREAD,
+                strike_price=500.0,
+                entry_date=date_arg,
+                entry_price=1.05,
+                spread_options=(atm_option, otm_option)
+            )
+            position.set_quantity(1)
+            add_position(position)
+    
+    strategy.on_new_date = mock_on_new_date
 
-    options_handler = MagicMock()
-    options_handler.symbol = 'SPY'
     store = JsonDecisionStore(base_dir=str(tmp_path))
     
     # Create capital manager with default config for testing
@@ -111,8 +105,9 @@ def test_recommender_open_accept(monkeypatch, tmp_path):
     }
     capital_manager = CapitalManager(allocations_config, store)
 
-    rec = InteractiveStrategyRecommender(strategy, store, capital_manager, auto_yes=True).recommend_open_position(date)
-    assert rec is not None
+    recommender = InteractiveStrategyRecommender(strategy, store, capital_manager, auto_yes=True)
+    recommender.run(date)
+    
     opens = store.get_open_positions()
     assert len(opens) == 1
 
@@ -149,33 +144,23 @@ def test_recommender_close_accept(monkeypatch, tmp_path):
     store = JsonDecisionStore(base_dir=str(tmp_path))
     store.append_decision(record)
 
-    # Mock option chain path
+    # Mock strategy
     strategy = MagicMock()
-    strategy.options_data = {}
-    options_handler = MagicMock()
+    strategy.symbol = 'SPY'
+    strategy.data = MagicMock()
+    strategy.data.loc.__getitem__.return_value = {'Close': 500}
+    mock_class = type('CreditSpreadStrategy', (), {})
+    strategy.__class__ = mock_class
     
-    # Note: The recommendation engine uses strategy.new_options_handler.get_option_bar()
-    # which is mocked via strategy.recommend_close_positions.return_value
-    # The legacy get_specific_option_contract method is no longer used
-
-    # Mock strategy to recommend closing the position
+    # Mock on_new_date to close the position via remove_position callback
     from algo_trading_engine.backtest.models import Position
-    mock_position = Position(
-        symbol='SPY',
-        expiration_date=datetime(2025, 9, 6),
-        strategy_type=StrategyType.CALL_CREDIT_SPREAD,
-        strike_price=500.0,
-        entry_date=datetime(2025, 7, 1),
-        entry_price=1.0,
-        spread_options=legs
-    )
-    mock_position.set_quantity(1)
+    def mock_on_new_date(date_arg, positions, add_position, remove_position):
+        if len(positions) > 0:
+            # Close the position
+            for position in positions:
+                remove_position(date_arg, position, 0.5, None, None)
     
-    strategy.recommend_close_positions.return_value = [{
-        "position": mock_position,
-        "exit_price": 0.5,
-        "rationale": "test_close"
-    }]
+    strategy.on_new_date = mock_on_new_date
 
     # Create capital manager with default config for testing
     allocations_config = {
@@ -188,10 +173,11 @@ def test_recommender_close_accept(monkeypatch, tmp_path):
     }
     capital_manager = CapitalManager(allocations_config, store)
     
-    # Monkeypatch prompt to auto-yes
+    # Run recommender
     rec_engine = InteractiveStrategyRecommender(strategy, store, capital_manager, auto_yes=True)
-    closed = rec_engine.recommend_close_positions(datetime(2025, 8, 8))
+    rec_engine.run(datetime(2025, 8, 8))
 
-    assert len(closed) == 1
-    assert closed[0].exit_price is not None
+    # Verify position was closed
+    open_positions = store.get_open_positions()
+    assert len(open_positions) == 0  # Position should be closed
 
