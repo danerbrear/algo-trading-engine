@@ -90,26 +90,34 @@ def test_recommender_with_capital_manager_risk_check_pass(
     atm_option = _make_option('A', 500, '2025-09-06', 'put', 2.0)
     otm_option = _make_option('B', 495, '2025-09-06', 'put', 1.0)
     
-    strategy_mock.recommend_open_position.return_value = {
-        'strategy_type': StrategyType.PUT_CREDIT_SPREAD,
-        'legs': [atm_option, otm_option],
-        'credit': 1.0,
-        'width': 5.0,
-        'probability_of_profit': 0.68,
-        'confidence': 0.7,
-        'expiration_date': '2025-09-06',
-        'risk_reward': 0.45,
-    }
+    # Mock on_new_date to create a position
+    from algo_trading_engine.backtest.models import Position
+    def mock_on_new_date(date_arg, positions, add_position, remove_position):
+        if len(positions) == 0:
+            position = Position(
+                symbol='SPY',
+                expiration_date=datetime(2025, 9, 6),
+                strategy_type=StrategyType.PUT_CREDIT_SPREAD,
+                strike_price=500.0,
+                entry_date=date_arg,
+                entry_price=1.0,
+                spread_options=(atm_option, otm_option)
+            )
+            position.set_quantity(1)
+            add_position(position)
+    
+    strategy_mock.on_new_date = mock_on_new_date
     
     recommender = InteractiveStrategyRecommender(
         strategy_mock, decision_store, capital_manager, auto_yes=True
     )
     
-    result = recommender.recommend_open_position(date)
+    recommender.run(date)
     
     # Should succeed - risk is 400 (width 5 - credit 1) * 100, which is less than max 500
-    assert result is not None
-    assert result.outcome == 'accepted'
+    opens = decision_store.get_open_positions()
+    assert len(opens) == 1
+    assert opens[0].outcome == 'accepted'
 
 
 def test_recommender_with_capital_manager_risk_check_fail(
@@ -124,25 +132,33 @@ def test_recommender_with_capital_manager_risk_check_fail(
     otm_option = _make_option('B', 490, '2025-09-06', 'put', 1.0)
     
     # Width of 10, credit of 1, so max_risk = (10 - 1) * 100 = 900, which exceeds 500
-    strategy_mock.recommend_open_position.return_value = {
-        'strategy_type': StrategyType.PUT_CREDIT_SPREAD,
-        'legs': [atm_option, otm_option],
-        'credit': 1.0,
-        'width': 10.0,
-        'probability_of_profit': 0.68,
-        'confidence': 0.7,
-        'expiration_date': '2025-09-06',
-        'risk_reward': 0.45,
-    }
+    from algo_trading_engine.backtest.models import Position
+    def mock_on_new_date(date_arg, positions, add_position, remove_position):
+        if len(positions) == 0:
+            position = Position(
+                symbol='SPY',
+                expiration_date=datetime(2025, 9, 6),
+                strategy_type=StrategyType.PUT_CREDIT_SPREAD,
+                strike_price=500.0,
+                entry_date=date_arg,
+                entry_price=1.0,
+                spread_options=(atm_option, otm_option)
+            )
+            position.set_quantity(1)
+            add_position(position)
+    
+    strategy_mock.on_new_date = mock_on_new_date
     
     recommender = InteractiveStrategyRecommender(
         strategy_mock, decision_store, capital_manager, auto_yes=True
     )
     
-    result = recommender.recommend_open_position(date)
+    recommender.run(date)
     
     # Should fail - risk is 900, which exceeds max allowed 500
-    assert result is None
+    # Position should not be added to store
+    opens = decision_store.get_open_positions()
+    assert len(opens) == 0
 
 
 def test_recommender_calculates_max_risk_correctly(
@@ -156,29 +172,36 @@ def test_recommender_calculates_max_risk_correctly(
     atm_option = _make_option('A', 500, '2025-09-06', 'put', 2.0)
     otm_option = _make_option('B', 495, '2025-09-06', 'put', 1.0)
     
-    strategy_mock.recommend_open_position.return_value = {
-        'strategy_type': StrategyType.PUT_CREDIT_SPREAD,
-        'legs': [atm_option, otm_option],
-        'credit': 1.0,
-        'width': 5.0,
-        'probability_of_profit': 0.68,
-        'confidence': 0.7,
-        'expiration_date': '2025-09-06',
-        'risk_reward': 0.45,
-    }
+    from algo_trading_engine.backtest.models import Position
+    def mock_on_new_date(date_arg, positions, add_position, remove_position):
+        if len(positions) == 0:
+            position = Position(
+                symbol='SPY',
+                expiration_date=datetime(2025, 9, 6),
+                strategy_type=StrategyType.PUT_CREDIT_SPREAD,
+                strike_price=500.0,
+                entry_date=date_arg,
+                entry_price=1.0,
+                spread_options=(atm_option, otm_option)
+            )
+            position.set_quantity(1)
+            add_position(position)
+    
+    strategy_mock.on_new_date = mock_on_new_date
     
     recommender = InteractiveStrategyRecommender(
         strategy_mock, decision_store, capital_manager, auto_yes=True
     )
     
     with patch('builtins.print') as mock_print:
-        result = recommender.recommend_open_position(date)
+        recommender.run(date)
     
     # Max risk should be (5 - 1) * 100 = 400
     # Check that risk info was displayed
     print_calls = [str(call) for call in mock_print.call_args_list]
     risk_info_present = any("Max Risk" in str(call) or "400" in str(call) for call in print_calls)
-    assert risk_info_present or result is not None  # Either displayed or succeeded
+    opens = decision_store.get_open_positions()
+    assert risk_info_present or len(opens) > 0  # Either displayed or succeeded
 
 
 def test_recommender_displays_premium_info(
@@ -192,26 +215,33 @@ def test_recommender_displays_premium_info(
     atm_option = _make_option('A', 500, '2025-09-06', 'put', 2.0)
     otm_option = _make_option('B', 495, '2025-09-06', 'put', 1.0)
     
-    strategy_mock.recommend_open_position.return_value = {
-        'strategy_type': StrategyType.PUT_CREDIT_SPREAD,
-        'legs': [atm_option, otm_option],
-        'credit': 1.86,
-        'width': 5.0,
-        'probability_of_profit': 0.68,
-        'confidence': 0.7,
-        'expiration_date': '2025-09-06',
-        'risk_reward': 0.45,
-    }
+    from algo_trading_engine.backtest.models import Position
+    def mock_on_new_date(date_arg, positions, add_position, remove_position):
+        if len(positions) == 0:
+            position = Position(
+                symbol='SPY',
+                expiration_date=datetime(2025, 9, 6),
+                strategy_type=StrategyType.PUT_CREDIT_SPREAD,
+                strike_price=500.0,
+                entry_date=date_arg,
+                entry_price=1.86,
+                spread_options=(atm_option, otm_option)
+            )
+            position.set_quantity(1)
+            add_position(position)
+    
+    strategy_mock.on_new_date = mock_on_new_date
     
     recommender = InteractiveStrategyRecommender(
         strategy_mock, decision_store, capital_manager, auto_yes=True
     )
     
     with patch('builtins.print'):
-        result = recommender.recommend_open_position(date)
+        recommender.run(date)
     
     # Should succeed and show premium info
-    assert result is not None
+    opens = decision_store.get_open_positions()
+    assert len(opens) > 0
 
 
 def test_recommender_strategy_name_mapping(
@@ -235,24 +265,31 @@ def test_recommender_strategy_name_mapping(
     atm_option = _make_option('A', 500, '2025-09-06', 'put', 2.0)
     otm_option = _make_option('B', 495, '2025-09-06', 'put', 1.0)
     
-    strategy_mock.recommend_open_position.return_value = {
-        'strategy_type': StrategyType.PUT_CREDIT_SPREAD,
-        'legs': [atm_option, otm_option],
-        'credit': 1.0,
-        'width': 5.0,
-        'probability_of_profit': 0.68,
-        'confidence': 0.7,
-        'expiration_date': '2025-09-06',
-        'risk_reward': 0.45,
-    }
+    from algo_trading_engine.backtest.models import Position
+    def mock_on_new_date(date_arg, positions, add_position, remove_position):
+        if len(positions) == 0:
+            position = Position(
+                symbol='SPY',
+                expiration_date=datetime(2025, 9, 6),
+                strategy_type=StrategyType.PUT_CREDIT_SPREAD,
+                strike_price=500.0,
+                entry_date=date_arg,
+                entry_price=1.0,
+                spread_options=(atm_option, otm_option)
+            )
+            position.set_quantity(1)
+            add_position(position)
+    
+    strategy_mock.on_new_date = mock_on_new_date
     
     recommender = InteractiveStrategyRecommender(
         strategy_mock, decision_store, capital_manager, auto_yes=True
     )
     
-    result = recommender.recommend_open_position(date)
+    recommender.run(date)
     
     # Should use velocity_momentum config (15000 allocated, 450 max risk)
     # Risk is 400, should pass
-    assert result is not None
+    opens = decision_store.get_open_positions()
+    assert len(opens) > 0
 
