@@ -115,6 +115,104 @@ strategy = (builder
 | `--symbol` | string | SPY | Symbol to trade |
 | `--verbose` | flag | False | Run in quiet mode |
 
+## Bar Interval Configuration
+
+Strategies can operate on different time intervals (daily, hourly, or minute bars). The bar interval is configured at the engine level, not the strategy level.
+
+### Available Intervals
+
+```python
+from algo_trading_engine import BacktestConfig, BarTimeInterval
+
+# Daily bars (default) - for position/swing trading
+config = BacktestConfig(
+    initial_capital=10000,
+    start_date=datetime(2024, 1, 1),
+    end_date=datetime(2026, 1, 1),
+    symbol="SPY",
+    strategy_type="velocity_momentum",
+    bar_interval=BarTimeInterval.DAY  # Default
+)
+
+# Hourly bars - for intraday trading
+config = BacktestConfig(
+    initial_capital=10000,
+    start_date=datetime(2024, 1, 1),
+    end_date=datetime(2024, 12, 31),  # Max 729 days
+    symbol="SPY",
+    strategy_type="velocity_momentum",
+    bar_interval=BarTimeInterval.HOUR
+)
+
+# Minute bars - for day trading/scalping
+config = BacktestConfig(
+    initial_capital=10000,
+    start_date=datetime(2024, 11, 1),
+    end_date=datetime(2024, 12, 20),  # Max 59 days
+    symbol="SPY",
+    strategy_type="velocity_momentum",
+    bar_interval=BarTimeInterval.MINUTE
+)
+```
+
+### Interval Constraints
+
+| Interval | Max Date Range | Data Points/Day | Best For |
+|----------|---------------|-----------------|----------|
+| **DAY** | Unlimited | 1 | Position/swing trading (days to weeks) |
+| **HOUR** | 729 days | ~6.5 | Intraday trading (hours to days) |
+| **MINUTE** | 59 days | ~390 | Day trading/scalping (minutes to hours) |
+
+**Important Notes:**
+- Date range limits are enforced by yfinance API
+- Strategies receive bars at the specified interval
+- `on_new_date()` is called for each bar (even intraday)
+- Higher frequency = more signals but longer backtest time
+- Cache is interval-specific (`data_cache/stocks/SYMBOL/daily|hourly|minute/`)
+
+### Strategy Considerations
+
+When designing strategies for different intervals:
+
+**Daily Bars:**
+- Focus on trend-following and momentum
+- Use daily close prices for signals
+- Suitable for overnight positions
+
+**Hourly Bars:**
+- Consider intraday patterns and market hours
+- Can capture same-day entry/exit
+- ~6.5x more signals than daily
+
+**Minute Bars:**
+- Design for rapid execution
+- Consider bid-ask spreads and slippage
+- ~390x more signals than daily
+- Best for high-frequency strategies
+
+### Example: Multi-Timeframe Strategy
+
+```python
+# Strategy can adapt behavior based on bar frequency
+class AdaptiveStrategy(Strategy):
+    def on_new_date(self, date, positions, add_position, remove_position):
+        super().on_new_date(date, positions, add_position, remove_position)
+        
+        # Check if we're running on intraday data
+        if len(self.data) > 1:
+            time_diff = self.data.index[1] - self.data.index[0]
+            is_intraday = time_diff < pd.Timedelta(days=1)
+            
+            if is_intraday:
+                # Use tighter stops and targets for intraday
+                self.stop_loss = 0.3
+                self.profit_target = 0.2
+            else:
+                # Use wider stops for daily bars
+                self.stop_loss = 0.5
+                self.profit_target = 0.4
+```
+
 ## Extending the System
 
 ### Adding a New Strategy

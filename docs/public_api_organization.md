@@ -42,7 +42,7 @@ from algo_trading_engine.dto import (
 ```
 
 ### 3. Enums
-For strategy development:
+For strategy development and configuration:
 
 ```python
 from algo_trading_engine.enums import (
@@ -50,6 +50,7 @@ from algo_trading_engine.enums import (
     OptionType,
     MarketStateType,
     SignalType,
+    BarTimeInterval,  # For configuring data granularity
 )
 ```
 
@@ -92,6 +93,49 @@ config = BacktestConfig(
 engine = BacktestEngine.from_config(config)
 engine.run()
 ```
+
+### Configuring Bar Intervals
+
+```python
+from datetime import datetime
+from algo_trading_engine import BacktestEngine, BacktestConfig
+from algo_trading_engine.enums import BarTimeInterval
+
+# Daily bars (default) - for position/swing trading
+config_daily = BacktestConfig(
+    initial_capital=10000,
+    start_date=datetime(2024, 1, 1),
+    end_date=datetime(2026, 1, 1),
+    symbol="SPY",
+    strategy_type="velocity_momentum",
+    bar_interval=BarTimeInterval.DAY  # Default
+)
+
+# Hourly bars - for intraday trading (max 729 days)
+config_hourly = BacktestConfig(
+    initial_capital=10000,
+    start_date=datetime(2024, 1, 1),
+    end_date=datetime(2024, 12, 31),
+    symbol="SPY",
+    strategy_type="velocity_momentum",
+    bar_interval=BarTimeInterval.HOUR
+)
+
+# Minute bars - for day trading (max 59 days)
+config_minute = BacktestConfig(
+    initial_capital=10000,
+    start_date=datetime(2024, 11, 1),
+    end_date=datetime(2024, 12, 20),
+    symbol="SPY",
+    strategy_type="velocity_momentum",
+    bar_interval=BarTimeInterval.MINUTE
+)
+```
+
+**Bar Interval Reference:**
+- `BarTimeInterval.DAY`: Daily bars, no date limit
+- `BarTimeInterval.HOUR`: Hourly bars, max 729 days (yfinance limit)
+- `BarTimeInterval.MINUTE`: Minute bars, max 59 days (yfinance limit)
 
 ### Working with Position Results
 

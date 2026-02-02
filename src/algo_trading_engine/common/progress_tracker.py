@@ -6,18 +6,19 @@ import sys
 import threading
 
 class ProgressTracker:
-    def __init__(self, start_date: datetime, end_date: datetime, total_dates: int, desc: str = "Processing", quiet_mode: bool = True):
+    def __init__(self, start_date: datetime, end_date: datetime, total_dates: int, desc: str = "Processing", quiet_mode: bool = True, unit: str = "date"):
         self.start_time = time()
         self.processed_dates = 0
         self.total_dates = total_dates
         self._lock = threading.Lock()
         self.quiet_mode = quiet_mode
+        self.unit = unit  # "date" for daily, "bar" for hourly/minute
         
         # Initialize progress bar with improved settings
         self.pbar = tqdm(
             total=self.total_dates,
             desc=desc,
-            unit="date",
+            unit=self.unit,
             position=0,
             leave=True,
             bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]',
@@ -60,7 +61,11 @@ class ProgressTracker:
                 date_progress = (self.processed_dates / self.total_dates) * 100
                 
                 # Update progress bar description with compact format
-                desc = f"Processing {current_date.date()} ({date_progress:.1f}% dates)"
+                # For intraday bars, show timestamp; for daily, show just date
+                if self.unit == "bar":
+                    desc = f"Processing {current_date} ({date_progress:.1f}% bars)"
+                else:
+                    desc = f"Processing {current_date.date()} ({date_progress:.1f}% dates)"
                 self.pbar.set_description(desc)
                 
                 # Show summary info in postfix (key strike prices, etc.)
@@ -100,7 +105,7 @@ class ProgressTracker:
             # Print final summary
             print(f"\nProcessing completed:")
             print(f"   Total time: {timedelta(seconds=int(stats['elapsed_time']))}")
-            print(f"   Average time per date: {stats['avg_time_per_date']:.2f} seconds")
+            print(f"   Average time per {self.unit}: {stats['avg_time_per_date']:.2f} seconds")
             # API call tracking removed from progress tracker
 
 # Global progress tracker instance for use across modules

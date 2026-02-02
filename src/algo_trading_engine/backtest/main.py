@@ -27,7 +27,8 @@ class BacktestEngine(TradingEngine):
                  max_position_size: float = None,
                  volume_config: VolumeConfig = None,
                  enable_progress_tracking: bool = True,
-                 quiet_mode: bool = True):
+                 quiet_mode: bool = True,
+                 bar_interval = None):  # Import BarTimeInterval at top
         super().__init__(strategy, data)
         self._capital = initial_capital
         self.initial_capital = initial_capital  # Store initial capital for reporting
@@ -39,6 +40,7 @@ class BacktestEngine(TradingEngine):
         self.max_position_size = max_position_size
         self.daily_returns = []  # Track daily returns for Sharpe Ratio calculation
         self.previous_capital = initial_capital  # Track previous day's capital
+        self.bar_interval = bar_interval  # Store bar interval for progress tracking
         
         # Volume validation configuration and statistics
         self.volume_config = volume_config or VolumeConfig(min_volume=10)
@@ -161,7 +163,8 @@ class BacktestEngine(TradingEngine):
             max_position_size=config.max_position_size,
             volume_config=config.volume_config,
             enable_progress_tracking=config.enable_progress_tracking,
-            quiet_mode=config.quiet_mode
+            quiet_mode=config.quiet_mode,
+            bar_interval=config.bar_interval
         )
 
     def run(self) -> bool:
@@ -186,12 +189,17 @@ class BacktestEngine(TradingEngine):
             effective_start_date = date_range[self.strategy.start_date_offset] if self.strategy.start_date_offset < len(date_range) else date_range[0]
             effective_total_dates = len(date_range) - self.strategy.start_date_offset
             
+            # Determine unit based on bar interval
+            from algo_trading_engine.enums import BarTimeInterval
+            unit = "bar" if self.bar_interval and self.bar_interval != BarTimeInterval.DAY else "date"
+            
             self.progress_tracker = ProgressTracker(
                 start_date=effective_start_date,
                 end_date=date_range[-1],
                 total_dates=effective_total_dates,
                 desc="Running Backtest",
-                quiet_mode=self.quiet_mode
+                quiet_mode=self.quiet_mode,
+                unit=unit
             )
             set_global_progress_tracker(self.progress_tracker)
             

@@ -4,11 +4,37 @@ Unit tests for enhanced strategy methods
 from datetime import datetime
 from unittest.mock import Mock, patch
 import pandas as pd
+import tempfile
+import shutil
+from pathlib import Path
+import pytest
 
 from algo_trading_engine.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
 from algo_trading_engine.strategies.credit_spread_minimal import CreditSpreadStrategy
 from algo_trading_engine.common.models import Option, OptionType
 from algo_trading_engine.backtest.models import Position, StrategyType
+
+
+@pytest.fixture
+def temp_cache_dir():
+    """Create a temporary cache directory for testing and clean up afterward."""
+    temp_dir = Path(tempfile.mkdtemp())
+    yield temp_dir
+    # Cleanup after test
+    if temp_dir.exists():
+        shutil.rmtree(temp_dir)
+
+
+@pytest.fixture
+def mock_cache_manager(temp_cache_dir):
+    """Mock CacheManager to use temporary directory."""
+    def _mock_get_cache_dir(self, *subdirs):
+        cache_dir = temp_cache_dir.joinpath(*subdirs)
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        return cache_dir
+    
+    with patch('algo_trading_engine.common.cache.cache_manager.CacheManager.get_cache_dir', _mock_get_cache_dir):
+        yield temp_cache_dir
 
 
 class TestVelocitySignalMomentumStrategyEnhancements:
@@ -420,16 +446,20 @@ class TestDataRetrieverLivePrice:
     
     def setup_method(self):
         """Set up test fixtures"""
+        # Note: DataRetriever will be created in each test with mock_cache_manager
+        pass
+    
+    @patch('algo_trading_engine.common.data_retriever.yf.Ticker')
+    def test_get_live_price_yfinance_fallback(self, mock_ticker, mock_cache_manager):
+        """Test get_live_price with yfinance fallback"""
         from algo_trading_engine.common.data_retriever import DataRetriever
-        self.data_retriever = DataRetriever(
+        
+        data_retriever = DataRetriever(
             symbol='SPY',
             use_free_tier=True,
             quiet_mode=True
         )
-    
-    @patch('algo_trading_engine.common.data_retriever.yf.Ticker')
-    def test_get_live_price_yfinance_fallback(self, mock_ticker):
-        """Test get_live_price with yfinance fallback"""
+        
         # Mock yfinance ticker
         mock_ticker_instance = Mock()
         mock_ticker_instance.info = {
@@ -439,14 +469,22 @@ class TestDataRetrieverLivePrice:
         }
         mock_ticker.return_value = mock_ticker_instance
         
-        price = self.data_retriever.get_live_price('SPY')
+        price = data_retriever.get_live_price('SPY')
         
         assert price == 450.0
         mock_ticker.assert_called_once_with('SPY')
     
     @patch('algo_trading_engine.common.data_retriever.yf.Ticker')
-    def test_get_live_price_yfinance_no_current_price(self, mock_ticker):
+    def test_get_live_price_yfinance_no_current_price(self, mock_ticker, mock_cache_manager):
         """Test get_live_price with yfinance when currentPrice is None"""
+        from algo_trading_engine.common.data_retriever import DataRetriever
+        
+        data_retriever = DataRetriever(
+            symbol='SPY',
+            use_free_tier=True,
+            quiet_mode=True
+        )
+        
         # Mock yfinance ticker with no currentPrice
         mock_ticker_instance = Mock()
         mock_ticker_instance.info = {
@@ -456,13 +494,21 @@ class TestDataRetrieverLivePrice:
         }
         mock_ticker.return_value = mock_ticker_instance
         
-        price = self.data_retriever.get_live_price('SPY')
+        price = data_retriever.get_live_price('SPY')
         
         assert price == 450.0  # Should fall back to regularMarketPrice
     
     @patch('algo_trading_engine.common.data_retriever.yf.Ticker')
-    def test_get_live_price_yfinance_fallback_to_previous_close(self, mock_ticker):
+    def test_get_live_price_yfinance_fallback_to_previous_close(self, mock_ticker, mock_cache_manager):
         """Test get_live_price with yfinance falling back to previousClose"""
+        from algo_trading_engine.common.data_retriever import DataRetriever
+        
+        data_retriever = DataRetriever(
+            symbol='SPY',
+            use_free_tier=True,
+            quiet_mode=True
+        )
+        
         # Mock yfinance ticker with no currentPrice or regularMarketPrice
         mock_ticker_instance = Mock()
         mock_ticker_instance.info = {
@@ -472,13 +518,21 @@ class TestDataRetrieverLivePrice:
         }
         mock_ticker.return_value = mock_ticker_instance
         
-        price = self.data_retriever.get_live_price('SPY')
+        price = data_retriever.get_live_price('SPY')
         
         assert price == 445.0  # Should fall back to previousClose
     
     @patch('algo_trading_engine.common.data_retriever.yf.Ticker')
-    def test_get_live_price_yfinance_no_data(self, mock_ticker):
+    def test_get_live_price_yfinance_no_data(self, mock_ticker, mock_cache_manager):
         """Test get_live_price with yfinance when no price data is available"""
+        from algo_trading_engine.common.data_retriever import DataRetriever
+        
+        data_retriever = DataRetriever(
+            symbol='SPY',
+            use_free_tier=True,
+            quiet_mode=True
+        )
+        
         # Mock yfinance ticker with no price data
         mock_ticker_instance = Mock()
         mock_ticker_instance.info = {
@@ -488,16 +542,24 @@ class TestDataRetrieverLivePrice:
         }
         mock_ticker.return_value = mock_ticker_instance
         
-        price = self.data_retriever.get_live_price('SPY')
+        price = data_retriever.get_live_price('SPY')
         
         assert price is None
     
     @patch('algo_trading_engine.common.data_retriever.yf.Ticker')
-    def test_get_live_price_yfinance_exception(self, mock_ticker):
+    def test_get_live_price_yfinance_exception(self, mock_ticker, mock_cache_manager):
         """Test get_live_price with yfinance exception"""
+        from algo_trading_engine.common.data_retriever import DataRetriever
+        
+        data_retriever = DataRetriever(
+            symbol='SPY',
+            use_free_tier=True,
+            quiet_mode=True
+        )
+        
         # Mock yfinance ticker to raise exception
         mock_ticker.side_effect = Exception("Network error")
         
-        price = self.data_retriever.get_live_price('SPY')
+        price = data_retriever.get_live_price('SPY')
         
         assert price is None
