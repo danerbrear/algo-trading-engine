@@ -97,13 +97,14 @@ class BacktestEngine(TradingEngine):
             symbol=config.symbol,
             lstm_start_date=lstm_start_date.strftime("%Y-%m-%d"),
             quiet_mode=config.quiet_mode,
-            use_free_tier=config.use_free_tier
+            use_free_tier=config.use_free_tier,
+            bar_interval=config.bar_interval
         )
         
         # Internal: Fetch data for backtest period
         data = retriever.fetch_data_for_period(
             config.start_date.strftime("%Y-%m-%d"),
-            'backtest'
+            config.end_date.strftime("%Y-%m-%d")
         )
         
         if data is None or len(data) == 0:

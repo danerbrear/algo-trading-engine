@@ -331,15 +331,13 @@ class PaperTradingEngine(TradingEngine):
             symbol=config.symbol,
             lstm_start_date=lstm_start_date,
             quiet_mode=True,
-            use_free_tier=config.use_free_tier
+            use_free_tier=config.use_free_tier,
+            bar_interval=config.bar_interval
         )
         
         # Internal: Fetch recent data for strategy initialization
         # For paper trading, we fetch data up to today
-        data = retriever.fetch_data_for_period(
-            lstm_start_date,
-            'paper_trading'
-        )
+        data = retriever.fetch_data_for_period(lstm_start_date)
         
         if data is None or len(data) == 0:
             raise ValueError(f"Failed to fetch data for {config.symbol}")
