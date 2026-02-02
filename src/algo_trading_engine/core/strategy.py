@@ -327,4 +327,5 @@ class Strategy(ABC):
             except Exception as e:
                 print(f"Error updating indicator {indicator.name}: {e}")
                 return False
+        print(f"Indicators updated successfully for date {date}")
         return True

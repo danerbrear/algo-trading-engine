@@ -75,6 +75,10 @@ class ATRIndicator(Indicator):
         
         # Need at least 2 bars to calculate TR (need previous close)
         if len(data_up_to_date) < 2:
+            print(
+                f"Insufficient data to calculate True Range. Need at least 2 bars, but only have {len(data_up_to_date)} "
+                f"{'for current day ' + str(filter_day) if self.reset_daily and self._is_intraday() else ''}"
+            )
             raise ValueError(
                 f"Insufficient data to calculate True Range. Need at least 2 bars, but only have {len(data_up_to_date)} "
                 f"{'for current day ' + str(filter_day) if self.reset_daily and self._is_intraday() else ''}"
