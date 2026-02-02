@@ -100,6 +100,9 @@ class ATRIndicator(Indicator):
             # ATR = [(Prior ATR × (n-1)) + Current TR] / n
             self._value = ((self._value * (self.period - 1)) + tr) / self.period
     
+    def print(self):
+        print(f"{self.name}: {self._value}")
+
     def _is_intraday(self) -> bool:
         """
         Check if the period unit is intraday (HOUR or MINUTE).

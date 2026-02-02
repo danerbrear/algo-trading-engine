@@ -23,7 +23,7 @@ class Strategy(ABC):
     the required abstract methods.
     """
 
-    def __init__(self, profit_target: float = None, stop_loss: float = None, start_date_offset: int = 0, indicators: List[Indicator] = None):
+    def __init__(self, profit_target: float = None, stop_loss: float = None, start_date_offset: int = 0):
         """
         Initialize the strategy.
         
@@ -37,7 +37,7 @@ class Strategy(ABC):
         self.data: Optional[pd.DataFrame] = None
         self.start_date_offset = start_date_offset
         self.treasury_data: Optional[TreasuryRates] = None
-        self.indicators: List[Indicator] = indicators if indicators is not None else []
+        self.indicators: List[Indicator] = []
 
     @abstractmethod
     def on_new_date(
@@ -90,6 +90,45 @@ class Strategy(ABC):
             True if data is valid, False otherwise
         """
         pass
+
+    def add_indicator(self, indicator: Indicator) -> None:
+        """
+        Add an indicator to the strategy.
+        
+        This allows indicators to be added after strategy initialization,
+        which is useful for dynamic indicator configuration.
+        
+        Args:
+            indicator: Indicator instance to add
+            
+        Example:
+            strategy = MyStrategy()
+            atr = ATRIndicator(period=14)
+            strategy.add_indicator(atr)
+        """
+        if not isinstance(indicator, Indicator):
+            raise TypeError(f"Expected Indicator instance, got {type(indicator).__name__}")
+        self.indicators.append(indicator)
+
+    def get_indicator(self, indicator_class: type) -> Optional[Indicator]:
+        """
+        Get an indicator by class type.
+        
+        Args:
+            indicator_class: The indicator class to search for (e.g., ATRIndicator)
+            
+        Returns:
+            Indicator instance if found, None otherwise
+            
+        Example:
+            atr = self.get_indicator(ATRIndicator)
+            if atr:
+                current_atr = atr.value
+        """
+        for indicator in self.indicators:
+            if isinstance(indicator, indicator_class):
+                return indicator
+        return None
 
     def get_current_underlying_price(self, date: datetime, symbol: str) -> Optional[float]:
         """

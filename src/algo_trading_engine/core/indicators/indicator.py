@@ -9,3 +9,7 @@ class Indicator(ABC):
     @abstractmethod
     def update(self, date: datetime, data: pd.DataFrame) -> float:
         pass
+
+    @abstractmethod
+    def print(self):
+        pass
