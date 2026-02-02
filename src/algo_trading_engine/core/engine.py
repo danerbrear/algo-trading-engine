@@ -219,20 +219,10 @@ class PaperTradingEngine(TradingEngine):
         # Get current date
         run_date = datetime.now()
         
-        # Check for open positions
+        # Check for open positions and display status
         open_records = store.get_open_positions(symbol=self._config.symbol)
         if open_records:
             print(f"📊 Open positions found: {len(open_records)}")
-            
-            # Create recommender for close flow
-            recommender = InteractiveStrategyRecommender(
-                self._strategy,
-                store,
-                capital_manager,
-                auto_yes=False
-            )
-            
-            # Print current status for open positions
             statuses = recommender.get_open_positions_status(run_date)
             if statuses:
                 print("\n📈 Open position status:")
@@ -244,19 +234,15 @@ class PaperTradingEngine(TradingEngine):
                         f"Entry ${s['entry_price']:.2f}  Exit ${s['exit_price']:.2f} | "
                         f"P&L {pnl_dollars} ({pnl_pct}) | Held {s['days_held']}d  DTE {s['dte']}d"
                     )
-            
-            # Recommend closing positions
-            recommender.recommend_close_positions(run_date)
-            return True
+                print()
         
-        # No open positions - run open flow
         print(f"📅 Running recommendation flow for {run_date.date()}")
         
         # Display capital status
         print(capital_manager.get_status_summary(strategy_name))
         print()
         
-        # Create recommender and run
+        # Create recommender and run (handles both opening and closing)
         recommender = InteractiveStrategyRecommender(
             self._strategy,
             store,
@@ -265,6 +251,7 @@ class PaperTradingEngine(TradingEngine):
         )
         
         try:
+            # Run full recommendation flow (both open and close recommendations)
             recommender.run(run_date, auto_yes=False)
             return True
         except Exception as e:
