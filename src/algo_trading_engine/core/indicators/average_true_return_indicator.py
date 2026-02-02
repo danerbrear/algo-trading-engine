@@ -55,18 +55,29 @@ class ATRIndicator(Indicator):
             self._value = None
             self._current_date = current_day
         
-        # Filter data up to the current date
-        data_up_to_date = data[data.index <= date]
+        # If it's a weekend and the data doesn't have that weekend date, 
+        # use the most recent trading day (Friday)
+        filter_date = date
+        if date.weekday() >= 5 and date not in data.index:  # 5 = Saturday, 6 = Sunday
+            # Calculate days back to Friday
+            days_back = date.weekday() - 4  # 4 = Friday
+            filter_date = date - pd.Timedelta(days=days_back)
+        
+        # Filter data up to the current/adjusted date
+        data_up_to_date = data[data.index <= filter_date]
         
         # If reset_daily is True and we're using intraday bars, only use today's bars
+        filter_day = None
         if self.reset_daily and self._is_intraday():
-            data_up_to_date = data_up_to_date[data_up_to_date.index.date == current_day]
+            # Use the adjusted filter date's day for intraday filtering
+            filter_day = filter_date.date() if hasattr(filter_date, 'date') else filter_date
+            data_up_to_date = data_up_to_date[data_up_to_date.index.date == filter_day]
         
         # Need at least 2 bars to calculate TR (need previous close)
         if len(data_up_to_date) < 2:
             raise ValueError(
                 f"Insufficient data to calculate True Range. Need at least 2 bars, but only have {len(data_up_to_date)} "
-                f"{'for current day ' + str(current_day) if self.reset_daily and self._is_intraday() else ''}"
+                f"{'for current day ' + str(filter_day) if self.reset_daily and self._is_intraday() else ''}"
             )
         
         # Calculate the true range for the current bar
@@ -83,7 +94,7 @@ class ATRIndicator(Indicator):
                 raise ValueError(
                     f"Insufficient data to initialize ATR. Need at least {self.period + 1} bars "
                     f"for period={self.period}, but only have {len(data_up_to_date)} bars "
-                    f"{'for current day ' + str(current_day) if self.reset_daily and self._is_intraday() else 'up to ' + str(date)}"
+                    f"{'for current day ' + str(filter_day) if self.reset_daily and self._is_intraday() else 'up to ' + str(filter_date)}"
                 )
             
             # Calculate initial ATR as simple average of first 'period' TRs
