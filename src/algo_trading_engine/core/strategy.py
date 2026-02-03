@@ -14,6 +14,7 @@ from algo_trading_engine.core.indicators.indicator import Indicator
 
 if TYPE_CHECKING:
     from algo_trading_engine.backtest.models import Position
+    from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO, OptionsChainDTO, ExpirationRangeDTO, StrikeRangeDTO
 
 class Strategy(ABC):
     """
@@ -21,7 +22,25 @@ class Strategy(ABC):
     
     All trading strategies must inherit from this class and implement
     the required abstract methods.
+    
+    Options Trading Callables:
+        Strategies that trade options can expect the following callables to be available
+        as instance attributes (set via strategy builder):
+        
+        - get_contract_list_for_date: Get list of option contracts for a specific date and symbol
+        - get_option_bar: Get bar data for a specific option contract on a specific date
+        - get_options_chain: Get the full options chain for a symbol on a specific date
+        - get_current_volumes_for_position: Get current volumes for an open position
+        - compute_exit_price: Compute the exit price for a position on a specific date
     """
+    
+    # Optional callables for options trading strategies
+    # These are set via the strategy builder and available for use in concrete strategies
+    get_contract_list_for_date: Optional[Callable[[datetime, str], List['OptionContractDTO']]] = None
+    get_option_bar: Optional[Callable[['OptionContractDTO', datetime], Optional['OptionBarDTO']]] = None
+    get_options_chain: Optional[Callable[[str, datetime, Optional['ExpirationRangeDTO'], Optional['StrikeRangeDTO']], 'OptionsChainDTO']] = None
+    get_current_volumes_for_position: Optional[Callable[['Position'], Optional[List[int]]]] = None
+    compute_exit_price: Optional[Callable[['Position', datetime], Optional[float]]] = None
 
     def __init__(self, profit_target: float = None, stop_loss: float = None, start_date_offset: int = 0):
         """

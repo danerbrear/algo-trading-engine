@@ -19,9 +19,10 @@ from algo_trading_engine.common.models import Option, OptionType
 class MockStrategy(Strategy):
     """Mock strategy for testing volume validation integration."""
     
-    def __init__(self, options_handler=None):
+    def __init__(self, options_handler=None, symbol='SPY'):
         super().__init__()
         self.options_handler = options_handler
+        self.symbol = symbol
         # Create comprehensive mock data with all required columns
         dates = pd.date_range('2024-01-01', periods=3)
         self.data = pd.DataFrame({

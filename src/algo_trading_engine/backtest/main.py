@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 from datetime import datetime, timedelta
-from typing import List
+from typing import List, Optional
 import argparse
 
 from algo_trading_engine.common.options_handler import OptionsHandler
@@ -153,8 +153,8 @@ class BacktestEngine(TradingEngine):
         # Internal: Set data on strategy
         strategy.set_data(data, retriever.treasury_rates)
         
-        # Create and return engine
-        return cls(
+        # Create engine first so we can inject engine methods into strategy
+        engine = cls(
             data=data,
             strategy=strategy,
             initial_capital=config.initial_capital,
@@ -166,6 +166,14 @@ class BacktestEngine(TradingEngine):
             quiet_mode=config.quiet_mode,
             bar_interval=config.bar_interval
         )
+        
+        # Inject engine methods into strategy
+        if hasattr(strategy, 'compute_exit_price'):
+            strategy.compute_exit_price = engine.compute_exit_price
+        if hasattr(strategy, 'get_current_volumes_for_position'):
+            strategy.get_current_volumes_for_position = engine.get_current_volumes_for_position
+        
+        return engine
 
     def run(self) -> bool:
         """
@@ -224,6 +232,8 @@ class BacktestEngine(TradingEngine):
                 else:
                     print(error_msg)
                 return False
+            
+            self.check_univeral_close_conditions(date)
 
         self._end()
 
@@ -480,6 +490,43 @@ class BacktestEngine(TradingEngine):
         print(f"   Position closed: {position.__str__()}")
         print(f"     Entry: ${position.entry_price:.2f} | Exit: ${exit_price:.2f}")
         print(f"     Return: ${position_return:+.2f} | Capital: ${self.capital:.2f}\n")
+    
+    def check_univeral_close_conditions(self, date: datetime):
+        """
+        Check if the position should be closed due to universal close conditions.
+        """
+        # Get symbol from strategy if available, otherwise default to 'SPY'
+        symbol = getattr(self.strategy, 'symbol', 'SPY')
+        current_underlying_price = self.strategy.get_current_underlying_price(date, symbol)
+        for position in self.positions:
+            # Get current volumes for this specific position
+            current_volumes = self.get_current_volumes_for_position(position, date)
+            
+            # Compute exit price for profit target and stop loss checks
+            exit_price = self.compute_exit_price(position, date)
+            
+            if self._should_close_due_to_assignment(position, date):
+                self._remove_position(date, position, 0.0, underlying_price=current_underlying_price, current_volumes=current_volumes)
+            elif self._should_close_due_to_profit_target(position, exit_price):
+                self._remove_position(date, position, exit_price if exit_price is not None else 0.0, current_volumes=current_volumes)
+            elif self._should_close_due_to_stop(position, exit_price):
+                self._remove_position(date, position, exit_price if exit_price is not None else 0.0, current_volumes=current_volumes)
+    
+    def _should_close_due_to_assignment(self, position: Position, date: datetime) -> bool:
+        try:
+            return position.get_days_to_expiration(date) < 1
+        except Exception:
+            return False
+
+    def _should_close_due_to_profit_target(self, position: Position, exit_price: Optional[float]) -> bool:
+        if exit_price is None or self.profit_target is None:
+            return False
+        return position.profit_target_hit(self.profit_target, exit_price)
+
+    def _should_close_due_to_stop(self, position: Position, exit_price: Optional[float]) -> bool:
+        if exit_price is None or self.stop_loss is None:
+            return False
+        return position.stop_loss_hit(self.stop_loss, exit_price)
     
     # TODO: Only works for credit spreads since using max risk
     def _get_position_size(self, position: Position) -> int:

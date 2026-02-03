@@ -122,6 +122,74 @@ class TradingEngine(ABC):
                     return float(self.data.loc[self.data.index <= date]['Close'].iloc[-1])
                 except (IndexError, KeyError):
                     raise ValueError(f"Could not find price data for date {date.date()}")
+    
+        
+    def get_current_volumes_for_position(self, position: 'Position', date: datetime) -> list[int]:
+        """
+        Fetch current date volume data for all options in a position using options_retriever.
+        """
+        current_volumes = []
+        
+        # Check if position has spread_options
+        if not hasattr(position, 'spread_options') or position.spread_options is None:
+            return current_volumes
+            
+        for option in position.spread_options:
+            try:
+                # Get current volume data from strategy's callable if available
+                if hasattr(self.strategy, 'get_option_bar') and callable(self.strategy.get_option_bar):
+                    bar_data = self.strategy.get_option_bar(option, date)
+                else:
+                    print(f"⚠️  No option bar data available for {option.ticker} on {date.date()}")
+                    current_volumes.append(None)
+                    continue
+                
+                if bar_data and hasattr(bar_data, 'volume') and bar_data.volume is not None:
+                    current_volumes.append(bar_data.volume)
+                    print(f"📡 Fetched volume data for {option.ticker} on {date.date()}: {bar_data.volume}")
+                else:
+                    current_volumes.append(None)
+                    print(f"⚠️  No volume data available for {option.ticker} on {date.date()}")
+                    
+            except Exception as e:
+                print(f"⚠️  Error fetching volume data for {option.symbol}: {e}")
+                current_volumes.append(None)
+        return current_volumes
+    
+    def compute_exit_price(self, position: 'Position', date: datetime) -> Optional[float]:
+        """
+        Compute exit price for a position on a specific date.
+        
+        Args:
+            position: Position to compute exit price for
+            date: Date to compute exit price on
+            
+        Returns:
+            Exit price or None if unavailable
+        """
+        try:
+            if not position.spread_options or len(position.spread_options) != 2:
+                return None
+                
+            atm_option, otm_option = position.spread_options
+            
+            # Get bar data for both options using strategy's callable if available
+            if hasattr(self.strategy, 'get_option_bar') and callable(self.strategy.get_option_bar):
+                atm_bar = self.strategy.get_option_bar(atm_option, date)
+                otm_bar = self.strategy.get_option_bar(otm_option, date)
+            else:
+                return None
+            
+            if not atm_bar or not otm_bar:
+                return None
+            
+            # Use the position's method to calculate exit price from bars
+            exit_price = position.calculate_exit_price_from_bars(atm_bar, otm_bar)
+            return exit_price
+            
+        except Exception as e:
+            print(f"⚠️  Error computing exit price: {e}")
+            return None
 
 # BacktestEngine is defined in backtest.main and implements TradingEngine
 # We'll import it here for convenience, but it's defined in backtest/main.py
@@ -350,6 +418,8 @@ class PaperTradingEngine(TradingEngine):
                 get_contract_list_for_date=get_contract_list_for_date,
                 get_option_bar=get_option_bar,
                 get_options_chain=get_options_chain,
+                get_current_volumes_for_position=get_current_volumes_for_position,
+                compute_exit_price=compute_exit_price,
                 options_handler=options_handler,  # Needed for CreditSpreadStrategy with LSTM
                 stop_loss=config.stop_loss,
                 profit_target=config.profit_target
