@@ -506,10 +506,13 @@ class BacktestEngine(TradingEngine):
             exit_price = self.compute_exit_price(position, date)
             
             if self._should_close_due_to_assignment(position, date):
+                print(f"⏰ Position {position.__str__()} expired or near expiration (days to exp: {position.get_days_to_expiration(date)})")
                 self._remove_position(date, position, 0.0, underlying_price=current_underlying_price, current_volumes=current_volumes)
             elif self._should_close_due_to_profit_target(position, exit_price):
+                print(f"💰 Profit target hit for {position.__str__()} at exit {exit_price}")
                 self._remove_position(date, position, exit_price if exit_price is not None else 0.0, current_volumes=current_volumes)
             elif self._should_close_due_to_stop(position, exit_price):
+                print(f"💰 Stop loss hit for {position.__str__()} at exit {exit_price}")
                 self._remove_position(date, position, exit_price if exit_price is not None else 0.0, current_volumes=current_volumes)
     
     def _should_close_due_to_assignment(self, position: Position, date: datetime) -> bool:
@@ -519,14 +522,14 @@ class BacktestEngine(TradingEngine):
             return False
 
     def _should_close_due_to_profit_target(self, position: Position, exit_price: Optional[float]) -> bool:
-        if exit_price is None or self.profit_target is None:
+        if exit_price is None or self.strategy.profit_target is None:
             return False
-        return position.profit_target_hit(self.profit_target, exit_price)
+        return position.profit_target_hit(self.strategy.profit_target, exit_price)
 
     def _should_close_due_to_stop(self, position: Position, exit_price: Optional[float]) -> bool:
-        if exit_price is None or self.stop_loss is None:
+        if exit_price is None or self.strategy.stop_loss is None:
             return False
-        return position.stop_loss_hit(self.stop_loss, exit_price)
+        return position.stop_loss_hit(self.strategy.stop_loss, exit_price)
     
     # TODO: Only works for credit spreads since using max risk
     def _get_position_size(self, position: Position) -> int:

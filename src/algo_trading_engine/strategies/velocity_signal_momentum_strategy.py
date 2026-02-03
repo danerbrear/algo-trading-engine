@@ -593,35 +593,11 @@ class VelocitySignalMomentumStrategy(Strategy):
             days_to_exp = position.get_days_to_expiration(date) if hasattr(position, 'get_days_to_expiration') else 0
             progress_print(f"🔍 Position {position.__str__()} - Days held: {days_held}, Days to exp: {days_to_exp}")
 
-            # Assignment/expiration close
-            if self._should_close_due_to_assignment(position, date):
-                print(f"⏰ Position {position.__str__()} expired or near expiration (days to exp: {days_to_exp})")
-                if current_underlying_price is not None:
-                    current_volumes = self.get_current_volumes_for_position(position, date)
-                    remove_position(date, position, 0.0, underlying_price=current_underlying_price, current_volumes=current_volumes)
-                else:
-                    progress_print("⚠️  Underlying price unavailable for assignment close; skipping.")
-                continue
-
             # Compute exit price for stop/holding decisions
             exit_price = self.compute_exit_price(position, date)
             if exit_price is not None:
                 exit_price = self._sanitize_exit_price(exit_price)
                 progress_print(f"💰 Calculated exit price for {position.__str__()}: {exit_price}")
-
-            # Profit target
-            if self._should_close_due_to_profit_target(position, exit_price):
-                print(f"💰 Profit target hit for {position.__str__()} at exit {exit_price}")
-                current_volumes = self.get_current_volumes_for_position(position, date)
-                remove_position(date, position, exit_price if exit_price is not None else 0.0, current_volumes=current_volumes)
-                continue
-
-            # Stop loss
-            if self._should_close_due_to_stop(position, exit_price):
-                print(f"🛑 Stop loss hit for {position.__str__()} at exit {exit_price}")
-                current_volumes = self.get_current_volumes_for_position(position, date)
-                remove_position(date, position, exit_price if exit_price is not None else 0.0, current_volumes=current_volumes)
-                continue
 
             # Holding period
             if self._should_close_due_to_holding(position, date, self.holding_period):
@@ -643,22 +619,6 @@ class VelocitySignalMomentumStrategy(Strategy):
         if value is None:
             return None
         return round(max(value, 0), 2)
-
-    def _should_close_due_to_assignment(self, position: Position, date: datetime) -> bool:
-        try:
-            return position.get_days_to_expiration(date) < 1
-        except Exception:
-            return False
-
-    def _should_close_due_to_profit_target(self, position: Position, exit_price: Optional[float]) -> bool:
-        if exit_price is None or self.profit_target is None:
-            return False
-        return position.profit_target_hit(self.profit_target, exit_price)
-
-    def _should_close_due_to_stop(self, position: Position, exit_price: Optional[float]) -> bool:
-        if exit_price is None or self.stop_loss is None:
-            return False
-        return position.stop_loss_hit(self.stop_loss, exit_price)
 
     def _should_close_due_to_holding(self, position: Position, date: datetime, holding_period: int) -> bool:
         try:
