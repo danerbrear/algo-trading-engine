@@ -28,12 +28,8 @@ class ATRIndicator(Indicator):
         self.period = period
         self.period_unit = period_unit
         self.reset_daily = reset_daily
-        self._value = None
         self._current_date = None  # Track which day we're calculating ATR for
-
-    @property
-    def value(self) -> float:
-        return self._value
+        self._current_atr = None  # Track current ATR for Wilder's smoothing calculation
 
     def update(self, date: datetime, data: pd.DataFrame) -> None:
         """
@@ -52,7 +48,7 @@ class ATRIndicator(Indicator):
         current_day = date.date()
         if self.reset_daily and self._is_intraday() and self._current_date != current_day:
             # New trading day - reset ATR
-            self._value = None
+            self._current_atr = None
             self._current_date = current_day
         
         # If it's a weekend and the data doesn't have that weekend date, 
@@ -92,7 +88,7 @@ class ATRIndicator(Indicator):
         tr = self._calculate_true_range(current_high, current_low, previous_close)
         
         # Initialize ATR if this is the first calculation
-        if self._value is None:
+        if self._current_atr is None:
             # Need 'period' bars to initialize
             if len(data_up_to_date) < self.period + 1:  # +1 because we need a previous close
                 raise ValueError(
@@ -109,14 +105,17 @@ class ATRIndicator(Indicator):
                 pc = data_up_to_date['Close'].iloc[i-1]
                 tr_i = self._calculate_true_range(h, l, pc)
                 true_ranges.append(tr_i)
-            self._value = sum(true_ranges) / len(true_ranges)
+            self._current_atr = sum(true_ranges) / len(true_ranges)
         else:
             # Use Wilder's smoothing method
             # ATR = [(Prior ATR × (n-1)) + Current TR] / n
-            self._value = ((self._value * (self.period - 1)) + tr) / self.period
+            self._current_atr = ((self._current_atr * (self.period - 1)) + tr) / self.period
+        
+        # Store the calculated value in the historical series
+        self._values[date] = self._current_atr
     
     def print(self):
-        print(f"{self.name}: {self._value}")
+        print(f"{self.name}: {self.value}")
 
     def _is_intraday(self) -> bool:
         """
