@@ -418,8 +418,8 @@ class PaperTradingEngine(TradingEngine):
                 get_contract_list_for_date=get_contract_list_for_date,
                 get_option_bar=get_option_bar,
                 get_options_chain=get_options_chain,
-                get_current_volumes_for_position=get_current_volumes_for_position,
-                compute_exit_price=compute_exit_price,
+                get_current_volumes_for_position=cls.get_current_volumes_for_position,
+                compute_exit_price=cls.compute_exit_price,
                 options_handler=options_handler,  # Needed for CreditSpreadStrategy with LSTM
                 stop_loss=config.stop_loss,
                 profit_target=config.profit_target
@@ -433,6 +433,8 @@ class PaperTradingEngine(TradingEngine):
                 strategy.get_contract_list_for_date = get_contract_list_for_date
                 strategy.get_option_bar = get_option_bar
                 strategy.get_options_chain = get_options_chain
+                strategy.get_current_volumes_for_position = cls.get_current_volumes_for_position
+                strategy.compute_exit_price = cls.compute_exit_price
             elif hasattr(strategy, 'options_handler'):
                 # Backward compatibility: if strategy still uses options_handler, inject it
                 strategy.options_handler = options_handler
