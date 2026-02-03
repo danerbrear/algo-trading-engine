@@ -815,7 +815,7 @@ class OptionsRetrieverHelper:
         return sorted(monthly_expirations)
     
     @staticmethod
-    def find_best_credit_spread(
+    def find_credit_spread_max_credit_width(
         contracts: List[OptionContractDTO],
         current_price: float,
         expiration: str,
@@ -932,4 +932,147 @@ class OptionsRetrieverHelper:
                 }
         
         return best_spread
-
+    
+    @staticmethod
+    def find_debit_spread_max_reward_risk(
+        contracts: List[OptionContractDTO],
+        current_price: float,
+        expiration: str,
+        get_bar_fn: Callable[[OptionContractDTO, datetime], Optional[OptionBarDTO]],
+        date: datetime,
+        min_spread_width: int = 4,
+        max_spread_width: int = 10,
+        max_strike_difference: float = 2.0,
+        option_type: OptionType = OptionType.CALL
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Find the best debit spread from a list of contracts that maximizes reward/risk ratio.
+        
+        Evaluates spreads from min_spread_width to max_spread_width and selects the one
+        with the highest reward/risk ratio.
+        
+        For a debit spread:
+        - Buy the ITM/ATM leg (pay premium)
+        - Sell the OTM leg (receive premium)
+        - Net debit = ITM price - OTM price (what you pay)
+        - Max profit = spread width - net debit
+        - Max loss = net debit
+        - Reward/Risk ratio = (spread width - net debit) / net debit
+        
+        Args:
+            contracts: List of option contracts to evaluate
+            current_price: Current underlying price
+            expiration: Target expiration date string (YYYY-MM-DD)
+            get_bar_fn: Function to get bar data: (contract: OptionContractDTO, date: datetime) -> Optional[OptionBarDTO]
+            date: Date to get bar data for
+            min_spread_width: Minimum spread width to evaluate (default: 4)
+            max_spread_width: Maximum spread width to evaluate (default: 10)
+            max_strike_difference: Maximum acceptable difference from target strike (default: 2.0)
+            option_type: Option type to use (PUT or CALL, default: CALL)
+            
+        Returns:
+            Dict with keys:
+                - 'itm_contract': OptionContractDTO for ITM/ATM leg (long)
+                - 'otm_contract': OptionContractDTO for OTM leg (short)
+                - 'itm_bar': OptionBarDTO for ITM/ATM leg
+                - 'otm_bar': OptionBarDTO for OTM leg
+                - 'debit': float, net debit paid
+                - 'width': float, actual spread width
+                - 'max_profit': float, maximum potential profit
+                - 'max_loss': float, maximum potential loss (the debit)
+                - 'reward_risk_ratio': float, reward/risk ratio
+            Or None if no valid spread found
+        """
+        # Filter contracts for the target expiration
+        contracts_for_expiration = [
+            c for c in contracts 
+            if str(c.expiration_date) == expiration and c.contract_type == option_type
+        ]
+        
+        if not contracts_for_expiration:
+            return None
+        
+        # Find ATM contract (we'll use this as the long leg)
+        atm_strike = round(current_price)
+        itm_contract = None
+        
+        if option_type == OptionType.PUT:
+            _, itm_contract = OptionsRetrieverHelper.find_atm_contracts(contracts_for_expiration, current_price)
+        else:  # CALL
+            itm_contract, _ = OptionsRetrieverHelper.find_atm_contracts(contracts_for_expiration, current_price)
+        
+        if not itm_contract:
+            return None
+        
+        best_spread = None
+        best_reward_risk_ratio = -1.0
+        
+        # Evaluate spreads from min to max width
+        for spread_width in range(min_spread_width, max_spread_width + 1):
+            if option_type == OptionType.PUT:
+                # For put debit spread: buy higher strike (ATM/ITM), sell lower strike (OTM)
+                target_otm_strike = atm_strike - spread_width
+            else:  # CALL
+                # For call debit spread: buy lower strike (ATM/ITM), sell higher strike (OTM)
+                target_otm_strike = atm_strike + spread_width
+            
+            # Find the contract with the closest strike to the target OTM strike
+            otm_contract = min(
+                contracts_for_expiration,
+                key=lambda c: abs(float(c.strike_price.value) - target_otm_strike)
+            )
+            
+            strike_difference = abs(float(otm_contract.strike_price.value) - target_otm_strike)
+            
+            # Skip if strike is too far from target
+            if strike_difference > max_strike_difference:
+                continue
+            
+            # Verify both legs have the same expiration (vertical spread check)
+            if str(itm_contract.expiration_date) != str(otm_contract.expiration_date):
+                continue
+            
+            # Get bar data to calculate net debit
+            itm_bar = get_bar_fn(itm_contract, date)
+            otm_bar = get_bar_fn(otm_contract, date)
+            
+            if not itm_bar or not otm_bar:
+                continue
+            
+            # Calculate net debit (buy ITM/ATM, sell OTM)
+            net_debit = float(itm_bar.close_price) - float(otm_bar.close_price)
+            
+            # Debit must be positive (we pay to enter the position)
+            if net_debit <= 0:
+                continue
+            
+            # Calculate actual spread width
+            actual_spread_width = abs(float(itm_contract.strike_price.value) - float(otm_contract.strike_price.value))
+            
+            # Calculate max profit and reward/risk ratio
+            max_profit = actual_spread_width - net_debit
+            max_loss = net_debit
+            
+            # Skip if max profit is negative or zero
+            if max_profit <= 0:
+                continue
+            
+            reward_risk_ratio = max_profit / max_loss
+            
+            # Track the best spread (highest reward/risk ratio)
+            if reward_risk_ratio > best_reward_risk_ratio:
+                best_reward_risk_ratio = reward_risk_ratio
+                best_spread = {
+                    'itm_contract': itm_contract,
+                    'otm_contract': otm_contract,
+                    'itm_bar': itm_bar,
+                    'otm_bar': otm_bar,
+                    'debit': net_debit,
+                    'width': actual_spread_width,
+                    'max_profit': max_profit,
+                    'max_loss': max_loss,
+                    'reward_risk_ratio': reward_risk_ratio
+                }
+        
+        return best_spread
+    

@@ -454,3 +454,575 @@ class TestOptionsRetrieverHelperIntegration:
         # Verify spread width (calculate manually since method doesn't exist)
         spread_width = abs(float(short_leg.strike_price.value) - float(long_leg.strike_price.value))
         assert spread_width == 5.0
+
+
+class TestCreditSpreadMaxCreditWidth:
+    """Test cases for find_credit_spread_max_credit_width."""
+    
+    @pytest.fixture
+    def sample_contracts(self):
+        """Create sample contracts with multiple strikes for spread testing."""
+        future_date = date.today() + timedelta(days=30)
+        contracts = []
+        
+        # Create PUT options with strikes from 595 to 610
+        for strike in range(595, 611):
+            contracts.append(
+                OptionContractDTO(
+                    ticker=f"O:SPY250929P00{strike}000",
+                    underlying_ticker="SPY",
+                    contract_type=OptionType.PUT,
+                    strike_price=StrikePrice(float(strike)),
+                    expiration_date=ExpirationDate(future_date),
+                    exercise_style="american",
+                    shares_per_contract=100,
+                    primary_exchange="BATO",
+                    cfi="OCASPS",
+                    additional_underlyings=None
+                )
+            )
+        
+        # Create CALL options with strikes from 595 to 610
+        for strike in range(595, 611):
+            contracts.append(
+                OptionContractDTO(
+                    ticker=f"O:SPY250929C00{strike}000",
+                    underlying_ticker="SPY",
+                    contract_type=OptionType.CALL,
+                    strike_price=StrikePrice(float(strike)),
+                    expiration_date=ExpirationDate(future_date),
+                    exercise_style="american",
+                    shares_per_contract=100,
+                    primary_exchange="BATO",
+                    cfi="OCASPS",
+                    additional_underlyings=None
+                )
+            )
+        
+        return contracts, str(future_date)
+    
+    def test_find_credit_spread_put_happy_path(self, sample_contracts):
+        """Test finding best PUT credit spread with valid data."""
+        contracts, expiration = sample_contracts
+        current_price = 600.0
+        test_date = datetime.now()
+        
+        # Mock get_bar function that returns decreasing premiums for lower strikes
+        def get_bar_fn(contract, date):
+            strike = float(contract.strike_price.value)
+            # ATM (600) has highest premium, decreases as we go OTM
+            if contract.contract_type == OptionType.PUT:
+                if strike == 600:
+                    premium = Decimal('10.00')
+                elif strike == 596:
+                    premium = Decimal('7.00')
+                elif strike == 595:
+                    premium = Decimal('6.50')
+                elif strike == 594:
+                    premium = Decimal('6.00')
+                else:
+                    premium = Decimal('5.00')
+            else:
+                return None
+            
+            return OptionBarDTO(
+                ticker=contract.ticker,
+                timestamp=date,
+                open_price=premium,
+                high_price=premium,
+                low_price=premium,
+                close_price=premium,
+                volume=100,
+                volume_weighted_avg_price=premium,
+                number_of_transactions=10,
+                adjusted=True
+            )
+        
+        result = OptionsRetrieverHelper.find_credit_spread_max_credit_width(
+            contracts, current_price, expiration, get_bar_fn, test_date,
+            min_spread_width=4, max_spread_width=6, option_type=OptionType.PUT
+        )
+        
+        assert result is not None
+        assert result['atm_contract'] is not None
+        assert result['otm_contract'] is not None
+        assert result['atm_contract'].contract_type == OptionType.PUT
+        assert result['otm_contract'].contract_type == OptionType.PUT
+        assert result['credit'] > 0
+        assert result['width'] >= 4
+        assert result['width'] <= 6
+        assert result['credit_width_ratio'] > 0
+        assert result['credit_width_ratio'] == result['credit'] / result['width']
+    
+    def test_find_credit_spread_call_happy_path(self, sample_contracts):
+        """Test finding best CALL credit spread with valid data."""
+        contracts, expiration = sample_contracts
+        current_price = 600.0
+        test_date = datetime.now()
+        
+        # Mock get_bar function for CALL spreads
+        def get_bar_fn(contract, date):
+            strike = float(contract.strike_price.value)
+            if contract.contract_type == OptionType.CALL:
+                if strike == 600:
+                    premium = Decimal('10.00')
+                elif strike == 604:
+                    premium = Decimal('7.00')
+                elif strike == 605:
+                    premium = Decimal('6.50')
+                elif strike == 606:
+                    premium = Decimal('6.00')
+                else:
+                    premium = Decimal('5.00')
+            else:
+                return None
+            
+            return OptionBarDTO(
+                ticker=contract.ticker,
+                timestamp=date,
+                open_price=premium,
+                high_price=premium,
+                low_price=premium,
+                close_price=premium,
+                volume=100,
+                volume_weighted_avg_price=premium,
+                number_of_transactions=10,
+                adjusted=True
+            )
+        
+        result = OptionsRetrieverHelper.find_credit_spread_max_credit_width(
+            contracts, current_price, expiration, get_bar_fn, test_date,
+            min_spread_width=4, max_spread_width=6, option_type=OptionType.CALL
+        )
+        
+        assert result is not None
+        assert result['atm_contract'].contract_type == OptionType.CALL
+        assert result['otm_contract'].contract_type == OptionType.CALL
+        assert result['credit'] > 0
+        assert result['width'] >= 4
+    
+    def test_find_credit_spread_no_contracts(self):
+        """Test with empty contract list."""
+        result = OptionsRetrieverHelper.find_credit_spread_max_credit_width(
+            [], 600.0, "2025-09-29", lambda c, d: None, datetime.now()
+        )
+        
+        assert result is None
+    
+    def test_find_credit_spread_no_bar_data(self, sample_contracts):
+        """Test when bar data is unavailable."""
+        contracts, expiration = sample_contracts
+        
+        # get_bar_fn always returns None
+        result = OptionsRetrieverHelper.find_credit_spread_max_credit_width(
+            contracts, 600.0, expiration, lambda c, d: None, datetime.now()
+        )
+        
+        assert result is None
+    
+    def test_find_credit_spread_negative_credit(self, sample_contracts):
+        """Test when spread would result in negative credit (invalid)."""
+        contracts, expiration = sample_contracts
+        test_date = datetime.now()
+        
+        # Mock function that returns higher premium for OTM than ATM (invalid for credit spread)
+        def get_bar_fn(contract, date):
+            strike = float(contract.strike_price.value)
+            if contract.contract_type == OptionType.PUT:
+                if strike == 600:  # ATM
+                    premium = Decimal('5.00')
+                else:  # OTM strikes have HIGHER premiums (unrealistic)
+                    premium = Decimal('10.00')
+            else:
+                return None
+            
+            return OptionBarDTO(
+                ticker=contract.ticker,
+                timestamp=date,
+                open_price=premium,
+                high_price=premium,
+                low_price=premium,
+                close_price=premium,
+                volume=100,
+                volume_weighted_avg_price=premium,
+                number_of_transactions=10,
+                adjusted=True
+            )
+        
+        result = OptionsRetrieverHelper.find_credit_spread_max_credit_width(
+            contracts, 600.0, expiration, get_bar_fn, test_date,
+            option_type=OptionType.PUT
+        )
+        
+        assert result is None
+    
+    def test_find_credit_spread_optimization(self, sample_contracts):
+        """Test that the function selects the spread with highest credit/width ratio."""
+        contracts, expiration = sample_contracts
+        current_price = 600.0
+        test_date = datetime.now()
+        
+        # Create pricing that makes width=5 the optimal choice
+        def get_bar_fn(contract, date):
+            strike = float(contract.strike_price.value)
+            if contract.contract_type == OptionType.PUT:
+                if strike == 600:
+                    premium = Decimal('10.00')
+                elif strike == 596:  # width=4, credit=10-7=3, ratio=0.75
+                    premium = Decimal('7.00')
+                elif strike == 595:  # width=5, credit=10-6=4, ratio=0.80 (best!)
+                    premium = Decimal('6.00')
+                elif strike == 594:  # width=6, credit=10-5.5=4.5, ratio=0.75
+                    premium = Decimal('5.50')
+                else:
+                    premium = Decimal('5.00')
+            else:
+                return None
+            
+            return OptionBarDTO(
+                ticker=contract.ticker,
+                timestamp=date,
+                open_price=premium,
+                high_price=premium,
+                low_price=premium,
+                close_price=premium,
+                volume=100,
+                volume_weighted_avg_price=premium,
+                number_of_transactions=10,
+                adjusted=True
+            )
+        
+        result = OptionsRetrieverHelper.find_credit_spread_max_credit_width(
+            contracts, current_price, expiration, get_bar_fn, test_date,
+            min_spread_width=4, max_spread_width=6, option_type=OptionType.PUT
+        )
+        
+        assert result is not None
+        assert result['width'] == 5.0
+        assert abs(result['credit_width_ratio'] - 0.80) < 0.01
+
+
+class TestDebitSpreadMaxRewardRisk:
+    """Test cases for find_debit_spread_max_reward_risk."""
+    
+    @pytest.fixture
+    def sample_contracts(self):
+        """Create sample contracts with multiple strikes for spread testing."""
+        future_date = date.today() + timedelta(days=30)
+        contracts = []
+        
+        # Create CALL options with strikes from 595 to 610
+        for strike in range(595, 611):
+            contracts.append(
+                OptionContractDTO(
+                    ticker=f"O:SPY250929C00{strike}000",
+                    underlying_ticker="SPY",
+                    contract_type=OptionType.CALL,
+                    strike_price=StrikePrice(float(strike)),
+                    expiration_date=ExpirationDate(future_date),
+                    exercise_style="american",
+                    shares_per_contract=100,
+                    primary_exchange="BATO",
+                    cfi="OCASPS",
+                    additional_underlyings=None
+                )
+            )
+        
+        # Create PUT options with strikes from 595 to 610
+        for strike in range(595, 611):
+            contracts.append(
+                OptionContractDTO(
+                    ticker=f"O:SPY250929P00{strike}000",
+                    underlying_ticker="SPY",
+                    contract_type=OptionType.PUT,
+                    strike_price=StrikePrice(float(strike)),
+                    expiration_date=ExpirationDate(future_date),
+                    exercise_style="american",
+                    shares_per_contract=100,
+                    primary_exchange="BATO",
+                    cfi="OCASPS",
+                    additional_underlyings=None
+                )
+            )
+        
+        return contracts, str(future_date)
+    
+    def test_find_debit_spread_call_happy_path(self, sample_contracts):
+        """Test finding best CALL debit spread with valid data."""
+        contracts, expiration = sample_contracts
+        current_price = 600.0
+        test_date = datetime.now()
+        
+        # Mock get_bar function - ITM/ATM has higher premium than OTM
+        def get_bar_fn(contract, date):
+            strike = float(contract.strike_price.value)
+            if contract.contract_type == OptionType.CALL:
+                if strike == 600:  # ATM (long)
+                    premium = Decimal('10.00')
+                elif strike == 604:  # OTM (short)
+                    premium = Decimal('7.00')
+                elif strike == 605:
+                    premium = Decimal('6.00')
+                elif strike == 606:
+                    premium = Decimal('5.00')
+                else:
+                    premium = Decimal('4.00')
+            else:
+                return None
+            
+            return OptionBarDTO(
+                ticker=contract.ticker,
+                timestamp=date,
+                open_price=premium,
+                high_price=premium,
+                low_price=premium,
+                close_price=premium,
+                volume=100,
+                volume_weighted_avg_price=premium,
+                number_of_transactions=10,
+                adjusted=True
+            )
+        
+        result = OptionsRetrieverHelper.find_debit_spread_max_reward_risk(
+            contracts, current_price, expiration, get_bar_fn, test_date,
+            min_spread_width=4, max_spread_width=6, option_type=OptionType.CALL
+        )
+        
+        assert result is not None
+        assert result['itm_contract'] is not None
+        assert result['otm_contract'] is not None
+        assert result['itm_contract'].contract_type == OptionType.CALL
+        assert result['otm_contract'].contract_type == OptionType.CALL
+        assert result['debit'] > 0
+        assert result['width'] >= 4
+        assert result['width'] <= 6
+        assert result['max_profit'] > 0
+        assert result['max_loss'] == result['debit']
+        assert result['reward_risk_ratio'] > 0
+        assert abs(result['reward_risk_ratio'] - (result['max_profit'] / result['max_loss'])) < 0.01
+    
+    def test_find_debit_spread_put_happy_path(self, sample_contracts):
+        """Test finding best PUT debit spread with valid data."""
+        contracts, expiration = sample_contracts
+        current_price = 600.0
+        test_date = datetime.now()
+        
+        # Mock get_bar function for PUT debit spreads
+        def get_bar_fn(contract, date):
+            strike = float(contract.strike_price.value)
+            if contract.contract_type == OptionType.PUT:
+                if strike == 600:  # ATM (long)
+                    premium = Decimal('10.00')
+                elif strike == 596:  # OTM (short)
+                    premium = Decimal('7.00')
+                elif strike == 595:
+                    premium = Decimal('6.00')
+                elif strike == 594:
+                    premium = Decimal('5.00')
+                else:
+                    premium = Decimal('4.00')
+            else:
+                return None
+            
+            return OptionBarDTO(
+                ticker=contract.ticker,
+                timestamp=date,
+                open_price=premium,
+                high_price=premium,
+                low_price=premium,
+                close_price=premium,
+                volume=100,
+                volume_weighted_avg_price=premium,
+                number_of_transactions=10,
+                adjusted=True
+            )
+        
+        result = OptionsRetrieverHelper.find_debit_spread_max_reward_risk(
+            contracts, current_price, expiration, get_bar_fn, test_date,
+            min_spread_width=4, max_spread_width=6, option_type=OptionType.PUT
+        )
+        
+        assert result is not None
+        assert result['itm_contract'].contract_type == OptionType.PUT
+        assert result['otm_contract'].contract_type == OptionType.PUT
+        assert result['debit'] > 0
+        assert result['max_profit'] > 0
+    
+    def test_find_debit_spread_no_contracts(self):
+        """Test with empty contract list."""
+        result = OptionsRetrieverHelper.find_debit_spread_max_reward_risk(
+            [], 600.0, "2025-09-29", lambda c, d: None, datetime.now()
+        )
+        
+        assert result is None
+    
+    def test_find_debit_spread_no_bar_data(self, sample_contracts):
+        """Test when bar data is unavailable."""
+        contracts, expiration = sample_contracts
+        
+        result = OptionsRetrieverHelper.find_debit_spread_max_reward_risk(
+            contracts, 600.0, expiration, lambda c, d: None, datetime.now()
+        )
+        
+        assert result is None
+    
+    def test_find_debit_spread_negative_debit(self, sample_contracts):
+        """Test when spread would result in negative debit (invalid)."""
+        contracts, expiration = sample_contracts
+        test_date = datetime.now()
+        
+        # Mock function that returns higher premium for OTM than ITM (invalid for debit spread)
+        def get_bar_fn(contract, date):
+            strike = float(contract.strike_price.value)
+            if contract.contract_type == OptionType.CALL:
+                # OTM has higher premium than ITM (unrealistic)
+                premium = Decimal(str(strike))
+            else:
+                return None
+            
+            return OptionBarDTO(
+                ticker=contract.ticker,
+                timestamp=date,
+                open_price=premium,
+                high_price=premium,
+                low_price=premium,
+                close_price=premium,
+                volume=100,
+                volume_weighted_avg_price=premium,
+                number_of_transactions=10,
+                adjusted=True
+            )
+        
+        result = OptionsRetrieverHelper.find_debit_spread_max_reward_risk(
+            contracts, 600.0, expiration, get_bar_fn, test_date,
+            option_type=OptionType.CALL
+        )
+        
+        assert result is None
+    
+    def test_find_debit_spread_zero_max_profit(self, sample_contracts):
+        """Test when max profit would be zero or negative."""
+        contracts, expiration = sample_contracts
+        test_date = datetime.now()
+        
+        # Create scenario where debit >= spread width (no profit potential)
+        def get_bar_fn(contract, date):
+            strike = float(contract.strike_price.value)
+            if contract.contract_type == OptionType.CALL:
+                if strike == 600:
+                    premium = Decimal('10.00')
+                else:
+                    # OTM options cost 6.00, making 4-point spread cost 4.00
+                    # This leaves 0 max profit
+                    premium = Decimal('6.00')
+            else:
+                return None
+            
+            return OptionBarDTO(
+                ticker=contract.ticker,
+                timestamp=date,
+                open_price=premium,
+                high_price=premium,
+                low_price=premium,
+                close_price=premium,
+                volume=100,
+                volume_weighted_avg_price=premium,
+                number_of_transactions=10,
+                adjusted=True
+            )
+        
+        result = OptionsRetrieverHelper.find_debit_spread_max_reward_risk(
+            contracts, 600.0, expiration, get_bar_fn, test_date,
+            min_spread_width=4, max_spread_width=4, option_type=OptionType.CALL
+        )
+        
+        assert result is None
+    
+    def test_find_debit_spread_optimization(self, sample_contracts):
+        """Test that the function selects the spread with highest reward/risk ratio."""
+        contracts, expiration = sample_contracts
+        current_price = 600.0
+        test_date = datetime.now()
+        
+        # Create pricing that makes width=5 the optimal choice
+        def get_bar_fn(contract, date):
+            strike = float(contract.strike_price.value)
+            if contract.contract_type == OptionType.CALL:
+                if strike == 600:
+                    premium = Decimal('10.00')
+                elif strike == 604:  # width=4, debit=10-7=3, profit=1, ratio=0.33
+                    premium = Decimal('7.00')
+                elif strike == 605:  # width=5, debit=10-6=4, profit=1, ratio=0.25
+                    premium = Decimal('6.00')
+                elif strike == 606:  # width=6, debit=10-5=5, profit=1, ratio=0.20
+                    premium = Decimal('5.00')
+                else:
+                    premium = Decimal('4.00')
+            else:
+                return None
+            
+            return OptionBarDTO(
+                ticker=contract.ticker,
+                timestamp=date,
+                open_price=premium,
+                high_price=premium,
+                low_price=premium,
+                close_price=premium,
+                volume=100,
+                volume_weighted_avg_price=premium,
+                number_of_transactions=10,
+                adjusted=True
+            )
+        
+        result = OptionsRetrieverHelper.find_debit_spread_max_reward_risk(
+            contracts, current_price, expiration, get_bar_fn, test_date,
+            min_spread_width=4, max_spread_width=6, option_type=OptionType.CALL
+        )
+        
+        assert result is not None
+        # Should select width=4 because it has the highest reward/risk ratio
+        assert result['width'] == 4.0
+        assert abs(result['reward_risk_ratio'] - 0.333) < 0.01
+    
+    def test_find_debit_spread_realistic_scenario(self, sample_contracts):
+        """Test with realistic option pricing scenario."""
+        contracts, expiration = sample_contracts
+        current_price = 600.0
+        test_date = datetime.now()
+        
+        # Realistic pricing with time decay
+        def get_bar_fn(contract, date):
+            strike = float(contract.strike_price.value)
+            if contract.contract_type == OptionType.CALL:
+                # Intrinsic value + time value
+                intrinsic = max(0, current_price - strike)
+                time_value = 2.0 * (1.0 / (1.0 + abs(strike - current_price) * 0.1))
+                premium = Decimal(str(intrinsic + time_value))
+            else:
+                return None
+            
+            return OptionBarDTO(
+                ticker=contract.ticker,
+                timestamp=date,
+                open_price=premium,
+                high_price=premium,
+                low_price=premium,
+                close_price=premium,
+                volume=100,
+                volume_weighted_avg_price=premium,
+                number_of_transactions=10,
+                adjusted=True
+            )
+        
+        result = OptionsRetrieverHelper.find_debit_spread_max_reward_risk(
+            contracts, current_price, expiration, get_bar_fn, test_date,
+            min_spread_width=4, max_spread_width=10, option_type=OptionType.CALL
+        )
+        
+        assert result is not None
+        assert result['debit'] > 0
+        assert result['max_profit'] > 0
+        assert result['max_loss'] > 0
+        assert result['reward_risk_ratio'] > 0
+        # Verify relationship: max_profit = width - debit
+        assert abs(result['max_profit'] - (result['width'] - result['debit'])) < 0.01
