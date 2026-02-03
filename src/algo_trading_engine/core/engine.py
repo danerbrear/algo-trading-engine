@@ -190,6 +190,46 @@ class TradingEngine(ABC):
         except Exception as e:
             print(f"⚠️  Error computing exit price: {e}")
             return None
+    
+    def check_univeral_close_conditions(self, date: datetime):
+        """
+        Check if the position should be closed due to universal close conditions.
+        """
+        # Get symbol from strategy if available, otherwise default to 'SPY'
+        symbol = getattr(self.strategy, 'symbol', 'SPY')
+        current_underlying_price = self.strategy.get_current_underlying_price(date, symbol)
+        for position in self.get_positions():
+            # Get current volumes for this specific position
+            current_volumes = self.get_current_volumes_for_position(position, date)
+            
+            # Compute exit price for profit target and stop loss checks
+            exit_price = self.compute_exit_price(position, date)
+            
+            if self._should_close_due_to_assignment(position, date):
+                print(f"⏰ Position {position.__str__()} expired or near expiration (days to exp: {position.get_days_to_expiration(date)})")
+                self._remove_position(date, position, 0.0, underlying_price=current_underlying_price, current_volumes=current_volumes)
+            elif self._should_close_due_to_profit_target(position, exit_price):
+                print(f"💰 Profit target hit for {position.__str__()} at exit {exit_price}")
+                self._remove_position(date, position, exit_price if exit_price is not None else 0.0, current_volumes=current_volumes)
+            elif self._should_close_due_to_stop(position, exit_price):
+                print(f"💰 Stop loss hit for {position.__str__()} at exit {exit_price}")
+                self._remove_position(date, position, exit_price if exit_price is not None else 0.0, current_volumes=current_volumes)
+    
+    def _should_close_due_to_assignment(self, position: 'Position', date: datetime) -> bool:
+        try:
+            return position.get_days_to_expiration(date) < 1
+        except Exception:
+            return False
+
+    def _should_close_due_to_profit_target(self, position: 'Position', exit_price: Optional[float]) -> bool:
+        if exit_price is None or self.strategy.profit_target is None:
+            return False
+        return position.profit_target_hit(self.strategy.profit_target, exit_price)
+
+    def _should_close_due_to_stop(self, position: 'Position', exit_price: Optional[float]) -> bool:
+        if exit_price is None or self.strategy.stop_loss is None:
+            return False
+        return position.stop_loss_hit(self.strategy.stop_loss, exit_price)
 
 # BacktestEngine is defined in backtest.main and implements TradingEngine
 # We'll import it here for convenience, but it's defined in backtest/main.py
@@ -321,6 +361,7 @@ class PaperTradingEngine(TradingEngine):
         try:
             # Run full recommendation flow (both open and close recommendations)
             recommender.run(run_date, auto_yes=False)
+            self.check_univeral_close_conditions(run_date)
             return True
         except Exception as e:
             print(f"❌ ERROR: Failed to run recommendation engine: {e}")
