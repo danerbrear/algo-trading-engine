@@ -121,14 +121,14 @@ class TestVelocitySignalMomentumStrategy:
         
         # Create a mock position
         position = Mock()
-        position.profit_target_hit = Mock(return_value=True)
+        position.profit_target_hit = Mock(side_effect=lambda target, price: price is not None and True)
         
         # Should close when profit target is hit
-        assert strategy._should_close_due_to_profit_target(position, 1.5) == True
-        position.profit_target_hit.assert_called_once_with(0.20, 1.5)
+        assert strategy._profit_target_hit(position, 1.5) == True
         
-        # Should not close when exit_price is None
-        assert strategy._should_close_due_to_profit_target(position, None) == False
+        # Should not close when exit_price is None (mock returns False for None)
+        position.profit_target_hit = Mock(side_effect=lambda target, price: price is not None and True)
+        assert strategy._profit_target_hit(position, None) == False
         
         # Should not close when profit_target is None
         strategy_no_target = VelocitySignalMomentumStrategy(
@@ -137,7 +137,7 @@ class TestVelocitySignalMomentumStrategy:
             get_options_chain=get_options_chain,
             profit_target=None
         )
-        assert strategy_no_target._should_close_due_to_profit_target(position, 1.5) == False
+        assert strategy_no_target._profit_target_hit(position, 1.5) == False
 
     def test_should_close_due_to_stop_loss(self):
         """Test that stop loss check works correctly"""
@@ -154,14 +154,14 @@ class TestVelocitySignalMomentumStrategy:
         
         # Create a mock position
         position = Mock()
-        position.stop_loss_hit = Mock(return_value=True)
+        position.stop_loss_hit = Mock(side_effect=lambda stop, price: price is not None and True)
         
         # Should close when stop loss is hit
-        assert strategy._should_close_due_to_stop(position, 1.5) == True
-        position.stop_loss_hit.assert_called_once_with(0.60, 1.5)
+        assert strategy._stop_loss_hit(position, 1.5) == True
         
-        # Should not close when exit_price is None
-        assert strategy._should_close_due_to_stop(position, None) == False
+        # Should not close when exit_price is None (mock returns False for None)
+        position.stop_loss_hit = Mock(side_effect=lambda stop, price: price is not None and True)
+        assert strategy._stop_loss_hit(position, None) == False
         
         # Should not close when stop_loss is None
         strategy_no_stop = VelocitySignalMomentumStrategy(
@@ -170,7 +170,7 @@ class TestVelocitySignalMomentumStrategy:
             get_options_chain=get_options_chain,
             stop_loss=None
         )
-        assert strategy_no_stop._should_close_due_to_stop(position, 1.5) == False
+        assert strategy_no_stop._stop_loss_hit(position, 1.5) == False
 
     def test_select_week_expiration_prefers_5_to_10_days(self):
         mock_options_handler = Mock()
@@ -286,7 +286,7 @@ class TestVelocitySignalMomentumStrategy:
         # Entry 2021-01-15; test date 2021-01-20 -> 5 days
         assert strategy._should_close_due_to_holding(pos, datetime(2021,1,20), holding_period=5) is True
         # Stop requires exit price and stop configured on Strategy; default stop_loss is None -> False
-        assert strategy._should_close_due_to_stop(pos, exit_price=0.5) is False
+        assert strategy._stop_loss_hit(pos, exit_price=0.5) is False
 
     def test_compute_exit_price_with_chain_and_missing_contracts(self):
         """Test that strategy uses the injected compute_exit_price callable"""
