@@ -4,7 +4,8 @@ from datetime import datetime, timezone
 from typing import Optional, List
 
 from algo_trading_engine.core.strategy import Strategy
-from algo_trading_engine.backtest.models import Position, StrategyType
+from algo_trading_engine.vo import Position, create_position
+from algo_trading_engine.backtest.models import StrategyType
 from algo_trading_engine.prediction.decision_store import (
     JsonDecisionStore,
     ProposedPositionRequestDTO,
@@ -311,7 +312,7 @@ class InteractiveStrategyRecommender:
             # short is higher strike
             strike = max(leg.strike for leg in legs)
 
-        position = Position(
+        position = create_position(
             symbol=rec.proposal.symbol,
             expiration_date=datetime.strptime(rec.proposal.expiration_date, "%Y-%m-%d"),
             strategy_type=rec.proposal.strategy_type,

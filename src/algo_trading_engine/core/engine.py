@@ -14,7 +14,7 @@ from .strategy import Strategy
 from algo_trading_engine.models.config import PaperTradingConfig
 
 if TYPE_CHECKING:
-    from algo_trading_engine.backtest.models import Position
+    from algo_trading_engine.vo import Position
     from algo_trading_engine.common.models import OptionChain
     from algo_trading_engine.models.config import BacktestConfig
 

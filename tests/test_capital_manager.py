@@ -151,7 +151,6 @@ def test_is_credit_strategy(capital_manager):
     assert capital_manager.is_credit_strategy(StrategyType.SHORT_PUT) is True
     assert capital_manager.is_credit_strategy(StrategyType.LONG_CALL) is False
     assert capital_manager.is_credit_strategy(StrategyType.LONG_PUT) is False
-    assert capital_manager.is_credit_strategy(StrategyType.LONG_STOCK) is False
 
 
 def test_check_risk_threshold_pass(capital_manager):

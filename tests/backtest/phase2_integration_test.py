@@ -8,7 +8,8 @@ from unittest.mock import Mock
 from algo_trading_engine.backtest.main import BacktestEngine
 from algo_trading_engine.backtest.config import VolumeConfig
 from algo_trading_engine.strategies.credit_spread_minimal import CreditSpreadStrategy
-from algo_trading_engine.backtest.models import Position, StrategyType
+from algo_trading_engine.vo import Position, create_position
+from algo_trading_engine.backtest.models import StrategyType
 from algo_trading_engine.common.models import Option, OptionType
 
 
@@ -64,7 +65,7 @@ class TestPhase2Integration:
         )
         
         # Create test position
-        self.position = Position(
+        self.position = create_position(
             symbol="SPY",
             expiration_date=datetime(2024, 3, 15),
             strategy_type=StrategyType.CALL_CREDIT_SPREAD,

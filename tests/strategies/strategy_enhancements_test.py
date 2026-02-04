@@ -12,7 +12,8 @@ import pytest
 from algo_trading_engine.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
 from algo_trading_engine.strategies.credit_spread_minimal import CreditSpreadStrategy
 from algo_trading_engine.common.models import Option, OptionType
-from algo_trading_engine.backtest.models import Position, StrategyType
+from algo_trading_engine.vo import Position, create_position
+from algo_trading_engine.backtest.models import StrategyType
 
 
 @pytest.fixture
@@ -287,7 +288,7 @@ class TestCreditSpreadStrategyEnhancements:
             volume=150
         )
         
-        position = Position(
+        position = create_position(
             symbol='SPY',
             expiration_date=datetime(2024, 1, 19),
             strategy_type=StrategyType.CALL_CREDIT_SPREAD,
@@ -373,7 +374,7 @@ class TestCreditSpreadStrategyEnhancements:
             volume=100
         )
         
-        position = Position(
+        position = create_position(
             symbol='SPY',
             expiration_date=datetime(2024, 1, 19),
             strategy_type=StrategyType.CALL_CREDIT_SPREAD,
@@ -408,7 +409,7 @@ class TestCreditSpreadStrategyEnhancements:
             volume=100
         )
         
-        position = Position(
+        position = create_position(
             symbol='SPY',
             expiration_date=datetime(2024, 1, 19),
             strategy_type=StrategyType.CALL_CREDIT_SPREAD,

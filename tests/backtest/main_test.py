@@ -12,7 +12,8 @@ import pandas as pd
 from algo_trading_engine.backtest.main import BacktestEngine
 from algo_trading_engine.backtest.config import VolumeConfig
 from algo_trading_engine.core.strategy import Strategy
-from algo_trading_engine.backtest.models import Position, StrategyType
+from algo_trading_engine.vo import Position, create_position
+from algo_trading_engine.backtest.models import StrategyType
 from algo_trading_engine.common.models import Option, OptionType
 
 
@@ -67,7 +68,7 @@ class MockStrategy(Strategy):
             option2.option_type = Mock()
             option2.option_type.value = "C"
             
-            position = Position(
+            position = create_position(
                 symbol="SPY",
                 expiration_date=datetime(2024, 3, 15),
                 strategy_type=StrategyType.CALL_CREDIT_SPREAD,
@@ -161,7 +162,7 @@ class TestVolumeValidationIntegration:
                     option2.option_type = Mock()
                     option2.option_type.value = "C"
                     
-                    position = Position(
+                    position = create_position(
                         symbol="SPY",
                         expiration_date=datetime(2024, 3, 15),
                         strategy_type=StrategyType.CALL_CREDIT_SPREAD,
@@ -222,7 +223,7 @@ class TestVolumeValidationIntegration:
                     option2.option_type = Mock()
                     option2.option_type.value = "C"
                     
-                    position = Position(
+                    position = create_position(
                         symbol="SPY",
                         expiration_date=datetime(2024, 3, 15),
                         strategy_type=StrategyType.CALL_CREDIT_SPREAD,
@@ -283,7 +284,7 @@ class TestVolumeValidationIntegration:
                     option2.option_type = Mock()
                     option2.option_type.value = "C"
                     
-                    position = Position(
+                    position = create_position(
                         symbol="SPY",
                         expiration_date=datetime(2024, 3, 15),
                         strategy_type=StrategyType.CALL_CREDIT_SPREAD,
@@ -358,10 +359,10 @@ class TestVolumeValidationIntegration:
                 """Mock strategy that creates positions without spread_options."""
                 if len(positions) == 0:
                     # Create a position without spread_options
-                    position = Position(
+                    position = create_position(
                         symbol="SPY",
                         expiration_date=datetime(2024, 3, 15),
-                        strategy_type=StrategyType.LONG_STOCK,
+                        strategy_type=StrategyType.LONG_CALL,
                         strike_price=500.0,
                         entry_date=date,
                         entry_price=100.0,
@@ -456,7 +457,7 @@ class TestVolumeValidationIntegration:
             ask=0.80
         )
 
-        position = Position(
+        position = create_position(
             symbol="SPY",
             expiration_date=datetime(2024, 1, 19),
             strategy_type=StrategyType.CALL_CREDIT_SPREAD,
