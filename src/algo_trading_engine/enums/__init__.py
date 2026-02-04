@@ -17,16 +17,18 @@ Example Usage:
         ...
 """
 
-# Import from backtest models
-from algo_trading_engine.backtest.models import StrategyType
+# Import from common models (single source of truth for StrategyType)
+from algo_trading_engine.common.models import StrategyType
 
 # Import from common models
 from algo_trading_engine.common.models import (
     OptionType,
     MarketStateType,
-    SignalType,
     BarTimeInterval,
 )
+
+# SignalType is LSTM-specific (3 classes only); re-export for public API
+from algo_trading_engine.ml_models.signals import SignalType
 
 # Define public API
 __all__ = [

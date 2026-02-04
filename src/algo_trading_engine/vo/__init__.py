@@ -30,17 +30,17 @@ from algo_trading_engine.common.models import (
     TreasuryRates,
 )
 
-# Lazy import Position to avoid circular dependency with dto
-# Position is imported from backtest.models which imports from dto
-def _get_position():
-    from algo_trading_engine.backtest.models import Position
-    return Position
-
-# Use __getattr__ for lazy loading to break circular imports
-def __getattr__(name: str):
-    if name == "Position":
-        return _get_position()
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+# Import Position classes from position module
+from algo_trading_engine.vo.position import (
+    Position,
+    CreditSpreadPosition,
+    DebitSpreadPosition,
+    LongCallPosition,
+    ShortCallPosition,
+    LongPutPosition,
+    ShortPutPosition,
+    create_position,
+)
 
 # Import public Value Objects
 from algo_trading_engine.vo.value_objects import (
@@ -54,8 +54,16 @@ from algo_trading_engine.vo.value_objects import (
 
 # Define public API
 __all__ = [
-    # Runtime Objects
+    # Runtime Objects - Position classes (options only)
     "Position",
+    "CreditSpreadPosition",
+    "DebitSpreadPosition",
+    "LongCallPosition",
+    "ShortCallPosition",
+    "LongPutPosition",
+    "ShortPutPosition",
+    "create_position",
+    # Runtime Objects - Other
     "Option",
     # Value Objects
     "TreasuryRates",

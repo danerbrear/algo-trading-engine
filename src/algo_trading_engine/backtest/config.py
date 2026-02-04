@@ -5,12 +5,8 @@ This module provides DTOs for volume validation configuration and statistics tra
 """
 
 from dataclasses import dataclass
-from enum import Enum
 
-
-class StrategyType(Enum):
-    CALL_CREDIT_SPREAD = "call_credit_spread"
-    PUT_CREDIT_SPREAD = "put_credit_spread"
+from algo_trading_engine.common.models import StrategyType
 
 
 @dataclass(frozen=True)

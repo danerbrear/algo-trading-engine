@@ -4,7 +4,8 @@ from datetime import datetime
 from unittest.mock import Mock
 
 from algo_trading_engine.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
-from algo_trading_engine.backtest.models import Position, StrategyType
+from algo_trading_engine.vo import Position, create_position
+from algo_trading_engine.common.models import StrategyType
 from algo_trading_engine.common.models import TreasuryRates, Option, OptionChain, OptionType
 
 
@@ -68,7 +69,7 @@ class TestVelocitySignalMomentumStrategy:
         )
         
         # Create sample position
-        self.position = Position(
+        self.position = create_position(
             symbol="SPY",
             expiration_date=datetime(2021, 2, 19),
             strategy_type=StrategyType.PUT_CREDIT_SPREAD,
@@ -333,7 +334,7 @@ class TestVelocitySignalMomentumStrategy:
         # Position with both legs - use tickers that match the bar data
         atm = Option(ticker='O:SPY240115P100', symbol='A', expiration='2024-01-15', strike=100.0, option_type=OptionType.PUT, last_price=2.0)
         otm = Option(ticker='O:SPY240115P90', symbol='B', expiration='2024-01-15', strike=90.0, option_type=OptionType.PUT, last_price=1.0)
-        pos = Position(symbol='SPY', expiration_date=datetime(2024,1,15), strategy_type=StrategyType.PUT_CREDIT_SPREAD, strike_price=100.0, entry_date=date, entry_price=1.0, spread_options=[atm, otm])
+        pos = create_position(symbol='SPY', expiration_date=datetime(2024,1,15), strategy_type=StrategyType.PUT_CREDIT_SPREAD, strike_price=100.0, entry_date=date, entry_price=1.0, spread_options=[atm, otm])
         pos.set_quantity(1)
         
         exit_price, has_error = strategy._compute_exit_price(date, pos)

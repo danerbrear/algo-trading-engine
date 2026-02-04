@@ -7,7 +7,8 @@ from decimal import Decimal
 from unittest.mock import Mock
 
 from algo_trading_engine.strategies.credit_spread_minimal import CreditSpreadStrategy
-from algo_trading_engine.backtest.models import Position, StrategyType
+from algo_trading_engine.vo import Position, create_position
+from algo_trading_engine.common.models import StrategyType
 from algo_trading_engine.common.models import Option, OptionType
 from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO
 from algo_trading_engine.vo import StrikePrice, ExpirationDate
@@ -58,7 +59,7 @@ class TestStrategyCurrentDateVolumeValidation:
         )
         
         # Create test position
-        self.position = Position(
+        self.position = create_position(
             symbol="SPY",
             expiration_date=datetime(2024, 3, 15),
             strategy_type=StrategyType.CALL_CREDIT_SPREAD,
@@ -278,7 +279,7 @@ class TestStrategyCurrentDateVolumeValidation:
     def test_get_current_volumes_for_position_empty_position(self):
         """Test handling of position with no spread options."""
         # Create position with no spread options
-        empty_position = Position(
+        empty_position = create_position(
             symbol="SPY",
             expiration_date=datetime(2024, 3, 15),
             strategy_type=StrategyType.CALL_CREDIT_SPREAD,

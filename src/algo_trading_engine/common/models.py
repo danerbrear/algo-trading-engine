@@ -1,9 +1,14 @@
+from __future__ import annotations
+
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, TYPE_CHECKING
 from dataclasses import dataclass, field
 from enum import Enum
 from decimal import Decimal
 import pandas as pd
+
+if TYPE_CHECKING:
+    from algo_trading_engine.dto import OptionBarDTO
 
 class OptionType(Enum):
     """Enum for option types."""
@@ -18,12 +23,12 @@ class MarketStateType(Enum):
     HIGH_VOLATILITY_DOWNTREND = "high_volatility_downtrend"
     HIGH_VOLATILITY_RALLY = "high_volatility_rally"
 
-class SignalType(Enum):
-    """Enum for trading signal types"""
-    HOLD = "hold"
+class StrategyType(Enum):
+    """Enum for strategy types (options only). Single source of truth."""
     CALL_CREDIT_SPREAD = "call_credit_spread"
     PUT_CREDIT_SPREAD = "put_credit_spread"
-    LONG_STOCK = "long_stock"
+    CALL_DEBIT_SPREAD = "call_debit_spread"
+    PUT_DEBIT_SPREAD = "put_debit_spread"
     LONG_CALL = "long_call"
     SHORT_CALL = "short_call"
     LONG_PUT = "long_put"
@@ -465,3 +470,5 @@ class TreasuryRates:
 
 # Value Objects (MarketState, TradingSignal, PriceRange, Volatility) 
 # have been moved to algo_trading_engine.vo.value_objects
+
+# Position classes have been moved to algo_trading_engine.vo.position

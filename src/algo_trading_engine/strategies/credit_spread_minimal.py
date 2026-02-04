@@ -5,7 +5,8 @@ from typing import Callable, Optional
 import pandas as pd
 
 from algo_trading_engine.core.strategy import Strategy
-from algo_trading_engine.backtest.models import Position, StrategyType
+from algo_trading_engine.vo import Position, create_position
+from algo_trading_engine.common.models import StrategyType
 from algo_trading_engine.common.models import Option, OptionType, TreasuryRates
 from algo_trading_engine.common.progress_tracker import progress_print
 from algo_trading_engine.dto import ExpirationRangeDTO, StrikeRangeDTO
@@ -668,7 +669,7 @@ class CreditSpreadStrategy(Strategy):
             return None
         
         # Create position using the best spread
-        position = Position(
+        position = create_position(
             symbol=self.symbol,
             expiration_date=datetime.strptime(atm_option.expiration, '%Y-%m-%d'),
             strategy_type=StrategyType.CALL_CREDIT_SPREAD,
@@ -722,7 +723,7 @@ class CreditSpreadStrategy(Strategy):
             return None
         
         # Create position using the best spread
-        position = Position(
+        position = create_position(
             symbol=self.symbol,
             expiration_date=datetime.strptime(atm_option.expiration, '%Y-%m-%d'),
             strategy_type=StrategyType.PUT_CREDIT_SPREAD,

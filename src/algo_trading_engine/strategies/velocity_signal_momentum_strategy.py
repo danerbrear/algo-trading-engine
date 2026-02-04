@@ -7,7 +7,8 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
 from algo_trading_engine.core.strategy import Strategy
-from algo_trading_engine.backtest.models import Position, StrategyType
+from algo_trading_engine.vo import Position, create_position
+from algo_trading_engine.common.models import StrategyType
 from algo_trading_engine.common.models import TreasuryRates
 from algo_trading_engine.dto import ExpirationRangeDTO, OptionsChainDTO, StrikeRangeDTO
 from algo_trading_engine.vo import StrikePrice
@@ -440,7 +441,7 @@ class VelocitySignalMomentumStrategy(Strategy):
                 otm_option = Option.from_contract_and_bar(otm_put, otm_bar)
                 
                 # Create test position
-                position = Position(
+                position = create_position(
                     symbol=self.symbol,
                     expiration_date=datetime.strptime(expiration, '%Y-%m-%d'),
                     strategy_type=StrategyType.PUT_CREDIT_SPREAD,

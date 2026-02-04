@@ -13,7 +13,7 @@ from typing import List, Optional
 
 # StrategyType is not imported here to avoid circular imports
 # With __future__.annotations, all type hints are strings, so no runtime import needed
-# Type checkers will resolve 'StrategyType' from algo_trading_engine.backtest.models
+# Type checkers will resolve 'StrategyType' from algo_trading_engine.common.models
 
 
 @dataclass(frozen=True)
