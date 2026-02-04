@@ -789,6 +789,10 @@ class TestDebitSpreadMaxRewardRisk:
         )
         
         assert result is not None
+        # Phase 3: Verify return structure matches find_debit_spread_max_reward_risk docstring
+        expected_keys = {'itm_contract', 'otm_contract', 'itm_bar', 'otm_bar', 'debit', 'width',
+                         'max_profit', 'max_loss', 'reward_risk_ratio'}
+        assert set(result.keys()) == expected_keys, f"Return keys should match API: got {set(result.keys())}"
         assert result['itm_contract'] is not None
         assert result['otm_contract'] is not None
         assert result['itm_contract'].contract_type == OptionType.CALL

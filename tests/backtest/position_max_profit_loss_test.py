@@ -63,6 +63,150 @@ class TestPositionMaxProfitLoss:
             last_price=0.50
         )
     
+    # ==================== Debit Spread Tests ====================
+
+    def test_call_debit_spread_max_profit(self, call_option_100, call_option_105):
+        """Test max profit for call debit spread. Max profit = width - debit."""
+        position = create_position(
+            symbol="SPY",
+            expiration_date=datetime(2025, 1, 1),
+            strategy_type=StrategyType.CALL_DEBIT_SPREAD,
+            strike_price=100.0,
+            entry_date=datetime(2024, 12, 1),
+            entry_price=2.50,  # Debit paid (buy ITM 100, sell OTM 105)
+            spread_options=[call_option_100, call_option_105]
+        )
+        # Width=5, debit=2.50, max profit = 5 - 2.50 = 2.50
+        assert position.max_profit() == 2.50
+
+    def test_call_debit_spread_max_loss(self, call_option_100, call_option_105):
+        """Test max loss for call debit spread. Max loss = debit paid."""
+        position = create_position(
+            symbol="SPY",
+            expiration_date=datetime(2025, 1, 1),
+            strategy_type=StrategyType.CALL_DEBIT_SPREAD,
+            strike_price=100.0,
+            entry_date=datetime(2024, 12, 1),
+            entry_price=2.50,
+            spread_options=[call_option_100, call_option_105]
+        )
+        assert position.max_loss() == 2.50
+
+    def test_call_debit_spread_get_return_dollars(self, call_option_100, call_option_105):
+        """Test get_return_dollars for call debit spread: exit value - debit."""
+        position = create_position(
+            symbol="SPY",
+            expiration_date=datetime(2025, 1, 1),
+            strategy_type=StrategyType.CALL_DEBIT_SPREAD,
+            strike_price=100.0,
+            entry_date=datetime(2024, 12, 1),
+            entry_price=2.50,
+            spread_options=[call_option_100, call_option_105]
+        )
+        position.quantity = 1
+        # Exit at 4.00 (spread worth 4), debit 2.50 -> (4 - 2.50) * 100 = 150
+        assert position.get_return_dollars(4.00) == 150.0
+
+    def test_call_debit_spread_get_return_pct(self, call_option_100, call_option_105):
+        """Test _get_return (percentage) for call debit spread."""
+        position = create_position(
+            symbol="SPY",
+            expiration_date=datetime(2025, 1, 1),
+            strategy_type=StrategyType.CALL_DEBIT_SPREAD,
+            strike_price=100.0,
+            entry_date=datetime(2024, 12, 1),
+            entry_price=2.50,
+            spread_options=[call_option_100, call_option_105]
+        )
+        position.quantity = 1
+        # Exit 4.00, entry 2.50 -> (4-2.5)/2.5 = 0.6 = 60%
+        assert position._get_return(4.00) == pytest.approx(0.6)
+
+    def test_put_debit_spread_max_profit(self, put_option_100, put_option_95):
+        """Test max profit for put debit spread."""
+        position = create_position(
+            symbol="SPY",
+            expiration_date=datetime(2025, 1, 1),
+            strategy_type=StrategyType.PUT_DEBIT_SPREAD,
+            strike_price=100.0,
+            entry_date=datetime(2024, 12, 1),
+            entry_price=2.50,
+            spread_options=[put_option_100, put_option_95]
+        )
+        # Width=5, debit=2.50, max profit = 2.50
+        assert position.max_profit() == 2.50
+
+    def test_put_debit_spread_max_loss(self, put_option_100, put_option_95):
+        """Test max loss for put debit spread."""
+        position = create_position(
+            symbol="SPY",
+            expiration_date=datetime(2025, 1, 1),
+            strategy_type=StrategyType.PUT_DEBIT_SPREAD,
+            strike_price=100.0,
+            entry_date=datetime(2024, 12, 1),
+            entry_price=2.50,
+            spread_options=[put_option_100, put_option_95]
+        )
+        assert position.max_loss() == 2.50
+
+    def test_debit_spread_risk_reward_ratio(self, call_option_100, call_option_105):
+        """Test risk/reward ratio for debit spread."""
+        position = create_position(
+            symbol="SPY",
+            expiration_date=datetime(2025, 1, 1),
+            strategy_type=StrategyType.CALL_DEBIT_SPREAD,
+            strike_price=100.0,
+            entry_date=datetime(2024, 12, 1),
+            entry_price=2.50,
+            spread_options=[call_option_100, call_option_105]
+        )
+        # Max profit = 2.50, max loss = 2.50 -> ratio = 1.0
+        assert position.risk_reward_ratio() == 1.0
+
+    def test_debit_spread_get_return_dollars_from_assignment_call(self, call_option_100, call_option_105):
+        """Test get_return_dollars_from_assignment for call debit spread at expiration."""
+        position = create_position(
+            symbol="SPY",
+            expiration_date=datetime(2025, 1, 1),
+            strategy_type=StrategyType.CALL_DEBIT_SPREAD,
+            strike_price=100.0,
+            entry_date=datetime(2024, 12, 1),
+            entry_price=2.50,
+            spread_options=[call_option_100, call_option_105]
+        )
+        position.quantity = 1
+        # Underlying at 103: long 100 call intrinsic=3, short 105 call intrinsic=0; spread value=3; P&L = 3 - 2.50 = 0.50 per share * 100
+        assert position.get_return_dollars_from_assignment(103.0) == 50.0
+
+    def test_debit_spread_get_return_dollars_from_assignment_put(self, put_option_100, put_option_95):
+        """Test get_return_dollars_from_assignment for put debit spread at expiration."""
+        position = create_position(
+            symbol="SPY",
+            expiration_date=datetime(2025, 1, 1),
+            strategy_type=StrategyType.PUT_DEBIT_SPREAD,
+            strike_price=100.0,
+            entry_date=datetime(2024, 12, 1),
+            entry_price=2.50,
+            spread_options=[put_option_100, put_option_95]
+        )
+        position.quantity = 1
+        # Underlying at 97: long 100 put intrinsic=3, short 95 put intrinsic=0; spread value=3; P&L = 3 - 2.50 = 0.50 * 100
+        assert position.get_return_dollars_from_assignment(97.0) == 50.0
+
+    def test_debit_spread_missing_options_raises_error(self):
+        """Test that debit spread without spread_options raises error for max_loss."""
+        position = create_position(
+            symbol="SPY",
+            expiration_date=datetime(2025, 1, 1),
+            strategy_type=StrategyType.CALL_DEBIT_SPREAD,
+            strike_price=100.0,
+            entry_date=datetime(2024, 12, 1),
+            entry_price=2.50,
+            spread_options=[]
+        )
+        with pytest.raises(ValueError, match="Debit spread requires 2 options in spread_options"):
+            position.max_profit()
+
     # ==================== Credit Spread Tests ====================
     
     def test_call_credit_spread_max_profit(self, call_option_100, call_option_105):

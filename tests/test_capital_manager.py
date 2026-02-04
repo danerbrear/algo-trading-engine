@@ -153,6 +153,12 @@ def test_is_credit_strategy(capital_manager):
     assert capital_manager.is_credit_strategy(StrategyType.LONG_PUT) is False
 
 
+def test_is_credit_strategy_debit_spreads(capital_manager):
+    """Test that debit spreads are not classified as credit strategies."""
+    assert capital_manager.is_credit_strategy(StrategyType.CALL_DEBIT_SPREAD) is False
+    assert capital_manager.is_credit_strategy(StrategyType.PUT_DEBIT_SPREAD) is False
+
+
 def test_check_risk_threshold_pass(capital_manager):
     """Test risk threshold check that passes."""
     is_allowed, message = capital_manager.check_risk_threshold("credit_spread", 400.0)
