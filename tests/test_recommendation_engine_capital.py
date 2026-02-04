@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 from algo_trading_engine.prediction.decision_store import JsonDecisionStore
 from algo_trading_engine.prediction.recommendation_engine import InteractiveStrategyRecommender
 from algo_trading_engine.prediction.capital_manager import CapitalManager
-from algo_trading_engine.backtest.models import StrategyType
+from algo_trading_engine.common.models import StrategyType
 from algo_trading_engine.common.models import Option
 
 
@@ -92,7 +92,7 @@ def test_recommender_with_capital_manager_risk_check_pass(
     
     # Mock on_new_date to create a position
     from algo_trading_engine.vo import create_position
-    from algo_trading_engine.backtest.models import StrategyType
+    from algo_trading_engine.common.models import StrategyType
     def mock_on_new_date(date_arg, positions, add_position, remove_position):
         if len(positions) == 0:
             position = create_position(
@@ -134,7 +134,7 @@ def test_recommender_with_capital_manager_risk_check_fail(
     
     # Width of 10, credit of 1, so max_risk = (10 - 1) * 100 = 900, which exceeds 500
     from algo_trading_engine.vo import create_position
-    from algo_trading_engine.backtest.models import StrategyType
+    from algo_trading_engine.common.models import StrategyType
     def mock_on_new_date(date_arg, positions, add_position, remove_position):
         if len(positions) == 0:
             position = create_position(
@@ -175,7 +175,7 @@ def test_recommender_calculates_max_risk_correctly(
     otm_option = _make_option('B', 495, '2025-09-06', 'put', 1.0)
     
     from algo_trading_engine.vo import create_position
-    from algo_trading_engine.backtest.models import StrategyType
+    from algo_trading_engine.common.models import StrategyType
     def mock_on_new_date(date_arg, positions, add_position, remove_position):
         if len(positions) == 0:
             position = create_position(
@@ -219,7 +219,7 @@ def test_recommender_displays_premium_info(
     otm_option = _make_option('B', 495, '2025-09-06', 'put', 1.0)
     
     from algo_trading_engine.vo import create_position
-    from algo_trading_engine.backtest.models import StrategyType
+    from algo_trading_engine.common.models import StrategyType
     def mock_on_new_date(date_arg, positions, add_position, remove_position):
         if len(positions) == 0:
             position = create_position(
@@ -270,7 +270,7 @@ def test_recommender_strategy_name_mapping(
     otm_option = _make_option('B', 495, '2025-09-06', 'put', 1.0)
     
     from algo_trading_engine.vo import create_position
-    from algo_trading_engine.backtest.models import StrategyType
+    from algo_trading_engine.common.models import StrategyType
     def mock_on_new_date(date_arg, positions, add_position, remove_position):
         if len(positions) == 0:
             position = create_position(

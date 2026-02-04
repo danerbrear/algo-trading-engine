@@ -151,13 +151,13 @@ class TestTradingSignal:
         )
         assert credit_spread_signal.is_credit_spread() is True
         
-        long_call_signal = TradingSignal(
-            signal_type=SignalType.LONG_CALL,
-            confidence=Decimal('0.75'),
-            ticker='SPY',
-            expiration_date='2024-01-19'
+        # LSTM only outputs HOLD and credit spreads; HOLD is not a credit spread
+        hold_signal = TradingSignal(
+            signal_type=SignalType.HOLD,
+            confidence=Decimal('0.5'),
+            ticker='SPY'
         )
-        assert long_call_signal.is_credit_spread() is False
+        assert hold_signal.is_credit_spread() is False
 
 
 class TestPriceRange:

@@ -13,7 +13,7 @@ from abc import ABC, abstractmethod
 
 if TYPE_CHECKING:
     from algo_trading_engine.dto import OptionBarDTO
-    from algo_trading_engine.backtest.models import StrategyType
+    from algo_trading_engine.common.models import StrategyType
 
 # Import from common models
 from algo_trading_engine.common.models import Option, OptionChain
@@ -119,7 +119,7 @@ class Position(ABC):
             Spread width (difference between strikes), or None if not a spread strategy.
         """
         # Import here to avoid circular import
-        from algo_trading_engine.backtest.models import StrategyType
+        from algo_trading_engine.common.models import StrategyType
         
         if self.strategy_type not in [StrategyType.CALL_CREDIT_SPREAD, StrategyType.PUT_CREDIT_SPREAD]:
             return None
@@ -426,7 +426,7 @@ class CreditSpreadPosition(Position):
         - At expiration, we calculate the intrinsic value of our short and long legs
         """
         # Import here to avoid circular import
-        from algo_trading_engine.backtest.models import StrategyType
+        from algo_trading_engine.common.models import StrategyType
         
         if not self.spread_options or len(self.spread_options) != 2:
             raise ValueError("Spread options are not set")
@@ -584,7 +584,7 @@ class DebitSpreadPosition(Position):
         - P&L = Intrinsic Value - Debit Paid
         """
         # Import here to avoid circular import
-        from algo_trading_engine.backtest.models import StrategyType
+        from algo_trading_engine.common.models import StrategyType
         
         if not self.spread_options or len(self.spread_options) != 2:
             raise ValueError("Spread options are not set")
@@ -863,10 +863,13 @@ def create_position(symbol: str, expiration_date: datetime, strategy_type: 'Stra
         ValueError: If strategy type is unknown
     """
     # Import here to avoid circular import
-    from algo_trading_engine.backtest.models import StrategyType
+    from algo_trading_engine.common.models import StrategyType
     
     if strategy_type in [StrategyType.CALL_CREDIT_SPREAD, StrategyType.PUT_CREDIT_SPREAD]:
         return CreditSpreadPosition(symbol, expiration_date, strategy_type, strike_price,
+                                   entry_date, entry_price, exit_price, spread_options)
+    elif strategy_type in [StrategyType.CALL_DEBIT_SPREAD, StrategyType.PUT_DEBIT_SPREAD]:
+        return DebitSpreadPosition(symbol, expiration_date, strategy_type, strike_price,
                                    entry_date, entry_price, exit_price, spread_options)
     elif strategy_type == StrategyType.LONG_CALL:
         return LongCallPosition(symbol, expiration_date, strategy_type, strike_price,

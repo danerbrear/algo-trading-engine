@@ -9,7 +9,6 @@ import pandas as pd
 
 if TYPE_CHECKING:
     from algo_trading_engine.dto import OptionBarDTO
-    from algo_trading_engine.backtest.models import StrategyType
 
 class OptionType(Enum):
     """Enum for option types."""
@@ -24,11 +23,12 @@ class MarketStateType(Enum):
     HIGH_VOLATILITY_DOWNTREND = "high_volatility_downtrend"
     HIGH_VOLATILITY_RALLY = "high_volatility_rally"
 
-class SignalType(Enum):
-    """Enum for trading signal types (options only)"""
-    HOLD = "hold"
+class StrategyType(Enum):
+    """Enum for strategy types (options only). Single source of truth."""
     CALL_CREDIT_SPREAD = "call_credit_spread"
     PUT_CREDIT_SPREAD = "put_credit_spread"
+    CALL_DEBIT_SPREAD = "call_debit_spread"
+    PUT_DEBIT_SPREAD = "put_debit_spread"
     LONG_CALL = "long_call"
     SHORT_CALL = "short_call"
     LONG_PUT = "long_put"

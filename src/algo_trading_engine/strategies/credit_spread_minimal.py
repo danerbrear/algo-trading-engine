@@ -6,7 +6,7 @@ import pandas as pd
 
 from algo_trading_engine.core.strategy import Strategy
 from algo_trading_engine.vo import Position, create_position
-from algo_trading_engine.backtest.models import StrategyType
+from algo_trading_engine.common.models import StrategyType
 from algo_trading_engine.common.models import Option, OptionType, TreasuryRates
 from algo_trading_engine.common.progress_tracker import progress_print
 from algo_trading_engine.dto import ExpirationRangeDTO, StrikeRangeDTO

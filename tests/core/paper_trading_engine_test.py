@@ -20,7 +20,7 @@ from algo_trading_engine.prediction.decision_store import (
     DecisionResponseDTO,
     generate_decision_id
 )
-from algo_trading_engine.backtest.models import StrategyType
+from algo_trading_engine.common.models import StrategyType
 from algo_trading_engine.common.models import Option
 
 

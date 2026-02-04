@@ -8,7 +8,7 @@ import matplotlib.dates as mdates
 
 from algo_trading_engine.core.strategy import Strategy
 from algo_trading_engine.vo import Position, create_position
-from algo_trading_engine.backtest.models import StrategyType
+from algo_trading_engine.common.models import StrategyType
 from algo_trading_engine.common.models import TreasuryRates
 from algo_trading_engine.dto import ExpirationRangeDTO, OptionsChainDTO, StrikeRangeDTO
 from algo_trading_engine.vo import StrikePrice

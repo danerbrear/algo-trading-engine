@@ -5,7 +5,7 @@ from typing import Optional, List
 
 from algo_trading_engine.core.strategy import Strategy
 from algo_trading_engine.vo import Position, create_position
-from algo_trading_engine.backtest.models import StrategyType
+from algo_trading_engine.common.models import StrategyType
 from algo_trading_engine.prediction.decision_store import (
     JsonDecisionStore,
     ProposedPositionRequestDTO,

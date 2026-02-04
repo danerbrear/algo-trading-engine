@@ -5,7 +5,7 @@ from unittest.mock import Mock
 
 from algo_trading_engine.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
 from algo_trading_engine.vo import Position, create_position
-from algo_trading_engine.backtest.models import StrategyType
+from algo_trading_engine.common.models import StrategyType
 from algo_trading_engine.common.models import TreasuryRates, Option, OptionChain, OptionType
 
 

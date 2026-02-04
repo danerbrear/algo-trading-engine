@@ -9,7 +9,7 @@ from algo_trading_engine.backtest.main import BacktestEngine
 from algo_trading_engine.backtest.config import VolumeConfig
 from algo_trading_engine.strategies.credit_spread_minimal import CreditSpreadStrategy
 from algo_trading_engine.vo import Position, create_position
-from algo_trading_engine.backtest.models import StrategyType
+from algo_trading_engine.common.models import StrategyType
 from algo_trading_engine.common.models import Option, OptionType
 
 

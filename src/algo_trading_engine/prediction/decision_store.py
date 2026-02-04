@@ -8,7 +8,7 @@ import json
 import os
 
 from algo_trading_engine.common.models import Option
-from algo_trading_engine.backtest.models import StrategyType
+from algo_trading_engine.common.models import StrategyType
 
 
 DecisionOutcome = Literal["accepted", "rejected"]

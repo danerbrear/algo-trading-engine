@@ -8,7 +8,7 @@ from pathlib import Path
 
 from algo_trading_engine.prediction.capital_manager import CapitalManager
 from algo_trading_engine.prediction.decision_store import JsonDecisionStore, ProposedPositionRequestDTO, DecisionResponseDTO, generate_decision_id
-from algo_trading_engine.backtest.models import StrategyType
+from algo_trading_engine.common.models import StrategyType
 from algo_trading_engine.common.models import Option
 from datetime import datetime
 

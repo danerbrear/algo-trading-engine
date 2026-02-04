@@ -13,7 +13,7 @@ from algo_trading_engine.backtest.main import BacktestEngine
 from algo_trading_engine.backtest.config import VolumeConfig
 from algo_trading_engine.core.strategy import Strategy
 from algo_trading_engine.vo import Position, create_position
-from algo_trading_engine.backtest.models import StrategyType
+from algo_trading_engine.common.models import StrategyType
 from algo_trading_engine.common.models import Option, OptionType
 
 
