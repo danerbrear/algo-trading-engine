@@ -12,7 +12,8 @@ import numpy as np
 
 from algo_trading_engine.prediction.recommend_cli import main
 from algo_trading_engine.prediction.decision_store import JsonDecisionStore
-from algo_trading_engine.backtest.models import Position, StrategyType
+from algo_trading_engine.vo import Position, create_position
+from algo_trading_engine.common.models import StrategyType
 from algo_trading_engine.common.models import Option, OptionType
 from algo_trading_engine.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
 

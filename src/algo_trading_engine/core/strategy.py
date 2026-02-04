@@ -13,7 +13,7 @@ from algo_trading_engine.common.models import TreasuryRates
 from algo_trading_engine.core.indicators.indicator import Indicator
 
 if TYPE_CHECKING:
-    from algo_trading_engine.backtest.models import Position
+    from algo_trading_engine.vo import Position
     from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO, OptionsChainDTO, ExpirationRangeDTO, StrikeRangeDTO
 
 class Strategy(ABC):

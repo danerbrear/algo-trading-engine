@@ -6,7 +6,8 @@ Tests the fix for date-only comparison in trading day calculations.
 
 import unittest
 from datetime import datetime, timezone
-from algo_trading_engine.backtest.models import Position, StrategyType
+from algo_trading_engine.vo import Position, create_position
+from algo_trading_engine.common.models import StrategyType
 from algo_trading_engine.common.models import Option, OptionType
 
 
@@ -16,7 +17,7 @@ class TestPositionDaysHeldFix(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures before each test method."""
         # Create test position
-        self.test_position = Position(
+        self.test_position = create_position(
             symbol="SPY",
             expiration_date=datetime(2025, 9, 30),
             strategy_type=StrategyType.PUT_CREDIT_SPREAD,
@@ -67,7 +68,7 @@ class TestPositionDaysHeldFix(unittest.TestCase):
     def test_days_held_with_timezone_aware_entry(self):
         """Test that timezone-aware entry dates work correctly."""
         # Create position with timezone-aware entry date
-        timezone_aware_position = Position(
+        timezone_aware_position = create_position(
             symbol="SPY",
             expiration_date=datetime(2025, 9, 30),
             strategy_type=StrategyType.PUT_CREDIT_SPREAD,
@@ -92,7 +93,7 @@ class TestPositionDaysHeldFix(unittest.TestCase):
     def test_days_held_both_timezone_aware(self):
         """Test that both timezone-aware entry and current dates work correctly."""
         # Create position with timezone-aware entry date
-        timezone_aware_position = Position(
+        timezone_aware_position = create_position(
             symbol="SPY",
             expiration_date=datetime(2025, 9, 30),
             strategy_type=StrategyType.PUT_CREDIT_SPREAD,
@@ -132,7 +133,7 @@ class TestPositionDaysHeldFix(unittest.TestCase):
         friday_entry = datetime(2025, 9, 19, 17, 6, 46)  # Friday 5:06 PM
         monday_check = datetime(2025, 9, 22, 9, 30, 0)  # Monday 9:30 AM
         
-        weekend_position = Position(
+        weekend_position = create_position(
             symbol="SPY",
             expiration_date=datetime(2025, 9, 30),
             strategy_type=StrategyType.PUT_CREDIT_SPREAD,
@@ -148,7 +149,7 @@ class TestPositionDaysHeldFix(unittest.TestCase):
     def test_days_held_no_entry_date_raises_error(self):
         """Test that missing entry date raises ValueError."""
         # Create position without entry date
-        no_entry_position = Position(
+        no_entry_position = create_position(
             symbol="SPY",
             expiration_date=datetime(2025, 9, 30),
             strategy_type=StrategyType.PUT_CREDIT_SPREAD,

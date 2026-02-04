@@ -7,7 +7,9 @@ import argparse
 from algo_trading_engine.common.options_handler import OptionsHandler
 
 from algo_trading_engine.core.strategy import Strategy
-from .models import Benchmark, Position, StrategyType
+from .models import Benchmark
+from algo_trading_engine.common.models import StrategyType
+from algo_trading_engine.vo import Position, create_position
 from algo_trading_engine.common.data_retriever import DataRetriever
 from .config import VolumeConfig, VolumeStats, OverallPerformanceStats, StrategyPerformanceStats
 from algo_trading_engine.common.progress_tracker import ProgressTracker, set_global_progress_tracker, progress_print

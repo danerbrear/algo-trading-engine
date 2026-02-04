@@ -141,22 +141,19 @@ class TradingSignal:
             raise ValueError("Expiration date required for option strategies")
     
     def is_option_strategy(self) -> bool:
-        """Check if this signal represents an option strategy"""
-        return self.signal_type in [
-            SignalType.CALL_CREDIT_SPREAD, 
-            SignalType.PUT_CREDIT_SPREAD,
-            SignalType.LONG_CALL,
-            SignalType.SHORT_CALL,
-            SignalType.LONG_PUT,
-            SignalType.SHORT_PUT
-        ]
-    
+        """Check if this signal represents an option strategy (LSTM: call/put credit spread)."""
+        return self.signal_type != SignalType.HOLD
+
     def is_credit_spread(self) -> bool:
-        """Check if this signal represents a credit spread strategy"""
-        return self.signal_type in [
+        """Check if this signal represents a credit spread strategy (LSTM has only credit spreads)."""
+        return self.signal_type in (
             SignalType.CALL_CREDIT_SPREAD,
-            SignalType.PUT_CREDIT_SPREAD
-        ]
+            SignalType.PUT_CREDIT_SPREAD,
+        )
+
+    def is_debit_spread(self) -> bool:
+        """LSTM outputs only HOLD and credit spreads; debit spread is never predicted."""
+        return False
 
 
 @dataclass(frozen=True)

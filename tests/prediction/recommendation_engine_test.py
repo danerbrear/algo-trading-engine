@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 from algo_trading_engine.prediction.decision_store import JsonDecisionStore, ProposedPositionRequestDTO, DecisionResponseDTO, generate_decision_id
 from algo_trading_engine.prediction.recommendation_engine import InteractiveStrategyRecommender
 from algo_trading_engine.prediction.capital_manager import CapitalManager
-from algo_trading_engine.backtest.models import StrategyType
+from algo_trading_engine.common.models import StrategyType
 from algo_trading_engine.common.models import Option
 
 
@@ -74,11 +74,11 @@ def test_recommender_open_accept(monkeypatch, tmp_path):
     strategy.__class__ = mock_class
     
     # Mock on_new_date to create a position via add_position callback
-    from algo_trading_engine.backtest.models import Position
+    from algo_trading_engine.vo import create_position
     def mock_on_new_date(date_arg, positions, add_position, remove_position):
         if len(positions) == 0:
             # Create a position and call add_position
-            position = Position(
+            position = create_position(
                 symbol='SPY',
                 expiration_date=datetime(2025, 9, 6),
                 strategy_type=StrategyType.PUT_CREDIT_SPREAD,
@@ -153,7 +153,7 @@ def test_recommender_close_accept(monkeypatch, tmp_path):
     strategy.__class__ = mock_class
     
     # Mock on_new_date to close the position via remove_position callback
-    from algo_trading_engine.backtest.models import Position
+    from algo_trading_engine.vo import create_position
     def mock_on_new_date(date_arg, positions, add_position, remove_position):
         if len(positions) > 0:
             # Close the position

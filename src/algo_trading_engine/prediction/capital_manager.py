@@ -11,7 +11,7 @@ from typing import Dict, Optional, Tuple
 from pathlib import Path
 import json
 
-from algo_trading_engine.backtest.models import StrategyType
+from algo_trading_engine.common.models import StrategyType
 from algo_trading_engine.prediction.decision_store import JsonDecisionStore, DecisionResponseDTO
 
 

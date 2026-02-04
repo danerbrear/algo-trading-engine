@@ -49,10 +49,12 @@ states = classifier.predict_states(data)
 
 The LSTM predicts optimal options trading strategies from three classes.
 
-#### Strategy Classes
+#### Strategy Classes (3 only – do not add without retraining)
 1. **Hold** - No options position recommended
 2. **Call Credit Spread** - Bearish/Neutral strategy
 3. **Put Credit Spread** - Bullish/Neutral strategy
+
+The `signals.py` module defines the `SignalType` enum (HOLD, CALL_CREDIT_SPREAD, PUT_CREDIT_SPREAD) and helpers to map LSTM integer labels (0, 1, 2) to/from it.
 
 #### Model Architecture
 ```

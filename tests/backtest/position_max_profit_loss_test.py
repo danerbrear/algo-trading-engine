@@ -7,7 +7,8 @@ maximum profit, maximum loss, risk/reward ratio, and expected value.
 
 import pytest
 from datetime import datetime
-from algo_trading_engine.backtest.models import Position, StrategyType
+from algo_trading_engine.vo import Position, create_position
+from algo_trading_engine.common.models import StrategyType
 from algo_trading_engine.common.models import Option, OptionType
 
 
@@ -62,11 +63,155 @@ class TestPositionMaxProfitLoss:
             last_price=0.50
         )
     
+    # ==================== Debit Spread Tests ====================
+
+    def test_call_debit_spread_max_profit(self, call_option_100, call_option_105):
+        """Test max profit for call debit spread. Max profit = width - debit."""
+        position = create_position(
+            symbol="SPY",
+            expiration_date=datetime(2025, 1, 1),
+            strategy_type=StrategyType.CALL_DEBIT_SPREAD,
+            strike_price=100.0,
+            entry_date=datetime(2024, 12, 1),
+            entry_price=2.50,  # Debit paid (buy ITM 100, sell OTM 105)
+            spread_options=[call_option_100, call_option_105]
+        )
+        # Width=5, debit=2.50, max profit = 5 - 2.50 = 2.50
+        assert position.max_profit() == 2.50
+
+    def test_call_debit_spread_max_loss(self, call_option_100, call_option_105):
+        """Test max loss for call debit spread. Max loss = debit paid."""
+        position = create_position(
+            symbol="SPY",
+            expiration_date=datetime(2025, 1, 1),
+            strategy_type=StrategyType.CALL_DEBIT_SPREAD,
+            strike_price=100.0,
+            entry_date=datetime(2024, 12, 1),
+            entry_price=2.50,
+            spread_options=[call_option_100, call_option_105]
+        )
+        assert position.max_loss() == 2.50
+
+    def test_call_debit_spread_get_return_dollars(self, call_option_100, call_option_105):
+        """Test get_return_dollars for call debit spread: exit value - debit."""
+        position = create_position(
+            symbol="SPY",
+            expiration_date=datetime(2025, 1, 1),
+            strategy_type=StrategyType.CALL_DEBIT_SPREAD,
+            strike_price=100.0,
+            entry_date=datetime(2024, 12, 1),
+            entry_price=2.50,
+            spread_options=[call_option_100, call_option_105]
+        )
+        position.quantity = 1
+        # Exit at 4.00 (spread worth 4), debit 2.50 -> (4 - 2.50) * 100 = 150
+        assert position.get_return_dollars(4.00) == 150.0
+
+    def test_call_debit_spread_get_return_pct(self, call_option_100, call_option_105):
+        """Test _get_return (percentage) for call debit spread."""
+        position = create_position(
+            symbol="SPY",
+            expiration_date=datetime(2025, 1, 1),
+            strategy_type=StrategyType.CALL_DEBIT_SPREAD,
+            strike_price=100.0,
+            entry_date=datetime(2024, 12, 1),
+            entry_price=2.50,
+            spread_options=[call_option_100, call_option_105]
+        )
+        position.quantity = 1
+        # Exit 4.00, entry 2.50 -> (4-2.5)/2.5 = 0.6 = 60%
+        assert position._get_return(4.00) == pytest.approx(0.6)
+
+    def test_put_debit_spread_max_profit(self, put_option_100, put_option_95):
+        """Test max profit for put debit spread."""
+        position = create_position(
+            symbol="SPY",
+            expiration_date=datetime(2025, 1, 1),
+            strategy_type=StrategyType.PUT_DEBIT_SPREAD,
+            strike_price=100.0,
+            entry_date=datetime(2024, 12, 1),
+            entry_price=2.50,
+            spread_options=[put_option_100, put_option_95]
+        )
+        # Width=5, debit=2.50, max profit = 2.50
+        assert position.max_profit() == 2.50
+
+    def test_put_debit_spread_max_loss(self, put_option_100, put_option_95):
+        """Test max loss for put debit spread."""
+        position = create_position(
+            symbol="SPY",
+            expiration_date=datetime(2025, 1, 1),
+            strategy_type=StrategyType.PUT_DEBIT_SPREAD,
+            strike_price=100.0,
+            entry_date=datetime(2024, 12, 1),
+            entry_price=2.50,
+            spread_options=[put_option_100, put_option_95]
+        )
+        assert position.max_loss() == 2.50
+
+    def test_debit_spread_risk_reward_ratio(self, call_option_100, call_option_105):
+        """Test risk/reward ratio for debit spread."""
+        position = create_position(
+            symbol="SPY",
+            expiration_date=datetime(2025, 1, 1),
+            strategy_type=StrategyType.CALL_DEBIT_SPREAD,
+            strike_price=100.0,
+            entry_date=datetime(2024, 12, 1),
+            entry_price=2.50,
+            spread_options=[call_option_100, call_option_105]
+        )
+        # Max profit = 2.50, max loss = 2.50 -> ratio = 1.0
+        assert position.risk_reward_ratio() == 1.0
+
+    def test_debit_spread_get_return_dollars_from_assignment_call(self, call_option_100, call_option_105):
+        """Test get_return_dollars_from_assignment for call debit spread at expiration."""
+        position = create_position(
+            symbol="SPY",
+            expiration_date=datetime(2025, 1, 1),
+            strategy_type=StrategyType.CALL_DEBIT_SPREAD,
+            strike_price=100.0,
+            entry_date=datetime(2024, 12, 1),
+            entry_price=2.50,
+            spread_options=[call_option_100, call_option_105]
+        )
+        position.quantity = 1
+        # Underlying at 103: long 100 call intrinsic=3, short 105 call intrinsic=0; spread value=3; P&L = 3 - 2.50 = 0.50 per share * 100
+        assert position.get_return_dollars_from_assignment(103.0) == 50.0
+
+    def test_debit_spread_get_return_dollars_from_assignment_put(self, put_option_100, put_option_95):
+        """Test get_return_dollars_from_assignment for put debit spread at expiration."""
+        position = create_position(
+            symbol="SPY",
+            expiration_date=datetime(2025, 1, 1),
+            strategy_type=StrategyType.PUT_DEBIT_SPREAD,
+            strike_price=100.0,
+            entry_date=datetime(2024, 12, 1),
+            entry_price=2.50,
+            spread_options=[put_option_100, put_option_95]
+        )
+        position.quantity = 1
+        # Underlying at 97: long 100 put intrinsic=3, short 95 put intrinsic=0; spread value=3; P&L = 3 - 2.50 = 0.50 * 100
+        assert position.get_return_dollars_from_assignment(97.0) == 50.0
+
+    def test_debit_spread_missing_options_raises_error(self):
+        """Test that debit spread without spread_options raises error for max_loss."""
+        position = create_position(
+            symbol="SPY",
+            expiration_date=datetime(2025, 1, 1),
+            strategy_type=StrategyType.CALL_DEBIT_SPREAD,
+            strike_price=100.0,
+            entry_date=datetime(2024, 12, 1),
+            entry_price=2.50,
+            spread_options=[]
+        )
+        with pytest.raises(ValueError, match="Debit spread requires 2 options in spread_options"):
+            position.max_profit()
+
     # ==================== Credit Spread Tests ====================
     
     def test_call_credit_spread_max_profit(self, call_option_100, call_option_105):
         """Test max profit for call credit spread."""
-        position = Position(
+        position = create_position(
             symbol="SPY",
             expiration_date=datetime(2025, 1, 1),
             strategy_type=StrategyType.CALL_CREDIT_SPREAD,
@@ -80,7 +225,7 @@ class TestPositionMaxProfitLoss:
     
     def test_call_credit_spread_max_loss(self, call_option_100, call_option_105):
         """Test max loss for call credit spread."""
-        position = Position(
+        position = create_position(
             symbol="SPY",
             expiration_date=datetime(2025, 1, 1),
             strategy_type=StrategyType.CALL_CREDIT_SPREAD,
@@ -95,7 +240,7 @@ class TestPositionMaxProfitLoss:
     
     def test_call_credit_spread_risk_reward(self, call_option_100, call_option_105):
         """Test risk/reward ratio for call credit spread."""
-        position = Position(
+        position = create_position(
             symbol="SPY",
             expiration_date=datetime(2025, 1, 1),
             strategy_type=StrategyType.CALL_CREDIT_SPREAD,
@@ -110,7 +255,7 @@ class TestPositionMaxProfitLoss:
     
     def test_put_credit_spread_max_profit(self, put_option_100, put_option_95):
         """Test max profit for put credit spread."""
-        position = Position(
+        position = create_position(
             symbol="SPY",
             expiration_date=datetime(2025, 1, 1),
             strategy_type=StrategyType.PUT_CREDIT_SPREAD,
@@ -124,7 +269,7 @@ class TestPositionMaxProfitLoss:
     
     def test_put_credit_spread_max_loss(self, put_option_100, put_option_95):
         """Test max loss for put credit spread."""
-        position = Position(
+        position = create_position(
             symbol="SPY",
             expiration_date=datetime(2025, 1, 1),
             strategy_type=StrategyType.PUT_CREDIT_SPREAD,
@@ -149,7 +294,7 @@ class TestPositionMaxProfitLoss:
             last_price=0.50
         )
         
-        position_5pt = Position(
+        position_5pt = create_position(
             symbol="SPY",
             expiration_date=datetime(2025, 1, 1),
             strategy_type=StrategyType.CALL_CREDIT_SPREAD,
@@ -169,7 +314,7 @@ class TestPositionMaxProfitLoss:
             last_price=0.20
         )
         
-        position_10pt = Position(
+        position_10pt = create_position(
             symbol="SPY",
             expiration_date=datetime(2025, 1, 1),
             strategy_type=StrategyType.CALL_CREDIT_SPREAD,
@@ -186,7 +331,7 @@ class TestPositionMaxProfitLoss:
     
     def test_long_call_max_profit(self, call_option_100):
         """Test max profit for long call (unlimited)."""
-        position = Position(
+        position = create_position(
             symbol="SPY",
             expiration_date=datetime(2025, 1, 1),
             strategy_type=StrategyType.LONG_CALL,
@@ -200,7 +345,7 @@ class TestPositionMaxProfitLoss:
     
     def test_long_call_max_loss(self, call_option_100):
         """Test max loss for long call."""
-        position = Position(
+        position = create_position(
             symbol="SPY",
             expiration_date=datetime(2025, 1, 1),
             strategy_type=StrategyType.LONG_CALL,
@@ -214,7 +359,7 @@ class TestPositionMaxProfitLoss:
     
     def test_long_call_risk_reward_none(self, call_option_100):
         """Test risk/reward ratio for long call (None due to unlimited profit)."""
-        position = Position(
+        position = create_position(
             symbol="SPY",
             expiration_date=datetime(2025, 1, 1),
             strategy_type=StrategyType.LONG_CALL,
@@ -228,7 +373,7 @@ class TestPositionMaxProfitLoss:
     
     def test_long_put_max_profit(self, put_option_100):
         """Test max profit for long put."""
-        position = Position(
+        position = create_position(
             symbol="SPY",
             expiration_date=datetime(2025, 1, 1),
             strategy_type=StrategyType.LONG_PUT,
@@ -243,7 +388,7 @@ class TestPositionMaxProfitLoss:
     
     def test_long_put_max_loss(self, put_option_100):
         """Test max loss for long put."""
-        position = Position(
+        position = create_position(
             symbol="SPY",
             expiration_date=datetime(2025, 1, 1),
             strategy_type=StrategyType.LONG_PUT,
@@ -259,7 +404,7 @@ class TestPositionMaxProfitLoss:
     
     def test_short_call_max_profit(self, call_option_100):
         """Test max profit for short call."""
-        position = Position(
+        position = create_position(
             symbol="SPY",
             expiration_date=datetime(2025, 1, 1),
             strategy_type=StrategyType.SHORT_CALL,
@@ -273,7 +418,7 @@ class TestPositionMaxProfitLoss:
     
     def test_short_call_max_loss(self, call_option_100):
         """Test max loss for short call (unlimited)."""
-        position = Position(
+        position = create_position(
             symbol="SPY",
             expiration_date=datetime(2025, 1, 1),
             strategy_type=StrategyType.SHORT_CALL,
@@ -287,7 +432,7 @@ class TestPositionMaxProfitLoss:
     
     def test_short_call_risk_reward_none(self, call_option_100):
         """Test risk/reward ratio for short call (None due to unlimited loss)."""
-        position = Position(
+        position = create_position(
             symbol="SPY",
             expiration_date=datetime(2025, 1, 1),
             strategy_type=StrategyType.SHORT_CALL,
@@ -301,7 +446,7 @@ class TestPositionMaxProfitLoss:
     
     def test_short_put_max_profit(self, put_option_100):
         """Test max profit for short put."""
-        position = Position(
+        position = create_position(
             symbol="SPY",
             expiration_date=datetime(2025, 1, 1),
             strategy_type=StrategyType.SHORT_PUT,
@@ -315,7 +460,7 @@ class TestPositionMaxProfitLoss:
     
     def test_short_put_max_loss(self, put_option_100):
         """Test max loss for short put."""
-        position = Position(
+        position = create_position(
             symbol="SPY",
             expiration_date=datetime(2025, 1, 1),
             strategy_type=StrategyType.SHORT_PUT,
@@ -332,7 +477,7 @@ class TestPositionMaxProfitLoss:
     
     def test_expected_value_positive(self, call_option_100, call_option_105):
         """Test expected value calculation with positive EV."""
-        position = Position(
+        position = create_position(
             symbol="SPY",
             expiration_date=datetime(2025, 1, 1),
             strategy_type=StrategyType.CALL_CREDIT_SPREAD,
@@ -348,7 +493,7 @@ class TestPositionMaxProfitLoss:
     
     def test_expected_value_negative(self, call_option_100, call_option_105):
         """Test expected value calculation with negative EV."""
-        position = Position(
+        position = create_position(
             symbol="SPY",
             expiration_date=datetime(2025, 1, 1),
             strategy_type=StrategyType.CALL_CREDIT_SPREAD,
@@ -364,7 +509,7 @@ class TestPositionMaxProfitLoss:
     
     def test_expected_value_invalid_probability(self, call_option_100, call_option_105):
         """Test expected value with invalid probability raises error."""
-        position = Position(
+        position = create_position(
             symbol="SPY",
             expiration_date=datetime(2025, 1, 1),
             strategy_type=StrategyType.CALL_CREDIT_SPREAD,
@@ -379,7 +524,7 @@ class TestPositionMaxProfitLoss:
     
     def test_expected_value_unlimited_profit(self, call_option_100):
         """Test expected value returns None for unlimited profit."""
-        position = Position(
+        position = create_position(
             symbol="SPY",
             expiration_date=datetime(2025, 1, 1),
             strategy_type=StrategyType.LONG_CALL,
@@ -395,7 +540,7 @@ class TestPositionMaxProfitLoss:
     
     def test_spread_width_credit_spread(self, call_option_100, call_option_105):
         """Test spread width calculation for credit spread."""
-        position = Position(
+        position = create_position(
             symbol="SPY",
             expiration_date=datetime(2025, 1, 1),
             strategy_type=StrategyType.CALL_CREDIT_SPREAD,
@@ -409,7 +554,7 @@ class TestPositionMaxProfitLoss:
     
     def test_spread_width_single_leg(self, call_option_100):
         """Test spread width returns None for single leg strategies."""
-        position = Position(
+        position = create_position(
             symbol="SPY",
             expiration_date=datetime(2025, 1, 1),
             strategy_type=StrategyType.LONG_CALL,
@@ -425,7 +570,7 @@ class TestPositionMaxProfitLoss:
     
     def test_credit_spread_missing_options_raises_error(self):
         """Test that credit spread without spread_options raises error."""
-        position = Position(
+        position = create_position(
             symbol="SPY",
             expiration_date=datetime(2025, 1, 1),
             strategy_type=StrategyType.CALL_CREDIT_SPREAD,
@@ -440,7 +585,7 @@ class TestPositionMaxProfitLoss:
     
     def test_long_put_missing_options_raises_error(self):
         """Test that long put without spread_options raises error."""
-        position = Position(
+        position = create_position(
             symbol="SPY",
             expiration_date=datetime(2025, 1, 1),
             strategy_type=StrategyType.LONG_PUT,

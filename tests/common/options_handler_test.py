@@ -18,7 +18,7 @@ from algo_trading_engine.common.options_cache_migration import OptionsCacheMigra
 from algo_trading_engine.common.options_helpers import OptionsRetrieverHelper
 from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO
 from algo_trading_engine.vo import StrikePrice, ExpirationDate
-from algo_trading_engine.common.models import OptionType, SignalType
+from algo_trading_engine.common.models import OptionType, StrategyType
 
 
 class TestOptionsCacheManager:

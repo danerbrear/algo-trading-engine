@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 from algo_trading_engine.prediction.decision_store import JsonDecisionStore
 from algo_trading_engine.prediction.recommendation_engine import InteractiveStrategyRecommender
 from algo_trading_engine.prediction.capital_manager import CapitalManager
-from algo_trading_engine.backtest.models import StrategyType
+from algo_trading_engine.common.models import StrategyType
 from algo_trading_engine.common.models import Option
 
 
@@ -91,10 +91,11 @@ def test_recommender_with_capital_manager_risk_check_pass(
     otm_option = _make_option('B', 495, '2025-09-06', 'put', 1.0)
     
     # Mock on_new_date to create a position
-    from algo_trading_engine.backtest.models import Position
+    from algo_trading_engine.vo import create_position
+    from algo_trading_engine.common.models import StrategyType
     def mock_on_new_date(date_arg, positions, add_position, remove_position):
         if len(positions) == 0:
-            position = Position(
+            position = create_position(
                 symbol='SPY',
                 expiration_date=datetime(2025, 9, 6),
                 strategy_type=StrategyType.PUT_CREDIT_SPREAD,
@@ -132,10 +133,11 @@ def test_recommender_with_capital_manager_risk_check_fail(
     otm_option = _make_option('B', 490, '2025-09-06', 'put', 1.0)
     
     # Width of 10, credit of 1, so max_risk = (10 - 1) * 100 = 900, which exceeds 500
-    from algo_trading_engine.backtest.models import Position
+    from algo_trading_engine.vo import create_position
+    from algo_trading_engine.common.models import StrategyType
     def mock_on_new_date(date_arg, positions, add_position, remove_position):
         if len(positions) == 0:
-            position = Position(
+            position = create_position(
                 symbol='SPY',
                 expiration_date=datetime(2025, 9, 6),
                 strategy_type=StrategyType.PUT_CREDIT_SPREAD,
@@ -172,10 +174,11 @@ def test_recommender_calculates_max_risk_correctly(
     atm_option = _make_option('A', 500, '2025-09-06', 'put', 2.0)
     otm_option = _make_option('B', 495, '2025-09-06', 'put', 1.0)
     
-    from algo_trading_engine.backtest.models import Position
+    from algo_trading_engine.vo import create_position
+    from algo_trading_engine.common.models import StrategyType
     def mock_on_new_date(date_arg, positions, add_position, remove_position):
         if len(positions) == 0:
-            position = Position(
+            position = create_position(
                 symbol='SPY',
                 expiration_date=datetime(2025, 9, 6),
                 strategy_type=StrategyType.PUT_CREDIT_SPREAD,
@@ -215,10 +218,11 @@ def test_recommender_displays_premium_info(
     atm_option = _make_option('A', 500, '2025-09-06', 'put', 2.0)
     otm_option = _make_option('B', 495, '2025-09-06', 'put', 1.0)
     
-    from algo_trading_engine.backtest.models import Position
+    from algo_trading_engine.vo import create_position
+    from algo_trading_engine.common.models import StrategyType
     def mock_on_new_date(date_arg, positions, add_position, remove_position):
         if len(positions) == 0:
-            position = Position(
+            position = create_position(
                 symbol='SPY',
                 expiration_date=datetime(2025, 9, 6),
                 strategy_type=StrategyType.PUT_CREDIT_SPREAD,
@@ -265,10 +269,11 @@ def test_recommender_strategy_name_mapping(
     atm_option = _make_option('A', 500, '2025-09-06', 'put', 2.0)
     otm_option = _make_option('B', 495, '2025-09-06', 'put', 1.0)
     
-    from algo_trading_engine.backtest.models import Position
+    from algo_trading_engine.vo import create_position
+    from algo_trading_engine.common.models import StrategyType
     def mock_on_new_date(date_arg, positions, add_position, remove_position):
         if len(positions) == 0:
-            position = Position(
+            position = create_position(
                 symbol='SPY',
                 expiration_date=datetime(2025, 9, 6),
                 strategy_type=StrategyType.PUT_CREDIT_SPREAD,
