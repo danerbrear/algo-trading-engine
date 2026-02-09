@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 from datetime import datetime, timedelta
-from typing import List
+from typing import List, Optional
 import argparse
 
 from algo_trading_engine.common.options_handler import OptionsHandler
@@ -155,8 +155,8 @@ class BacktestEngine(TradingEngine):
         # Internal: Set data on strategy
         strategy.set_data(data, retriever.treasury_rates)
         
-        # Create and return engine
-        return cls(
+        # Create engine first so we can inject engine methods into strategy
+        engine = cls(
             data=data,
             strategy=strategy,
             initial_capital=config.initial_capital,
@@ -168,6 +168,14 @@ class BacktestEngine(TradingEngine):
             quiet_mode=config.quiet_mode,
             bar_interval=config.bar_interval
         )
+        
+        # Inject engine methods into strategy
+        if hasattr(strategy, 'compute_exit_price'):
+            strategy.compute_exit_price = engine.compute_exit_price
+        if hasattr(strategy, 'get_current_volumes_for_position'):
+            strategy.get_current_volumes_for_position = engine.get_current_volumes_for_position
+        
+        return engine
 
     def run(self) -> bool:
         """
@@ -226,6 +234,8 @@ class BacktestEngine(TradingEngine):
                 else:
                     print(error_msg)
                 return False
+            
+            self.check_univeral_close_conditions(date)
 
         self._end()
 

@@ -13,7 +13,7 @@ from typing import List, Dict
 from algo_trading_engine.common.options_helpers import OptionsRetrieverHelper
 from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO
 from algo_trading_engine.vo import StrikePrice, ExpirationDate
-from algo_trading_engine.common.models import OptionType
+from algo_trading_engine.common.models import OptionType, StrategyType
 
 
 class TestOptionsRetrieverHelperPhase4:
@@ -789,21 +789,17 @@ class TestDebitSpreadMaxRewardRisk:
         )
         
         assert result is not None
-        # Phase 3: Verify return structure matches find_debit_spread_max_reward_risk docstring
-        expected_keys = {'itm_contract', 'otm_contract', 'itm_bar', 'otm_bar', 'debit', 'width',
-                         'max_profit', 'max_loss', 'reward_risk_ratio'}
-        assert set(result.keys()) == expected_keys, f"Return keys should match API: got {set(result.keys())}"
-        assert result['itm_contract'] is not None
-        assert result['otm_contract'] is not None
-        assert result['itm_contract'].contract_type == OptionType.CALL
-        assert result['otm_contract'].contract_type == OptionType.CALL
-        assert result['debit'] > 0
-        assert result['width'] >= 4
-        assert result['width'] <= 6
-        assert result['max_profit'] > 0
-        assert result['max_loss'] == result['debit']
-        assert result['reward_risk_ratio'] > 0
-        assert abs(result['reward_risk_ratio'] - (result['max_profit'] / result['max_loss'])) < 0.01
+        # Returns a DebitSpreadPosition with spread_options from Option.from_contract_and_bar
+        assert result.strategy_type == StrategyType.CALL_DEBIT_SPREAD
+        assert result.entry_price > 0
+        assert len(result.spread_options) == 2
+        assert result.spread_options[0].symbol == "SPY"
+        assert result.spread_options[1].symbol == "SPY"
+        assert result.max_profit() > 0
+        assert result.max_loss() == result.entry_price
+        assert result.risk_reward_ratio() > 0
+        assert result.spread_width() >= 4
+        assert result.spread_width() <= 6
     
     def test_find_debit_spread_put_happy_path(self, sample_contracts):
         """Test finding best PUT debit spread with valid data."""
@@ -847,11 +843,11 @@ class TestDebitSpreadMaxRewardRisk:
         )
         
         assert result is not None
-        assert result['itm_contract'].contract_type == OptionType.PUT
-        assert result['otm_contract'].contract_type == OptionType.PUT
-        assert result['debit'] > 0
-        assert result['max_profit'] > 0
-    
+        assert result.strategy_type == StrategyType.PUT_DEBIT_SPREAD
+        assert len(result.spread_options) == 2
+        assert result.entry_price > 0
+        assert result.max_profit() > 0
+
     def test_find_debit_spread_no_contracts(self):
         """Test with empty contract list."""
         result = OptionsRetrieverHelper.find_debit_spread_max_reward_risk(
@@ -984,10 +980,11 @@ class TestDebitSpreadMaxRewardRisk:
         )
         
         assert result is not None
-        # Should select width=4 because it has the highest reward/risk ratio
-        assert result['width'] == 4.0
-        assert abs(result['reward_risk_ratio'] - 0.333) < 0.01
-    
+        # Should select width=4 because it has the best (lowest) risk/reward ratio
+        # width=4: debit=3, max_profit=1, max_loss=3 -> risk_reward_ratio = max_loss/max_profit = 3.0
+        assert result.spread_width() == 4.0
+        assert abs(result.risk_reward_ratio() - 3.0) < 0.01
+
     def test_find_debit_spread_realistic_scenario(self, sample_contracts):
         """Test with realistic option pricing scenario."""
         contracts, expiration = sample_contracts
@@ -1024,9 +1021,9 @@ class TestDebitSpreadMaxRewardRisk:
         )
         
         assert result is not None
-        assert result['debit'] > 0
-        assert result['max_profit'] > 0
-        assert result['max_loss'] > 0
-        assert result['reward_risk_ratio'] > 0
+        assert result.entry_price > 0
+        assert result.max_profit() > 0
+        assert result.max_loss() > 0
+        assert result.risk_reward_ratio() > 0
         # Verify relationship: max_profit = width - debit
-        assert abs(result['max_profit'] - (result['width'] - result['debit'])) < 0.01
+        assert abs(result.max_profit() - (result.spread_width() - result.entry_price)) < 0.01

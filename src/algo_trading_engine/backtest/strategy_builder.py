@@ -27,7 +27,7 @@ class StrategyBuilder(ABC):
         pass
 
     @abstractmethod
-    def set_options_callables(self, get_contract_list_for_date: Callable, get_option_bar: Callable, get_options_chain: Callable, options_handler=None):
+    def set_options_callables(self, get_contract_list_for_date: Callable, get_option_bar: Callable, get_options_chain: Callable, get_current_volumes_for_position: Callable, options_handler=None):
         """Set the options callables (methods from OptionsHandler as callables)"""
         pass
     
@@ -80,11 +80,17 @@ class CreditSpreadStrategyBuilder(StrategyBuilder):
         self._symbol = symbol
         return self
     
-    def set_options_callables(self, get_contract_list_for_date: Callable, get_option_bar: Callable, get_options_chain: Callable, options_handler=None):
-        """Set the options callables (methods from OptionsHandler as callables)"""
+    def set_options_callables(self, get_contract_list_for_date: Callable, get_option_bar: Callable, get_options_chain: Callable, get_current_volumes_for_position: Callable = None, compute_exit_price: Callable = None, options_handler=None):
+        """Set the options callables (methods from OptionsHandler as callables)
+        
+        Note: get_current_volumes_for_position and compute_exit_price are injected from the engine after creation,
+        so they are optional here for backward compatibility.
+        """
         self._get_contract_list_for_date = get_contract_list_for_date
         self._get_option_bar = get_option_bar
         self._get_options_chain = get_options_chain
+        self._get_current_volumes_for_position = get_current_volumes_for_position
+        self._compute_exit_price = compute_exit_price
         self._options_handler = options_handler
         return self
     
@@ -158,11 +164,17 @@ class VelocitySignalMomentumStrategyBuilder(StrategyBuilder):
         self._symbol = symbol
         return self
     
-    def set_options_callables(self, get_contract_list_for_date: Callable, get_option_bar: Callable, get_options_chain: Callable, options_handler=None):
-        """Set the options callables (methods from OptionsHandler as callables)"""
+    def set_options_callables(self, get_contract_list_for_date: Callable, get_option_bar: Callable, get_options_chain: Callable, get_current_volumes_for_position: Callable = None, compute_exit_price: Callable = None, options_handler=None):
+        """Set the options callables (methods from OptionsHandler as callables)
+        
+        Note: get_current_volumes_for_position and compute_exit_price are injected from the engine after creation,
+        so they are optional here for backward compatibility.
+        """
         self._get_contract_list_for_date = get_contract_list_for_date
         self._get_option_bar = get_option_bar
         self._get_options_chain = get_options_chain
+        self._get_current_volumes_for_position = get_current_volumes_for_position
+        self._compute_exit_price = compute_exit_price
         return self
     
     def set_start_date_offset(self, offset: int):
@@ -263,6 +275,8 @@ def create_strategy_from_args(strategy_name: str, **kwargs):
             - get_contract_list_for_date: Callable for getting contract list
             - get_option_bar: Callable for getting option bar
             - get_options_chain: Callable for getting options chain
+            - get_current_volumes_for_position: Callable for getting current volumes for position
+            - compute_exit_price: Callable for computing exit price for position
             - options_handler: Optional, OptionsHandler instance (needed for CreditSpreadStrategy with LSTM)
             - start_date_offset: Optional, defaults to 60
             - stop_loss: Optional
@@ -280,7 +294,9 @@ def create_strategy_from_args(strategy_name: str, **kwargs):
                 kwargs['get_contract_list_for_date'],
                 kwargs['get_option_bar'],
                 kwargs['get_options_chain'],
-                kwargs.get('options_handler') # Backward compatibility: if strategy still uses options_handler, inject it
+                kwargs.get('get_current_volumes_for_position'),  # Optional: injected from engine
+                kwargs.get('compute_exit_price'),  # Optional: injected from engine
+                kwargs.get('options_handler')  # Backward compatibility: if strategy still uses options_handler, inject it
             )
         if 'symbol' in kwargs:
             builder.set_symbol(kwargs['symbol'])

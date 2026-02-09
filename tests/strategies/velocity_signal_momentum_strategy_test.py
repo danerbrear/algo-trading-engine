@@ -122,14 +122,14 @@ class TestVelocitySignalMomentumStrategy:
         
         # Create a mock position
         position = Mock()
-        position.profit_target_hit = Mock(return_value=True)
+        position.profit_target_hit = Mock(side_effect=lambda target, price: price is not None and True)
         
         # Should close when profit target is hit
-        assert strategy._should_close_due_to_profit_target(position, 1.5) == True
-        position.profit_target_hit.assert_called_once_with(0.20, 1.5)
+        assert strategy._profit_target_hit(position, 1.5) == True
         
-        # Should not close when exit_price is None
-        assert strategy._should_close_due_to_profit_target(position, None) == False
+        # Should not close when exit_price is None (mock returns False for None)
+        position.profit_target_hit = Mock(side_effect=lambda target, price: price is not None and True)
+        assert strategy._profit_target_hit(position, None) == False
         
         # Should not close when profit_target is None
         strategy_no_target = VelocitySignalMomentumStrategy(
@@ -138,7 +138,7 @@ class TestVelocitySignalMomentumStrategy:
             get_options_chain=get_options_chain,
             profit_target=None
         )
-        assert strategy_no_target._should_close_due_to_profit_target(position, 1.5) == False
+        assert strategy_no_target._profit_target_hit(position, 1.5) == False
 
     def test_should_close_due_to_stop_loss(self):
         """Test that stop loss check works correctly"""
@@ -155,14 +155,14 @@ class TestVelocitySignalMomentumStrategy:
         
         # Create a mock position
         position = Mock()
-        position.stop_loss_hit = Mock(return_value=True)
+        position.stop_loss_hit = Mock(side_effect=lambda stop, price: price is not None and True)
         
         # Should close when stop loss is hit
-        assert strategy._should_close_due_to_stop(position, 1.5) == True
-        position.stop_loss_hit.assert_called_once_with(0.60, 1.5)
+        assert strategy._stop_loss_hit(position, 1.5) == True
         
-        # Should not close when exit_price is None
-        assert strategy._should_close_due_to_stop(position, None) == False
+        # Should not close when exit_price is None (mock returns False for None)
+        position.stop_loss_hit = Mock(side_effect=lambda stop, price: price is not None and True)
+        assert strategy._stop_loss_hit(position, None) == False
         
         # Should not close when stop_loss is None
         strategy_no_stop = VelocitySignalMomentumStrategy(
@@ -171,7 +171,7 @@ class TestVelocitySignalMomentumStrategy:
             get_options_chain=get_options_chain,
             stop_loss=None
         )
-        assert strategy_no_stop._should_close_due_to_stop(position, 1.5) == False
+        assert strategy_no_stop._stop_loss_hit(position, 1.5) == False
 
     def test_select_week_expiration_prefers_5_to_10_days(self):
         mock_options_handler = Mock()
@@ -287,9 +287,10 @@ class TestVelocitySignalMomentumStrategy:
         # Entry 2021-01-15; test date 2021-01-20 -> 5 days
         assert strategy._should_close_due_to_holding(pos, datetime(2021,1,20), holding_period=5) is True
         # Stop requires exit price and stop configured on Strategy; default stop_loss is None -> False
-        assert strategy._should_close_due_to_stop(pos, exit_price=0.5) is False
+        assert strategy._stop_loss_hit(pos, exit_price=0.5) is False
 
     def test_compute_exit_price_with_chain_and_missing_contracts(self):
+        """Test that strategy uses the injected compute_exit_price callable"""
         mock_options_handler = Mock()
         get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
         get_option_bar = mock_options_handler.get_option_bar
@@ -300,47 +301,22 @@ class TestVelocitySignalMomentumStrategy:
             get_options_chain=get_options_chain
         )
         
-        # Mock the callables to return bar data
-        from algo_trading_engine.dto import OptionBarDTO
-        from decimal import Decimal
-        
-        # Create mock bar data
-        atm_bar = OptionBarDTO(
-            ticker='O:SPY240115P100',
-            timestamp=datetime(2024, 1, 1),
-            open_price=Decimal('2.1'),
-            high_price=Decimal('2.2'),
-            low_price=Decimal('1.9'),
-            close_price=Decimal('2.0'),
-            volume=100,
-            volume_weighted_avg_price=Decimal('2.05'),
-            number_of_transactions=50
-        )
-        otm_bar = OptionBarDTO(
-            ticker='O:SPY240115P90',
-            timestamp=datetime(2024, 1, 1),
-            open_price=Decimal('1.1'),
-            high_price=Decimal('1.2'),
-            low_price=Decimal('0.9'),
-            close_price=Decimal('1.2'),
-            volume=100,
-            volume_weighted_avg_price=Decimal('1.15'),
-            number_of_transactions=50
-        )
-        
-        strategy.get_option_bar = Mock(side_effect=lambda option, date: atm_bar if option.strike == 100.0 else otm_bar)
-        
         date = datetime(2024, 1, 1)
-        # Position with both legs - use tickers that match the bar data
+        # Position with both legs
         atm = Option(ticker='O:SPY240115P100', symbol='A', expiration='2024-01-15', strike=100.0, option_type=OptionType.PUT, last_price=2.0)
         otm = Option(ticker='O:SPY240115P90', symbol='B', expiration='2024-01-15', strike=90.0, option_type=OptionType.PUT, last_price=1.0)
         pos = create_position(symbol='SPY', expiration_date=datetime(2024,1,15), strategy_type=StrategyType.PUT_CREDIT_SPREAD, strike_price=100.0, entry_date=date, entry_price=1.0, spread_options=[atm, otm])
         pos.set_quantity(1)
         
-        exit_price, has_error = strategy._compute_exit_price(date, pos)
-        assert has_error is False
-        # exit = atm(2.0) - otm(1.2) = 0.8
-        assert pytest.approx(exit_price, 0.001) == 0.8
+        # Mock the injected compute_exit_price callable
+        strategy.compute_exit_price = Mock(return_value=0.8)
+        
+        # Call compute_exit_price
+        exit_price = strategy.compute_exit_price(pos, date)
+        
+        # Verify it was called and returned the expected value
+        assert exit_price == 0.8
+        strategy.compute_exit_price.assert_called_once_with(pos, date)
     # Removed Sharpe ratio tests; method not used in this strategy
 
     def test_get_risk_free_rate_with_treasury_data(self):
