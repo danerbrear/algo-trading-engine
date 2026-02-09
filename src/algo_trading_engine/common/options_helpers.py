@@ -9,8 +9,9 @@ from typing import Callable, List, Tuple, Optional, Dict, Any
 from decimal import Decimal
 from datetime import date, datetime
 
-from algo_trading_engine.dto import OptionContractDTO, StrikeRangeDTO, ExpirationRangeDTO, OptionBarDTO, OptionsChainDTO
-from .models import OptionType
+from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO
+from algo_trading_engine.vo import Option, create_position
+from .models import OptionType, StrategyType
 
 
 class OptionsRetrieverHelper:
@@ -944,44 +945,34 @@ class OptionsRetrieverHelper:
         max_spread_width: int = 10,
         max_strike_difference: float = 2.0,
         option_type: OptionType = OptionType.CALL
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Optional['Position']:
         """
         Find the best debit spread from a list of contracts that maximizes reward/risk ratio.
-        
+
         Evaluates spreads from min_spread_width to max_spread_width and selects the one
-        with the highest reward/risk ratio.
-        
+        with the highest reward/risk ratio. Returns a Position (DebitSpreadPosition) with
+        spread_options built from Option.from_contract_and_bar(contract, bar) for each leg.
+
         For a debit spread:
         - Buy the ITM/ATM leg (pay premium)
         - Sell the OTM leg (receive premium)
         - Net debit = ITM price - OTM price (what you pay)
         - Max profit = spread width - net debit
         - Max loss = net debit
-        - Reward/Risk ratio = (spread width - net debit) / net debit
-        
+
         Args:
             contracts: List of option contracts to evaluate
             current_price: Current underlying price
             expiration: Target expiration date string (YYYY-MM-DD)
             get_bar_fn: Function to get bar data: (contract: OptionContractDTO, date: datetime) -> Optional[OptionBarDTO]
-            date: Date to get bar data for
+            date: Date to get bar data for (used as entry_date for the position)
             min_spread_width: Minimum spread width to evaluate (default: 4)
             max_spread_width: Maximum spread width to evaluate (default: 10)
             max_strike_difference: Maximum acceptable difference from target strike (default: 2.0)
             option_type: Option type to use (PUT or CALL, default: CALL)
-            
+
         Returns:
-            Dict with keys:
-                - 'itm_contract': OptionContractDTO for ITM/ATM leg (long)
-                - 'otm_contract': OptionContractDTO for OTM leg (short)
-                - 'itm_bar': OptionBarDTO for ITM/ATM leg
-                - 'otm_bar': OptionBarDTO for OTM leg
-                - 'debit': float, net debit paid
-                - 'width': float, actual spread width
-                - 'max_profit': float, maximum potential profit
-                - 'max_loss': float, maximum potential loss (the debit)
-                - 'reward_risk_ratio': float, reward/risk ratio
-            Or None if no valid spread found
+            A DebitSpreadPosition with spread_options populated from the chosen legs, or None if no valid spread found.
         """
         # Filter contracts for the target expiration
         contracts_for_expiration = [
@@ -1068,11 +1059,33 @@ class OptionsRetrieverHelper:
                     'itm_bar': itm_bar,
                     'otm_bar': otm_bar,
                     'debit': net_debit,
-                    'width': actual_spread_width,
-                    'max_profit': max_profit,
-                    'max_loss': max_loss,
-                    'reward_risk_ratio': reward_risk_ratio
+                    'option_type': option_type,
                 }
         
-        return best_spread
+        if best_spread is None:
+            return None
+
+        itm_contract = best_spread['itm_contract']
+        otm_contract = best_spread['otm_contract']
+        itm_bar = best_spread['itm_bar']
+        otm_bar = best_spread['otm_bar']
+        net_debit = best_spread['debit']
+
+        itm_option = Option.from_contract_and_bar(itm_contract, itm_bar)
+        otm_option = Option.from_contract_and_bar(otm_contract, otm_bar)
+        symbol = itm_contract.underlying_ticker
+        strike_price = float(itm_contract.strike_price.value)
+        expiration_date = datetime.strptime(expiration, "%Y-%m-%d")
+        strategy_type = (
+            StrategyType.CALL_DEBIT_SPREAD if option_type == OptionType.CALL else StrategyType.PUT_DEBIT_SPREAD
+        )
+        return create_position(
+            symbol=symbol,
+            expiration_date=expiration_date,
+            strategy_type=strategy_type,
+            strike_price=strike_price,
+            entry_date=date,
+            entry_price=net_debit,
+            spread_options=[itm_option, otm_option],
+        )
     

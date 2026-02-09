@@ -121,7 +121,10 @@ class Position(ABC):
         # Import here to avoid circular import
         from algo_trading_engine.common.models import StrategyType
         
-        if self.strategy_type not in [StrategyType.CALL_CREDIT_SPREAD, StrategyType.PUT_CREDIT_SPREAD]:
+        if self.strategy_type not in [
+            StrategyType.CALL_CREDIT_SPREAD, StrategyType.PUT_CREDIT_SPREAD,
+            StrategyType.CALL_DEBIT_SPREAD, StrategyType.PUT_DEBIT_SPREAD,
+        ]:
             return None
         
         if not self.spread_options or len(self.spread_options) != 2:
