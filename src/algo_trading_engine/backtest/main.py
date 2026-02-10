@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import Callable, List, Optional
 import argparse
 
 from algo_trading_engine.common.options_handler import OptionsHandler
@@ -367,8 +367,7 @@ class BacktestEngine(TradingEngine):
         """
         return self.positions.copy()
 
-
-    def _add_position(self, position: Position):
+    def _add_position(self, position: Position, on_add_callback: Callable[[], None] = None):
         """
         Add a position to the positions. Rejects positions with insufficient volume and determines position size based
         on capital provided to the backtest.
@@ -406,7 +405,10 @@ class BacktestEngine(TradingEngine):
         self.positions.append(position)
         self.total_positions += 1
 
-    def _remove_position(self, date: datetime, position: Position, exit_price: float, underlying_price: float = None, current_volumes: list[int] = None):
+        if on_add_callback:
+            on_add_callback()
+
+    def _remove_position(self, date: datetime, position: Position, exit_price: float, underlying_price: float = None, current_volumes: list[int] = None, on_remove_callback: Callable[[], None] = None):
         """
         Remove a position from the positions list with enhanced current date volume validation.
         
@@ -492,6 +494,9 @@ class BacktestEngine(TradingEngine):
         print(f"   Position closed: {position.__str__()}")
         print(f"     Entry: ${position.entry_price:.2f} | Exit: ${exit_price:.2f}")
         print(f"     Return: ${position_return:+.2f} | Capital: ${self.capital:.2f}\n")
+
+        if on_remove_callback:
+            on_remove_callback()
     
     # TODO: Only works for credit spreads since using max risk
     def _get_position_size(self, position: Position) -> int:

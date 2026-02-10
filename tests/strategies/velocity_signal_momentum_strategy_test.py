@@ -1222,10 +1222,11 @@ class TestVelocityStrategyMethodSignatures:
         # Verify that the engine's _add_position and _remove_position match what strategy expects
         import inspect
         
-        # Check _add_position signature
+        # Check _add_position signature (position, optional on_add_callback)
         add_pos_sig = inspect.signature(engine._add_position)
-        assert len(add_pos_sig.parameters) == 1, \
-            f"_add_position should take 1 parameter (Position), got: {list(add_pos_sig.parameters.keys())}"
+        add_pos_params = list(add_pos_sig.parameters.keys())
+        assert add_pos_params == ['position', 'on_add_callback'], \
+            f"_add_position should take (position, on_add_callback), got: {add_pos_params}"
         
         # Check _remove_position signature
         remove_pos_sig = inspect.signature(engine._remove_position)
