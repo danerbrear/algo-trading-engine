@@ -63,8 +63,8 @@ class Strategy(ABC):
         self,
         date: datetime,
         positions: tuple['Position', ...],
-        add_position: Callable[['Position', Optional[Callable[[], None]]], None],
-        remove_position: Callable[[datetime, 'Position', float, Optional[float], Optional[list[int]], Optional[Callable[[], None]]], None]
+        add_position: Callable[['Position'], None],
+        remove_position: Callable[[datetime, 'Position', float, Optional[float], Optional[list[int]]], None]
     ) -> None:
         """
         Called for each trading day to execute strategy logic.
@@ -72,9 +72,9 @@ class Strategy(ABC):
         Args:
             date: Current trading date
             positions: Tuple of currently open positions
-            add_position: Callback to add a new position. Signature: (position, on_add_callback=None)
-            remove_position: Callback to remove/close a position.
-                Signature: (date, position, exit_price, underlying_price=None, current_volumes=None, on_remove_callback=None)
+            add_position: Callback function to add a new position
+            remove_position: Callback function to remove/close a position
+                Signature: (date, position, exit_price, underlying_price=None, current_volumes=None)
         """
         if not self._update_indicators(date):
             print(f"Error updating indicators for date {date}, skipping execution")
@@ -84,7 +84,7 @@ class Strategy(ABC):
     def on_end(
         self,
         positions: tuple['Position', ...],
-        remove_position: Callable[[datetime, 'Position', float, Optional[float], Optional[list[int]], Optional[Callable[[], None]]], None],
+        remove_position: Callable[[datetime, 'Position', float, Optional[float], Optional[list[int]]], None],
         date: datetime
     ) -> None:
         """
@@ -92,8 +92,7 @@ class Strategy(ABC):
         
         Args:
             positions: Tuple of currently open positions
-            remove_position: Callback to remove/close a position.
-                Signature: (date, position, exit_price, underlying_price=None, current_volumes=None, on_remove_callback=None)
+            remove_position: Callback function to remove/close a position
             date: Final date
         """
         pass
