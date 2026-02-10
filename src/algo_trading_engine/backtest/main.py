@@ -406,6 +406,8 @@ class BacktestEngine(TradingEngine):
         self.positions.append(position)
         self.total_positions += 1
 
+        self.strategy.on_add_position_success(position)
+
     def _remove_position(self, date: datetime, position: Position, exit_price: float, underlying_price: float = None, current_volumes: list[int] = None):
         """
         Remove a position from the positions list with enhanced current date volume validation.
@@ -492,6 +494,8 @@ class BacktestEngine(TradingEngine):
         print(f"   Position closed: {position.__str__()}")
         print(f"     Entry: ${position.entry_price:.2f} | Exit: ${exit_price:.2f}")
         print(f"     Return: ${position_return:+.2f} | Capital: ${self.capital:.2f}\n")
+
+        self.strategy.on_remove_position_success(date, position, exit_price, underlying_price, current_volumes)
     
     # TODO: Only works for credit spreads since using max risk
     def _get_position_size(self, position: Position) -> int:

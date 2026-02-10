@@ -149,6 +149,28 @@ class Strategy(ABC):
                 return indicator
         return None
 
+    def on_remove_position_success(self, date: datetime, position: 'Position', exit_price: float, underlying_price: float = None, current_volumes: list[int] = None):
+        """
+        Callback function for when a position is removed successfully via the TradingEngine.
+
+        Args:
+            date: Date at which the position is being closed
+            position: Position to remove
+            exit_price: Price at which the position is being closed
+            underlying_price: Price of the underlying at the time of exit
+            current_volumes: List of current volume data for each option in position.spread_options
+        """
+        pass
+
+    def on_add_position_success(self, position: 'Position'):
+        """
+        Callback function for when a position is added successfully via the TradingEngine.
+
+        Args:
+            position: Position to add
+        """
+        pass
+
     def get_current_underlying_price(self, date: datetime, symbol: str) -> Optional[float]:
         """
         Get the current underlying price for a given date and symbol. Assigned via the TradingEngine.

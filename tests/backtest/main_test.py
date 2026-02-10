@@ -495,5 +495,177 @@ class TestVolumeValidationIntegration:
         assert volume_summary['options_checked'] >= 1, "Should have checked at least one option"
 
 
+class TestUniversalCloseCallback:
+    """Tests that strategy callback on_remove_position_success is invoked when a universal close condition is met."""
+
+    def test_on_remove_position_success_called_when_universal_close_expiration(self):
+        """When a position expires (days to expiration < 1), the engine closes it and invokes the strategy callback."""
+        callback_invocations = []
+
+        first_date = datetime(2024, 1, 1)
+
+        class MockStrategyWithCallback(MockStrategy):
+            def on_new_date(self, date, positions, add_position, remove_position):
+                if len(positions) == 0 and date == first_date:
+                    option1 = Mock(spec=Option)
+                    option1.symbol = "SPY240101C00500000"
+                    option1.ticker = "O:SPY240101C00500000"
+                    option1.volume = 15
+                    option1.strike = 500.0
+                    option1.expiration = "2024-01-01"
+                    option1.last_price = 1.50
+                    option1.option_type = Mock()
+                    option1.option_type.value = "C"
+
+                    option2 = Mock(spec=Option)
+                    option2.symbol = "SPY240101C00510000"
+                    option2.ticker = "O:SPY240101C00510000"
+                    option2.volume = 20
+                    option2.strike = 510.0
+                    option2.expiration = "2024-01-01"
+                    option2.last_price = 0.75
+                    option2.option_type = Mock()
+                    option2.option_type.value = "C"
+
+                    position = create_position(
+                        symbol="SPY",
+                        expiration_date=datetime(2024, 1, 1),
+                        strategy_type=StrategyType.CALL_CREDIT_SPREAD,
+                        strike_price=500.0,
+                        entry_date=date,
+                        entry_price=2.50,
+                        spread_options=[option1, option2]
+                    )
+                    add_position(position)
+
+            def on_remove_position_success(self, date, position, exit_price, underlying_price=None, current_volumes=None):
+                callback_invocations.append({
+                    "date": date,
+                    "position": position,
+                    "exit_price": exit_price,
+                    "underlying_price": underlying_price,
+                    "current_volumes": current_volumes,
+                })
+                super().on_remove_position_success(date, position, exit_price, underlying_price, current_volumes)
+
+        strategy = MockStrategyWithCallback()
+        data = strategy.data
+        engine = BacktestEngine(
+            data=data,
+            strategy=strategy,
+            initial_capital=10000,
+            start_date=datetime(2024, 1, 1),
+            end_date=datetime(2024, 1, 3),
+            volume_config=VolumeConfig(min_volume=10, enable_volume_validation=False),
+        )
+        success = engine.run()
+
+        assert success is True
+        assert len(callback_invocations) == 1, "on_remove_position_success should be called exactly once (universal close due to expiration)"
+        inv = callback_invocations[0]
+        assert inv["date"] == datetime(2024, 1, 1)
+        assert inv["exit_price"] == 0.0
+        assert inv["underlying_price"] == 100.0
+        assert inv["position"] is not None
+
+    def test_on_remove_position_success_called_when_universal_close_profit_target(self):
+        """When profit target is hit, the engine closes the position and invokes the strategy callback."""
+        from decimal import Decimal
+        from algo_trading_engine.dto import OptionBarDTO
+
+        callback_invocations = []
+
+        def make_bar(ticker: str, close_price: float, expiration_date: datetime) -> OptionBarDTO:
+            return OptionBarDTO(
+                ticker=ticker,
+                timestamp=expiration_date,
+                open_price=Decimal(str(close_price)),
+                high_price=Decimal(str(close_price)),
+                low_price=Decimal(str(close_price)),
+                close_price=Decimal(str(close_price)),
+                volume=15,
+                volume_weighted_avg_price=Decimal(str(close_price)),
+                number_of_transactions=100,
+                adjusted=True,
+            )
+
+        first_date = datetime(2024, 1, 1)
+
+        class MockStrategyProfitTarget(MockStrategy):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.profit_target = 0.5
+                self._option1 = None
+                self._option2 = None
+
+            def on_new_date(self, date, positions, add_position, remove_position):
+                if len(positions) == 0 and date == first_date:
+                    self._option1 = Mock(spec=Option)
+                    self._option1.symbol = "SPY240315C00500000"
+                    self._option1.ticker = "O:SPY240315C00500000"
+                    self._option1.volume = 15
+                    self._option1.strike = 500.0
+                    self._option1.expiration = "2024-03-15"
+                    self._option1.last_price = 1.50
+                    self._option1.option_type = Mock()
+                    self._option1.option_type.value = "C"
+
+                    self._option2 = Mock(spec=Option)
+                    self._option2.symbol = "SPY240315C00510000"
+                    self._option2.ticker = "O:SPY240315C00510000"
+                    self._option2.volume = 20
+                    self._option2.strike = 510.0
+                    self._option2.expiration = "2024-03-15"
+                    self._option2.last_price = 0.75
+                    self._option2.option_type = Mock()
+                    self._option2.option_type.value = "C"
+
+                    position = create_position(
+                        symbol="SPY",
+                        expiration_date=datetime(2024, 3, 15),
+                        strategy_type=StrategyType.CALL_CREDIT_SPREAD,
+                        strike_price=500.0,
+                        entry_date=date,
+                        entry_price=2.50,
+                        spread_options=[self._option1, self._option2]
+                    )
+                    add_position(position)
+
+            def get_option_bar(self, option, date):
+                if option is self._option1:
+                    return make_bar(option.ticker, 1.0, date)
+                if option is self._option2:
+                    return make_bar(option.ticker, 0.25, date)
+                return None
+
+            def on_remove_position_success(self, date, position, exit_price, underlying_price=None, current_volumes=None):
+                callback_invocations.append({
+                    "date": date,
+                    "position": position,
+                    "exit_price": exit_price,
+                    "underlying_price": underlying_price,
+                    "current_volumes": current_volumes,
+                })
+                super().on_remove_position_success(date, position, exit_price, underlying_price, current_volumes)
+
+        strategy = MockStrategyProfitTarget()
+        data = strategy.data
+        engine = BacktestEngine(
+            data=data,
+            strategy=strategy,
+            initial_capital=10000,
+            start_date=datetime(2024, 1, 1),
+            end_date=datetime(2024, 1, 3),
+            volume_config=VolumeConfig(min_volume=10, enable_volume_validation=False),
+        )
+        success = engine.run()
+
+        assert success is True
+        assert len(callback_invocations) == 1, "on_remove_position_success should be called exactly once (universal close due to profit target)"
+        inv = callback_invocations[0]
+        assert inv["exit_price"] == 0.75
+        assert inv["position"] is not None
+
+
 if __name__ == "__main__":
     pytest.main([__file__]) 
