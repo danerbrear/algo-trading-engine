@@ -13,6 +13,30 @@ This document outlines the plan for improving logging across the BacktestEngine 
 
 ---
 
+## Implementation Checklist
+
+Use this checklist to track what is done vs. remaining. Based on current working directory state.
+
+### Completed
+
+- [x] **Singleton logger (Step 1)** — `common/logger.py` added with Loguru; `configure_logger(run_type, log_dir, log_level)`, `get_logger()`, `log_and_echo()`. `log_level` is `"debug"`, `"info"`, or `"warn"`. File sink only; `logger.remove(None)` on configure so repeated calls work (e.g. tests).
+- [x] **BacktestEngine (Step 2)** — At start of `run()`, `configure_logger("backtest", log_level=...)` (derived from `quiet_mode`). All `print()` in `backtest/main.py` replaced with `get_logger().info(...)` / `.warning(...)` / `.error(...)`. CLI `main()` keeps `print()` for startup and result lines only.
+- [x] **Logger unit tests** — `tests/common/logger_test.py` covers configure_logger, get_logger, log_and_echo, log levels, invalid log_level, overwrite on reconfigure.
+
+### Remaining
+
+- [ ] **ProgressTracker (Section 4)** — `progress_print()` still writes to stdout (via `tracker.write()` or `print()`). Should be changed to log to file only (`get_logger().debug()` / `.info()` by force). `ProgressTracker.close()` still uses `print()` for "Processing completed" / timing; should use `get_logger().info(...)`.
+- [ ] **Engine core (Step 3)** — `core/engine.py` still uses `print()` in `get_current_volumes_for_position`, `compute_exit_price`, `check_univeral_close_conditions`, and PaperTradingEngine `run()`. Replace with `get_logger().info(...)` / `.warning(...)` / `.error(...)`.
+- [ ] **TradingEngine / recommendation (Step 4)** — At start of recommendation run, call `configure_logger("trade", log_level=...)`. Use `get_logger()` for all non–recommendation logs. Use `log_and_echo()` only for recommendation-relevant lines (open positions, run date, capital summary, final outcome).
+- [ ] **Strategies and options_handler** — After ProgressTracker is updated, strategies and `options_handler` that use `progress_print` will automatically log to file. No change required unless adding new log sites. (`logs/` is already in `.gitignore`.)
+
+### Validation (Section 7)
+
+- [ ] Run backtest; confirm `logs/backtest.log` has engine/run content; confirm stdout shows only progress bar (once ProgressTracker is updated).
+- [ ] Run recommendation flow; confirm `logs/trade.log` has full detail and stdout shows only recommendation-relevant lines (after Step 4).
+
+---
+
 ## 1. Singleton Logger (Loguru)
 
 **Library:** [Loguru](https://github.com/Delgan/loguru) (`loguru>=0.7.0` in pyproject.toml). Single import, no handler boilerplate, easy file sink with `mode="w"` for overwrite-each-run.
