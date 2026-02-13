@@ -65,10 +65,10 @@ class TestPositionStatistics:
         self.engine._print_position_statistics()
         captured = capsys.readouterr()
         
-        # Check that statistics are printed
+        # Check that statistics are printed (format from metrics print_summary)
         assert "Position Performance Statistics" in captured.out
-        assert "Total closed positions: 3" in captured.out
-        assert "Overall win rate: 66.7%" in captured.out
+        assert "Total positions: 3" in captured.out
+        assert "Win rate: 66.7%" in captured.out
         assert "Total P&L: $+110.00" in captured.out
         assert "Call Credit Spread" in captured.out
         assert "Put Credit Spread" in captured.out
@@ -79,10 +79,10 @@ class TestPositionStatistics:
         self.engine._print_position_statistics()
         captured = capsys.readouterr()
         
-        # Check that empty statistics are handled
+        # Check that empty statistics are handled (format from metrics print_summary)
         assert "Position Performance Statistics" in captured.out
-        assert "Total closed positions: 0" in captured.out
-        assert "Overall win rate: 0.0%" in captured.out
+        assert "Total positions: 0" in captured.out
+        assert "Win rate: 0.0%" in captured.out
     
     def test_win_rate_calculation(self):
         """Test win rate calculation logic"""
@@ -93,17 +93,16 @@ class TestPositionStatistics:
             {'strategy_type': StrategyType.CALL_CREDIT_SPREAD, 'return_dollars': 50.0}
         ]
         
-        # Mock the print method to capture statistics
+        # Mock log_and_echo to capture statistics (metrics print_summary uses log_and_echo)
         with pytest.MonkeyPatch().context() as m:
             printed_lines = []
-            def mock_print(*args):
-                printed_lines.append(' '.join(str(arg) for arg in args))
-            
-            m.setattr('builtins.print', mock_print)
+            def mock_log_and_echo(msg):
+                printed_lines.append(msg)
+            m.setattr('algo_trading_engine.models.metrics.log_and_echo', mock_log_and_echo)
             self.engine._print_position_statistics()
             
-            # Check win rate is 100%
-            win_rate_line = next(line for line in printed_lines if "Overall win rate" in line)
+            # Check win rate is 100% (format: "    Win rate: 100.0%")
+            win_rate_line = next(line for line in printed_lines if "Win rate:" in line and "100.0%" in line)
             assert "100.0%" in win_rate_line
     
     def test_drawdown_calculation(self):
@@ -117,19 +116,17 @@ class TestPositionStatistics:
         
         with pytest.MonkeyPatch().context() as m:
             printed_lines = []
-            def mock_print(*args):
-                printed_lines.append(' '.join(str(arg) for arg in args))
-            
-            m.setattr('builtins.print', mock_print)
+            def mock_log_and_echo(msg):
+                printed_lines.append(msg)
+            m.setattr('algo_trading_engine.models.metrics.log_and_echo', mock_log_and_echo)
             self.engine._print_position_statistics()
             
-            # Check drawdown is calculated and should be > 0
+            # Check drawdown is calculated and should be > 0 (format: "min X% / mean Y% / max Z%")
             drawdown_line = next(line for line in printed_lines if "Drawdowns:" in line)
             assert "Drawdowns:" in drawdown_line
-            assert "Min:" in drawdown_line
-            assert "Mean:" in drawdown_line
-            assert "Max:" in drawdown_line
-            # The mean drawdown should be present (calculated as average of drawdown periods)
+            assert "min" in drawdown_line
+            assert "mean" in drawdown_line
+            assert "max" in drawdown_line
             assert "1.73%" in drawdown_line  # Mean of drawdown periods
     
     def test_drawdown_calculation_no_drawdown(self):
@@ -143,25 +140,23 @@ class TestPositionStatistics:
         
         with pytest.MonkeyPatch().context() as m:
             printed_lines = []
-            def mock_print(*args):
-                printed_lines.append(' '.join(str(arg) for arg in args))
-            
-            m.setattr('builtins.print', mock_print)
+            def mock_log_and_echo(msg):
+                printed_lines.append(msg)
+            m.setattr('algo_trading_engine.models.metrics.log_and_echo', mock_log_and_echo)
             self.engine._print_position_statistics()
             
-            # Check drawdown is reported as no drawdowns
+            # Check drawdown line exists (format: "min 0.00% / mean 0.00% / max 0.00%" when no drawdowns)
             drawdown_line = next(line for line in printed_lines if "Drawdowns:" in line)
             assert "Drawdowns:" in drawdown_line
-            assert "No drawdowns detected" in drawdown_line
+            assert "0.00%" in drawdown_line
     
     def test_strategy_type_statistics(self):
         """Test statistics breakdown by strategy type"""
         with pytest.MonkeyPatch().context() as m:
             printed_lines = []
-            def mock_print(*args):
-                printed_lines.append(' '.join(str(arg) for arg in args))
-            
-            m.setattr('builtins.print', mock_print)
+            def mock_log_and_echo(msg):
+                printed_lines.append(msg)
+            m.setattr('algo_trading_engine.models.metrics.log_and_echo', mock_log_and_echo)
             self.engine._print_position_statistics()
             
             # Check that both strategy types are included
@@ -188,14 +183,13 @@ class TestPositionStatistics:
         
         with pytest.MonkeyPatch().context() as m:
             printed_lines = []
-            def mock_print(*args):
-                printed_lines.append(' '.join(str(arg) for arg in args))
-            
-            m.setattr('builtins.print', mock_print)
+            def mock_log_and_echo(msg):
+                printed_lines.append(msg)
+            m.setattr('algo_trading_engine.models.metrics.log_and_echo', mock_log_and_echo)
             self.engine._print_position_statistics()
             
-            # Check average return is calculated correctly (600/3 = 200)
-            avg_line = next(line for line in printed_lines if "Average return per position" in line)
+            # Check average return is calculated correctly (600/3 = 200) (format: "Avg return: $+200.00")
+            avg_line = next(line for line in printed_lines if "Avg return:" in line and "$+200.00" in line)
             assert "$+200.00" in avg_line
 
 
