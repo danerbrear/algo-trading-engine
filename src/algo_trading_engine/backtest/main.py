@@ -11,7 +11,8 @@ from .models import Benchmark
 from algo_trading_engine.common.models import StrategyType
 from algo_trading_engine.vo import Position
 from algo_trading_engine.common.data_retriever import DataRetriever
-from .config import VolumeConfig, VolumeStats, OverallPerformanceStats, StrategyPerformanceStats
+from .config import VolumeConfig, VolumeStats
+from algo_trading_engine.models import OverallPerformanceStats, StrategyPerformanceStats
 from algo_trading_engine.common.logger import configure_logger, get_logger, log_and_echo
 from algo_trading_engine.common.progress_tracker import ProgressTracker, set_global_progress_tracker
 from .strategy_builder import StrategyFactory, create_strategy_from_args
@@ -256,7 +257,6 @@ class BacktestEngine(TradingEngine):
         get_logger().info(f"   Last trading date: {last_date.date()}")
         get_logger().info(f"   Last closing price: ${last_price:.2f}")
 
-        # Execute strategy's on_end method with the wrapper
         self.strategy.on_end(self.positions, self._remove_position, last_date)
 
         # Calculate final performance metrics
@@ -543,9 +543,10 @@ class BacktestEngine(TradingEngine):
         """Print comprehensive position performance statistics"""
         overall_stats = self._calculate_overall_statistics()
         strategy_stats = self._calculate_strategy_statistics()
-        
-        self._print_overall_statistics(overall_stats)
-        self._print_strategy_statistics(strategy_stats)
+        log_and_echo("Position Performance Statistics:")
+        overall_stats.print_summary()
+        for stats in strategy_stats:
+            stats.print_summary()
     
     def _calculate_overall_statistics(self) -> 'OverallPerformanceStats':
         """Calculate overall performance statistics"""
@@ -635,33 +636,6 @@ class BacktestEngine(TradingEngine):
         
         return min_dd, mean_dd, max_dd
     
-    def _print_overall_statistics(self, stats: 'OverallPerformanceStats'):
-        """Log overall performance statistics to the log file."""
-        get_logger().info("Position Performance Statistics:")
-        get_logger().info(f"   Total closed positions: {stats.total_positions}")
-        get_logger().info(f"   Overall win rate: {stats.win_rate:.1f}%")
-        get_logger().info(f"   Total P&L: ${stats.total_pnl:+,.2f}")
-        get_logger().info(f"   Average return per position: ${stats.average_return:+.2f}")
-
-        if stats.max_drawdown > 0:
-            get_logger().info(f"   Drawdowns: Min: {stats.min_drawdown:.2f}% | Mean: {stats.mean_drawdown:.2f}% | Max: {stats.max_drawdown:.2f}%")
-        else:
-            get_logger().info("   Drawdowns: No drawdowns detected")
-    
-    def _print_strategy_statistics(self, strategy_stats: List['StrategyPerformanceStats']):
-        """Log strategy-specific performance statistics to the log file."""
-        for stats in strategy_stats:
-            get_logger().info(f"   {stats.strategy_type.value.replace('_', ' ').title()}:")
-            get_logger().info(f"     Positions: {stats.positions_count}")
-            get_logger().info(f"     Win rate: {stats.win_rate:.1f}%")
-            get_logger().info(f"     Total P&L: ${stats.total_pnl:+,.2f}")
-            get_logger().info(f"     Average return: ${stats.average_return:+.2f}")
-
-            if stats.max_drawdown > 0:
-                get_logger().info(f"     Drawdowns: Min: {stats.min_drawdown:.2f}% | Mean: {stats.mean_drawdown:.2f}% | Max: {stats.max_drawdown:.2f}%")
-            else:
-                get_logger().info("     Drawdowns: No drawdowns detected")
-
     def _handle_insufficient_volume_closure(self, position: Position, date: datetime) -> bool:
         """
         Handle position closure when volume is insufficient.
