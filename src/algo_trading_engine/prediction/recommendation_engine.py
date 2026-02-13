@@ -13,6 +13,7 @@ from algo_trading_engine.prediction.decision_store import (
     generate_decision_id,
 )
 from algo_trading_engine.prediction.capital_manager import CapitalManager
+from algo_trading_engine.common.logger import get_logger, log_and_echo
 
 class InteractiveStrategyRecommender:
     """Produce open/close recommendations and capture user decisions.
@@ -41,7 +42,7 @@ class InteractiveStrategyRecommender:
         
         # Validate strategy data
         if getattr(self.strategy, "data", None) is None:
-            print("No data found for strategy")
+            get_logger().warning("No data found for strategy")
             return
         
         # Get current price (needed for both opens and closes)
@@ -81,14 +82,14 @@ class InteractiveStrategyRecommender:
         try:
             self.strategy.on_new_date(date, tuple(strategy_positions), capture_add_position, capture_remove_position)
         except Exception as e:
-            print(f"Error in strategy on_new_date: {e}")
+            get_logger().error(f"Error in strategy on_new_date: {e}")
             raise e
         
         # Process captured open position (if any)
         if recommended_position is not None:
             self._process_open_recommendation(date, recommended_position, current_price)
         else:
-            print("No recommendation found for strategy")
+            log_and_echo("No recommendation found for strategy")
         
         # Process captured position closures (if any)
         if positions_to_close:
@@ -104,7 +105,7 @@ class InteractiveStrategyRecommender:
         current_date = datetime.now().date()
         if date.date() == current_date:
             # Use live price via strategy's injected method
-            print(f"📡 Fetching live price for {date.date()} (current date)")
+            get_logger().info(f"Fetching live price for {date.date()} (current date)")
             # Get symbol from strategy
             symbol = None
             if hasattr(self.strategy, 'symbol'):
@@ -116,11 +117,11 @@ class InteractiveStrategyRecommender:
                 try:
                     current_price = self.strategy.get_current_underlying_price(date, symbol)
                 except Exception as e:
-                    print(f"⚠️ Could not fetch live price via strategy method: {e}")
+                    get_logger().warning(f"Could not fetch live price via strategy method: {e}")
                     current_price = None
             
             if current_price is None:
-                print("⚠️ Could not fetch live price, falling back to cached data")
+                get_logger().warning("Could not fetch live price, falling back to cached data")
         
         # Fallback to cached data if live price failed or date is not current
         if current_price is None:
@@ -131,12 +132,12 @@ class InteractiveStrategyRecommender:
                 try:
                     current_price = float(self.strategy.data.loc[date.date()]["Close"])  # type: ignore[index]
                 except Exception:
-                    print(f"Could not find current price for date {date.date()}")
+                    get_logger().warning(f"Could not find current price for date {date.date()}")
                     if self.strategy.data is not None and len(self.strategy.data) > 0:
-                        print(f"Available data range: {self.strategy.data.index[0].date()} to {self.strategy.data.index[-1].date()}")
-                        print(f"Total data points: {len(self.strategy.data)}")
+                        get_logger().info(f"Available data range: {self.strategy.data.index[0].date()} to {self.strategy.data.index[-1].date()}")
+                        get_logger().info(f"Total data points: {len(self.strategy.data)}")
                     else:
-                        print("Strategy data is empty or None")
+                        get_logger().warning("Strategy data is empty or None")
                     return None
         
         return current_price
@@ -186,8 +187,8 @@ class InteractiveStrategyRecommender:
         is_allowed, risk_message = self.capital_manager.check_risk_threshold(strategy_name, max_risk)
         
         if not is_allowed:
-            print(f"❌ Risk check failed: {risk_message}")
-            print("Position rejected due to risk threshold.")
+            get_logger().error(f"Risk check failed: {risk_message}")
+            get_logger().warning("Position rejected due to risk threshold.")
             return None
         
         # Determine if credit or debit strategy
@@ -227,7 +228,7 @@ class InteractiveStrategyRecommender:
                 if computed_exit_price is not None:
                     exit_price = computed_exit_price
                 else:
-                    print(f"⚠️  Could not compute exit price for position {position.__str__()}, using strategy-provided price")
+                    get_logger().warning(f"Could not compute exit price for position {position.__str__()}, using strategy-provided price")
             
             # Find the corresponding decision record using Position equality
             for rec in open_records:
@@ -399,7 +400,7 @@ class InteractiveStrategyRecommender:
         """Get exit price by prompting user for individual option prices."""
         try:
             if not position.spread_options or len(position.spread_options) != 2:
-                print("⚠️  Position doesn't have valid spread options")
+                get_logger().warning("Position doesn't have valid spread options")
                 return None
                 
             atm_option, otm_option = position.spread_options
@@ -411,43 +412,43 @@ class InteractiveStrategyRecommender:
             if date.date() == current_date:
                 from datetime import timedelta
                 fetch_date = date - timedelta(days=1)
-                print(f"📅 Current date detected, fetching previous day's data: {fetch_date.strftime('%Y-%m-%d')}")
+                get_logger().info(f"Current date detected, fetching previous day's data: {fetch_date.strftime('%Y-%m-%d')}")
             
             # Get bar data for both options
             atm_bar = self.strategy.get_option_bar(atm_option, fetch_date)
             otm_bar = self.strategy.get_option_bar(otm_option, fetch_date)
             
             if not atm_bar or not otm_bar:
-                print(f"⚠️  No bar data available for options on {fetch_date.strftime('%Y-%m-%d')}")
+                get_logger().warning(f"No bar data available for options on {fetch_date.strftime('%Y-%m-%d')}")
                 return None
             
             # Interactive mode: prompt user for exit prices and calculate manually
-            print(f"\n💬 Interactive mode: Please provide exit prices for position {position.__str__()}")
+            get_logger().info(f"Interactive mode: Please provide exit prices for position {position.__str__()}")
             
             # Prompt for ATM option exit price
             atm_price_input = input(f"Enter exit price for {atm_option.ticker} (current: ${atm_bar.close_price}): ").strip()
             if atm_price_input:
                 atm_price = float(atm_price_input)
-                print(f"✅ Using custom ATM price: ${atm_price}")
+                get_logger().info(f"✅ Using custom ATM price: ${atm_price}")
             else:
                 atm_price = float(atm_bar.close_price)
-                print(f"✅ Using current ATM price: ${atm_price}")
+                get_logger().info(f"✅ Using current ATM price: ${atm_price}")
             
             # Prompt for OTM option exit price
             otm_price_input = input(f"Enter exit price for {otm_option.ticker} (current: ${otm_bar.close_price}): ").strip()
             if otm_price_input:
                 otm_price = float(otm_price_input)
-                print(f"✅ Using custom OTM price: ${otm_price}")
+                get_logger().info(f"Using custom OTM price: ${otm_price}")
             else:
                 otm_price = float(otm_bar.close_price)
-                print(f"✅ Using current OTM price: ${otm_price}")
+                get_logger().info(f"Using current OTM price: ${otm_price}")
             
             # Calculate exit price manually based on strategy type
             if position.strategy_type.value == "put_credit_spread":
                 # For put credit spread: sell ATM put, buy OTM put
                 # Exit price = current ATM price - current OTM price
                 exit_price = atm_price - otm_price
-                print(f"💰 Calculated exit price: ${atm_price:.2f} - ${otm_price:.2f} = ${exit_price:.2f}")
+                get_logger().info(f"Calculated exit price: ${atm_price:.2f} - ${otm_price:.2f} = ${exit_price:.2f}")
             else:
                 # This should not happen for credit spread strategies
                 raise ValueError(f"Unsupported strategy type for manual exit price calculation: {position.strategy_type.value}")
@@ -455,7 +456,7 @@ class InteractiveStrategyRecommender:
             return exit_price
             
         except Exception as e:
-            print(f"⚠️  Error calculating exit price: {e}")
+            get_logger().warning(f"Error calculating exit price: {e}")
             return None
 
     def _get_exit_price_for_status(self, position: Position, date: datetime) -> Optional[float]:
@@ -491,14 +492,14 @@ class InteractiveStrategyRecommender:
         """Display the most recent 5 days of underlying price for velocity_momentum strategy."""
         try:
             if self.strategy.data is None or self.strategy.data.empty:
-                print("⚠️  No underlying price data available")
+                get_logger().warning("No underlying price data available")
                 return
             
             # Get the most recent 5 days of data
             recent_data = self.strategy.data.tail(5)
             
-            print("\n📊 Recent 5 Days of Underlying Price:")
-            print("=" * 50)
+            get_logger().info("Recent 5 Days of Underlying Price:")
+            get_logger().info("=" * 50)
             
             for idx, (date_idx, row) in enumerate(recent_data.iterrows()):
                 # Format the date
@@ -521,9 +522,9 @@ class InteractiveStrategyRecommender:
                 elif idx == len(recent_data) - 1:
                     date_str += " (LATEST)"
                 
-                print(f"  {date_str}: {price_str}")
+                get_logger().info(f"  {date_str}: {price_str}")
             
-            print("=" * 50)
+            get_logger().info("=" * 50)
             
         except Exception as e:
-            print(f"⚠️  Error displaying recent prices: {e}")
+            get_logger().warning(f"Error displaying recent prices: {e}")

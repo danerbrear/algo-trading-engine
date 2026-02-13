@@ -844,16 +844,16 @@ class TestVelocitySignalMomentumStrategy:
             get_options_chain=get_options_chain
         )
         
-        # Mock the progress_print function to capture output
-        mock_progress_print = Mock()
+        # Mock get_logger to capture output (strategy uses get_logger().warning for no-data message)
+        mock_logger = Mock()
         with pytest.MonkeyPatch().context() as m:
-            m.setattr('algo_trading_engine.strategies.velocity_signal_momentum_strategy.progress_print', mock_progress_print)
+            m.setattr('algo_trading_engine.strategies.velocity_signal_momentum_strategy.get_logger', lambda: mock_logger)
             
             # Call on_end with no data
             strategy.on_end((), Mock(), datetime.now())
             
-            # Verify that progress_print was called with warning message
-            mock_progress_print.assert_called_with("⚠️  No data available for plotting")
+            # Verify that get_logger().warning was called with no-data message
+            mock_logger.warning.assert_called_with("⚠️  No data available for plotting")
 
     def test_on_end_plotting_with_data(self):
         """Test on_end method with valid data (without actually showing plot)."""
@@ -895,14 +895,14 @@ class TestVelocitySignalMomentumStrategy:
         mock_show = Mock()
         mock_savefig = Mock()
         mock_tight_layout = Mock()
-        mock_progress_print = Mock()
         
+        mock_logger = Mock()
         with pytest.MonkeyPatch().context() as m:
             m.setattr('matplotlib.pyplot.subplots', mock_subplots)
             m.setattr('matplotlib.pyplot.show', mock_show)
             m.setattr('matplotlib.pyplot.savefig', mock_savefig)
             m.setattr('matplotlib.pyplot.tight_layout', mock_tight_layout)
-            m.setattr('algo_trading_engine.strategies.velocity_signal_momentum_strategy.progress_print', mock_progress_print)
+            m.setattr('algo_trading_engine.strategies.velocity_signal_momentum_strategy.get_logger', lambda: mock_logger)
             
             # Call on_end
             strategy.on_end((), Mock(), datetime.now())
@@ -910,10 +910,7 @@ class TestVelocitySignalMomentumStrategy:
             # Verify that plotting functions were called
             mock_subplots.assert_called_once()
             mock_show.assert_called_once()
-            # Note: savefig is not called in the implementation, only show() is called
-            # mock_savefig.assert_called_once()  # Removed - not in implementation
             mock_tight_layout.assert_called_once()
-            # Verify that twinx() was called to create the secondary axis for volatility
             mock_ax1.twinx.assert_called_once()
 
 
@@ -1108,11 +1105,12 @@ class TestVelocityStrategyMethodSignatures:
         mock_ax2.get_legend_handles_labels = Mock(return_value=([], []))
         mock_ax1.twinx = Mock(return_value=mock_ax2)
         
+        mock_logger = Mock()
         with pytest.MonkeyPatch().context() as m:
             m.setattr('matplotlib.pyplot.subplots', Mock(return_value=(mock_fig, mock_ax1)))
             m.setattr('matplotlib.pyplot.show', Mock())
             m.setattr('matplotlib.pyplot.tight_layout', Mock())
-            m.setattr('algo_trading_engine.strategies.velocity_signal_momentum_strategy.progress_print', Mock())
+            m.setattr('algo_trading_engine.strategies.velocity_signal_momentum_strategy.get_logger', lambda: mock_logger)
             
             # This should not raise any errors
             try:
@@ -1256,11 +1254,12 @@ class TestVelocityStrategyMethodSignatures:
         mock_ax2.get_legend_handles_labels = Mock(return_value=([], []))
         mock_ax1.twinx = Mock(return_value=mock_ax2)
         
+        mock_logger = Mock()
         with pytest.MonkeyPatch().context() as m:
             m.setattr('matplotlib.pyplot.subplots', Mock(return_value=(mock_fig, mock_ax1)))
             m.setattr('matplotlib.pyplot.show', Mock())
             m.setattr('matplotlib.pyplot.tight_layout', Mock())
-            m.setattr('algo_trading_engine.strategies.velocity_signal_momentum_strategy.progress_print', Mock())
+            m.setattr('algo_trading_engine.strategies.velocity_signal_momentum_strategy.get_logger', lambda: mock_logger)
             
             try:
                 # This is how BacktestEngine calls on_end

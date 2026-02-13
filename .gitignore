@@ -9,3 +9,4 @@ predictions/*
 .pytest_cache
 backup
 *.egg-info
+logs/

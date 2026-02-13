@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import List
 import argparse
 
 from algo_trading_engine.common.options_handler import OptionsHandler
@@ -9,10 +9,12 @@ from algo_trading_engine.common.options_handler import OptionsHandler
 from algo_trading_engine.core.strategy import Strategy
 from .models import Benchmark
 from algo_trading_engine.common.models import StrategyType
-from algo_trading_engine.vo import Position, create_position
+from algo_trading_engine.vo import Position
 from algo_trading_engine.common.data_retriever import DataRetriever
-from .config import VolumeConfig, VolumeStats, OverallPerformanceStats, StrategyPerformanceStats
-from algo_trading_engine.common.progress_tracker import ProgressTracker, set_global_progress_tracker, progress_print
+from .config import VolumeConfig, VolumeStats
+from algo_trading_engine.models import OverallPerformanceStats, StrategyPerformanceStats
+from algo_trading_engine.common.logger import configure_logger, get_logger, log_and_echo
+from algo_trading_engine.common.progress_tracker import ProgressTracker, set_global_progress_tracker
 from .strategy_builder import StrategyFactory, create_strategy_from_args
 from algo_trading_engine.core.engine import TradingEngine
 from algo_trading_engine.models.config import BacktestConfig as BacktestConfigDTO
@@ -181,10 +183,12 @@ class BacktestEngine(TradingEngine):
         """
         Run the backtest.
         """
-        
+        log_level = "info" if self.quiet_mode else "debug"
+        configure_logger("backtest", log_level=log_level)
+
         # Validate the data using the strategy's validation method
         if not self.strategy.validate_data(self.data):
-            print("❌ Backtest aborted due to invalid data")
+            get_logger().error("Backtest aborted due to invalid data")
             return False
 
         # Use only dates that exist in the data (not pd.bdate_range which includes holidays)
@@ -213,8 +217,8 @@ class BacktestEngine(TradingEngine):
             )
             set_global_progress_tracker(self.progress_tracker)
             
-        print(f"📅 Running backtest on {len(date_range)} trading days")
-        print(f"   Date range: {date_range[0].date()} to {date_range[-1].date()}")
+        get_logger().info(f"Running backtest on {len(date_range)} trading days")
+        get_logger().info(f"   Date range: {date_range[0].date()} to {date_range[-1].date()}")
 
         # For each date in the range, simulate the strategy
         for i, date in enumerate(date_range):
@@ -229,10 +233,7 @@ class BacktestEngine(TradingEngine):
                 self.strategy.on_new_date(date, positions_tuple, self._add_position, self._remove_position)
             except Exception as e:
                 error_msg = f"Error in on_new_date: {e}"
-                if self.progress_tracker:
-                    progress_print(error_msg, force=True)
-                else:
-                    print(error_msg)
+                get_logger().error(error_msg)
                 return False
             
             self.check_univeral_close_conditions(date)
@@ -245,10 +246,7 @@ class BacktestEngine(TradingEngine):
         """
         On end, execute strategy and close any remaining positions.
         """
-        if self.progress_tracker:
-            progress_print(f"\n🏁 Closing backtest - {len(self.positions)} positions remaining", force=True)
-        else:
-            print(f"\n🏁 Closing backtest - {len(self.positions)} positions remaining")
+        get_logger().info(f"Closing backtest - {len(self.positions)} positions remaining")
 
         # Get the last available price from the data
         last_date = self.data.index[-1]
@@ -256,19 +254,10 @@ class BacktestEngine(TradingEngine):
 
         self.benchmark.set_end_price(last_price)
 
-        if self.progress_tracker:
-            progress_print(f"   Last trading date: {last_date.date()}", force=True)
-            progress_print(f"   Last closing price: ${last_price:.2f}", force=True)
-        else:
-            print(f"   Last trading date: {last_date.date()}") 
-            print(f"   Last closing price: ${last_price:.2f}")
+        get_logger().info(f"   Last trading date: {last_date.date()}")
+        get_logger().info(f"   Last closing price: ${last_price:.2f}")
 
-        # Create a wrapper function that handles the new _remove_position signature
-        def remove_position_wrapper(date: datetime, position: Position, exit_price: float, current_volumes: list[int] = None):
-            self._remove_position(date, position, exit_price, current_volumes=current_volumes)
-
-        # Execute strategy's on_end method with the wrapper
-        self.strategy.on_end(self.positions, remove_position_wrapper, last_date)
+        self.strategy.on_end(self.positions, self._remove_position, last_date)
 
         # Calculate final performance metrics
         initial_capital = self.initial_capital  # Use the initial capital from the constructor
@@ -286,26 +275,26 @@ class BacktestEngine(TradingEngine):
         # Volume validation statistics
         if self.volume_config.enable_volume_validation:
             volume_summary = self.volume_stats.get_summary()
-            print(f"\n📈 Volume Validation Statistics:")
-            print(f"   Options checked: {volume_summary['options_checked']}")
-            print(f"   Position opens rejected due to volume: {volume_summary['positions_rejected_volume']}")
-            print(f"   Position closures rejected due to volume: {volume_summary['positions_rejected_closure_volume']}")
-            print(f"   Skipped closures: {volume_summary['skipped_closures']}")
-            print(f"   Total rejections: {volume_summary['total_rejections']}")
-            print(f"   Volume rejection rate: {volume_summary['rejection_rate']:.1f}%")
+            get_logger().info("Volume Validation Statistics:")
+            get_logger().info(f"   Options checked: {volume_summary['options_checked']}")
+            get_logger().info(f"   Position opens rejected due to volume: {volume_summary['positions_rejected_volume']}")
+            get_logger().info(f"   Position closures rejected due to volume: {volume_summary['positions_rejected_closure_volume']}")
+            get_logger().info(f"   Skipped closures: {volume_summary['skipped_closures']}")
+            get_logger().info(f"   Total rejections: {volume_summary['total_rejections']}")
+            get_logger().info(f"   Volume rejection rate: {volume_summary['rejection_rate']:.1f}%")
         
         # Position performance statistics
         if self.closed_positions:
             self._print_position_statistics()
 
-        print("\n📊 Backtest Results Summary:")
-        print(f"   Benchmark return: {self.benchmark.get_return_percentage():+.2f}%")
-        print(f"   Benchmark return dollars: ${self.benchmark.get_return_dollars():+.2f}\n")
-        print(f"   Trading Days: {len(self.data.index)}")
-        print(f"   Total positions: {self.total_positions}")
-        print(f"   Final capital: ${self.capital:.2f}")
-        print(f"   Total Return: ${final_return:+,.2f} ({final_return_pct:+.2f}%)")
-        print(f"   Sharpe Ratio: {sharpe_ratio:.3f}")
+        log_and_echo("Backtest Results Summary:")
+        log_and_echo(f"   Benchmark return: {self.benchmark.get_return_percentage():+.2f}%")
+        log_and_echo(f"   Benchmark return dollars: ${self.benchmark.get_return_dollars():+.2f}")
+        log_and_echo(f"   Trading Days: {len(self.data.index)}")
+        log_and_echo(f"   Total positions: {self.total_positions}")
+        log_and_echo(f"   Final capital: ${self.capital:.2f}")
+        log_and_echo(f"   Total Return: ${final_return:+,.2f} ({final_return_pct:+.2f}%)")
+        log_and_echo(f"   Sharpe Ratio: {sharpe_ratio:.3f}")
     
     def get_performance_metrics(self) -> PerformanceMetrics:
         """
@@ -367,7 +356,6 @@ class BacktestEngine(TradingEngine):
         """
         return self.positions.copy()
 
-
     def _add_position(self, position: Position):
         """
         Add a position to the positions. Rejects positions with insufficient volume and determines position size based
@@ -378,13 +366,13 @@ class BacktestEngine(TradingEngine):
         if self.volume_config.enable_volume_validation and position.spread_options:
             for option in position.spread_options:
                 if not self._validate_option_volume(option):
-                    print(f"⚠️  Volume validation failed: {option.symbol} has insufficient volume")
+                    get_logger().warning(f"Volume validation failed: {option.symbol} has insufficient volume")
                     self.volume_stats = self.volume_stats.increment_rejected_positions()
                     return  # Reject the position
 
         position_size = self._get_position_size(position)
         if position_size == 0:
-            print(f"⚠️  Warning: Not enough capital to add position. Position size is 0.")
+            get_logger().info("Not enough capital to add position. Position size is 0.")
             return
         
         position.set_quantity(position_size)
@@ -395,14 +383,14 @@ class BacktestEngine(TradingEngine):
             # The net credit is already stored in position.entry_price
             credit_received = position.entry_price * position.quantity * 100
             self.capital += credit_received
-            print(f"💰 Added net credit of ${credit_received:.2f} to capital")
+            get_logger().info(f"Added net credit of ${credit_received:.2f} to capital")
         else:
             # For other position types, check if we have enough capital
             if self.capital < position.entry_price * position.quantity * 100:
                 raise ValueError("Not enough capital to add position")
 
-        print(f"Adding position: {position.__str__()}\n")
-        
+        get_logger().info(f"Adding position: {position.__str__()}")
+
         self.positions.append(position)
         self.total_positions += 1
 
@@ -434,12 +422,12 @@ class BacktestEngine(TradingEngine):
                     failed_options.append(option.symbol)
             
             if volume_validation_failed:
-                print(f"⚠️  Volume validation failed for position closure: {', '.join(failed_options)} have insufficient volume")
+                get_logger().warning(f"Volume validation failed for position closure: {', '.join(failed_options)} have insufficient volume")
                 self.volume_stats = self.volume_stats.increment_rejected_closures()
-                
+
                 # Skip closing the position for this date due to insufficient volume unless expired
                 if position.get_days_to_expiration(date) > 0:
-                    print(f"⚠️  Skipping position closure for {date.date()} due to insufficient volume")
+                    get_logger().warning(f"Skipping position closure for {date.date()} due to insufficient volume")
                     return  # Skip closure and keep position open
 
         if position not in self.positions:
@@ -451,7 +439,7 @@ class BacktestEngine(TradingEngine):
                 raise ValueError(f"Underlying price not provided for position {position.__str__()}")
 
             position_return = position.get_return_dollars_from_assignment(underlying_price)
-            print(f"   Position closed by assignment: {position.__str__()}")
+            get_logger().info(f"   Position closed by assignment: {position.__str__()}")
         else:
             if exit_price is None: # Allows for exit price to be 0 - possible if ATM and OTM market price are equal
                 raise ValueError("Exit price not provided for the unexpired position")
@@ -463,7 +451,7 @@ class BacktestEngine(TradingEngine):
             # The exit_price represents the cost to close the position
             cost_to_close = exit_price * position.quantity * 100
             self.capital -= cost_to_close
-            print(f"💰 Subtracted cost to close of ${cost_to_close:.2f} from capital")
+            get_logger().info(f"Subtracted cost to close of ${cost_to_close:.2f} from capital")
         else:
             # For other position types, add the return
             self.capital += position_return
@@ -491,9 +479,9 @@ class BacktestEngine(TradingEngine):
         self.positions.remove(position)
         
         # Log the position closure
-        print(f"   Position closed: {position.__str__()}")
-        print(f"     Entry: ${position.entry_price:.2f} | Exit: ${exit_price:.2f}")
-        print(f"     Return: ${position_return:+.2f} | Capital: ${self.capital:.2f}\n")
+        get_logger().info(f"   Position closed: {position.__str__()}")
+        get_logger().info(f"     Entry: ${position.entry_price:.2f} | Exit: ${exit_price:.2f}")
+        get_logger().info(f"     Return: ${position_return:+.2f} | Capital: ${self.capital:.2f}")
 
         self.strategy.on_remove_position_success(date, position, exit_price, underlying_price, current_volumes)
     
@@ -555,9 +543,10 @@ class BacktestEngine(TradingEngine):
         """Print comprehensive position performance statistics"""
         overall_stats = self._calculate_overall_statistics()
         strategy_stats = self._calculate_strategy_statistics()
-        
-        self._print_overall_statistics(overall_stats)
-        self._print_strategy_statistics(strategy_stats)
+        log_and_echo("Position Performance Statistics:")
+        overall_stats.print_summary()
+        for stats in strategy_stats:
+            stats.print_summary()
     
     def _calculate_overall_statistics(self) -> 'OverallPerformanceStats':
         """Calculate overall performance statistics"""
@@ -647,35 +636,6 @@ class BacktestEngine(TradingEngine):
         
         return min_dd, mean_dd, max_dd
     
-    def _print_overall_statistics(self, stats: 'OverallPerformanceStats'):
-        """Print overall performance statistics"""
-        print(f"\n📊 Position Performance Statistics:")
-        print(f"   Total closed positions: {stats.total_positions}")
-        print(f"   Overall win rate: {stats.win_rate:.1f}%")
-        print(f"   Total P&L: ${stats.total_pnl:+,.2f}")
-        print(f"   Average return per position: ${stats.average_return:+.2f}")
-        
-        # Print drawdown stats
-        if stats.max_drawdown > 0:
-            print(f"   Drawdowns: Min: {stats.min_drawdown:.2f}% | Mean: {stats.mean_drawdown:.2f}% | Max: {stats.max_drawdown:.2f}%")
-        else:
-            print(f"   Drawdowns: No drawdowns detected")
-    
-    def _print_strategy_statistics(self, strategy_stats: List['StrategyPerformanceStats']):
-        """Print strategy-specific performance statistics"""
-        for stats in strategy_stats:
-            print(f"\n   {stats.strategy_type.value.replace('_', ' ').title()}:")
-            print(f"     Positions: {stats.positions_count}")
-            print(f"     Win rate: {stats.win_rate:.1f}%")
-            print(f"     Total P&L: ${stats.total_pnl:+,.2f}")
-            print(f"     Average return: ${stats.average_return:+.2f}")
-            
-            # Print drawdown stats
-            if stats.max_drawdown > 0:
-                print(f"     Drawdowns: Min: {stats.min_drawdown:.2f}% | Mean: {stats.mean_drawdown:.2f}% | Max: {stats.max_drawdown:.2f}%")
-            else:
-                print(f"     Drawdowns: No drawdowns detected")
-
     def _handle_insufficient_volume_closure(self, position: Position, date: datetime) -> bool:
         """
         Handle position closure when volume is insufficient.
@@ -688,14 +648,12 @@ class BacktestEngine(TradingEngine):
             bool: True if closure should be skipped, False if closure should proceed
         """
         if self.volume_config.skip_closure_on_insufficient_volume:
-            # Skip closure and keep position open
-            print(f"⚠️  Skipping closure of position {position.__str__()} for {date.date()} due to insufficient volume")
+            get_logger().warning(f"Skipping closure of position {position.__str__()} for {date.date()} due to insufficient volume")
             self.volume_stats = self.volume_stats.increment_skipped_closures()
-            return True  # Indicate that closure should be skipped
+            return True
         else:
-            # Proceed with closure despite insufficient volume (for backward compatibility)
-            print(f"⚠️  Proceeding with closure of position {position.__str__()} despite insufficient volume")
-            return False  # Indicate that closure should proceed
+            get_logger().warning(f"Proceeding with closure of position {position.__str__()} despite insufficient volume")
+            return False
 
 def parse_arguments():
     """Parse command line arguments for backtest configuration"""
@@ -769,7 +727,8 @@ def main():
         profit_target=args.profit_target
     )
     
-    print(f"🚀 Starting backtest with strategy: {args.strategy}")
+    # CLI startup lines to stdout so user sees them; run() configures logger and logs to backtest.log
+    print(f"Starting backtest with strategy: {args.strategy}")
     print(f"   Date range: {start_date.date()} to {end_date.date()}")
     print(f"   Symbol: {args.symbol}")
     print(f"   Initial capital: ${args.initial_capital:,.2f}")
@@ -781,19 +740,18 @@ def main():
     print()
 
     try:
-        # Create and run engine using from_config (same as examples)
         engine = BacktestEngine.from_config(config)
         success = engine.run()
-        
+
         if success:
-            print("✅ Backtest completed successfully!")
+            print("Backtest completed successfully!")
             sys.exit(0)
         else:
-            print("❌ Backtest failed!")
+            print("Backtest failed!")
             sys.exit(1)
-            
+
     except Exception as e:
-        print(f"❌ Error during backtest: {e}")
+        print(f"Error during backtest: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)

@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from algo_trading_engine.common.models import StrategyType
 
 # Import from common models
+from algo_trading_engine.common.logger import get_logger
 from algo_trading_engine.common.models import Option, OptionChain
 
 
@@ -371,13 +372,13 @@ class CreditSpreadPosition(Position):
         current_otm_option = current_option_chain.get_option_data_for_option(otm_option)
         
         if current_atm_option is None or current_otm_option is None:
-            print(f"No current option data found for {atm_option.__str__()} or {otm_option.__str__()}")
+            get_logger().warning(f"No current option data found for {atm_option.__str__()} or {otm_option.__str__()}")
             return None
 
         current_atm_price = current_atm_option.last_price
         current_otm_price = current_otm_option.last_price
 
-        print(f"Current ATM price: {current_atm_price}, Current OTM price: {current_otm_price}")
+        get_logger().debug(f"Current ATM price: {current_atm_price}, Current OTM price: {current_otm_price}")
 
         # For call/put credit spread: sell ATM, buy OTM
         current_net_credit = current_atm_price - current_otm_price
@@ -413,7 +414,7 @@ class CreditSpreadPosition(Position):
         current_atm_price = float(atm_bar.close_price)
         current_otm_price = float(otm_bar.close_price)
 
-        print(f"Current ATM price: {current_atm_price}, Current OTM price: {current_otm_price}")
+        get_logger().debug(f"Current ATM price: {current_atm_price}, Current OTM price: {current_otm_price}")
 
         # For call/put credit spread: sell ATM, buy OTM
         current_net_credit = current_atm_price - current_otm_price
@@ -528,13 +529,13 @@ class DebitSpreadPosition(Position):
         current_otm_option = current_option_chain.get_option_data_for_option(otm_option)
         
         if current_atm_option is None or current_otm_option is None:
-            print(f"No current option data found for {atm_option.__str__()} or {otm_option.__str__()}")
+            get_logger().warning(f"No current option data found for {atm_option.__str__()} or {otm_option.__str__()}")
             return None
 
         current_atm_price = current_atm_option.last_price
         current_otm_price = current_otm_option.last_price
 
-        print(f"Current ATM price: {current_atm_price}, Current OTM price: {current_otm_price}")
+        get_logger().debug(f"Current ATM price: {current_atm_price}, Current OTM price: {current_otm_price}")
 
         # For debit spread: buy ITM/ATM, sell OTM
         # Current value = what you'd get for closing (selling ITM, buying back OTM)
@@ -571,7 +572,7 @@ class DebitSpreadPosition(Position):
         current_atm_price = float(atm_bar.close_price)
         current_otm_price = float(otm_bar.close_price)
 
-        print(f"Current ATM price: {current_atm_price}, Current OTM price: {current_otm_price}")
+        get_logger().debug(f"Current ATM price: {current_atm_price}, Current OTM price: {current_otm_price}")
 
         # For debit spread: current value = ITM price - OTM price
         current_net_value = current_atm_price - current_otm_price

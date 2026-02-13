@@ -23,6 +23,7 @@ except ImportError:
     from algo_trading_engine.ml_models.market_state_classifier import MarketStateClassifier
     from algo_trading_engine.ml_models.calendar_features import CalendarFeatureProcessor
     from algo_trading_engine.common.cache.cache_manager import CacheManager
+from algo_trading_engine.common.logger import get_logger
 from algo_trading_engine.common.models import TreasuryRates
 from algo_trading_engine.enums import BarTimeInterval
 from pathlib import Path
@@ -93,7 +94,7 @@ class DataRetriever:
         if end_date is None:
             end_date = start_date
             
-        print(f"📈 Loading treasury rates for date range: {start_date.date()} to {end_date.date()}")
+        get_logger().info(f"Loading treasury rates for date range: {start_date.date()} to {end_date.date()}")
         
         # Try to load treasury rates for the start date
         treasury_data = self.cache_manager.load_date_from_cache(
@@ -102,7 +103,7 @@ class DataRetriever:
         
         if treasury_data is not None:
             self.treasury_rates = TreasuryRates(treasury_data)
-            print(f"✅ Loaded treasury rates for {start_date.date()}")
+            get_logger().info(f"Loaded treasury rates for {start_date.date()}")
         else:
             # Fallback: try to find the closest available treasury data
             self._find_closest_treasury_data(start_date)
@@ -115,7 +116,7 @@ class DataRetriever:
         available_files = list(treasury_dir.glob('*_treasury_rates.pkl'))
         
         if not available_files:
-            print("⚠️  No treasury rate files found in cache")
+            get_logger().warning("No treasury rate files found in cache")
             return
             
         # Parse dates from filenames and find the closest
@@ -140,9 +141,9 @@ class DataRetriever:
             )
             if treasury_data is not None:
                 self.treasury_rates = TreasuryRates(treasury_data)
-                print(f"✅ Loaded closest treasury rates from {closest_file.name} (diff: {min_date_diff} days)")
+                get_logger().info(f"Loaded closest treasury rates from {closest_file.name} (diff: {min_date_diff} days)")
         else:
-            print("⚠️  Could not find any treasury rate files")
+            get_logger().warning("Could not find any treasury rate files")
     
     def _load_cached_data_range(self, start_date: str, end_date: str = None) -> Optional[pd.DataFrame]:
         """
@@ -181,7 +182,7 @@ class DataRetriever:
                     data = data[data.index <= end_ts]
                     return data
                 except Exception as e:
-                    print(f"⚠️  Failed to load {cache_file.name}: {e}")
+                    get_logger().warning(f"Failed to load {cache_file.name}: {e}")
                     return None
             return None
         
@@ -208,7 +209,7 @@ class DataRetriever:
                     dfs.append(df)
             except Exception as e:
                 # If any file fails to load, return None to trigger re-fetch
-                print(f"⚠️  Failed to load {cache_file.name}: {e}")
+                get_logger().warning(f"Failed to load {cache_file.name}: {e}")
                 return None
         
         if not dfs:
@@ -232,20 +233,20 @@ class DataRetriever:
         Returns:
             pd.DataFrame: DataFrame with calculated features for LSTM training
         """
-        print(f"\n📊 Phase 1: Preparing LSTM training data from {self.lstm_start_date}")
+        get_logger().info(f"Phase 1: Preparing LSTM training data from {self.lstm_start_date}")
         # Fetch LSTM training data (more recent data for options trading)
         self.lstm_data = self.fetch_data_for_period(self.lstm_start_date)
         self.calculate_features_for_data(self.lstm_data)
 
-        print(f"\n🔮 Phase 2: Applying trained HMM to LSTM data")
+        get_logger().info("Phase 2: Applying trained HMM to LSTM data")
         # Apply the trained HMM to the LSTM data
         if state_classifier is not None:
             self.lstm_data['Market_State'] = state_classifier.predict_states(self.lstm_data)
         else:
-            print("⚠️  No state classifier provided, skipping market state prediction")
+            get_logger().warning("No state classifier provided, skipping market state prediction")
             self.lstm_data['Market_State'] = 0  # Default state
 
-        print(f"\n📅 Phase 3: Adding economic calendar features")
+        get_logger().info("Phase 3: Adding economic calendar features")
         # Add all calendar features at once (CPI and CC)
         if self.calendar_processor is None:
             self.calendar_processor = CalendarFeatureProcessor()
@@ -274,14 +275,14 @@ class DataRetriever:
         
         if cached_data is not None:
             interval_str = self._get_yfinance_interval()
-            print(f"📋 Loaded {len(cached_data)} cached {interval_str} bars")
+            get_logger().info(f"Loaded {len(cached_data)} cached {interval_str} bars")
             return cached_data
         
         # Fetch from yfinance
         interval_str = self._get_yfinance_interval()
         interval_dir = self._get_cache_interval_dir()
         
-        print(f"🌐 Fetching {interval_str} bars from {start_date} onwards...")
+        get_logger().info(f"Fetching {interval_str} bars from {start_date} onwards...")
         
         if self.ticker is None:
             self.ticker = yf.Ticker(self.symbol)
@@ -316,7 +317,7 @@ class DataRetriever:
             )
         
         data.index = data.index.tz_localize(None)
-        print(f"📊 Fetched {len(data)} {interval_str} bars from {data.index[0]} to {data.index[-1]}")
+        get_logger().info(f"Fetched {len(data)} {interval_str} bars from {data.index[0]} to {data.index[-1]}")
         
         # Filter to requested date range
         data = data[(data.index >= start_date_ts) & (data.index <= end_date_ts)].copy()
@@ -334,7 +335,7 @@ class DataRetriever:
             # This avoids reading hundreds of files for large backtests
             cache_file = cache_dir / f"{start_date}.pkl"
             data.to_pickle(cache_file)
-            print(f"💾 Cached {len(data)} daily bars to {interval_dir}/{start_date}.pkl")
+            get_logger().info(f"Cached {len(data)} daily bars to {interval_dir}/{start_date}.pkl")
         else:
             # For hourly/minute, save each bar separately (granular caching)
             # This makes sense for intraday data with smaller date ranges
@@ -346,7 +347,7 @@ class DataRetriever:
                 # Save single row as DataFrame
                 pd.DataFrame([row]).to_pickle(cache_file)
                 
-            print(f"💾 Cached {len(data)} {interval_str} bars to {interval_dir}/")
+            get_logger().info(f"Cached {len(data)} {interval_str} bars to {interval_dir}/")
         
         return data
 
@@ -417,10 +418,9 @@ class DataRetriever:
             )
         
         if len(data) < original_length * 0.8:  # If we lost more than 20% of data
-            print(f"⚠️  Warning: Lost {original_length - len(data)} samples due to NaN values")
-            print(f"   Keeping {len(data)} samples")
+            get_logger().warning(f"Lost {original_length - len(data)} samples due to NaN values, keeping {len(data)} samples")
         
-        print(f"✅ Calculated features for {len(data)} samples")
+        get_logger().info(f"Calculated features for {len(data)} samples")
 
     
 
@@ -477,29 +477,29 @@ class DataRetriever:
             symbol = self.symbol
         
         try:
-            print(f"📡 Fetching live price for {symbol} using yfinance...")
+            get_logger().info(f"Fetching live price for {symbol} using yfinance...")
             ticker = yf.Ticker(symbol)
             info = ticker.info
             
             # Try to get current price from info
             if 'currentPrice' in info and info['currentPrice'] is not None:
                 live_price = float(info['currentPrice'])
-                print(f"✅ Live price for {symbol} (from yfinance): ${live_price:.2f}")
+                get_logger().info(f"Live price for {symbol} (from yfinance): ${live_price:.2f}")
                 return live_price
             elif 'regularMarketPrice' in info and info['regularMarketPrice'] is not None:
                 live_price = float(info['regularMarketPrice'])
-                print(f"✅ Live price for {symbol} (from yfinance regular market): ${live_price:.2f}")
+                get_logger().info(f"Live price for {symbol} (from yfinance regular market): ${live_price:.2f}")
                 return live_price
             elif 'previousClose' in info and info['previousClose'] is not None:
                 # Use previous close as fallback
                 live_price = float(info['previousClose'])
-                print(f"⚠️ Using previous close for {symbol} (from yfinance): ${live_price:.2f}")
+                get_logger().warning(f"Using previous close for {symbol} (from yfinance): ${live_price:.2f}")
                 return live_price
             else:
-                print(f"⚠️ No price data available from yfinance for {symbol}")
+                get_logger().warning(f"No price data available from yfinance for {symbol}")
                 return None
                 
         except Exception as yfinance_error:
-            print(f"❌ Error fetching live price from yfinance for {symbol}: {str(yfinance_error)}")
+            get_logger().error(f"Error fetching live price from yfinance for {symbol}: {str(yfinance_error)}")
             return None
  

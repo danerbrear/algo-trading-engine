@@ -5,6 +5,12 @@ from datetime import datetime, timedelta
 import sys
 import threading
 
+
+def _get_logger():
+    """Lazy import to avoid circular dependency at module load."""
+    from algo_trading_engine.common.logger import get_logger
+    return get_logger()
+
 class ProgressTracker:
     def __init__(self, start_date: datetime, end_date: datetime, total_dates: int, desc: str = "Processing", quiet_mode: bool = True, unit: str = "date"):
         self.start_time = time()
@@ -95,18 +101,14 @@ class ProgressTracker:
         }
     
     def close(self):
-        """Close progress bar and print final summary"""
+        """Close progress bar and log final summary to the log file (no stdout)."""
         with self._lock:
             stats = self.get_progress_stats()
-            
-            # Close the progress bar properly
             self.pbar.close()
-            
-            # Print final summary
-            print(f"\nProcessing completed:")
-            print(f"   Total time: {timedelta(seconds=int(stats['elapsed_time']))}")
-            print(f"   Average time per {self.unit}: {stats['avg_time_per_date']:.2f} seconds")
-            # API call tracking removed from progress tracker
+            log = _get_logger()
+            log.info("Processing completed:")
+            log.info(f"   Total time: {timedelta(seconds=int(stats['elapsed_time']))}")
+            log.info(f"   Average time per {self.unit}: {stats['avg_time_per_date']:.2f} seconds")
 
 # Global progress tracker instance for use across modules
 _global_progress_tracker: Optional[ProgressTracker] = None
@@ -125,15 +127,16 @@ def get_global_progress_tracker() -> Optional[ProgressTracker]:
         return _global_progress_tracker
 
 def progress_print(message: str, force: bool = False):
-    """Print a message through the progress tracker if available, otherwise use regular print"""
-    tracker = get_global_progress_tracker()
-    if tracker:
-        # In quiet mode, suppress most messages unless forced
-        if tracker.quiet_mode and not force:
-            return  # Suppress message in quiet mode
-        tracker.write(message)
+    """
+    Send a message to the log file only (no stdout).
+    ProgressTracker is only responsible for the progress bar; all other output goes to the log file.
+    force=True logs at INFO (visible when log_level is info or debug); force=False logs at DEBUG.
+    """
+    log = _get_logger()
+    if force:
+        log.info(message)
     else:
-        print(message)
+        log.debug(message)
 
 def is_quiet_mode() -> bool:
     """Check if we're in quiet mode"""
