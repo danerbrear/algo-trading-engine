@@ -12,7 +12,7 @@ from algo_trading_engine.common.models import StrategyType
 from algo_trading_engine.common.models import TreasuryRates
 from algo_trading_engine.dto import ExpirationRangeDTO, OptionsChainDTO, StrikeRangeDTO
 from algo_trading_engine.vo import StrikePrice
-from algo_trading_engine.common.progress_tracker import progress_print
+from algo_trading_engine.common.logger import get_logger
 from algo_trading_engine.common.options_helpers import OptionsRetrieverHelper
 from algo_trading_engine.common.models import OptionType
 from decimal import Decimal
@@ -82,7 +82,7 @@ class VelocitySignalMomentumStrategy(Strategy):
         Create a plot showing SPY price over time with position entry indicators and volatility overlay.
         """
         if self.data is None or self.data.empty:
-            progress_print("⚠️  No data available for plotting")
+            get_logger().warning("⚠️  No data available for plotting")
             return
         
         try:
@@ -169,10 +169,10 @@ class VelocitySignalMomentumStrategy(Strategy):
             # Show the plot
             plt.show()
             
-            progress_print("📊 Position entry plot with volatility overlay generated successfully")
+            get_logger().info("📊 Position entry plot with volatility overlay generated successfully")
             
         except Exception as e:
-            progress_print(f"⚠️  Error creating plot: {e}")
+            get_logger().warning(f"⚠️  Error creating plot: {e}")
             import traceback
             traceback.print_exc()
 
@@ -207,7 +207,7 @@ class VelocitySignalMomentumStrategy(Strategy):
                     self.data.loc[date, 'High'] = live_price
                     self.data.loc[date, 'Low'] = live_price
                     self.data.loc[date, 'Volume'] = 0
-                    progress_print(f"🔄 Updated current date {date.date()} with live price ${live_price:.2f}")
+                    get_logger().info(f"🔄 Updated current date {date.date()} with live price ${live_price:.2f}")
                 else:
                     # Create a new row with the live price
                     new_row = pd.DataFrame({
@@ -219,7 +219,7 @@ class VelocitySignalMomentumStrategy(Strategy):
                     }, index=[date])
                     # Append to existing data
                     self.data = pd.concat([self.data, new_row])
-                    progress_print(f"📅 Fetched live price ${live_price:.2f} for current date {date.date()} and appended to data")
+                    get_logger().info(f"📅 Fetched live price ${live_price:.2f} for current date {date.date()} and appended to data")
                 
                 # Recalculate moving averages and velocity changes for the updated data
                 self._recalculate_moving_averages()
@@ -228,32 +228,32 @@ class VelocitySignalMomentumStrategy(Strategy):
                 # Fallback: if live price fetch fails, try to use cached data if available
                 if date in self.data.index:
                     current_idx = self.data.index.get_loc(date)
-                    progress_print(f"⚠️ Could not fetch live price for {date.date()}, using cached data")
+                    get_logger().warning(f"⚠️ Could not fetch live price for {date.date()}, using cached data")
                 else:
                     # No cached data and no live price - use last available
                     current_idx = len(self.data) - 1
-                    progress_print(f"⚠️ Could not fetch live price for {date.date()}, using last available data point")
+                    get_logger().warning(f"⚠️ Could not fetch live price for {date.date()}, using last available data point")
         else:
             # For historical dates, use cached data
             try:
                 current_idx = self.data.index.get_loc(date)
             except KeyError:
-                progress_print("⚠️  Date not found in data")
+                get_logger().warning("⚠️  Date not found in data")
                 return False
         
         # Check if we have enough data to analyze (need at least 30 days for SMA 30)
         if current_idx < 30:
-            progress_print("⚠️  Not enough data to analyze")
+            get_logger().warning("⚠️  Not enough data to analyze")
             return False
         
         # Check if pre-calculated velocity data is available
         if 'Velocity_Changes' not in self.data.columns:
-            progress_print("⚠️  No velocity changes data available")
+            get_logger().warning("⚠️  No velocity changes data available")
             return False
         
         # Check if current velocity increased (positive velocity change)
         if current_idx < 1 or self.data['Velocity_Changes'].iloc[current_idx] <= 0:
-            progress_print(f"Velocity changes: {self.data['Velocity_Changes'].iloc[current_idx]}")
+            get_logger().info(f"Velocity changes: {self.data['Velocity_Changes'].iloc[current_idx]}")
             return False
         
         # This is a velocity signal - now check if it leads to a successful trend
@@ -264,7 +264,7 @@ class VelocitySignalMomentumStrategy(Strategy):
             self.data, signal_index, 'up', min_duration=3, max_duration=60
         )
 
-        progress_print(f"Trend success: {success}, duration: {duration}, trend_return: {trend_return}")
+        get_logger().info(f"Trend success: {success}, duration: {duration}, trend_return: {trend_return}")
         
         return success
 
@@ -321,7 +321,7 @@ class VelocitySignalMomentumStrategy(Strategy):
             total_return = (current_price - start_price) / start_price
             
             if trend_type == 'up':
-                progress_print(f"🔍 Backward up trend detected for {duration} days, total return: {total_return}")
+                get_logger().info(f"🔍 Backward up trend detected for {duration} days, total return: {total_return}")
                 if total_return > 0:
                     # Check if this is a sustained upward trend
                     # Look for any significant reversal within the trend period
@@ -365,7 +365,7 @@ class VelocitySignalMomentumStrategy(Strategy):
             contracts = self.get_contract_list_for_date(date, strike_range=strike_range, expiration_range=expiration_range)
 
             if not contracts:
-                progress_print("⚠️  No contracts found for the date")
+                get_logger().warning("⚠️  No contracts found for the date")
                 return None
 
             # CRITICAL: Filter for contracts with the specific expiration FIRST
@@ -376,20 +376,20 @@ class VelocitySignalMomentumStrategy(Strategy):
             ]
             
             if not contracts_for_expiration:
-                progress_print(f"⚠️  No contracts found for target expiration {expiration}")
+                get_logger().warning(f"⚠️  No contracts found for target expiration {expiration}")
                 return None
             
-            progress_print(f"✅ Found {len(contracts_for_expiration)} contracts for expiration {expiration}")
+            get_logger().info(f"✅ Found {len(contracts_for_expiration)} contracts for expiration {expiration}")
 
             # Find ATM put option from contracts with the target expiration
             atm_strike = round(current_price)
             atm_call, atm_put = OptionsRetrieverHelper.find_atm_contracts(contracts_for_expiration, current_price)
             
             if not atm_put:
-                progress_print(f"⚠️  No ATM put found for expiration {expiration}")
+                get_logger().warning(f"⚠️  No ATM put found for expiration {expiration}")
                 return None
                 
-            progress_print(f"Found ATM put: {atm_put.ticker} @ ${atm_put.strike_price.value} exp {atm_put.expiration_date}")
+            get_logger().info(f"Found ATM put: {atm_put.ticker} @ ${atm_put.strike_price.value} exp {atm_put.expiration_date}")
             
             # Find OTM put (-6 strike for 6-point width) from the same expiration
             otm_strike = atm_strike - 6
@@ -402,7 +402,7 @@ class VelocitySignalMomentumStrategy(Strategy):
             ]
             
             if not puts_for_expiration:
-                progress_print(f"⚠️  No put contracts found for expiration {expiration}")
+                get_logger().warning(f"⚠️  No put contracts found for expiration {expiration}")
                 return None
                 
             # Find the put with the closest strike to the target OTM strike
@@ -412,22 +412,22 @@ class VelocitySignalMomentumStrategy(Strategy):
             )
             
             min_difference = abs(float(otm_put.strike_price.value) - otm_strike)
-            progress_print(f"Found OTM put: {otm_put.ticker} @ ${otm_put.strike_price.value} exp {otm_put.expiration_date} (strike difference: {min_difference})")
+            get_logger().info(f"Found OTM put: {otm_put.ticker} @ ${otm_put.strike_price.value} exp {otm_put.expiration_date} (strike difference: {min_difference})")
             
             # Verify both legs have the same expiration (vertical spread check)
             if str(atm_put.expiration_date) != str(otm_put.expiration_date):
-                progress_print(f"❌ ERROR: Expiration mismatch! ATM: {atm_put.expiration_date}, OTM: {otm_put.expiration_date}")
-                progress_print("❌ This would create a diagonal spread, not a vertical spread. Rejecting position.")
+                get_logger().error(f"❌ ERROR: Expiration mismatch! ATM: {atm_put.expiration_date}, OTM: {otm_put.expiration_date}")
+                get_logger().error("❌ This would create a diagonal spread, not a vertical spread. Rejecting position.")
                 return None
             
-            progress_print(f"✅ Verified: Both legs have same expiration {expiration} (vertical spread)")
+            get_logger().info(f"✅ Verified: Both legs have same expiration {expiration} (vertical spread)")
             
             # Get bar data to calculate net credit
             atm_bar = self.get_option_bar(atm_put, date)
             otm_bar = self.get_option_bar(otm_put, date)
             
             if not atm_bar or not otm_bar:
-                progress_print("⚠️  No bar data available for credit calculation")
+                get_logger().warning("⚠️  No bar data available for credit calculation")
                 return None
             
             # Calculate net credit (sell ATM, buy OTM)
@@ -453,11 +453,11 @@ class VelocitySignalMomentumStrategy(Strategy):
                 # Note: Do NOT set quantity here - the backtest engine will set it based on max_position_size
                 return position
             else:
-                progress_print(f"⚠️  Negative credit: {net_credit:.2f}")
+                get_logger().warning(f"⚠️  Negative credit: {net_credit:.2f}")
                 return None
             
         except Exception as e:
-            progress_print(f"⚠️  Error creating test put credit spread: {e}")
+            get_logger().warning(f"⚠️  Error creating test put credit spread: {e}")
             return None
     
     def _get_risk_free_rate(self, date: datetime) -> float:
@@ -471,7 +471,7 @@ class VelocitySignalMomentumStrategy(Strategy):
             float: Risk-free rate (default 0.0 if not available)
         """
         if self.treasury_data is None:
-            progress_print("⚠️  No treasury data available, using default 2.0%")
+            get_logger().warning("⚠️  No treasury data available, using default 2.0%")
             return 2.0
             
         return float(self.treasury_data.get_risk_free_rate(date))
@@ -481,25 +481,25 @@ class VelocitySignalMomentumStrategy(Strategy):
         # Standard expiration target ~1 week
         if not self._has_buy_signal(date):
             return
-        progress_print(f"📈 Buy signal detected for {date.strftime('%Y-%m-%d')}")
+        get_logger().info(f"📈 Buy signal detected for {date.strftime('%Y-%m-%d')}")
 
         current_price = self.get_current_underlying_price(date, self.symbol)
         if current_price is None:
-            print("⚠️  Failed to get current price.")
+            get_logger().warning("Failed to get current price.")
             return
 
         # Select expiration (target ~1 week)
         expiration_str = self._select_week_expiration(date)
         if not expiration_str:
-            progress_print("⚠️  Failed to select expiration")
+            get_logger().warning("⚠️  Failed to select expiration")
             return
             
         position = self._create_put_credit_spread(date, current_price, expiration_str)
         if position is None:
-            progress_print("⚠️  Failed to create put credit spread for selected expiration")
+            get_logger().warning("⚠️  Failed to create put credit spread for selected expiration")
             return
 
-        print("Current underlying price", current_price)
+        get_logger().info(f"Current underlying price: {current_price}")
         
         # Track position entry for plotting
         self._position_entries.append(date)
@@ -518,11 +518,11 @@ class VelocitySignalMomentumStrategy(Strategy):
 
         live_chain = self.get_options_chain(date, current_price, strike_range=strike_range, expiration_range=expiration_range)
         if live_chain and (live_chain.get_calls() or live_chain.get_puts()):
-            progress_print(f"✅ Successfully fetched live option chain with {len(live_chain.get_calls())} calls and {len(live_chain.get_puts())} puts")
+            get_logger().info(f"✅ Successfully fetched live option chain with {len(live_chain.get_calls())} calls and {len(live_chain.get_puts())} puts")
             self.options_data[date_key] = live_chain
             return live_chain
         else:
-            progress_print(f"⚠️  Live option chain fetch returned empty data")
+            get_logger().warning(f"⚠️  Live option chain fetch returned empty data")
             return None
 
     def _select_week_expiration(self, date: datetime) -> Optional[str]:
@@ -530,7 +530,7 @@ class VelocitySignalMomentumStrategy(Strategy):
         Select the best expiration date for the strategy using options_retriever.
         Prefer expirations 5-10 days out, else nearest > 0 days, target 7 days.
         """
-        progress_print(f"🔍 _select_week_expiration called for {date.strftime('%Y-%m-%d')}")
+        get_logger().info(f"🔍 _select_week_expiration called for {date.strftime('%Y-%m-%d')}")
         target_days = 7
         
         def days_out(exp_str: str) -> int:
@@ -542,7 +542,7 @@ class VelocitySignalMomentumStrategy(Strategy):
         
         # Try to get expirations from options_retriever
         try:
-            progress_print("🔍 Fetching expirations from options_retriever for 5-10 day window...")
+            get_logger().info("🔍 Fetching expirations from options_retriever for 5-10 day window...")
             
             # Use new_options_handler to get available expirations
             from algo_trading_engine.dto import ExpirationRangeDTO
@@ -552,15 +552,15 @@ class VelocitySignalMomentumStrategy(Strategy):
             contracts = self.get_contract_list_for_date(date, expiration_range=expiration_range)
             
             if not contracts:
-                progress_print("⚠️  No contracts found for the date")
+                get_logger().warning("⚠️  No contracts found for the date")
                 return None
             
             # Extract unique expiration dates from contracts
             expirations = set(str(contract.expiration_date) for contract in contracts)
-            progress_print(f"🔍 Found {len(expirations)} expirations from contracts")
+            get_logger().info(f"🔍 Found {len(expirations)} expirations from contracts")
             
             if not expirations:
-                progress_print("⚠️  No expirations found in option chain")
+                get_logger().warning("⚠️  No expirations found in option chain")
                 return None
                 
             # Calculate days out for each expiration and select closest to target (7 days)
@@ -568,53 +568,53 @@ class VelocitySignalMomentumStrategy(Strategy):
             valid_expirations = [(e, d) for e, d in valid_expirations if d > 0]
             
             if not valid_expirations:
-                progress_print("⚠️  No future expirations available")
+                get_logger().warning("⚠️  No future expirations available")
                 return None
                 
             # Select the expiration closest to target (7 days)
             best_expiration = min(valid_expirations, key=lambda x: abs(x[1] - target_days))[0]
             days_to_exp = days_out(best_expiration)
-            progress_print(f"✅ Selected expiration: {best_expiration} ({days_to_exp} days out)")
+            get_logger().info(f"✅ Selected expiration: {best_expiration} ({days_to_exp} days out)")
             
             return best_expiration
             
         except Exception as e:
-            progress_print(f"❌ Error fetching expirations from options_retriever: {str(e)}")
+            get_logger().error(f"❌ Error fetching expirations from options_retriever: {str(e)}")
             return None
     
 
     # ==== Helper methods (closing) ====
     def _try_close_positions(self, date: datetime, positions: tuple['Position', ...], remove_position: Callable[[datetime, 'Position', float, Optional[float], Optional[list[int]]], None]):
         current_underlying_price = self.get_current_underlying_price(date, self.symbol)
-        progress_print(f"Current underlying price: {current_underlying_price}") 
-        progress_print(f"🤖 Strategy evaluating {len(positions)} open position(s) for potential closure...")
+        get_logger().info(f"Current underlying price: {current_underlying_price}") 
+        get_logger().info(f"🤖 Strategy evaluating {len(positions)} open position(s) for potential closure...")
                
         for position in positions:
             days_held = position.get_days_held(date) if hasattr(position, 'get_days_held') else 0
             days_to_exp = position.get_days_to_expiration(date) if hasattr(position, 'get_days_to_expiration') else 0
-            progress_print(f"🔍 Position {position.__str__()} - Days held: {days_held}, Days to exp: {days_to_exp}")
+            get_logger().info(f"🔍 Position {position.__str__()} - Days held: {days_held}, Days to exp: {days_to_exp}")
 
             # Compute exit price for stop/holding decisions
             exit_price = self.compute_exit_price(position, date)
             if exit_price is not None:
                 exit_price = self._sanitize_exit_price(exit_price)
-                progress_print(f"💰 Calculated exit price for {position.__str__()}: {exit_price}")
+                get_logger().info(f"💰 Calculated exit price for {position.__str__()}: {exit_price}")
 
             # Holding period
             if self._should_close_due_to_holding(position, date, self.holding_period):
                 if exit_price is not None:
-                    print(f"📆 Holding period met for {position.__str__()} at exit {exit_price} (held {days_held} days, target: {self.holding_period})")
+                    get_logger().info(f"Holding period met for {position.__str__()} at exit {exit_price} (held {days_held} days, target: {self.holding_period})")
                     current_volumes = self.get_current_volumes_for_position(position, date)
                     remove_position(date, position, exit_price, current_volumes=current_volumes)
                 else:
-                    progress_print(f"⚠️  No exit price available for {position.__str__()} on {date}. Skipping holding-period close.")
+                    get_logger().warning(f"⚠️  No exit price available for {position.__str__()} on {date}. Skipping holding-period close.")
             else:
                 # Position not closed - show why
-                progress_print(f"📋 Position {position.__str__()} remains open - Days held: {days_held}/{self.holding_period}, Days to exp: {days_to_exp}")
-                progress_print(f"🤖 Strategy decision: Position does not meet closing criteria (holding period: {self.holding_period} days, stop loss, or expiration)")
+                get_logger().info(f"📋 Position {position.__str__()} remains open - Days held: {days_held}/{self.holding_period}, Days to exp: {days_to_exp}")
+                get_logger().info(f"🤖 Strategy decision: Position does not meet closing criteria (holding period: {self.holding_period} days, stop loss, or expiration)")
         
         # Summary of strategy decisions
-        progress_print(f"✅ Strategy evaluation complete - no positions closed on {date.strftime('%Y-%m-%d')}")
+        get_logger().info(f"✅ Strategy evaluation complete - no positions closed on {date.strftime('%Y-%m-%d')}")
 
     def _sanitize_exit_price(self, value: Optional[float]) -> Optional[float]:
         if value is None:
@@ -642,8 +642,8 @@ class VelocitySignalMomentumStrategy(Strategy):
         Returns:
             bool: True if data is valid for this strategy, False otherwise
         """        
-        progress_print(f"\n🔍 Validating data for Velocity Signal Momentum Strategy...")
-        progress_print(f"   Data shape: {data.shape}")
+        get_logger().info(f"\n🔍 Validating data for Velocity Signal Momentum Strategy...")
+        get_logger().info(f"   Data shape: {data.shape}")
         
         # Check if the data has the required columns for velocity momentum strategy
         required_columns = [
@@ -652,20 +652,20 @@ class VelocitySignalMomentumStrategy(Strategy):
         
         missing_columns = [col for col in required_columns if col not in data.columns]
         if missing_columns:
-            progress_print(f"⚠️  Warning: Missing required columns: {missing_columns}")
-            progress_print(f"   Available columns: {list(data.columns)}")
+            get_logger().warning(f"⚠️  Warning: Missing required columns: {missing_columns}")
+            get_logger().info(f"   Available columns: {list(data.columns)}")
             return False
         else:
-            progress_print(f"✅ All required columns present")
+            get_logger().info(f"✅ All required columns present")
         
         # Check if data has datetime index
         if not isinstance(data.index, pd.DatetimeIndex):
-            progress_print("❌ Error: Data must have a datetime index for backtesting")
+            get_logger().error("❌ Error: Data must have a datetime index for backtesting")
             return False
         
         # Check if we have enough data for moving averages (need at least 30 days for SMA 30)
         if len(data) < 30:
-            progress_print(f"⚠️  Warning: Not enough data for velocity analysis. Need at least 30 days, got {len(data)}")
+            get_logger().warning(f"⚠️  Warning: Not enough data for velocity analysis. Need at least 30 days, got {len(data)}")
             return False
         
         # Check for gaps in the data (missing trading days)
@@ -674,11 +674,11 @@ class VelocitySignalMomentumStrategy(Strategy):
             expected_business_days = len(date_range)
             actual_trading_days = len(data)
             if actual_trading_days < expected_business_days * 0.9:  # Allow for some holidays
-                progress_print(f"⚠️  Warning: Data may have gaps. Expected ~{expected_business_days} business days, got {actual_trading_days}")
+                get_logger().warning(f"⚠️  Warning: Data may have gaps. Expected ~{expected_business_days} business days, got {actual_trading_days}")
         
-        progress_print(f"✅ Data validation complete for Velocity Signal Momentum Strategy")
-        progress_print(f"   Final data shape: {data.shape}")
-        progress_print(f"   Date range: {data.index.min()} to {data.index.max()}")
-        progress_print(f"   Trading days: {len(data)}")
+        get_logger().info(f"✅ Data validation complete for Velocity Signal Momentum Strategy")
+        get_logger().info(f"   Final data shape: {data.shape}")
+        get_logger().info(f"   Date range: {data.index.min()} to {data.index.max()}")
+        get_logger().info(f"   Trading days: {len(data)}")
         
         return True

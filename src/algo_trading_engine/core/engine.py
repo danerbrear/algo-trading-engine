@@ -11,6 +11,7 @@ from datetime import datetime
 import pandas as pd
 
 from .strategy import Strategy
+from algo_trading_engine.common.logger import configure_logger, get_logger, log_and_echo
 from algo_trading_engine.models.config import PaperTradingConfig
 
 if TYPE_CHECKING:
@@ -140,19 +141,19 @@ class TradingEngine(ABC):
                 if hasattr(self.strategy, 'get_option_bar') and callable(self.strategy.get_option_bar):
                     bar_data = self.strategy.get_option_bar(option, date)
                 else:
-                    print(f"⚠️  No option bar data available for {option.ticker} on {date.date()}")
+                    get_logger().warning(f"No option bar data available for {option.ticker} on {date.date()}")
                     current_volumes.append(None)
                     continue
-                
+
                 if bar_data and hasattr(bar_data, 'volume') and bar_data.volume is not None:
                     current_volumes.append(bar_data.volume)
-                    print(f"📡 Fetched volume data for {option.ticker} on {date.date()}: {bar_data.volume}")
+                    get_logger().debug(f"Fetched volume data for {option.ticker} on {date.date()}: {bar_data.volume}")
                 else:
                     current_volumes.append(None)
-                    print(f"⚠️  No volume data available for {option.ticker} on {date.date()}")
-                    
+                    get_logger().warning(f"No volume data available for {option.ticker} on {date.date()}")
+
             except Exception as e:
-                print(f"⚠️  Error fetching volume data for {option.symbol}: {e}")
+                get_logger().warning(f"Error fetching volume data for {option.symbol}: {e}")
                 current_volumes.append(None)
         return current_volumes
     
@@ -188,7 +189,7 @@ class TradingEngine(ABC):
             return exit_price
             
         except Exception as e:
-            print(f"⚠️  Error computing exit price: {e}")
+            get_logger().warning(f"Error computing exit price: {e}")
             return None
     
     def check_univeral_close_conditions(self, date: datetime):
@@ -206,13 +207,13 @@ class TradingEngine(ABC):
             exit_price = self.compute_exit_price(position, date)
             
             if self._should_close_due_to_assignment(position, date):
-                print(f"⏰ Position {position.__str__()} expired or near expiration (days to exp: {position.get_days_to_expiration(date)})")
+                get_logger().info(f"Position {position.__str__()} expired or near expiration (days to exp: {position.get_days_to_expiration(date)})")
                 self._remove_position(date, position, 0.0, underlying_price=current_underlying_price, current_volumes=current_volumes)
             elif self._should_close_due_to_profit_target(position, exit_price):
-                print(f"💰 Profit target hit for {position.__str__()} at exit {exit_price}")
+                get_logger().info(f"Profit target hit for {position.__str__()} at exit {exit_price}")
                 self._remove_position(date, position, exit_price if exit_price is not None else 0.0, current_volumes=current_volumes)
             elif self._should_close_due_to_stop(position, exit_price):
-                print(f"💰 Stop loss hit for {position.__str__()} at exit {exit_price}")
+                get_logger().info(f"Stop loss hit for {position.__str__()} at exit {exit_price}")
                 self._remove_position(date, position, exit_price if exit_price is not None else 0.0, current_volumes=current_volumes)
     
     def _should_close_due_to_assignment(self, position: 'Position', date: datetime) -> bool:
@@ -298,9 +299,11 @@ class PaperTradingEngine(TradingEngine):
         from algo_trading_engine.prediction.capital_manager import CapitalManager
         from algo_trading_engine.prediction.recommendation_engine import InteractiveStrategyRecommender
         
+        configure_logger("trade", log_level="info")
+
         # Get options handler
         if self._options_handler is None:
-            print("❌ ERROR: Options handler not available")
+            get_logger().error("Options handler not available")
             return False
         
         # Load capital allocation configuration
@@ -321,7 +324,7 @@ class PaperTradingEngine(TradingEngine):
             store = JsonDecisionStore()
             capital_manager = CapitalManager.from_config_file(config_path, store)
         except Exception as e:
-            print(f"❌ ERROR: Failed to load capital allocation config: {e}")
+            get_logger().error(f"Failed to load capital allocation config: {e}")
             return False
         
         # Get current date
@@ -335,36 +338,36 @@ class PaperTradingEngine(TradingEngine):
             auto_yes=False
         )
         
-        # Check for open positions and display status
+        # Check for open positions and display status (recommendation-relevant -> stdout via log_and_echo)
         open_records = store.get_open_positions(symbol=self._config.symbol)
         if open_records:
-            print(f"📊 Open positions found: {len(open_records)}")
+            log_and_echo(f"Open positions found: {len(open_records)}")
             statuses = recommender.get_open_positions_status(run_date)
             if statuses:
-                print("\n📈 Open position status:")
+                log_and_echo("\nOpen position status:")
                 for s in statuses:
                     pnl_dollars = f"${s['pnl_dollars']:.2f}" if s.get('pnl_dollars') is not None else "N/A"
                     pnl_pct = f"{s['pnl_percent']:.1%}" if s.get('pnl_percent') is not None else "N/A"
-                    print(
+                    log_and_echo(
                         f"  - {s['symbol']} {s['strategy_type']} x{s['quantity']} | "
                         f"Entry ${s['entry_price']:.2f}  Exit ${s['exit_price']:.2f} | "
                         f"P&L {pnl_dollars} ({pnl_pct}) | Held {s['days_held']}d  DTE {s['dte']}d"
                     )
-                print()
-        
-        print(f"📅 Running recommendation flow for {run_date.date()}")
-        
-        # Display capital status
-        print(capital_manager.get_status_summary(strategy_name))
-        print()
-        
+                log_and_echo("")
+
+        log_and_echo(f"Running recommendation flow for {run_date.date()}")
+
+        # Display capital status (recommendation-relevant)
+        log_and_echo(capital_manager.get_status_summary(strategy_name))
+        log_and_echo("")
+
         try:
-            # Run full recommendation flow (both open and close recommendations)
             recommender.run(run_date, auto_yes=False)
             self.check_univeral_close_conditions(run_date)
             return True
         except Exception as e:
-            print(f"❌ ERROR: Failed to run recommendation engine: {e}")
+            log_and_echo(f"ERROR: Failed to run recommendation engine: {e}")
+            get_logger().error(f"Failed to run recommendation engine: {e}")
             return False
     
     def _get_strategy_name_from_class(self) -> str:

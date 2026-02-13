@@ -35,25 +35,7 @@ def main():
 
     # Create and run engine - all data fetching and setup is handled internally
     engine = BacktestEngine.from_config(config)
-    success = engine.run()
-    
-    if success:
-        # Get performance metrics
-        metrics = engine.get_performance_metrics()
-
-        print("\n=== Backtest Results ===")
-        print(f"Total Return: ${metrics.total_return:,.2f} ({metrics.total_return_pct:.2f}%)")
-        print(f"Sharpe Ratio: {metrics.sharpe_ratio:.3f}")
-        print(f"Max Drawdown: {metrics.max_drawdown:.2f}%")
-        print(f"Win Rate: {metrics.win_rate:.1f}%")
-        print(f"Total Positions: {metrics.total_positions}")
-
-        # Strategy-specific stats
-        for strategy_stat in metrics.strategy_stats:
-            print(f"\n{strategy_stat.strategy_type.value}:")
-            print(f"  Win Rate: {strategy_stat.win_rate:.1f}%")
-            print(f"  Total P&L: ${strategy_stat.total_pnl:,.2f}")
-
+    engine.run()
 
 if __name__ == "__main__":
     main()

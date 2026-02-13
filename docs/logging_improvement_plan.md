@@ -25,15 +25,15 @@ Use this checklist to track what is done vs. remaining. Based on current working
 
 ### Remaining
 
-- [ ] **ProgressTracker (Section 4)** — `progress_print()` still writes to stdout (via `tracker.write()` or `print()`). Should be changed to log to file only (`get_logger().debug()` / `.info()` by force). `ProgressTracker.close()` still uses `print()` for "Processing completed" / timing; should use `get_logger().info(...)`.
-- [ ] **Engine core (Step 3)** — `core/engine.py` still uses `print()` in `get_current_volumes_for_position`, `compute_exit_price`, `check_univeral_close_conditions`, and PaperTradingEngine `run()`. Replace with `get_logger().info(...)` / `.warning(...)` / `.error(...)`.
-- [ ] **TradingEngine / recommendation (Step 4)** — At start of recommendation run, call `configure_logger("trade", log_level=...)`. Use `get_logger()` for all non–recommendation logs. Use `log_and_echo()` only for recommendation-relevant lines (open positions, run date, capital summary, final outcome).
-- [ ] **Strategies and options_handler** — After ProgressTracker is updated, strategies and `options_handler` that use `progress_print` will automatically log to file. No change required unless adding new log sites. (`logs/` is already in `.gitignore`.)
+- [x] **ProgressTracker (Section 4)** — `progress_print()` now logs to file only (`get_logger().debug()` / `.info()` by force). `ProgressTracker.close()` uses `get_logger().info(...)` for completion summary.
+- [x] **Engine core (Step 3)** — `core/engine.py`: all `print()` replaced with `get_logger().info()` / `.warning()` / `.error()` in `get_current_volumes_for_position`, `compute_exit_price`, `check_univeral_close_conditions`.
+- [x] **TradingEngine / recommendation (Step 4)** — At start of `PaperTradingEngine.run()`, `configure_logger("trade", log_level="info")`. Errors and non–recommendation messages use `get_logger()`. Recommendation-relevant (open positions, run date, capital summary, final error) use `log_and_echo()`.
+- [x] **Strategies and options_handler** — They use `progress_print`, which now logs to file only; no code change needed. (`logs/` is already in `.gitignore`.)
 
 ### Validation (Section 7)
 
-- [ ] Run backtest; confirm `logs/backtest.log` has engine/run content; confirm stdout shows only progress bar (once ProgressTracker is updated).
-- [ ] Run recommendation flow; confirm `logs/trade.log` has full detail and stdout shows only recommendation-relevant lines (after Step 4).
+- [x] Run backtest; confirm `logs/backtest.log` has engine/run content; confirm stdout shows only progress bar.
+- [x] Run recommendation flow; confirm `logs/trade.log` has full detail and stdout shows only recommendation-relevant lines.
 
 ---
 

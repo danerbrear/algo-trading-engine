@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 
 # Import from the public API
 from algo_trading_engine import PaperTradingEngine, PaperTradingConfig
+from algo_trading_engine.common.logger import get_logger
 
 # Load environment variables from .env file
 load_dotenv()
@@ -34,8 +35,8 @@ def main():
     success = engine.run()
     
     if success:
-        print("\n✅ Paper trading completed successfully!")
-        print("   Check predictions/decisions/ for decision records")
+        get_logger().info("Paper trading completed successfully!")
+        get_logger().info("Check predictions/decisions/ for decision records")
 
 
 if __name__ == "__main__":

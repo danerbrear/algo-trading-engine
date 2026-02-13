@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import List
 import argparse
 
 from algo_trading_engine.common.options_handler import OptionsHandler
@@ -9,11 +9,11 @@ from algo_trading_engine.common.options_handler import OptionsHandler
 from algo_trading_engine.core.strategy import Strategy
 from .models import Benchmark
 from algo_trading_engine.common.models import StrategyType
-from algo_trading_engine.vo import Position, create_position
+from algo_trading_engine.vo import Position
 from algo_trading_engine.common.data_retriever import DataRetriever
 from .config import VolumeConfig, VolumeStats, OverallPerformanceStats, StrategyPerformanceStats
-from algo_trading_engine.common.logger import configure_logger, get_logger
-from algo_trading_engine.common.progress_tracker import ProgressTracker, set_global_progress_tracker, progress_print
+from algo_trading_engine.common.logger import configure_logger, get_logger, log_and_echo
+from algo_trading_engine.common.progress_tracker import ProgressTracker, set_global_progress_tracker
 from .strategy_builder import StrategyFactory, create_strategy_from_args
 from algo_trading_engine.core.engine import TradingEngine
 from algo_trading_engine.models.config import BacktestConfig as BacktestConfigDTO
@@ -256,12 +256,8 @@ class BacktestEngine(TradingEngine):
         get_logger().info(f"   Last trading date: {last_date.date()}")
         get_logger().info(f"   Last closing price: ${last_price:.2f}")
 
-        # Create a wrapper function that handles the new _remove_position signature
-        def remove_position_wrapper(date: datetime, position: Position, exit_price: float, current_volumes: list[int] = None):
-            self._remove_position(date, position, exit_price, current_volumes=current_volumes)
-
         # Execute strategy's on_end method with the wrapper
-        self.strategy.on_end(self.positions, remove_position_wrapper, last_date)
+        self.strategy.on_end(self.positions, self._remove_position, last_date)
 
         # Calculate final performance metrics
         initial_capital = self.initial_capital  # Use the initial capital from the constructor
@@ -291,14 +287,14 @@ class BacktestEngine(TradingEngine):
         if self.closed_positions:
             self._print_position_statistics()
 
-        get_logger().info("Backtest Results Summary:")
-        get_logger().info(f"   Benchmark return: {self.benchmark.get_return_percentage():+.2f}%")
-        get_logger().info(f"   Benchmark return dollars: ${self.benchmark.get_return_dollars():+.2f}")
-        get_logger().info(f"   Trading Days: {len(self.data.index)}")
-        get_logger().info(f"   Total positions: {self.total_positions}")
-        get_logger().info(f"   Final capital: ${self.capital:.2f}")
-        get_logger().info(f"   Total Return: ${final_return:+,.2f} ({final_return_pct:+.2f}%)")
-        get_logger().info(f"   Sharpe Ratio: {sharpe_ratio:.3f}")
+        log_and_echo("Backtest Results Summary:")
+        log_and_echo(f"   Benchmark return: {self.benchmark.get_return_percentage():+.2f}%")
+        log_and_echo(f"   Benchmark return dollars: ${self.benchmark.get_return_dollars():+.2f}")
+        log_and_echo(f"   Trading Days: {len(self.data.index)}")
+        log_and_echo(f"   Total positions: {self.total_positions}")
+        log_and_echo(f"   Final capital: ${self.capital:.2f}")
+        log_and_echo(f"   Total Return: ${final_return:+,.2f} ({final_return_pct:+.2f}%)")
+        log_and_echo(f"   Sharpe Ratio: {sharpe_ratio:.3f}")
     
     def get_performance_metrics(self) -> PerformanceMetrics:
         """
@@ -360,7 +356,6 @@ class BacktestEngine(TradingEngine):
         """
         return self.positions.copy()
 
-
     def _add_position(self, position: Position):
         """
         Add a position to the positions. Rejects positions with insufficient volume and determines position size based
@@ -377,7 +372,7 @@ class BacktestEngine(TradingEngine):
 
         position_size = self._get_position_size(position)
         if position_size == 0:
-            get_logger().warning("Not enough capital to add position. Position size is 0.")
+            get_logger().info("Not enough capital to add position. Position size is 0.")
             return
         
         position.set_quantity(position_size)
