@@ -13,7 +13,7 @@ from algo_trading_engine.prediction.decision_store import (
     generate_decision_id,
 )
 from algo_trading_engine.prediction.capital_manager import CapitalManager
-from algo_trading_engine.common.logger import get_logger
+from algo_trading_engine.common.logger import get_logger, log_and_echo
 
 class InteractiveStrategyRecommender:
     """Produce open/close recommendations and capture user decisions.
@@ -89,7 +89,7 @@ class InteractiveStrategyRecommender:
         if recommended_position is not None:
             self._process_open_recommendation(date, recommended_position, current_price)
         else:
-            get_logger().info("No recommendation found for strategy")
+            log_and_echo("No recommendation found for strategy")
         
         # Process captured position closures (if any)
         if positions_to_close:

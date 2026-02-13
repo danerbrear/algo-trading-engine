@@ -36,7 +36,6 @@ def main():
     
     if success:
         get_logger().info("Paper trading completed successfully!")
-        get_logger().info("Check predictions/decisions/ for decision records")
 
 
 if __name__ == "__main__":

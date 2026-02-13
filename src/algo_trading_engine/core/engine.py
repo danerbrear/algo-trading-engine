@@ -299,6 +299,7 @@ class PaperTradingEngine(TradingEngine):
         from algo_trading_engine.prediction.capital_manager import CapitalManager
         from algo_trading_engine.prediction.recommendation_engine import InteractiveStrategyRecommender
         
+        # Logger already configured in from_config(); ensure it's set for this run
         configure_logger("trade", log_level="info")
 
         # Get options handler
@@ -414,6 +415,9 @@ class PaperTradingEngine(TradingEngine):
         Raises:
             ValueError: If configuration is invalid or data fetching fails
         """
+        # Configure logger first so data fetch and all setup log to trade.log (not stdout)
+        configure_logger("trade", log_level="info")
+
         # Internal: Create data retriever
         # For paper trading, we need recent historical data for strategy initialization
         # Use a default lookback period (e.g., 120 days) for LSTM data
