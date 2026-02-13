@@ -68,10 +68,9 @@ jobs:
         DEFAULT_BUMP: patch
         WITH_V: true  # Creates tags like v1.0.0 instead of 1.0.0
         RELEASE_BRANCHES: main
-        CUSTOM_RELEASE_TYPES: |
-          major:Breaking change,breaking,breaking change,feat!
-          minor:feat,feature
-          patch:fix,fixes,hotfix,chore,docs,style,refactor,perf,test
+        MAJOR_STRING_TOKEN: "major:"
+        MINOR_STRING_TOKEN: "feat:"
+        PATCH_STRING_TOKEN: "fix:"
 
     - name: Get new version tag
       id: get_version
