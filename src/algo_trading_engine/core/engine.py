@@ -125,21 +125,28 @@ class TradingEngine(ABC):
                     raise ValueError(f"Could not find price data for date {date.date()}")
     
         
-    def get_current_volumes_for_position(self, position: 'Position', date: datetime) -> list[int]:
+    def get_current_volumes_for_position(self, position: 'Position', date: Optional[datetime] = None) -> list[int]:
         """
         Fetch current date volume data for all options in a position using options_retriever.
         """
+        if date is None:
+            date = datetime.now()
+            get_logger().warning("get_current_volumes_for_position was called without date; using datetime.now()")
         current_volumes = []
         
         # Check if position has spread_options
         if not hasattr(position, 'spread_options') or position.spread_options is None:
             return current_volumes
+
+        # Resolve strategy and option bar callable (may be called with self=engine or self=strategy after injection)
+        strategy_ref = getattr(self, 'strategy', self) if hasattr(self, 'strategy') else self
+        get_option_bar = getattr(strategy_ref, 'get_option_bar', None) if strategy_ref is not None else None
             
         for option in position.spread_options:
             try:
                 # Get current volume data from strategy's callable if available
-                if hasattr(self.strategy, 'get_option_bar') and callable(self.strategy.get_option_bar):
-                    bar_data = self.strategy.get_option_bar(option, date)
+                if get_option_bar is not None and callable(get_option_bar):
+                    bar_data = get_option_bar(option, date)
                 else:
                     get_logger().warning(f"No option bar data available for {option.ticker} on {date.date()}")
                     current_volumes.append(None)
