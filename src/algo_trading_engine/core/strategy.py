@@ -6,9 +6,10 @@ This module provides the abstract base class that all trading strategies must im
 
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Callable, Optional, Dict, List, TYPE_CHECKING
+from typing import Callable, Optional, List, TYPE_CHECKING
 import pandas as pd
 
+from algo_trading_engine.common.logger import get_logger
 from algo_trading_engine.common.models import TreasuryRates
 from algo_trading_engine.core.indicators.indicator import Indicator
 
@@ -77,7 +78,7 @@ class Strategy(ABC):
                 Signature: (date, position, exit_price, underlying_price=None, current_volumes=None)
         """
         if not self._update_indicators(date):
-            print(f"Error updating indicators for date {date}, skipping execution")
+            get_logger().error(f"Error updating indicators for date {date}, skipping execution")
             return
 
     @abstractmethod
@@ -240,7 +241,7 @@ class Strategy(ABC):
             try:
                 indicator.update(date, self.data)
             except Exception as e:
-                print(f"Error updating indicator {indicator.name}: {e}")
+                get_logger().error(f"Error updating indicator {indicator.name}: {e}")
                 return False
-        print(f"Indicators updated successfully for date {date}")
+        get_logger().info(f"Indicators updated successfully for date {date}")
         return True

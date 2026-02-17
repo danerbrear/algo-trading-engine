@@ -1,4 +1,6 @@
 from algo_trading_engine import Strategy
+from algo_trading_engine.indicators import ATRIndicator
+from algo_trading_engine.enums import BarTimeInterval
 
 class MyCustomStrategy(Strategy):
     """
@@ -11,6 +13,11 @@ class MyCustomStrategy(Strategy):
     def __init__(self, profit_target=0.5, stop_loss=0.6, start_date_offset=60):
         """Initialize the custom strategy."""
         super().__init__(profit_target, stop_loss, start_date_offset)
+
+        # Example indicator
+        atr_indicator = ATRIndicator(period=20, period_unit=BarTimeInterval.DAY)
+        self.add_indicator(atr_indicator)
+
         # Add any custom initialization here
     
     def on_new_date(self, date, positions, add_position, remove_position):
