@@ -221,14 +221,20 @@ class InteractiveStrategyRecommender:
         for recommendation in close_recommendations:
             position = recommendation["position"]
             exit_price = recommendation["exit_price"]
+            rationale = recommendation.get("rationale", "strategy_decision")
             
-            # If auto_yes is false, use _get_exit_price_from_user_prompts to get exit price from prompts
             if not self.auto_yes:
+                # 1. Prompt user for Y/N to close the position
+                summary = self._format_close_summary(position, exit_price, rationale)
+                if not self.prompt(f"Close recommendation:\n{summary}\nClose this position?"):
+                    continue
+                # 2. Prompt user for exit price
                 computed_exit_price = self._get_exit_price_from_user_prompts(position, date)
                 if computed_exit_price is not None:
                     exit_price = computed_exit_price
                 else:
                     get_logger().warning(f"Could not compute exit price for position {position.__str__()}, using strategy-provided price")
+            # else: auto_yes is true — assume we're closing and use existing exit_price
             
             # Find the corresponding decision record using Position equality
             for rec in open_records:

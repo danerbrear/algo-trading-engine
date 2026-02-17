@@ -72,6 +72,19 @@ def configure_logger(
     )
 
 
+def remove_logger_sink() -> None:
+    """
+    Remove the current file sink and close the log file.
+
+    Call this when the log file must be closed (e.g. in tests before removing
+    a temp directory that contains the log file). Idempotent if no sink is set.
+    """
+    global _sink_id
+    if _sink_id is not None:
+        logger.remove(_sink_id)
+        _sink_id = None
+
+
 def get_logger():
     """
     Return the singleton Loguru logger.
