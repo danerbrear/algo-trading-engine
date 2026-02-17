@@ -1,11 +1,12 @@
 from datetime import datetime
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from algo_trading_engine.prediction.decision_store import JsonDecisionStore, ProposedPositionRequestDTO, DecisionResponseDTO, generate_decision_id
 from algo_trading_engine.prediction.recommendation_engine import InteractiveStrategyRecommender
 from algo_trading_engine.prediction.capital_manager import CapitalManager
 from algo_trading_engine.common.models import StrategyType
 from algo_trading_engine.common.models import Option
+from algo_trading_engine.vo import create_position
 
 
 def _make_option(symbol: str, strike: float, expiration: str, opt_type: str, last: float, volume: int = 100) -> Option:
@@ -180,4 +181,72 @@ def test_recommender_close_accept(monkeypatch, tmp_path):
     # Verify position was closed
     open_positions = store.get_open_positions()
     assert len(open_positions) == 0  # Position should be closed
+
+
+def test_get_exit_price_from_user_prompts_with_bar_data_uses_defaults(tmp_path):
+    """With auto_yes=False and get_option_bar returning data, prompt for exit price with default from bar (Enter = use default)."""
+    atm_option = _make_option("SPY_500P", 500, "2025-09-06", "put", 2.0)
+    otm_option = _make_option("SPY_495P", 495, "2025-09-06", "put", 1.0)
+    position = create_position(
+        symbol="SPY",
+        expiration_date=datetime(2025, 9, 6),
+        strategy_type=StrategyType.PUT_CREDIT_SPREAD,
+        strike_price=500.0,
+        entry_date=datetime(2025, 8, 1),
+        entry_price=1.05,
+        spread_options=(atm_option, otm_option),
+    )
+    position.set_quantity(1)
+
+    strategy = MagicMock()
+    strategy.symbol = "SPY"
+    atm_bar = MagicMock()
+    atm_bar.close_price = 1.80
+    otm_bar = MagicMock()
+    otm_bar.close_price = 0.90
+    strategy.get_option_bar = MagicMock(side_effect=[atm_bar, otm_bar])
+
+    store = JsonDecisionStore(base_dir=str(tmp_path))
+    allocations_config = {"strategies": {"credit_spread": {"allocated_capital": 10000.0, "max_risk_percentage": 0.05}}}
+    capital_manager = CapitalManager(allocations_config, store)
+    recommender = InteractiveStrategyRecommender(strategy, store, capital_manager, auto_yes=False)
+
+    # User presses Enter twice → use bar defaults; put credit spread exit = atm - otm = 1.80 - 0.90 = 0.90
+    with patch("algo_trading_engine.prediction.recommendation_engine.input", side_effect=["", ""]):
+        result = recommender._get_exit_price_from_user_prompts(position, datetime(2025, 8, 8))
+
+    assert result is not None
+    assert abs(result - 0.90) < 1e-6
+
+
+def test_get_exit_price_from_user_prompts_without_bar_data_prompts_without_default(tmp_path):
+    """With auto_yes=False and get_option_bar NOT returning data, prompt for net exit price without default."""
+    atm_option = _make_option("SPY_500P", 500, "2025-09-06", "put", 2.0)
+    otm_option = _make_option("SPY_495P", 495, "2025-09-06", "put", 1.0)
+    position = create_position(
+        symbol="SPY",
+        expiration_date=datetime(2025, 9, 6),
+        strategy_type=StrategyType.PUT_CREDIT_SPREAD,
+        strike_price=500.0,
+        entry_date=datetime(2025, 8, 1),
+        entry_price=1.05,
+        spread_options=(atm_option, otm_option),
+    )
+    position.set_quantity(1)
+
+    strategy = MagicMock()
+    strategy.symbol = "SPY"
+    strategy.get_option_bar = MagicMock(return_value=None)
+
+    store = JsonDecisionStore(base_dir=str(tmp_path))
+    allocations_config = {"strategies": {"credit_spread": {"allocated_capital": 10000.0, "max_risk_percentage": 0.05}}}
+    capital_manager = CapitalManager(allocations_config, store)
+    recommender = InteractiveStrategyRecommender(strategy, store, capital_manager, auto_yes=False)
+
+    # Single prompt "Enter net exit price for spread: " with no default; user types 0.75
+    with patch("algo_trading_engine.prediction.recommendation_engine.input", return_value="0.75"):
+        result = recommender._get_exit_price_from_user_prompts(position, datetime(2025, 8, 8))
+
+    assert result is not None
+    assert abs(result - 0.75) < 1e-6
 

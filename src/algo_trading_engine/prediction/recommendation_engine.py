@@ -403,14 +403,14 @@ class InteractiveStrategyRecommender:
         )
 
     def _get_exit_price_from_user_prompts(self, position: Position, date: datetime) -> Optional[float]:
-        """Get exit price by prompting user for individual option prices."""
+        """Get exit price by prompting user: with bar data, prompt per-leg with current prices and defaults; without bar data, single prompt for net exit price."""
         try:
             if not position.spread_options or len(position.spread_options) != 2:
                 get_logger().warning("Position doesn't have valid spread options")
                 return None
-                
+
             atm_option, otm_option = position.spread_options
-            
+
             # If the date is the current date, try to fetch previous day's close data
             # since end-of-day data may not be available yet (processed after 4:30 PM ET)
             fetch_date = date
@@ -419,48 +419,45 @@ class InteractiveStrategyRecommender:
                 from datetime import timedelta
                 fetch_date = date - timedelta(days=1)
                 get_logger().info(f"Current date detected, fetching previous day's data: {fetch_date.strftime('%Y-%m-%d')}")
-            
-            # Get bar data for both options
+
+            # Get bar data for both options (optional; used for convenience only)
             atm_bar = self.strategy.get_option_bar(atm_option, fetch_date)
             otm_bar = self.strategy.get_option_bar(otm_option, fetch_date)
-            
-            if not atm_bar or not otm_bar:
-                get_logger().warning(f"No bar data available for options on {fetch_date.strftime('%Y-%m-%d')}")
+
+            if atm_bar and otm_bar:
+                # Bar data available: prompt per-leg with current prices and defaults on Enter
+                get_logger().info(f"Interactive mode: Please provide exit prices for position {position.__str__()}")
+
+                atm_price_input = input(f"Enter exit price for {atm_option.ticker} (current: ${atm_bar.close_price}): ").strip()
+                if atm_price_input:
+                    atm_price = float(atm_price_input)
+                    get_logger().info(f"✅ Using custom ATM price: ${atm_price}")
+                else:
+                    atm_price = float(atm_bar.close_price)
+                    get_logger().info(f"✅ Using current ATM price: ${atm_price}")
+
+                otm_price_input = input(f"Enter exit price for {otm_option.ticker} (current: ${otm_bar.close_price}): ").strip()
+                if otm_price_input:
+                    otm_price = float(otm_price_input)
+                    get_logger().info(f"Using custom OTM price: ${otm_price}")
+                else:
+                    otm_price = float(otm_bar.close_price)
+                    get_logger().info(f"Using current OTM price: ${otm_price}")
+
+                if position.strategy_type.value == "put_credit_spread":
+                    exit_price = atm_price - otm_price
+                    get_logger().info(f"Calculated exit price: ${atm_price:.2f} - ${otm_price:.2f} = ${exit_price:.2f}")
+                else:
+                    raise ValueError(f"Unsupported strategy type for manual exit price calculation: {position.strategy_type.value}")
+                return exit_price
+
+            # No bar data: still prompt once for net exit price (no current price, no default)
+            get_logger().warning(f"No bar data available for options on {fetch_date.strftime('%Y-%m-%d')}; prompting for net exit price only.")
+            net_input = input("Enter net exit price for spread: ").strip()
+            if not net_input:
                 return None
-            
-            # Interactive mode: prompt user for exit prices and calculate manually
-            get_logger().info(f"Interactive mode: Please provide exit prices for position {position.__str__()}")
-            
-            # Prompt for ATM option exit price
-            atm_price_input = input(f"Enter exit price for {atm_option.ticker} (current: ${atm_bar.close_price}): ").strip()
-            if atm_price_input:
-                atm_price = float(atm_price_input)
-                get_logger().info(f"✅ Using custom ATM price: ${atm_price}")
-            else:
-                atm_price = float(atm_bar.close_price)
-                get_logger().info(f"✅ Using current ATM price: ${atm_price}")
-            
-            # Prompt for OTM option exit price
-            otm_price_input = input(f"Enter exit price for {otm_option.ticker} (current: ${otm_bar.close_price}): ").strip()
-            if otm_price_input:
-                otm_price = float(otm_price_input)
-                get_logger().info(f"Using custom OTM price: ${otm_price}")
-            else:
-                otm_price = float(otm_bar.close_price)
-                get_logger().info(f"Using current OTM price: ${otm_price}")
-            
-            # Calculate exit price manually based on strategy type
-            if position.strategy_type.value == "put_credit_spread":
-                # For put credit spread: sell ATM put, buy OTM put
-                # Exit price = current ATM price - current OTM price
-                exit_price = atm_price - otm_price
-                get_logger().info(f"Calculated exit price: ${atm_price:.2f} - ${otm_price:.2f} = ${exit_price:.2f}")
-            else:
-                # This should not happen for credit spread strategies
-                raise ValueError(f"Unsupported strategy type for manual exit price calculation: {position.strategy_type.value}")
-            
-            return exit_price
-            
+            return float(net_input)
+
         except Exception as e:
             get_logger().warning(f"Error calculating exit price: {e}")
             return None
