@@ -183,7 +183,7 @@ class TestStrategyUpdateIndicators:
         
         assert result is True
     
-    def test_update_indicators_failure_returns_false(self, capsys):
+    def test_update_indicators_failure_returns_false(self):
         """Test _update_indicators returns False when indicator fails"""
         failing_indicator = MockIndicator(name="FailingIndicator", should_fail=True)
         strategy = ConcreteTestStrategy()
@@ -191,14 +191,16 @@ class TestStrategyUpdateIndicators:
         strategy.add_indicator(failing_indicator)
         strategy.set_data(self.create_sample_data())
         
-        result = strategy._update_indicators(datetime(2024, 1, 10))
+        with patch("algo_trading_engine.core.strategy.get_logger") as mock_get_logger:
+            mock_logger = MagicMock()
+            mock_get_logger.return_value = mock_logger
+            result = strategy._update_indicators(datetime(2024, 1, 10))
         
         assert result is False
         assert failing_indicator.update_called is True
-        
-        # Check error message was printed
-        captured = capsys.readouterr()
-        assert "Error updating indicator FailingIndicator" in captured.out
+        mock_logger.error.assert_called_once()
+        call_args = mock_logger.error.call_args[0][0]
+        assert "Error updating indicator FailingIndicator" in call_args
     
     def test_update_indicators_stops_on_first_failure(self, capsys):
         """Test _update_indicators stops updating after first failure"""
@@ -273,7 +275,7 @@ class TestStrategyWithATRIndicator:
         assert atr.value is not None
         assert atr.value > 0
     
-    def test_strategy_atr_insufficient_data_fails(self, capsys):
+    def test_strategy_atr_insufficient_data_fails(self):
         """Test Strategy with ATR fails gracefully with insufficient data"""
         atr = ATRIndicator(period=14)
         strategy = ConcreteTestStrategy()
@@ -281,13 +283,16 @@ class TestStrategyWithATRIndicator:
         strategy.add_indicator(atr)
         strategy.set_data(self.create_sample_data(num_days=5))  # Not enough data
         
-        result = strategy._update_indicators(datetime(2024, 1, 5))
+        with patch("algo_trading_engine.core.strategy.get_logger") as mock_get_logger:
+            mock_logger = MagicMock()
+            mock_get_logger.return_value = mock_logger
+            result = strategy._update_indicators(datetime(2024, 1, 5))
         
         assert result is False
         assert atr.value is None
-        
-        captured = capsys.readouterr()
-        assert "Error updating indicator ATR" in captured.out
+        mock_logger.error.assert_called_once()
+        call_args = mock_logger.error.call_args[0][0]
+        assert "Error updating indicator ATR" in call_args
     
     def test_strategy_multiple_indicators_including_atr(self):
         """Test Strategy with multiple indicators including ATR"""

@@ -749,7 +749,9 @@ def main():
         else:
             print("Backtest failed!")
             sys.exit(1)
-
+    except KeyboardInterrupt:
+        print("Backtest interrupted by user.")
+        sys.exit(1)
     except Exception as e:
         print(f"Error during backtest: {e}")
         import traceback
