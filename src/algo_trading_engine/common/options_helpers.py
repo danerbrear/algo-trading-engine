@@ -10,7 +10,8 @@ from decimal import Decimal
 from datetime import date, datetime
 
 from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO
-from algo_trading_engine.vo import Option, create_position
+from algo_trading_engine.enums import BarTimeInterval
+from algo_trading_engine.vo import Option, Position, create_position
 from .models import OptionType, StrategyType
 
 

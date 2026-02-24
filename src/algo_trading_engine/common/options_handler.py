@@ -17,6 +17,7 @@ from algo_trading_engine.dto import (
     OptionsChainDTO
 )
 from algo_trading_engine.vo import StrikePrice, ExpirationDate
+from algo_trading_engine.enums import BarTimeInterval
 from .models import OptionType
 from ..ml_models.api_retry_handler import APIRetryHandler
 from .progress_tracker import progress_print
@@ -190,26 +191,26 @@ class OptionsHandler:
         return filtered_cached
     
     def get_option_bar(
-        self, 
-        contract: OptionContractDTO, 
+        self,
+        contract: OptionContractDTO,
         date: datetime,
         multiplier: int = 1,
-        timespan: str = "day"
+        timespan: BarTimeInterval = BarTimeInterval.DAY,
     ) -> Optional[OptionBarDTO]:
         """
         Get bar data for a specific option contract.
-        
+
         Args:
             contract: The option contract
             date: The date to get bar data for
             multiplier: Bar multiplier (default: 1)
-            timespan: Bar timespan (default: "day")
-            
+            timespan: Bar time interval (default: BarTimeInterval.DAY). Mapped to Polygon API timespan string.
+
         Returns:
             OptionBarDTO if found, None otherwise
         """
         date_obj = date.date() if isinstance(date, datetime) else date
-        
+
         # Try to load from cache first (with graceful error handling)
         cached_bar = None
         try:
@@ -221,17 +222,17 @@ class OptionsHandler:
             ticker_str = getattr(contract, 'ticker', 'unknown')
             print(f"⚠️  Cache loading failed for {ticker_str} on {date_obj}: {e}. Falling back to API...")
             cached_bar = None
-        
+
         if cached_bar:
             return cached_bar
-        
-        # If not in cache, fetch from API
-        # Validate contract has ticker attribute before proceeding
+
+        # If not in cache, fetch from API (map enum to Polygon timespan string)
         if not hasattr(contract, 'ticker'):
             return None
-        
+
         progress_print(f"🔄 No cached bar data found for {contract.ticker} on {date_obj}, fetching from API...")
-        bar = self._fetch_bar_from_api(contract, date_obj, multiplier, timespan)
+        timespan_str = timespan.value  # Polygon API expects "minute", "hour", "day"
+        bar = self._fetch_bar_from_api(contract, date_obj, multiplier, timespan_str)
         
         if bar:
             # Cache the fetched bar data (with graceful error handling)
@@ -481,11 +482,11 @@ class OptionsHandler:
             return []
     
     def _fetch_bar_from_api(
-        self, 
-        contract: OptionContractDTO, 
-        date_obj: date, 
-        multiplier: int, 
-        timespan: str
+        self,
+        contract: OptionContractDTO,
+        date_obj: date,
+        multiplier: int,
+        timespan: str,  # Polygon API: "minute", "hour", "day" (from BarTimeInterval.value)
     ) -> Optional[OptionBarDTO]:
         """Fetch option bar data from Polygon.io API."""
         try:
