@@ -2053,12 +2053,11 @@ class TestOptionsHandlerErrorHandling:
         result = options_handler.get_option_bar(None, datetime.now())
         assert result is None  # Returns None instead of raising
         
-        # Test invalid date for get_option_bar - implementation tries to convert but handles errors
-        # Mock with ticker attribute will work, but invalid date conversion fails gracefully
+        # Test invalid date for get_option_bar - must raise TypeError for wrong types
         mock_contract = Mock()
         mock_contract.ticker = "O:SPY250115C00600000"
-        result = options_handler.get_option_bar(mock_contract, "invalid_date")
-        assert result is None  # Returns None instead of raising
+        with pytest.raises(TypeError, match="date must be datetime or date"):
+            options_handler.get_option_bar(mock_contract, "invalid_date")
     
     def test_invalid_filter_parameters(self, options_handler):
         """Test error handling for invalid filter parameters."""

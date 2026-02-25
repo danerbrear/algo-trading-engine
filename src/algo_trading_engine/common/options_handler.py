@@ -26,6 +26,9 @@ from .progress_tracker import progress_print
 # Load environment variables
 load_dotenv()
 
+# Preserve date class reference for type validation (param 'date' shadows it in methods)
+_date_class = date
+
 
 class OptionsHandler:
     """
@@ -212,6 +215,9 @@ class OptionsHandler:
         Returns:
             OptionBarDTO if found, None otherwise
         """
+        if not isinstance(date, (datetime, _date_class)):
+            raise TypeError(f"date must be datetime or date, got {type(date).__name__}")
+
         date_obj = date.date() if isinstance(date, datetime) else date
 
         # Try to load from cache first (with graceful error handling)

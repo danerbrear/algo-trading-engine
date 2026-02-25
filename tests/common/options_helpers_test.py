@@ -14,6 +14,7 @@ from algo_trading_engine.common.options_helpers import OptionsRetrieverHelper
 from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO
 from algo_trading_engine.vo import StrikePrice, ExpirationDate
 from algo_trading_engine.common.models import OptionType, StrategyType
+from algo_trading_engine.enums import BarTimeInterval
 
 
 class TestOptionsRetrieverHelperPhase4:
@@ -753,8 +754,8 @@ class TestDebitSpreadMaxRewardRisk:
         current_price = 600.0
         test_date = datetime.now()
         
-        # Mock get_bar function - ITM/ATM has higher premium than OTM
-        def get_bar_fn(contract, date):
+        # Mock get_bar function - ITM/ATM has higher premium than OTM (accepts multiplier/timespan like get_option_bar)
+        def get_bar_fn(contract, date, multiplier=1, timespan=None):
             strike = float(contract.strike_price.value)
             if contract.contract_type == OptionType.CALL:
                 if strike == 600:  # ATM (long)
@@ -807,8 +808,8 @@ class TestDebitSpreadMaxRewardRisk:
         current_price = 600.0
         test_date = datetime.now()
         
-        # Mock get_bar function for PUT debit spreads
-        def get_bar_fn(contract, date):
+        # Mock get_bar function for PUT debit spreads (accepts multiplier/timespan like get_option_bar)
+        def get_bar_fn(contract, date, multiplier=1, timespan=None):
             strike = float(contract.strike_price.value)
             if contract.contract_type == OptionType.PUT:
                 if strike == 600:  # ATM (long)
@@ -859,9 +860,12 @@ class TestDebitSpreadMaxRewardRisk:
     def test_find_debit_spread_no_bar_data(self, sample_contracts):
         """Test when bar data is unavailable."""
         contracts, expiration = sample_contracts
-        
+
+        def get_bar_fn(contract, date, multiplier=1, timespan=None):
+            return None
+
         result = OptionsRetrieverHelper.find_debit_spread_max_reward_risk(
-            contracts, 600.0, expiration, lambda c, d: None, datetime.now()
+            contracts, 600.0, expiration, get_bar_fn, datetime.now()
         )
         
         assert result is None
@@ -872,7 +876,7 @@ class TestDebitSpreadMaxRewardRisk:
         test_date = datetime.now()
         
         # Mock function that returns higher premium for OTM than ITM (invalid for debit spread)
-        def get_bar_fn(contract, date):
+        def get_bar_fn(contract, date, multiplier=1, timespan=None):
             strike = float(contract.strike_price.value)
             if contract.contract_type == OptionType.CALL:
                 # OTM has higher premium than ITM (unrealistic)
@@ -906,7 +910,7 @@ class TestDebitSpreadMaxRewardRisk:
         test_date = datetime.now()
         
         # Create scenario where debit >= spread width (no profit potential)
-        def get_bar_fn(contract, date):
+        def get_bar_fn(contract, date, multiplier=1, timespan=None):
             strike = float(contract.strike_price.value)
             if contract.contract_type == OptionType.CALL:
                 if strike == 600:
@@ -945,7 +949,7 @@ class TestDebitSpreadMaxRewardRisk:
         test_date = datetime.now()
         
         # Create pricing that makes width=5 the optimal choice
-        def get_bar_fn(contract, date):
+        def get_bar_fn(contract, date, multiplier=1, timespan=None):
             strike = float(contract.strike_price.value)
             if contract.contract_type == OptionType.CALL:
                 if strike == 600:
@@ -992,7 +996,7 @@ class TestDebitSpreadMaxRewardRisk:
         test_date = datetime.now()
         
         # Realistic pricing with time decay
-        def get_bar_fn(contract, date):
+        def get_bar_fn(contract, date, multiplier=1, timespan=None):
             strike = float(contract.strike_price.value)
             if contract.contract_type == OptionType.CALL:
                 # Intrinsic value + time value
@@ -1027,3 +1031,56 @@ class TestDebitSpreadMaxRewardRisk:
         assert result.risk_reward_ratio() > 0
         # Verify relationship: max_profit = width - debit
         assert abs(result.max_profit() - (result.spread_width() - result.entry_price)) < 0.01
+
+    @pytest.mark.parametrize("bar_datetime,timespan", [
+        (datetime(2025, 1, 10), BarTimeInterval.DAY),
+        (datetime(2025, 1, 10, 9, 30), BarTimeInterval.HOUR),
+        (datetime(2025, 1, 10, 9, 31), BarTimeInterval.MINUTE),
+    ])
+    def test_find_debit_spread_works_with_any_bar_interval(self, sample_contracts, bar_datetime, timespan):
+        """Validate find_debit_spread_max_reward_risk returns a debit spread for bars from any time interval."""
+        contracts, expiration = sample_contracts
+        current_price = 600.0
+
+        def get_bar_fn(contract, date, multiplier=1, timespan=None):
+            strike = float(contract.strike_price.value)
+            if contract.contract_type == OptionType.CALL:
+                if strike == 600:
+                    premium = Decimal('10.00')
+                elif strike == 604:
+                    premium = Decimal('7.00')
+                elif strike == 605:
+                    premium = Decimal('6.00')
+                elif strike == 606:
+                    premium = Decimal('5.00')
+                else:
+                    premium = Decimal('4.00')
+            else:
+                return None
+
+            return OptionBarDTO(
+                ticker=contract.ticker,
+                timestamp=date,
+                open_price=premium,
+                high_price=premium,
+                low_price=premium,
+                close_price=premium,
+                volume=100,
+                volume_weighted_avg_price=premium,
+                number_of_transactions=10,
+                adjusted=True
+            )
+
+        result = OptionsRetrieverHelper.find_debit_spread_max_reward_risk(
+            contracts, current_price, expiration, get_bar_fn, bar_datetime,
+            min_spread_width=4, max_spread_width=6, option_type=OptionType.CALL,
+            timespan=timespan
+        )
+
+        assert result is not None
+        assert result.strategy_type == StrategyType.CALL_DEBIT_SPREAD
+        assert result.entry_date == bar_datetime
+        assert result.entry_price > 0
+        assert len(result.spread_options) == 2
+        assert result.max_profit() > 0
+        assert result.max_loss_per_share() == result.entry_price
