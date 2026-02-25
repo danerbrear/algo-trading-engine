@@ -105,13 +105,6 @@ class Position(ABC):
         else:
             raise ValueError("Entry date is not set")
     
-    def get_max_risk(self):
-        """Determine the max loss for a position."""
-        atm_option, otm_option = self.spread_options
-        width = abs(atm_option.strike - otm_option.strike)
-        net_credit = atm_option.last_price - otm_option.last_price
-        return (width - net_credit) * 100
-    
     def spread_width(self) -> Optional[float]:
         """
         Calculate the spread width for spread strategies.
@@ -266,10 +259,15 @@ class Position(ABC):
     def max_profit(self) -> Optional[float]:
         """Calculate maximum profit for the position based on strategy type."""
         pass
+
+    @abstractmethod
+    def max_risk_dollars_per_contract(self) -> Optional[float]:
+        """Dollar risk per contract for position sizing. Returns None for unlimited risk."""
+        pass
     
     @abstractmethod
-    def max_loss(self) -> Optional[float]:
-        """Calculate maximum loss for the position based on strategy type."""
+    def max_loss_per_share(self) -> Optional[float]:
+        """Theoretical maximum loss per share (option price units) for risk/reward analysis."""
         pass
     
     @abstractmethod
@@ -282,14 +280,14 @@ class Position(ABC):
         Calculate the risk/reward ratio for the position.
         
         Returns:
-            Risk/reward ratio (max_loss / max_profit), or None if either is unlimited or zero.
+            Risk/reward ratio (max_loss_per_share / max_profit), or None if either is unlimited or zero.
             
         Example:
             A ratio of 2.0 means you risk $2 to make $1.
             A ratio of 0.5 means you risk $0.50 to make $1.
         """
         max_profit_val = self.max_profit()
-        max_loss_val = self.max_loss()
+        max_loss_val = self.max_loss_per_share()
         
         # Can't calculate if either is unlimited
         if max_profit_val is None or max_loss_val is None:
@@ -312,14 +310,14 @@ class Position(ABC):
             Expected value per contract, or None if max profit/loss is unlimited.
             
         Example:
-            If max_profit=$2.50, max_loss=$2.50, and PoP=0.70:
+            If max_profit=$2.50, max_loss_per_share=$2.50, and PoP=0.70:
             EV = (2.50 × 0.70) - (2.50 × 0.30) = $1.00
         """
         if not 0 <= probability_of_profit <= 1:
             raise ValueError(f"probability_of_profit must be between 0 and 1, got {probability_of_profit}")
         
         max_profit_val = self.max_profit()
-        max_loss_val = self.max_loss()
+        max_loss_val = self.max_loss_per_share()
         
         # Can't calculate if either is unlimited
         if max_profit_val is None or max_loss_val is None:
@@ -473,7 +471,7 @@ class CreditSpreadPosition(Position):
         """
         return self.entry_price
     
-    def max_loss(self) -> Optional[float]:
+    def max_loss_per_share(self) -> Optional[float]:
         """
         Calculate maximum loss for credit spread.
         Max loss = spread width - net credit
@@ -483,6 +481,15 @@ class CreditSpreadPosition(Position):
         atm_option, otm_option = self.spread_options
         spread_width = abs(atm_option.strike - otm_option.strike)
         return spread_width - self.entry_price
+
+    def max_risk_dollars_per_contract(self) -> float:
+        """Max risk for credit spread = (width - net credit) * 100 per contract."""
+        if not self.spread_options or len(self.spread_options) != 2:
+            raise ValueError("Credit spread requires 2 options in spread_options")
+        atm_option, otm_option = self.spread_options
+        width = abs(atm_option.strike - otm_option.strike)
+        net_credit = atm_option.last_price - otm_option.last_price
+        return (width - net_credit) * 100
 
 
 class DebitSpreadPosition(Position):
@@ -638,12 +645,16 @@ class DebitSpreadPosition(Position):
         spread_width = abs(itm_option.strike - otm_option.strike)
         return spread_width - self.entry_price
     
-    def max_loss(self) -> Optional[float]:
+    def max_loss_per_share(self) -> Optional[float]:
         """
         Calculate maximum loss for debit spread.
         Max loss = debit paid
         """
         return self.entry_price
+
+    def max_risk_dollars_per_contract(self) -> float:
+        """Max risk for debit spread = premium paid per contract."""
+        return self.entry_price * 100
 
 
 class LongCallPosition(Position):
@@ -688,9 +699,13 @@ class LongCallPosition(Position):
         """Unlimited upside for long call."""
         return None
     
-    def max_loss(self) -> Optional[float]:
+    def max_loss_per_share(self) -> Optional[float]:
         """Max loss = premium paid."""
         return self.entry_price
+
+    def max_risk_dollars_per_contract(self) -> float:
+        """Max risk for long call = premium paid per contract."""
+        return self.entry_price * 100
 
 
 class ShortCallPosition(Position):
@@ -737,7 +752,11 @@ class ShortCallPosition(Position):
         """Max profit = premium received."""
         return self.entry_price
     
-    def max_loss(self) -> Optional[float]:
+    def max_loss_per_share(self) -> Optional[float]:
+        """Unlimited risk for short call."""
+        return None
+
+    def max_risk_dollars_per_contract(self) -> Optional[float]:
         """Unlimited risk for short call."""
         return None
 
@@ -787,9 +806,13 @@ class LongPutPosition(Position):
         option = self.spread_options[0]
         return option.strike - self.entry_price
     
-    def max_loss(self) -> Optional[float]:
+    def max_loss_per_share(self) -> Optional[float]:
         """Max loss = premium paid."""
         return self.entry_price
+
+    def max_risk_dollars_per_contract(self) -> float:
+        """Max risk for long put = premium paid per contract."""
+        return self.entry_price * 100
 
 
 class ShortPutPosition(Position):
@@ -836,12 +859,16 @@ class ShortPutPosition(Position):
         """Max profit = premium received."""
         return self.entry_price
     
-    def max_loss(self) -> Optional[float]:
+    def max_loss_per_share(self) -> Optional[float]:
         """Max loss if stock goes to 0."""
         if not self.spread_options or len(self.spread_options) == 0:
             raise ValueError("Short put requires option data in spread_options")
         option = self.spread_options[0]
         return option.strike - self.entry_price
+
+    def max_risk_dollars_per_contract(self) -> Optional[float]:
+        """Unlimited risk for short put."""
+        return None
 
 
 def create_position(symbol: str, expiration_date: datetime, strategy_type: 'StrategyType',

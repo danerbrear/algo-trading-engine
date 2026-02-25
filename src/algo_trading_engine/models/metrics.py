@@ -34,19 +34,20 @@ class PositionStats:
     return_dollars: float
     return_percentage: float
     days_held: int
-    max_risk: float
+    max_risk: Optional[float]  # None for positions with unlimited risk
     
     def __post_init__(self):
         """Validate position stats after initialization."""
-        if self.entry_date >= self.exit_date:
-            raise ValueError("Entry date must be before exit date")
+        if self.entry_date > self.exit_date:
+            raise ValueError("Entry date must be before or equal to exit date")
         if self.days_held < 0:
             raise ValueError("Days held cannot be negative")
 
     def print_summary(self) -> None:
         """Print a human-readable summary of this position's stats."""
+        max_risk_str = f"${self.max_risk:.2f}" if self.max_risk is not None else "unlimited"
         log_and_echo(f"  {self.strategy_type.value}: entry {self.entry_date.date()} -> exit {self.exit_date.date()}, "
-                     f"P&L ${self.return_dollars:+,.2f} ({self.return_percentage:+.2f}%), days held {self.days_held}, max risk ${self.max_risk:.2f}")
+                     f"P&L ${self.return_dollars:+,.2f} ({self.return_percentage:+.2f}%), days held {self.days_held}, max risk {max_risk_str}")
 
 
 @dataclass(frozen=True)

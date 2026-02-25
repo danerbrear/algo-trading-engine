@@ -796,7 +796,7 @@ class TestDebitSpreadMaxRewardRisk:
         assert result.spread_options[0].symbol == "SPY"
         assert result.spread_options[1].symbol == "SPY"
         assert result.max_profit() > 0
-        assert result.max_loss() == result.entry_price
+        assert result.max_loss_per_share() == result.entry_price
         assert result.risk_reward_ratio() > 0
         assert result.spread_width() >= 4
         assert result.spread_width() <= 6
@@ -1023,7 +1023,7 @@ class TestDebitSpreadMaxRewardRisk:
         assert result is not None
         assert result.entry_price > 0
         assert result.max_profit() > 0
-        assert result.max_loss() > 0
+        assert result.max_loss_per_share() > 0
         assert result.risk_reward_ratio() > 0
         # Verify relationship: max_profit = width - debit
         assert abs(result.max_profit() - (result.spread_width() - result.entry_price)) < 0.01

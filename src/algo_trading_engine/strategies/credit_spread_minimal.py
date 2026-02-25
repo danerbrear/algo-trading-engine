@@ -683,7 +683,7 @@ class CreditSpreadStrategy(Strategy):
         print(f"   Sell ATM Call: ${best_spread['atm_strike']:.0f} @ ${atm_option.last_price:.2f}")
         print(f"   Buy OTM Call: ${best_spread['otm_strike']:.0f} @ ${otm_option.last_price:.2f}")
         print(f"   Net Credit: ${best_spread['credit']:.2f}")
-        print(f"   Max Risk: ${position.get_max_risk():.2f}")
+        print(f"   Max Risk: ${position.max_risk_dollars_per_contract():.2f}")
         print(f"   Risk/Reward: 1:{best_spread['risk_reward']:.2f}")
         print(f"   Probability: {best_spread['prob_profit']:.1%}")
         
@@ -737,7 +737,7 @@ class CreditSpreadStrategy(Strategy):
         print(f"   Sell ATM Put: ${best_spread['atm_strike']:.0f} @ ${atm_option.last_price:.2f}")
         print(f"   Buy OTM Put: ${best_spread['otm_strike']:.0f} @ ${otm_option.last_price:.2f}")
         print(f"   Net Credit: ${best_spread['credit']:.2f}")
-        print(f"   Max Risk: ${position.get_max_risk():.2f}")
+        print(f"   Max Risk: ${position.max_risk_dollars_per_contract():.2f}")
         print(f"   Risk/Reward: 1:{best_spread['risk_reward']:.2f}")
         print(f"   Probability: {best_spread['prob_profit']:.1%}")
         

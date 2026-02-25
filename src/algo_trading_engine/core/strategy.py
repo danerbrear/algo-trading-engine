@@ -12,6 +12,7 @@ import pandas as pd
 from algo_trading_engine.common.logger import get_logger
 from algo_trading_engine.common.models import TreasuryRates
 from algo_trading_engine.core.indicators.indicator import Indicator
+from algo_trading_engine.enums import BarTimeInterval
 
 if TYPE_CHECKING:
     from algo_trading_engine.vo import Position
@@ -39,7 +40,7 @@ class Strategy(ABC):
     # These are set via the strategy builder and available for use in concrete strategies
     get_contract_list_for_date: Optional[Callable[[datetime, str], List['OptionContractDTO']]] = None
     get_option_bar: Optional[Callable[['OptionContractDTO', datetime], Optional['OptionBarDTO']]] = None
-    get_options_chain: Optional[Callable[[str, datetime, Optional['ExpirationRangeDTO'], Optional['StrikeRangeDTO']], 'OptionsChainDTO']] = None
+    get_options_chain: Optional[Callable[[str, datetime, Optional['ExpirationRangeDTO'], Optional['StrikeRangeDTO'], Optional[BarTimeInterval], Optional[int]], 'OptionsChainDTO']] = None
     get_current_volumes_for_position: Optional[Callable[['Position', datetime], Optional[List[int]]]] = None
     compute_exit_price: Optional[Callable[['Position', datetime], Optional[float]]] = None
 
