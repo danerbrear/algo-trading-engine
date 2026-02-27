@@ -146,6 +146,7 @@ class BacktestEngine(TradingEngine):
         else:
             # Strategy instance provided - inject callables if strategy expects them
             strategy = config.strategy_type
+            strategy.symbol = config.symbol
             if hasattr(strategy, 'get_contract_list_for_date'):
                 strategy.get_contract_list_for_date = get_contract_list_for_date
                 strategy.get_option_bar = get_option_bar

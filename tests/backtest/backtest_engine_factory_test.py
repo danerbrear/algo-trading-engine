@@ -74,7 +74,7 @@ class TestBacktestEngineFactory:
         call_kwargs = mock_create_strategy.call_args[1]
         assert call_kwargs['strategy_name'] == 'credit_spread'
         assert call_kwargs['symbol'] == 'SPY'
-        
+
         # Verify strategy.set_data was called
         mock_strategy.set_data.assert_called_once()
         
@@ -120,7 +120,10 @@ class TestBacktestEngineFactory:
         
         # Verify strategy instance was used (not created)
         assert engine.strategy == mock_strategy
-        
+
+        # Verify symbol is set on strategy from config
+        assert mock_strategy.symbol == 'SPY'
+
         # Verify callables were injected (if strategy has those attributes)
         if hasattr(mock_strategy, 'get_contract_list_for_date'):
             assert mock_strategy.get_contract_list_for_date is not None

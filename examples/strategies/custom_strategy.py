@@ -11,16 +11,15 @@ from algo_trading_engine.vo import StrikePrice, create_position
 
 class MyCustomStrategy(Strategy):
     """
-    Example custom strategy.
+    Example custom strategy using hourly bars and a simple ATR indicator.
     
     This is a simple example - you would implement your own logic here.
     The Strategy base class provides the interface that BacktestEngine expects.
     """
     
-    def __init__(self, profit_target=0.5, stop_loss=0.6, start_date_offset=60):
+    def __init__(self, profit_target=0.5, stop_loss=0.6):
         """Initialize the custom strategy."""
-        super().__init__(profit_target, stop_loss, start_date_offset)
-        self.symbol = "AAPL"
+        super().__init__(profit_target, stop_loss)
 
         # Example indicator
         atr_indicator = ATRIndicator(period=20, period_unit=BarTimeInterval.DAY)
@@ -38,19 +37,9 @@ class MyCustomStrategy(Strategy):
         - Add new positions via add_position()
         - Close positions via remove_position()
         """
-        # Example: Simple logic (replace with your own)
-
         # Add new positions
         if len(positions) == 0:
             self._try_open_position(date, add_position)
-
-        # Close profitable positions
-        for position in positions:
-            exit_price = self.compute_exit_price(position, date) if hasattr(self, 'compute_exit_price') else None
-            if exit_price is not None and self._profit_target_hit(position, exit_price):
-                symbol = getattr(position, 'symbol', getattr(self, 'symbol', 'SPY'))
-                underlying = self.get_current_underlying_price(date, symbol) if hasattr(self, 'get_current_underlying_price') else None
-                remove_position(date, position, exit_price, underlying_price=underlying)
     
     def on_end(self, positions, remove_position, date):
         """
