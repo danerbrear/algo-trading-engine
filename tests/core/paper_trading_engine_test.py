@@ -390,3 +390,39 @@ def test_paper_trading_engine_strategy_name_extraction(
             assert strategy_name in ['velocity_signal_momentum', 'velocity_momentum']
         else:
             assert strategy_name == expected_name
+
+
+class TestPaperTradingEngineFromConfig:
+    """Test PaperTradingEngine.from_config() factory method."""
+
+    @patch('algo_trading_engine.common.options_handler.OptionsHandler')
+    @patch('algo_trading_engine.common.data_retriever.DataRetriever')
+    def test_from_config_sets_symbol_on_strategy_instance(
+        self, mock_data_retriever, mock_options_handler
+    ):
+        """Test that symbol is set on strategy when strategy instance is provided."""
+        mock_strategy = MagicMock()
+        mock_strategy.set_data = Mock()
+        mock_strategy.options_handler = None
+
+        mock_retriever_instance = MagicMock()
+        mock_retriever_instance.treasury_rates = None
+        mock_retriever_instance.fetch_data_for_period.return_value = pd.DataFrame({
+            'Close': [500.0] * 10,
+            'Open': [499.0] * 10,
+            'High': [501.0] * 10,
+            'Low': [498.0] * 10,
+        }, index=pd.date_range('2025-01-01', periods=10, freq='D'))
+        mock_data_retriever.return_value = mock_retriever_instance
+
+        config = PaperTradingConfig(
+            symbol='QQQ',
+            strategy_type=mock_strategy,
+            api_key='test_key',
+            use_free_tier=True,
+        )
+
+        engine = PaperTradingEngine.from_config(config)
+
+        assert engine.strategy == mock_strategy
+        assert mock_strategy.symbol == 'QQQ'

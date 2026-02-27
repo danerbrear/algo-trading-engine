@@ -176,25 +176,29 @@ class TradingEngine(ABC):
             Exit price or None if unavailable
         """
         try:
-            if not position.spread_options or len(position.spread_options) != 2:
+            if not position.spread_options:
+                get_logger().warning("Position has no spread options")
                 return None
-                
+            if not hasattr(self.strategy, 'get_option_bar') or not callable(self.strategy.get_option_bar):
+                get_logger().warning("get_option_bar is not callable")
+                return None
+
+            if len(position.spread_options) == 1:
+                option = position.spread_options[0]
+                bar = self.strategy.get_option_bar(option, date, timespan=self.bar_interval)
+                if not bar:
+                    get_logger().warning(f"No bar data available for option: {option.ticker} on {date.date()}")
+                    return None
+                return float(position.calculate_exit_price_from_bars(bar, bar))
+
             atm_option, otm_option = position.spread_options
-            
-            # Get bar data for both options using strategy's callable if available
-            if hasattr(self.strategy, 'get_option_bar') and callable(self.strategy.get_option_bar):
-                atm_bar = self.strategy.get_option_bar(atm_option, date)
-                otm_bar = self.strategy.get_option_bar(otm_option, date)
-            else:
-                return None
-            
+            atm_bar = self.strategy.get_option_bar(atm_option, date, timespan=self.bar_interval)
+            otm_bar = self.strategy.get_option_bar(otm_option, date, timespan=self.bar_interval)
             if not atm_bar or not otm_bar:
+                get_logger().warning(f"No bar data available for options: {atm_option.ticker} and {otm_option.ticker} on {date.date()}")
                 return None
-            
-            # Use the position's method to calculate exit price from bars
-            exit_price = position.calculate_exit_price_from_bars(atm_bar, otm_bar)
-            return exit_price
-            
+            return float(position.calculate_exit_price_from_bars(atm_bar, otm_bar))
+
         except Exception as e:
             get_logger().warning(f"Error computing exit price: {e}")
             return None
@@ -484,6 +488,7 @@ class PaperTradingEngine(TradingEngine):
         else:
             # Strategy instance provided - inject callables if strategy expects them
             strategy = config.strategy_type
+            strategy.symbol = config.symbol
             if hasattr(strategy, 'get_contract_list_for_date'):
                 strategy.get_contract_list_for_date = get_contract_list_for_date
                 strategy.get_option_bar = get_option_bar

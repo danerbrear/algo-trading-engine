@@ -7,14 +7,13 @@ Tests the new caching infrastructure, migration utility, and helper classes.
 import pytest
 import tempfile
 import shutil
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, time
 from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
 
 from algo_trading_engine.common.options_handler import OptionsHandler
 from algo_trading_engine.common.cache.options_cache_manager import OptionsCacheManager
-from algo_trading_engine.common.options_cache_migration import OptionsCacheMigrator
 from algo_trading_engine.common.options_helpers import OptionsRetrieverHelper
 from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO
 from algo_trading_engine.vo import StrikePrice, ExpirationDate
@@ -105,9 +104,121 @@ class TestOptionsCacheManager:
         assert contracts_path == expected_contracts
         
         bars_path = cache_manager.get_bars_cache_path("SPY", test_date, "O:SPY211119C00045000")
-        # get_bars_cache_path removes the "O:" prefix from the ticker for cleaner file names
-        expected_bars = Path(cache_manager.base_dir) / 'options' / 'SPY' / '2021-11-19' / 'bars' / 'SPY211119C00045000.pkl'
+        # get_bars_cache_path uses interval dir "daily" (matches stocks cache); removes "O:" from ticker
+        expected_bars = Path(cache_manager.base_dir) / 'options' / 'SPY' / '2021-11-19' / 'bars' / 'daily' / 'SPY211119C00045000.pkl'
         assert bars_path == expected_bars
+    
+    def test_bar_cache_paths_interval_dirs_match_stocks(self, cache_manager):
+        """Bar cache interval dirs (daily, hourly, minute) match stocks; hourly/minute include time in filename."""
+        test_date = date(2021, 11, 19)
+        dt_930 = datetime(2021, 11, 19, 9, 30)
+        ticker = "O:SPY211119C00045000"
+        base = Path(cache_manager.base_dir) / 'options' / 'SPY' / '2021-11-19' / 'bars'
+        assert cache_manager.get_bars_cache_path("SPY", test_date, ticker, "day") == base / 'daily' / 'SPY211119C00045000.pkl'
+        assert cache_manager.get_bars_cache_path("SPY", dt_930, ticker, "hour") == base / 'hourly' / 'SPY211119C00045000_0930.pkl'
+        assert cache_manager.get_bars_cache_path("SPY", dt_930, ticker, "minute") == base / 'minute' / 'SPY211119C00045000_0930.pkl'
+    
+    def test_save_and_load_daily_bar(self, cache_manager, sample_bar):
+        """Daily bar save/load uses daily/ subdir (default timespan)."""
+        test_date = date(2021, 11, 19)
+        ticker = "O:SPY211119C00045000"
+        cache_manager.save_bar("SPY", test_date, ticker, sample_bar, timespan="day")
+        loaded = cache_manager.load_bar("SPY", test_date, ticker, timespan="day")
+        assert loaded is not None
+        assert loaded.close_price == Decimal('5.60')
+        assert cache_manager.get_bars_cache_path("SPY", test_date, ticker, "day").exists()
+    
+    def test_save_and_load_hourly_bar(self, cache_manager, sample_bar):
+        """Hourly bar save/load uses only :30; bar with timestamp 16:00 is stored at 15:30, load with 16:00 fetches it."""
+        test_date = date(2021, 11, 19)
+        dt_16 = datetime(2021, 11, 19, 16, 0)
+        ticker = "O:SPY211119C00045000"
+        cache_manager.save_bar("SPY", test_date, ticker, sample_bar, timespan="hour")
+        loaded = cache_manager.load_bar("SPY", dt_16, ticker, timespan="hour")
+        assert loaded is not None
+        assert loaded.close_price == Decimal('5.60')
+        assert cache_manager.get_bars_cache_path("SPY", dt_16, ticker, "hour").exists()
+        assert cache_manager.bar_exists("SPY", dt_16, ticker, timespan="hour")
+        assert cache_manager.get_cached_bars_count("SPY", test_date, timespan="hour") == 1
+    
+    def test_hourly_bar_save_and_fetch_with_half_hour_datetime(self, cache_manager):
+        """Backtest at 10:30 can save and fetch hourly bar for 10:00-11:00; on_new_date always uses :30."""
+        # Bar for 10:00-11:00 hour (timestamp at start of period)
+        bar_10_11 = OptionBarDTO(
+            ticker="O:SPY211119C00045000",
+            timestamp=datetime(2026, 2, 27, 10, 0, 0),
+            open_price=Decimal('4.00'),
+            high_price=Decimal('4.50'),
+            low_price=Decimal('3.80'),
+            close_price=Decimal('4.25'),
+            volume=200,
+            volume_weighted_avg_price=Decimal('4.20'),
+            number_of_transactions=20,
+            adjusted=True
+        )
+        ticker = "O:SPY211119C00045000"
+        # Save with datetime 10:30 (backtest on_new_date uses :30 marker)
+        save_dt = datetime(2026, 2, 27, 10, 30, 0)
+        cache_manager.save_bar("SPY", save_dt, ticker, bar_10_11, timespan="hour")
+        # Fetch with same datetime 10:30 -> cache hit
+        loaded = cache_manager.load_bar("SPY", datetime(2026, 2, 27, 10, 30, 0), ticker, timespan="hour")
+        assert loaded is not None
+        assert loaded.close_price == Decimal('4.25')
+        assert cache_manager.bar_exists("SPY", datetime(2026, 2, 27, 10, 30, 0), ticker, timespan="hour")
+
+    def test_hourly_bar_uses_only_half_hour_marker(self, cache_manager, sample_bar):
+        """Hourly cache uses only :30 markers. 10:37 and 11:02 both map to 10:30 (last :30 that has happened)."""
+        test_date = date(2021, 11, 19)
+        ticker = "O:SPY211119C00045000"
+        bar_1030 = OptionBarDTO(
+            ticker=ticker,
+            timestamp=datetime(2021, 11, 19, 10, 35, 0),
+            open_price=Decimal('4.50'),
+            high_price=Decimal('4.60'),
+            low_price=Decimal('4.40'),
+            close_price=Decimal('4.55'),
+            volume=150,
+            volume_weighted_avg_price=Decimal('4.52'),
+            number_of_transactions=25,
+            adjusted=True
+        )
+        cache_manager.save_bar("SPY", test_date, ticker, bar_1030, timespan="hour")
+        loaded_1037 = cache_manager.load_bar("SPY", datetime(2021, 11, 19, 10, 37), ticker, timespan="hour")
+        loaded_1102 = cache_manager.load_bar("SPY", datetime(2021, 11, 19, 11, 2), ticker, timespan="hour")
+        assert loaded_1037 is not None and loaded_1037.close_price == Decimal('4.55')
+        assert loaded_1102 is not None and loaded_1102.close_price == Decimal('4.55')
+        path_1037 = cache_manager.get_bars_cache_path("SPY", datetime(2021, 11, 19, 10, 37), ticker, "hour")
+        path_1102 = cache_manager.get_bars_cache_path("SPY", datetime(2021, 11, 19, 11, 2), ticker, "hour")
+        path_1030 = cache_manager.get_bars_cache_path("SPY", datetime(2021, 11, 19, 10, 30), ticker, "hour")
+        assert path_1037 == path_1102 == path_1030
+    
+    def test_daily_and_hourly_bars_do_not_collide(self, cache_manager, sample_bar):
+        """Same ticker/date can have both daily and hourly bars; hourly bars keyed by time (9:30 vs 10:30)."""
+        test_date = date(2021, 11, 19)
+        ticker = "O:SPY211119C00045000"
+        hourly_bar_10 = OptionBarDTO(
+            ticker=ticker,
+            timestamp=datetime(2021, 11, 19, 10, 0, 0),
+            open_price=Decimal('4.00'),
+            high_price=Decimal('4.50'),
+            low_price=Decimal('3.80'),
+            close_price=Decimal('4.25'),
+            volume=200,
+            volume_weighted_avg_price=Decimal('4.20'),
+            number_of_transactions=20,
+            adjusted=True
+        )
+        cache_manager.save_bar("SPY", test_date, ticker, sample_bar, timespan="day")
+        cache_manager.save_bar("SPY", test_date, ticker, sample_bar, timespan="hour")
+        cache_manager.save_bar("SPY", test_date, ticker, hourly_bar_10, timespan="hour")
+        daily_loaded = cache_manager.load_bar("SPY", test_date, ticker, timespan="day")
+        hourly_16 = cache_manager.load_bar("SPY", datetime(2021, 11, 19, 16, 0), ticker, timespan="hour")
+        hourly_10 = cache_manager.load_bar("SPY", datetime(2021, 11, 19, 10, 0), ticker, timespan="hour")
+        assert daily_loaded is not None and daily_loaded.close_price == Decimal('5.60')
+        assert hourly_16 is not None and hourly_16.close_price == Decimal('5.60')
+        assert hourly_10 is not None and hourly_10.close_price == Decimal('4.25')
+        assert cache_manager.get_cached_bars_count("SPY", test_date, timespan="day") == 1
+        assert cache_manager.get_cached_bars_count("SPY", test_date, timespan="hour") == 2
     
     def test_save_and_load_contracts(self, cache_manager, sample_contracts):
         """Test saving and loading contracts."""
@@ -506,38 +617,6 @@ class TestOptionsRetrieverHelper:
         assert any("Invalid ticker format" in issue for issue in issues)
 
 
-
-class TestOptionsCacheMigrator:
-    """Test cases for OptionsCacheMigrator."""
-    
-    @pytest.fixture
-    def temp_dir(self):
-        """Create temporary directory for testing."""
-        temp_dir = tempfile.mkdtemp()
-        yield temp_dir
-        shutil.rmtree(temp_dir)
-    
-    @pytest.fixture
-    def migrator(self, temp_dir):
-        """Create migrator with temporary directory."""
-        return OptionsCacheMigrator(temp_dir)
-    
-    def test_discover_old_cache_files_empty(self, migrator):
-        """Test discovering cache files when none exist."""
-        files = migrator.discover_old_cache_files("SPY")
-        assert files == {}
-    
-    def test_migrate_symbol_no_files(self, migrator):
-        """Test migrating symbol with no files."""
-        stats = migrator.migrate_symbol("SPY")
-        assert stats['dates_processed'] == 0
-        assert stats['contracts_migrated'] == 0
-        assert stats['bars_migrated'] == 0
-    
-    def test_migrate_all_symbols_empty(self, migrator):
-        """Test migrating all symbols when none exist."""
-        stats = migrator.migrate_all_symbols()
-        assert stats == {}
 """
 Integration tests for Phase 3 OptionsHandler implementation.
 
@@ -552,7 +631,7 @@ This module tests the complete API functionality including:
 import pytest
 import tempfile
 import shutil
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, time
 from decimal import Decimal
 from unittest.mock import Mock, patch, MagicMock
 from pathlib import Path
@@ -752,7 +831,7 @@ class TestOptionsHandlerPhase3:
         options_handler._cache_bar(test_date, sample_contracts[0].ticker, sample_bar)
         
         # Mock load_bar to avoid API calls for the second contract (which has no cached bar)
-        with patch.object(options_handler.cache_manager, 'load_bar', side_effect=lambda s, d, t: sample_bar if t == sample_contracts[0].ticker else None):
+        with patch.object(options_handler.cache_manager, 'load_bar', side_effect=lambda s, d, t, timespan="day", bar_time=None: sample_bar if t == sample_contracts[0].ticker else None):
             # Get complete options chain
             chain = options_handler.get_options_chain(test_date, current_price)
             
@@ -1074,7 +1153,7 @@ import pytest
 import os
 import tempfile
 import shutil
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, time
 from decimal import Decimal
 from unittest.mock import Mock, patch
 
@@ -1393,7 +1472,7 @@ This module tests the complete OptionsHandler functionality including:
 import pytest
 import tempfile
 import shutil
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, time
 from decimal import Decimal
 from unittest.mock import Mock, patch, MagicMock
 from typing import List, Dict, Any
@@ -1521,7 +1600,7 @@ class TestOptionsHandlerPhase5Integration:
         
         # Mock the cache manager to return our sample data
         with patch.object(options_handler.cache_manager, 'load_contracts', return_value=sample_contracts):
-            with patch.object(options_handler.cache_manager, 'load_bar', side_effect=lambda s, d, t: sample_bars.get(t)):
+            with patch.object(options_handler.cache_manager, 'load_bar', side_effect=lambda s, d, t, timespan="day", bar_time=None: sample_bars.get(t)):
                 
                 # 1. Get contracts with filtering
                 strike_range = StrikeRangeDTO(
@@ -1746,7 +1825,7 @@ class TestOptionsHandlerPhase5Integration:
         
         # Mock cache with sample data
         with patch.object(options_handler.cache_manager, 'load_contracts', return_value=sample_contracts):
-            with patch.object(options_handler.cache_manager, 'load_bar', side_effect=lambda s, d, t: sample_bars.get(t)):
+            with patch.object(options_handler.cache_manager, 'load_bar', side_effect=lambda s, d, t, timespan="day", bar_time=None: sample_bars.get(t)):
                 
                 # Simulate a credit spread strategy
                 # 1. Get contracts for specific expiration
@@ -1974,12 +2053,11 @@ class TestOptionsHandlerErrorHandling:
         result = options_handler.get_option_bar(None, datetime.now())
         assert result is None  # Returns None instead of raising
         
-        # Test invalid date for get_option_bar - implementation tries to convert but handles errors
-        # Mock with ticker attribute will work, but invalid date conversion fails gracefully
+        # Test invalid date for get_option_bar - must raise TypeError for wrong types
         mock_contract = Mock()
         mock_contract.ticker = "O:SPY250115C00600000"
-        result = options_handler.get_option_bar(mock_contract, "invalid_date")
-        assert result is None  # Returns None instead of raising
+        with pytest.raises(TypeError, match="date must be datetime or date"):
+            options_handler.get_option_bar(mock_contract, "invalid_date")
     
     def test_invalid_filter_parameters(self, options_handler):
         """Test error handling for invalid filter parameters."""

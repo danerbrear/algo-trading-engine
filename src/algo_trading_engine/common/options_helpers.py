@@ -940,18 +940,20 @@ class OptionsRetrieverHelper:
         contracts: List[OptionContractDTO],
         current_price: float,
         expiration: str,
-        get_bar_fn: Callable[[OptionContractDTO, datetime], Optional[OptionBarDTO]],
+        get_bar_fn: Optional[Callable[['OptionContractDTO', datetime], Optional['OptionBarDTO']]],
         date: datetime,
         min_spread_width: int = 4,
         max_spread_width: int = 10,
         max_strike_difference: float = 2.0,
-        option_type: OptionType = OptionType.CALL
+        option_type: OptionType = OptionType.CALL,
+        timespan: BarTimeInterval = BarTimeInterval.DAY,
+        multiplier: int = 1
     ) -> Optional['Position']:
         """
         Find the best debit spread from a list of contracts that maximizes reward/risk ratio.
 
         Evaluates spreads from min_spread_width to max_spread_width and selects the one
-        with the highest reward/risk ratio. Returns a Position (DebitSpreadPosition) with
+        with the highest reward/risk ratio. Return None if no valid spread found. Return a Position (DebitSpreadPosition) with
         spread_options built from Option.from_contract_and_bar(contract, bar) for each leg.
 
         For a debit spread:
@@ -965,13 +967,14 @@ class OptionsRetrieverHelper:
             contracts: List of option contracts to evaluate
             current_price: Current underlying price
             expiration: Target expiration date string (YYYY-MM-DD)
-            get_bar_fn: Function to get bar data: (contract: OptionContractDTO, date: datetime) -> Optional[OptionBarDTO]
+            get_bar_fn: Function to get bar data (e.g. get_option_bar). Signature: (contract, date, multiplier=1, timespan=BarTimeInterval.DAY) -> Optional[OptionBarDTO]
             date: Date to get bar data for (used as entry_date for the position)
             min_spread_width: Minimum spread width to evaluate (default: 4)
             max_spread_width: Maximum spread width to evaluate (default: 10)
             max_strike_difference: Maximum acceptable difference from target strike (default: 2.0)
             option_type: Option type to use (PUT or CALL, default: CALL)
-
+            timespan: Bar time interval to use (default: BarTimeInterval.DAY)
+            multiplier: Bar multiplier to use (default: 1)
         Returns:
             A DebitSpreadPosition with spread_options populated from the chosen legs, or None if no valid spread found.
         """
@@ -1024,9 +1027,9 @@ class OptionsRetrieverHelper:
             if str(itm_contract.expiration_date) != str(otm_contract.expiration_date):
                 continue
             
-            # Get bar data to calculate net debit
-            itm_bar = get_bar_fn(itm_contract, date)
-            otm_bar = get_bar_fn(otm_contract, date)
+            # Get bar data to calculate net debit (pass timespan/multiplier for correct interval)
+            itm_bar = get_bar_fn(itm_contract, date, multiplier=multiplier, timespan=timespan)
+            otm_bar = get_bar_fn(otm_contract, date, multiplier=multiplier, timespan=timespan)
             
             if not itm_bar or not otm_bar:
                 continue

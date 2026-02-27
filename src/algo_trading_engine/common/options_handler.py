@@ -8,6 +8,7 @@ in features/improved_data_fetching.md Phase 2.
 import os
 from datetime import datetime, date, timedelta
 from typing import Dict, List, Optional
+from zoneinfo import ZoneInfo
 from decimal import Decimal
 from dotenv import load_dotenv
 
@@ -24,6 +25,9 @@ from .progress_tracker import progress_print
 
 # Load environment variables
 load_dotenv()
+
+# Preserve date class reference for type validation (param 'date' shadows it in methods)
+_date_class = date
 
 
 class OptionsHandler:
@@ -202,13 +206,18 @@ class OptionsHandler:
 
         Args:
             contract: The option contract
-            date: The date to get bar data for
+            date: The date (and for hourly/minute, the time) to get bar data for. For daily bars
+                only the date part is used. For hourly/minute bars, pass a datetime with the
+                desired bar time (e.g. datetime(2025, 2, 10, 9, 30) for the 9:30 bar).
             multiplier: Bar multiplier (default: 1)
             timespan: Bar time interval (default: BarTimeInterval.DAY). Mapped to Polygon API timespan string.
 
         Returns:
             OptionBarDTO if found, None otherwise
         """
+        if not isinstance(date, (datetime, _date_class)):
+            raise TypeError(f"date must be datetime or date, got {type(date).__name__}")
+
         date_obj = date.date() if isinstance(date, datetime) else date
 
         # Try to load from cache first (with graceful error handling)
@@ -217,7 +226,9 @@ class OptionsHandler:
             # Validate contract has ticker attribute
             if not hasattr(contract, 'ticker'):
                 return None
-            cached_bar = self.cache_manager.load_bar(self.symbol, date_obj, contract.ticker)
+            cached_bar = self.cache_manager.load_bar(
+                self.symbol, date, contract.ticker, timespan.value
+            )
         except Exception as e:
             ticker_str = getattr(contract, 'ticker', 'unknown')
             print(f"⚠️  Cache loading failed for {ticker_str} on {date_obj}: {e}. Falling back to API...")
@@ -232,12 +243,13 @@ class OptionsHandler:
 
         progress_print(f"🔄 No cached bar data found for {contract.ticker} on {date_obj}, fetching from API...")
         timespan_str = timespan.value  # Polygon API expects "minute", "hour", "day"
-        bar = self._fetch_bar_from_api(contract, date_obj, multiplier, timespan_str)
+        dt = date if isinstance(date, datetime) else datetime.combine(date, datetime.min.time())
+        bar = self._fetch_bar_from_api(contract, dt, multiplier, timespan_str)
         
         if bar:
             # Cache the fetched bar data (with graceful error handling)
             try:
-                self._cache_bar(date, contract.ticker, bar)
+                self._cache_bar(date, contract.ticker, bar, timespan)
             except Exception as e:
                 print(f"⚠️  Cache saving failed for {contract.ticker} on {date_obj}: {e}. Continuing without caching...")
             return bar
@@ -250,7 +262,9 @@ class OptionsHandler:
         date: datetime, 
         current_price: float,
         strike_range: Optional[StrikeRangeDTO] = None,
-        expiration_range: Optional[ExpirationRangeDTO] = None
+        expiration_range: Optional[ExpirationRangeDTO] = None,
+        timespan: BarTimeInterval = BarTimeInterval.DAY,
+        multiplier: int = 1,
     ) -> OptionsChainDTO:
         """
         Get complete option chain for a date.
@@ -260,6 +274,8 @@ class OptionsHandler:
             current_price: Current underlying price
             strike_range: Optional strike price filtering
             expiration_range: Optional expiration date filtering
+            timespan: Bar time interval for option bars (default: DAY). Pass HOUR for intraday.
+            multiplier: Bar multiplier (default: 1). Used with timespan for bar size.
             
         Returns:
             OptionsChainDTO with contracts and bars
@@ -272,7 +288,7 @@ class OptionsHandler:
         # Get bars for all contracts
         bars = {}
         for contract in contracts:
-            bar = self.get_option_bar(contract, date)
+            bar = self.get_option_bar(contract, date, multiplier=multiplier, timespan=timespan)
             if bar:
                 bars[contract.ticker] = bar
         
@@ -370,17 +386,25 @@ class OptionsHandler:
         except Exception as e:
             print(f"⚠️  Cache saving failed for {self.symbol} on {date_obj}: {e}. Continuing without caching...")
     
-    def _cache_bar(self, date: datetime, ticker: str, bar: OptionBarDTO) -> None:
+    def _cache_bar(
+        self,
+        date: datetime,
+        ticker: str,
+        bar: OptionBarDTO,
+        timespan: BarTimeInterval = BarTimeInterval.DAY,
+    ) -> None:
         """
-        Cache bar data for a specific option.
-        
+        Cache bar data for a specific option under the given timespan.
+
         This is a private method for internal use only.
         External callers should not directly manipulate the cache.
         """
-        date_obj = date.date() if isinstance(date, datetime) else date
         try:
-            self.cache_manager.save_bar(self.symbol, date_obj, ticker, bar)
+            self.cache_manager.save_bar(
+                self.symbol, date, ticker, bar, timespan.value
+            )
         except Exception as e:
+            date_obj = date.date() if isinstance(date, datetime) else date
             print(f"⚠️  Cache saving failed for {ticker} on {date_obj}: {e}. Continuing without caching...")
     
     def _get_cache_stats(self, date: datetime) -> Dict[str, int]:
@@ -484,54 +508,87 @@ class OptionsHandler:
     def _fetch_bar_from_api(
         self,
         contract: OptionContractDTO,
-        date_obj: date,
+        dt: datetime,
         multiplier: int,
         timespan: str,  # Polygon API: "minute", "hour", "day" (from BarTimeInterval.value)
     ) -> Optional[OptionBarDTO]:
-        """Fetch option bar data from Polygon.io API."""
+        """Fetch option bar data from Polygon.io API. Uses datetime only; formats from/to by interval."""
         try:
-            # Check if date is in the future
             from datetime import date as date_class
             today = date_class.today()
-            if date_obj > today:
-                progress_print(f"⚠️  Cannot fetch bar data for future date {date_obj} (today is {today})")
+            if dt.date() > today:
+                progress_print(f"⚠️  Cannot fetch bar data for future date {dt.date()} (today is {today})")
                 return None
-            
+
+            if timespan == "day":
+                from_str = dt.strftime("%Y-%m-%d")
+                to_str = from_str
+            elif timespan == "hour":
+                # Polygon uses ET for US options. Request full trading day (9:30-16:00 ET) to avoid
+                # narrow-window gaps; then filter for the bar containing our target time.
+                et = ZoneInfo("America/New_York")
+                dt_et = dt.replace(tzinfo=et) if dt.tzinfo is None else dt.astimezone(et)
+                d = dt_et.date()
+                market_open = datetime(d.year, d.month, d.day, 9, 30, 0, tzinfo=et)
+                market_close = datetime(d.year, d.month, d.day, 16, 0, 0, tzinfo=et)
+                from_ts = int(market_open.timestamp() * 1000)
+                to_ts = int(market_close.timestamp() * 1000)
+                from_str, to_str = from_ts, to_ts
+                bar_start = dt_et.replace(minute=0, second=0, microsecond=0)
+                target_ts = int(bar_start.timestamp() * 1000)
+            elif timespan == "minute":
+                bar_start = dt
+                bar_end = bar_start + timedelta(minutes=1)
+                from_str = bar_start.strftime("%Y-%m-%dT%H:%M:%S")
+                to_str = bar_end.strftime("%Y-%m-%dT%H:%M:%S")
+            else:
+                from_str = dt.strftime("%Y-%m-%d")
+                to_str = from_str
+
             def fetch_func():
-                # Use the aggregates API to get bar data
+                limit_val = 5000 if timespan == "hour" else 1
                 bars_response = self.client.get_aggs(
                     ticker=contract.ticker,
                     multiplier=multiplier,
                     timespan=timespan,
-                    from_=date_obj.strftime('%Y-%m-%d'),
-                    to=date_obj.strftime('%Y-%m-%d'),
-                    limit=1
+                    from_=from_str,
+                    to=to_str,
+                    limit=limit_val
                 )
-                # Convert generator to list to get actual data
                 bars_list = list(bars_response)
-                progress_print(f"✅ Fetched {len(bars_list)} bars from API for {contract.ticker} on {date_obj}")
+                progress_print(f"✅ Fetched {len(bars_list)} bars from API for {contract.ticker} on {dt.date()}")
                 return bars_list
-            
+
             response = self.api_retry_handler.fetch_with_retry(
                 fetch_func,
-                f"Error fetching bar data for {contract.ticker} on {date_obj}"
+                f"Error fetching bar data for {contract.ticker} on {dt.date()}"
             )
-            
+
             if not response or len(response) == 0:
-                progress_print(f"⚠️  No bar data received from API for {contract.ticker} on {date_obj}")
+                progress_print(f"⚠️  No bar data received from API for {contract.ticker} on {dt.date()}")
                 return None
-            
-            # Convert the first result to OptionBarDTO
-            bar_data = response[0]
-            bar_dto = self._convert_api_bar_to_dto(contract.ticker, bar_data, date_obj)
-            
+
+            if timespan == "hour":
+                def _bar_ts(b):
+                    return getattr(b, "timestamp", None) or getattr(b, "t", None)
+                matching = [b for b in response if _bar_ts(b) == target_ts]
+                if not matching:
+                    hour_ms = 60 * 60 * 1000
+                    matching = [b for b in response if _bar_ts(b) and target_ts <= _bar_ts(b) < target_ts + hour_ms]
+                if not matching:
+                    matching = [b for b in response if _bar_ts(b) is not None]
+                bar_data = matching[0] if matching else response[0]
+            else:
+                bar_data = response[0]
+            bar_dto = self._convert_api_bar_to_dto(contract.ticker, bar_data, dt.date())
+
             if bar_dto:
-                progress_print(f"✅ Fetched bar data from API for {contract.ticker} on {date_obj}")
-            
+                progress_print(f"✅ Fetched bar data from API for {contract.ticker} on {dt.date()}")
+
             return bar_dto
-            
+
         except Exception as e:
-            progress_print(f"❌ Error fetching bar data from API for {contract.ticker} on {date_obj}: {e}")
+            progress_print(f"❌ Error fetching bar data from API for {contract.ticker} on {dt.date()}: {e}")
             return None
     
     def _convert_api_contract_to_dto(self, contract_data) -> Optional[OptionContractDTO]:

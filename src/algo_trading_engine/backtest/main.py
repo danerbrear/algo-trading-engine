@@ -146,6 +146,7 @@ class BacktestEngine(TradingEngine):
         else:
             # Strategy instance provided - inject callables if strategy expects them
             strategy = config.strategy_type
+            strategy.symbol = config.symbol
             if hasattr(strategy, 'get_contract_list_for_date'):
                 strategy.get_contract_list_for_date = get_contract_list_for_date
                 strategy.get_option_bar = get_option_bar
@@ -232,8 +233,10 @@ class BacktestEngine(TradingEngine):
             try:
                 self.strategy.on_new_date(date, positions_tuple, self._add_position, self._remove_position)
             except Exception as e:
+                import traceback
                 error_msg = f"Error in on_new_date: {e}"
                 get_logger().error(error_msg)
+                get_logger().error(traceback.format_exc())
                 return False
             
             self.check_univeral_close_conditions(date)
@@ -462,6 +465,8 @@ class BacktestEngine(TradingEngine):
         self.previous_capital = self.capital
 
         # Track closed position for statistics
+        max_risk = position.max_risk_dollars_per_contract()
+        return_pct = (position_return / max_risk) * 100 if (position.quantity and max_risk is not None) else 0
         closed_position_data = {
             'strategy_type': position.strategy_type,
             'entry_date': position.entry_date,
@@ -469,9 +474,9 @@ class BacktestEngine(TradingEngine):
             'entry_price': position.entry_price,
             'exit_price': exit_price,
             'return_dollars': position_return,
-            'return_percentage': (position_return / position.get_max_risk()) * 100 if position.quantity else 0,
+            'return_percentage': return_pct,
             'days_held': position.get_days_held(date),
-            'max_risk': position.get_max_risk()
+            'max_risk': max_risk
         }
         self.closed_positions.append(closed_position_data)
         
@@ -494,8 +499,10 @@ class BacktestEngine(TradingEngine):
             return 1
         
         max_position_capital = self.capital * self.max_position_size
-
-        return int(max_position_capital / position.get_max_risk())
+        max_risk = position.max_risk_dollars_per_contract()
+        if max_risk is None or max_risk <= 0:
+            return 1
+        return int(max_position_capital / max_risk)
 
     def _calculate_sharpe_ratio(self) -> float:
         """

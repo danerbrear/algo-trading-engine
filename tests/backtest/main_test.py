@@ -631,7 +631,7 @@ class TestUniversalCloseCallback:
                     )
                     add_position(position)
 
-            def get_option_bar(self, option, date):
+            def get_option_bar(self, option, date, multiplier=1, timespan=None):
                 if option is self._option1:
                     return make_bar(option.ticker, 1.0, date)
                 if option is self._option2:
