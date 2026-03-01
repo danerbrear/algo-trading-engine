@@ -13,22 +13,24 @@ dependencies = [
     "pandas>=2.2.0",
     "numpy>=1.24.0",
     "scikit-learn>=1.4.0",
-    "seaborn>=0.13.0",
     "hmmlearn>=0.3.0",
     "polygon-api-client>=1.14.5",
     "python-dotenv>=1.0.1",
     "tqdm>=4.66.0",
-    "psutil>=5.9.0",
     "loguru>=0.7.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0.0",
-    "tensorflow>=2.15.0",
+    "psutil>=5.9.0",
     "matplotlib>=3.8.0",
+    "algo_trading_engine[ml]"
 ]
-ml = ["tensorflow>=2.15.0"]
+ml = [
+    "tensorflow>=2.15.0",
+    "seaborn>=0.13.0",
+]
 
 [project.scripts]
 algo-backtest = "algo_trading_engine.backtest.main:main"
