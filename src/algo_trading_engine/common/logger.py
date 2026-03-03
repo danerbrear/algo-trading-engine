@@ -36,9 +36,13 @@ def configure_logger(
     log_to_stdout: bool = False,
 ) -> None:
     """
-    Configure the singleton logger for this run.
+    Configure the singleton logger for this run. Only the first call takes
+    effect; subsequent calls are silently ignored. This lets the outermost
+    caller (e.g. a Lambda handler) lock in the configuration before inner
+    code (e.g. PaperTradingEngine) calls configure_logger again.
 
-    - Removes any existing handler and adds a single sink.
+    Call remove_logger_sink() first if you need to reconfigure.
+
     - When log_to_stdout is False (default), logs write to a file
       (backtest.log or trade.log), overwritten each run.
     - When log_to_stdout is True, logs write to stdout instead of a file.
@@ -54,6 +58,9 @@ def configure_logger(
         ValueError: If log_level is not "debug", "info", or "warn".
     """
     global _sink_id
+
+    if _sink_id is not None:
+        return
 
     normalized = log_level.lower().strip()
     if normalized not in _LOGURU_LEVEL:
