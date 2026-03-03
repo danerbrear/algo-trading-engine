@@ -2,10 +2,12 @@
 Singleton logging for backtest and trading flows using Loguru.
 
 Configure once per run with configure_logger(run_type="backtest" | "trade");
-all logs go to backtest.log or trade.log (overwritten each run). No stdout
-output from the logger; ProgressTracker / progress_print remain the stdout path.
+all logs go to backtest.log or trade.log (overwritten each run). When
+log_to_stdout=True, logs are sent to stdout (useful for AWS Lambda / CloudWatch)
+instead of a file.
 """
 
+import sys
 from pathlib import Path
 from typing import Literal
 
@@ -31,19 +33,22 @@ def configure_logger(
     run_type: RunType,
     log_dir: str = _LOG_DIR_DEFAULT,
     log_level: LogLevel = "info",
+    log_to_stdout: bool = False,
 ) -> None:
     """
     Configure the singleton logger for this run.
 
-    - Removes any existing handler and adds a single file sink.
-    - File is overwritten each run (mode="w").
-    - Loguru's default stderr handler is removed so no logs go to stdout.
-    - log_level controls log file verbosity only (not stdout).
+    - Removes any existing handler and adds a single sink.
+    - When log_to_stdout is False (default), logs write to a file
+      (backtest.log or trade.log), overwritten each run.
+    - When log_to_stdout is True, logs write to stdout instead of a file.
+      This is intended for AWS Lambda where stdout is captured by CloudWatch.
 
     Args:
-        run_type: "backtest" or "trade" → writes to backtest.log or trade.log.
+        run_type: "backtest" or "trade" → determines log file name when writing to file.
         log_dir: Directory for log files (created if missing). Default "logs".
         log_level: One of "debug", "info", or "warn". Default "info".
+        log_to_stdout: If True, log to stdout instead of a file.
 
     Raises:
         ValueError: If log_level is not "debug", "info", or "warn".
@@ -57,19 +62,27 @@ def configure_logger(
         )
     level = _LOGURU_LEVEL[normalized]
 
-    # Remove all handlers (default stderr and any previous file sink); id 0 only exists before first configure
     logger.remove(None)
 
-    path = Path(log_dir)
-    path.mkdir(parents=True, exist_ok=True)
-    log_file = path / _FILE_BY_RUN_TYPE[run_type]
+    log_format = "{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} | {message}"
 
-    _sink_id = logger.add(
-        str(log_file),
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} | {message}",
-        level=level,
-        mode="w",
-    )
+    if log_to_stdout:
+        _sink_id = logger.add(
+            sys.stdout,
+            format=log_format,
+            level=level,
+        )
+    else:
+        path = Path(log_dir)
+        path.mkdir(parents=True, exist_ok=True)
+        log_file = path / _FILE_BY_RUN_TYPE[run_type]
+
+        _sink_id = logger.add(
+            str(log_file),
+            format=log_format,
+            level=level,
+            mode="w",
+        )
 
 
 def remove_logger_sink() -> None:
