@@ -16,7 +16,8 @@ from algo_trading_engine.common.logger import (
 
 @pytest.fixture
 def tmp_log_dir():
-    """Temporary directory for log files; closes logger sink on teardown so Windows can delete the dir."""
+    """Temporary directory for log files; resets logger before/after so tests get a clean state."""
+    remove_logger_sink()
     with tempfile.TemporaryDirectory() as tmpdir:
         yield tmpdir
         remove_logger_sink()
@@ -73,12 +74,25 @@ class TestConfigureLogger:
         tmpdir = tmp_log_dir
         configure_logger("backtest", log_dir=tmpdir, log_level="info")
         get_logger().info("first")
+        remove_logger_sink()
         configure_logger("backtest", log_dir=tmpdir, log_level="info")
         get_logger().info("second")
         log_file = Path(tmpdir) / "backtest.log"
         text = log_file.read_text()
         assert "second" in text
         assert "first" not in text
+
+    def test_second_configure_ignored_without_remove(self, tmp_log_dir):
+        """Subsequent configure_logger calls are ignored until remove_logger_sink is called."""
+        tmpdir = tmp_log_dir
+        configure_logger("backtest", log_dir=tmpdir, log_level="info")
+        get_logger().info("first")
+        configure_logger("backtest", log_dir=tmpdir, log_level="info")
+        get_logger().info("second")
+        log_file = Path(tmpdir) / "backtest.log"
+        text = log_file.read_text()
+        assert "first" in text
+        assert "second" in text
 
 
 class TestGetLogger:
