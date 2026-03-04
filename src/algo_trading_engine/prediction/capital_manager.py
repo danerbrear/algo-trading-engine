@@ -65,15 +65,23 @@ class CapitalManager:
         return cls(config, decision_store)
     
     @staticmethod
-    def ensure_config_file_exists(config_path: str) -> None:
+    def ensure_config_file_exists(config_path: str, create_dirs: bool = True) -> None:
         """Ensure capital allocation config file exists, creating it if necessary.
         
         Creates the file with an empty strategies dict if it doesn't exist.
         
         Args:
             config_path: Path to capital_allocations.json file
+            create_dirs: If True, create parent directories if they don't exist
         """
         path = Path(config_path)
+
+        if not create_dirs:
+            if not path.exists():
+                raise FileNotFoundError(f"Capital allocation config not found: {config_path}")
+
+            print(f"Skipping creation of parent directories for {config_path}")
+            return
         
         # Create parent directories if they don't exist
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -126,7 +134,8 @@ class CapitalManager:
         config_path: str,
         strategy_name: str,
         default_capital: float = 10000.0,
-        default_max_risk_pct: float = 0.05
+        default_max_risk_pct: float = 0.05,
+        create_dirs: bool = True
     ) -> None:
         """Initialize config file and ensure strategy exists.
         
@@ -138,7 +147,7 @@ class CapitalManager:
             default_capital: Default allocated capital if strategy doesn't exist
             default_max_risk_pct: Default max risk percentage if strategy doesn't exist
         """
-        CapitalManager.ensure_config_file_exists(config_path)
+        CapitalManager.ensure_config_file_exists(config_path, create_dirs)
         CapitalManager.ensure_strategy_exists(
             config_path, 
             strategy_name, 

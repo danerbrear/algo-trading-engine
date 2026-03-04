@@ -470,6 +470,43 @@ def test_ensure_config_file_exists_preserves_existing_file(tmp_path):
     assert config == existing_config
 
 
+def test_ensure_config_file_exists_create_dirs_false_file_exists(tmp_path):
+    """Test that ensure_config_file_exists with create_dirs=False succeeds when file exists."""
+    config_path = tmp_path / "capital_allocations.json"
+    existing_config = {"strategies": {"test": {"allocated_capital": 1000.0, "max_risk_percentage": 0.05}}}
+    with open(config_path, 'w') as f:
+        json.dump(existing_config, f)
+
+    CapitalManager.ensure_config_file_exists(str(config_path), create_dirs=False)
+
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+    assert config == existing_config
+
+
+def test_ensure_config_file_exists_create_dirs_false_file_not_exists(tmp_path):
+    """Test that ensure_config_file_exists with create_dirs=False raises when file does not exist."""
+    config_path = tmp_path / "nonexistent" / "capital_allocations.json"
+    assert not config_path.exists()
+
+    with pytest.raises(FileNotFoundError, match="Capital allocation config not found"):
+        CapitalManager.ensure_config_file_exists(str(config_path), create_dirs=False)
+
+
+def test_ensure_config_file_exists_create_dirs_true_creates_parent_dirs(tmp_path):
+    """Test that ensure_config_file_exists with create_dirs=True creates parent directories."""
+    config_path = tmp_path / "nested" / "config" / "strategies" / "capital_allocations.json"
+    assert not config_path.parent.exists()
+
+    CapitalManager.ensure_config_file_exists(str(config_path), create_dirs=True)
+
+    assert config_path.exists()
+    assert config_path.parent.exists()
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+    assert config == {"strategies": {}}
+
+
 def test_ensure_strategy_exists_adds_strategy(tmp_path):
     """Test that ensure_strategy_exists adds a new strategy with defaults."""
     config_path = tmp_path / "capital_allocations.json"

@@ -330,7 +330,8 @@ class PaperTradingEngine(TradingEngine):
                 config_path,
                 strategy_name,
                 default_capital=10000.0,
-                default_max_risk_pct=0.05
+                default_max_risk_pct=0.05,
+                create_dirs=self._config.use_cache
             )
             
             store = JsonDecisionStore()
