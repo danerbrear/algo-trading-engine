@@ -64,8 +64,8 @@ class OptionsCacheManager(CacheManager):
     │           └── {ticker}_0930.pkl, ...
     """
     
-    def __init__(self, base_dir: str = 'data_cache'):
-        super().__init__(base_dir)
+    def __init__(self, base_dir: str = 'data_cache', create_dirs: bool = True):
+        super().__init__(base_dir, create_dirs=create_dirs)
     
     def get_contracts_cache_path(self, symbol: str, date: date) -> Path:
         """Get the path for contracts cache file."""

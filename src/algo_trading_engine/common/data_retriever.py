@@ -64,7 +64,7 @@ class DataRetriever:
         self.features = None
         self.ticker = None
         self.use_cache = use_cache
-        self.cache_manager = CacheManager()
+        self.cache_manager = CacheManager(create_dirs=use_cache)
         self.calendar_processor = None  # Initialize lazily when needed
         self.treasury_rates: Optional[TreasuryRates] = None  # Store treasury rates data
     

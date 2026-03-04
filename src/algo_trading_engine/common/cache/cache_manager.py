@@ -5,15 +5,23 @@ from typing import Optional, Any
 
 class CacheManager:
     """Manages caching operations for the application"""
-    
-    def __init__(self, base_dir: str = 'data_cache'):
+
+    def __init__(self, base_dir: str = 'data_cache', create_dirs: bool = True):
+        """
+        Args:
+            base_dir: Root directory for cache storage
+            create_dirs: If False, do not create directories (for read-only filesystems e.g. Lambda)
+        """
         self.base_dir = Path(base_dir)
-        self.base_dir.mkdir(parents=True, exist_ok=True)
+        self.create_dirs = create_dirs
+        if self.create_dirs:
+            self.base_dir.mkdir(parents=True, exist_ok=True)
         
     def get_cache_dir(self, *subdirs: str) -> Path:
         """Get cache directory path for given subdirectories"""
         cache_dir = self.base_dir.joinpath(*subdirs)
-        cache_dir.mkdir(parents=True, exist_ok=True)
+        if self.create_dirs:
+            cache_dir.mkdir(parents=True, exist_ok=True)
         return cache_dir
         
     def get_cache_path(self, filename: str, *subdirs: str) -> Path:

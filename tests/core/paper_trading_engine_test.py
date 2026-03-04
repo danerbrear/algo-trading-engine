@@ -139,8 +139,10 @@ def test_paper_trading_engine_run_no_open_positions(
         options_handler=mock_options_handler
     )
     
-    # Mock the InteractiveStrategyRecommender.run to avoid user interaction
-    with patch('algo_trading_engine.prediction.recommendation_engine.InteractiveStrategyRecommender') as mock_recommender_class:
+    # Mock to avoid API calls: strategy price lookup, recommender, and DataRetriever
+    with patch.object(mock_strategy, 'get_current_underlying_price', return_value=500.0), \
+         patch('algo_trading_engine.common.data_retriever.DataRetriever.get_live_price', return_value=500.0), \
+         patch('algo_trading_engine.prediction.recommendation_engine.InteractiveStrategyRecommender') as mock_recommender_class:
         mock_recommender = Mock()
         mock_recommender.get_open_positions_status.return_value = []
         mock_recommender.run.return_value = None
@@ -218,8 +220,10 @@ def test_paper_trading_engine_run_with_open_positions(
         options_handler=mock_options_handler
     )
     
-    # Mock the InteractiveStrategyRecommender.run to avoid user interaction
-    with patch('algo_trading_engine.prediction.recommendation_engine.InteractiveStrategyRecommender') as mock_recommender_class:
+    # Mock to avoid API calls: strategy price lookup, recommender, and DataRetriever
+    with patch.object(mock_strategy, 'get_current_underlying_price', return_value=500.0), \
+         patch('algo_trading_engine.common.data_retriever.DataRetriever.get_live_price', return_value=500.0), \
+         patch('algo_trading_engine.prediction.recommendation_engine.InteractiveStrategyRecommender') as mock_recommender_class:
         mock_recommender = Mock()
         
         # Mock get_open_positions_status to return status info
@@ -270,8 +274,10 @@ def test_paper_trading_engine_run_with_recommendation_engine_failure(
         options_handler=mock_options_handler
     )
     
-    # Mock the InteractiveStrategyRecommender to raise an exception
-    with patch('algo_trading_engine.prediction.recommendation_engine.InteractiveStrategyRecommender') as mock_recommender_class:
+    # Mock to avoid API calls: strategy price lookup, recommender, and DataRetriever
+    with patch.object(mock_strategy, 'get_current_underlying_price', return_value=500.0), \
+         patch('algo_trading_engine.common.data_retriever.DataRetriever.get_live_price', return_value=500.0), \
+         patch('algo_trading_engine.prediction.recommendation_engine.InteractiveStrategyRecommender') as mock_recommender_class:
         mock_recommender = Mock()
         mock_recommender.run.side_effect = Exception("Test error")
         mock_recommender_class.return_value = mock_recommender
@@ -335,8 +341,10 @@ def test_paper_trading_engine_run_missing_capital_config(
         options_handler=mock_options_handler
     )
     
-    # Run engine - should initialize default config and succeed
-    with patch('algo_trading_engine.prediction.recommendation_engine.InteractiveStrategyRecommender') as mock_recommender_class:
+    # Mock to avoid API calls: strategy price lookup, recommender, and DataRetriever
+    with patch.object(mock_strategy, 'get_current_underlying_price', return_value=500.0), \
+         patch('algo_trading_engine.common.data_retriever.DataRetriever.get_live_price', return_value=500.0), \
+         patch('algo_trading_engine.prediction.recommendation_engine.InteractiveStrategyRecommender') as mock_recommender_class:
         mock_recommender = Mock()
         mock_recommender.get_open_positions_status.return_value = []
         mock_recommender.run.return_value = None

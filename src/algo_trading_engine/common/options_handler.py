@@ -57,7 +57,7 @@ class OptionsHandler:
         if not self.api_key:
             raise ValueError("Polygon.io API key is required")
         
-        self.cache_manager = OptionsCacheManager(cache_dir)
+        self.cache_manager = OptionsCacheManager(cache_dir, create_dirs=use_cache)
         
         # Initialize API client and retry handler
         from polygon import RESTClient
