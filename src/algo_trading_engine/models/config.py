@@ -90,6 +90,7 @@ class PaperTradingConfig:
     max_position_size: Optional[float] = None  # Fraction of capital
     api_key: Optional[str] = None  # Polygon.io API key (falls back to POLYGON_API_KEY env var)
     use_free_tier: bool = False  # Use free tier rate limiting (13 second timeout)
+    use_cache: bool = True  # Whether to write fetched data to the local filesystem cache
     stop_loss: Optional[float] = None  # Optional stop loss percentage
     profit_target: Optional[float] = None  # Optional profit target percentage
     

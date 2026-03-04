@@ -366,3 +366,78 @@ class TestProcessAgnosticCaching:
         cache_dir2 = retriever2.cache_manager.get_cache_dir('stocks', 'SPY') / 'hourly'
         
         assert cache_dir1 == cache_dir2
+
+
+class TestDataRetrieverUseCache:
+    """Test cases for DataRetriever use_cache parameter."""
+
+    def test_use_cache_defaults_to_true(self, mock_cache_manager):
+        """Test that use_cache defaults to True."""
+        retriever = DataRetriever(symbol='SPY')
+        assert retriever.use_cache is True
+
+    def test_use_cache_can_be_set_to_false(self, mock_cache_manager):
+        """Test that use_cache can be explicitly disabled."""
+        retriever = DataRetriever(symbol='SPY', use_cache=False)
+        assert retriever.use_cache is False
+
+    @patch('algo_trading_engine.common.data_retriever.DataRetriever._load_cached_data_range')
+    @patch('yfinance.Ticker')
+    def test_fetch_data_does_not_write_cache_when_disabled(
+        self, mock_ticker_class, mock_load_cache, mock_cache_manager
+    ):
+        """Test that no cache files are written when use_cache=False."""
+        mock_load_cache.return_value = None
+
+        retriever = DataRetriever(symbol='SPY', bar_interval=BarTimeInterval.DAY, use_cache=False)
+
+        dates = pd.date_range(start='2024-01-01', periods=10, freq='D')
+        mock_data = pd.DataFrame({
+            'Open': [100 + i for i in range(10)],
+            'High': [105 + i for i in range(10)],
+            'Low': [95 + i for i in range(10)],
+            'Close': [100 + i for i in range(10)],
+            'Volume': [1000000] * 10
+        }, index=dates)
+
+        mock_ticker = Mock()
+        mock_ticker.info = {'symbol': 'SPY'}
+        mock_ticker.history.return_value = mock_data
+        mock_ticker_class.return_value = mock_ticker
+
+        data = retriever.fetch_data_for_period('2024-01-01', '2024-01-10')
+
+        assert len(data) > 0
+        cache_dir = retriever.cache_manager.get_cache_dir('stocks', 'SPY') / 'daily'
+        assert not cache_dir.exists() or not any(cache_dir.iterdir()), \
+            "No cache files should be written when use_cache=False"
+
+    @patch('algo_trading_engine.common.data_retriever.DataRetriever._load_cached_data_range')
+    @patch('yfinance.Ticker')
+    def test_fetch_data_writes_cache_when_enabled(
+        self, mock_ticker_class, mock_load_cache, mock_cache_manager
+    ):
+        """Test that cache files are written when use_cache=True."""
+        mock_load_cache.return_value = None
+
+        retriever = DataRetriever(symbol='SPY', bar_interval=BarTimeInterval.DAY, use_cache=True)
+
+        dates = pd.date_range(start='2024-01-01', periods=10, freq='D')
+        mock_data = pd.DataFrame({
+            'Open': [100 + i for i in range(10)],
+            'High': [105 + i for i in range(10)],
+            'Low': [95 + i for i in range(10)],
+            'Close': [100 + i for i in range(10)],
+            'Volume': [1000000] * 10
+        }, index=dates)
+
+        mock_ticker = Mock()
+        mock_ticker.info = {'symbol': 'SPY'}
+        mock_ticker.history.return_value = mock_data
+        mock_ticker_class.return_value = mock_ticker
+
+        retriever.fetch_data_for_period('2024-01-01', '2024-01-10')
+
+        cache_dir = retriever.cache_manager.get_cache_dir('stocks', 'SPY') / 'daily'
+        expected_file = cache_dir / '2024-01-01.pkl'
+        assert expected_file.exists(), "Cache file should be written when use_cache=True"

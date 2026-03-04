@@ -446,7 +446,8 @@ class PaperTradingEngine(TradingEngine):
             lstm_start_date=lstm_start_date,
             quiet_mode=True,
             use_free_tier=config.use_free_tier,
-            bar_interval=config.bar_interval
+            bar_interval=config.bar_interval,
+            use_cache=config.use_cache
         )
         
         # Internal: Fetch recent data for strategy initialization
@@ -460,7 +461,8 @@ class PaperTradingEngine(TradingEngine):
         options_handler = OptionsHandler(
             symbol=config.symbol,
             api_key=config.api_key,
-            use_free_tier=config.use_free_tier
+            use_free_tier=config.use_free_tier,
+            use_cache=config.use_cache
         )
         
         # Internal: Extract methods as callables (no imports needed by child repos)

@@ -200,3 +200,43 @@ class TestPaperTradingConfigBarInterval:
         )
         
         assert config.bar_interval == BarTimeInterval.MINUTE
+
+
+class TestPaperTradingConfigUseCache:
+    """Test cases for PaperTradingConfig use_cache parameter."""
+
+    def test_use_cache_defaults_to_true(self):
+        """Test that use_cache defaults to True."""
+        config = PaperTradingConfig(
+            symbol='SPY',
+            strategy_type='velocity_signal_momentum'
+        )
+        assert config.use_cache is True
+
+    def test_use_cache_can_be_set_to_false(self):
+        """Test that use_cache can be explicitly set to False."""
+        config = PaperTradingConfig(
+            symbol='SPY',
+            strategy_type='velocity_signal_momentum',
+            use_cache=False
+        )
+        assert config.use_cache is False
+
+    def test_use_cache_can_be_set_to_true(self):
+        """Test that use_cache can be explicitly set to True."""
+        config = PaperTradingConfig(
+            symbol='SPY',
+            strategy_type='velocity_signal_momentum',
+            use_cache=True
+        )
+        assert config.use_cache is True
+
+    def test_use_cache_is_immutable(self):
+        """Test that use_cache cannot be modified after creation (frozen dataclass)."""
+        config = PaperTradingConfig(
+            symbol='SPY',
+            strategy_type='velocity_signal_momentum',
+            use_cache=False
+        )
+        with pytest.raises(Exception):
+            config.use_cache = True  # type: ignore

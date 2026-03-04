@@ -38,7 +38,8 @@ class DataRetriever:
         lstm_start_date='2020-01-01', 
         use_free_tier=False, 
         quiet_mode=True,
-        bar_interval: BarTimeInterval = BarTimeInterval.DAY
+        bar_interval: BarTimeInterval = BarTimeInterval.DAY,
+        use_cache: bool = True
     ):
         """Initialize DataRetriever with separate date ranges for HMM and LSTM
         
@@ -49,6 +50,7 @@ class DataRetriever:
             use_free_tier: Whether to use free tier rate limiting (13 second timeout)
             quiet_mode: Whether to suppress detailed output for cleaner progress display
             bar_interval: Time interval for market data bars (DAY, HOUR, or MINUTE)
+            use_cache: Whether to write fetched data to the local filesystem cache
         """
         self.symbol = symbol
         self.hmm_start_date = hmm_start_date
@@ -61,6 +63,7 @@ class DataRetriever:
         self.lstm_data = None  # Separate data for LSTM training
         self.features = None
         self.ticker = None
+        self.use_cache = use_cache
         self.cache_manager = CacheManager()
         self.calendar_processor = None  # Initialize lazily when needed
         self.treasury_rates: Optional[TreasuryRates] = None  # Store treasury rates data
@@ -325,29 +328,30 @@ class DataRetriever:
         if data.empty:
             raise ValueError(f"No data available after filtering for date range {start_date} to {end_date_ts.date()}")
         
-        # Save to cache using new structure
-        cache_base = self.cache_manager.get_cache_dir('stocks', self.symbol)
-        cache_dir = cache_base / interval_dir
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        
-        if self.bar_interval == BarTimeInterval.DAY:
-            # For daily bars, save one file per start_date (like old implementation)
-            # This avoids reading hundreds of files for large backtests
-            cache_file = cache_dir / f"{start_date}.pkl"
-            data.to_pickle(cache_file)
-            get_logger().info(f"Cached {len(data)} daily bars to {interval_dir}/{start_date}.pkl")
-        else:
-            # For hourly/minute, save each bar separately (granular caching)
-            # This makes sense for intraday data with smaller date ranges
-            for idx, row in data.iterrows():
-                date_str = idx.strftime('%Y-%m-%d')
-                time_str = idx.strftime('%H%M')  # e.g., '0930' for 9:30 AM
-                cache_file = cache_dir / f"{date_str}_{time_str}.pkl"
-                
-                # Save single row as DataFrame
-                pd.DataFrame([row]).to_pickle(cache_file)
-                
-            get_logger().info(f"Cached {len(data)} {interval_str} bars to {interval_dir}/")
+        if self.use_cache:
+            # Save to cache using new structure
+            cache_base = self.cache_manager.get_cache_dir('stocks', self.symbol)
+            cache_dir = cache_base / interval_dir
+            cache_dir.mkdir(parents=True, exist_ok=True)
+
+            if self.bar_interval == BarTimeInterval.DAY:
+                # For daily bars, save one file per start_date (like old implementation)
+                # This avoids reading hundreds of files for large backtests
+                cache_file = cache_dir / f"{start_date}.pkl"
+                data.to_pickle(cache_file)
+                get_logger().info(f"Cached {len(data)} daily bars to {interval_dir}/{start_date}.pkl")
+            else:
+                # For hourly/minute, save each bar separately (granular caching)
+                # This makes sense for intraday data with smaller date ranges
+                for idx, row in data.iterrows():
+                    date_str = idx.strftime('%Y-%m-%d')
+                    time_str = idx.strftime('%H%M')  # e.g., '0930' for 9:30 AM
+                    cache_file = cache_dir / f"{date_str}_{time_str}.pkl"
+
+                    # Save single row as DataFrame
+                    pd.DataFrame([row]).to_pickle(cache_file)
+
+                get_logger().info(f"Cached {len(data)} {interval_str} bars to {interval_dir}/")
         
         return data
 

@@ -44,7 +44,7 @@ class OptionsHandler:
     - Use public API methods instead of private cache manipulation methods
     """
     
-    def __init__(self, symbol: str, api_key: Optional[str] = None, cache_dir: str = 'data_cache', use_free_tier: bool = False):
+    def __init__(self, symbol: str, api_key: Optional[str] = None, cache_dir: str = 'data_cache', use_free_tier: bool = False, use_cache: bool = True):
         """Initialize the OptionsHandler."""
         if not symbol or not symbol.strip():
             raise ValueError("Symbol is required and cannot be empty")
@@ -52,6 +52,7 @@ class OptionsHandler:
         self.symbol = symbol.upper()
         self.api_key = api_key or os.getenv('POLYGON_API_KEY')
         self.use_free_tier = use_free_tier
+        self.use_cache = use_cache
         
         if not self.api_key:
             raise ValueError("Polygon.io API key is required")
@@ -380,6 +381,8 @@ class OptionsHandler:
         This is a private method for internal use only.
         External callers should not directly manipulate the cache.
         """
+        if not self.use_cache:
+            return
         date_obj = date.date() if isinstance(date, datetime) else date
         try:
             self.cache_manager.save_contracts(self.symbol, date_obj, contracts)
@@ -399,6 +402,8 @@ class OptionsHandler:
         This is a private method for internal use only.
         External callers should not directly manipulate the cache.
         """
+        if not self.use_cache:
+            return
         try:
             self.cache_manager.save_bar(
                 self.symbol, date, ticker, bar, timespan.value

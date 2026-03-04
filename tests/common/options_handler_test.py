@@ -2374,3 +2374,90 @@ class TestOptionsHandlerErrorHandling:
                          return_value=[]):
             contracts2 = options_handler.get_contract_list_for_date(datetime.now())
             assert contracts2 == []
+
+
+class TestOptionsHandlerUseCache:
+    """Test cases for OptionsHandler use_cache parameter."""
+
+    @pytest.fixture
+    def temp_dir(self):
+        """Create temporary directory for testing."""
+        temp_dir = tempfile.mkdtemp()
+        yield temp_dir
+        shutil.rmtree(temp_dir)
+
+    @pytest.fixture
+    def sample_contracts(self):
+        """Create sample contracts for testing."""
+        future_date = date.today() + timedelta(days=30)
+        return [
+            OptionContractDTO(
+                ticker="O:SPY211119C00045000",
+                underlying_ticker="SPY",
+                contract_type=OptionType.CALL,
+                strike_price=StrikePrice(Decimal('450.0')),
+                expiration_date=ExpirationDate(future_date),
+                exercise_style="american",
+                shares_per_contract=100,
+                primary_exchange="BATO",
+                cfi="OCASPS",
+                additional_underlyings=None
+            ),
+        ]
+
+    @pytest.fixture
+    def sample_bar(self):
+        """Create a sample OptionBarDTO for testing."""
+        return OptionBarDTO(
+            ticker="O:SPY211119C00045000",
+            timestamp=datetime.now(),
+            open_price=Decimal('5.0'),
+            high_price=Decimal('6.0'),
+            low_price=Decimal('4.5'),
+            close_price=Decimal('5.5'),
+            volume=50,
+            volume_weighted_avg_price=Decimal('5.2'),
+            number_of_transactions=10,
+        )
+
+    def test_use_cache_defaults_to_true(self, temp_dir):
+        """Test that use_cache defaults to True."""
+        handler = OptionsHandler("SPY", api_key="test_key", cache_dir=temp_dir)
+        assert handler.use_cache is True
+
+    def test_use_cache_can_be_set_to_false(self, temp_dir):
+        """Test that use_cache can be disabled."""
+        handler = OptionsHandler("SPY", api_key="test_key", cache_dir=temp_dir, use_cache=False)
+        assert handler.use_cache is False
+
+    def test_cache_contracts_skipped_when_use_cache_false(self, temp_dir, sample_contracts):
+        """Test that _cache_contracts does not write when use_cache=False."""
+        handler = OptionsHandler("SPY", api_key="test_key", cache_dir=temp_dir, use_cache=False)
+
+        with patch.object(handler.cache_manager, 'save_contracts') as mock_save:
+            handler._cache_contracts(datetime.now(), sample_contracts)
+            mock_save.assert_not_called()
+
+    def test_cache_contracts_writes_when_use_cache_true(self, temp_dir, sample_contracts):
+        """Test that _cache_contracts writes when use_cache=True."""
+        handler = OptionsHandler("SPY", api_key="test_key", cache_dir=temp_dir, use_cache=True)
+
+        with patch.object(handler.cache_manager, 'save_contracts') as mock_save:
+            handler._cache_contracts(datetime.now(), sample_contracts)
+            mock_save.assert_called_once()
+
+    def test_cache_bar_skipped_when_use_cache_false(self, temp_dir, sample_bar):
+        """Test that _cache_bar does not write when use_cache=False."""
+        handler = OptionsHandler("SPY", api_key="test_key", cache_dir=temp_dir, use_cache=False)
+
+        with patch.object(handler.cache_manager, 'save_bar') as mock_save:
+            handler._cache_bar(datetime.now(), "O:SPY211119C00045000", sample_bar)
+            mock_save.assert_not_called()
+
+    def test_cache_bar_writes_when_use_cache_true(self, temp_dir, sample_bar):
+        """Test that _cache_bar writes when use_cache=True."""
+        handler = OptionsHandler("SPY", api_key="test_key", cache_dir=temp_dir, use_cache=True)
+
+        with patch.object(handler.cache_manager, 'save_bar') as mock_save:
+            handler._cache_bar(datetime.now(), "O:SPY211119C00045000", sample_bar)
+            mock_save.assert_called_once()
