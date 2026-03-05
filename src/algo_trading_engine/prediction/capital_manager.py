@@ -99,7 +99,8 @@ class CapitalManager:
         config_path: str, 
         strategy_name: str,
         default_capital: float = 10000.0,
-        default_max_risk_pct: float = 0.05
+        default_max_risk_pct: float = 0.05,
+        create_dirs: bool = True
     ) -> None:
         """Ensure a strategy exists in the config file, adding it with defaults if not.
         
@@ -108,6 +109,7 @@ class CapitalManager:
             strategy_name: Name of the strategy to ensure exists
             default_capital: Default allocated capital if strategy doesn't exist
             default_max_risk_pct: Default max risk percentage if strategy doesn't exist
+            create_dirs: If True, create parent directories if they don't exist
         """
         path = Path(config_path)
         
@@ -117,7 +119,7 @@ class CapitalManager:
         
         # Check if strategy exists
         strategies = config.get("strategies", {})
-        if strategy_name not in strategies:
+        if strategy_name not in strategies and create_dirs:
             # Add strategy with defaults
             strategies[strategy_name] = {
                 "allocated_capital": default_capital,
@@ -128,6 +130,8 @@ class CapitalManager:
             # Write back to file
             with open(path, 'w') as f:
                 json.dump(config, f, indent=2)
+        elif strategy_name not in strategies and not create_dirs:
+            raise FileNotFoundError(f"Strategy '{strategy_name}' not found in capital allocation config: {config_path}")
     
     @staticmethod
     def initialize_config_for_strategy(
@@ -146,13 +150,15 @@ class CapitalManager:
             strategy_name: Name of the strategy to ensure exists
             default_capital: Default allocated capital if strategy doesn't exist
             default_max_risk_pct: Default max risk percentage if strategy doesn't exist
+            create_dirs: If True, create parent directories if they don't exist
         """
         CapitalManager.ensure_config_file_exists(config_path, create_dirs)
         CapitalManager.ensure_strategy_exists(
             config_path, 
             strategy_name, 
             default_capital, 
-            default_max_risk_pct
+            default_max_risk_pct,
+            create_dirs
         )
     
     def get_allocated_capital(self, strategy_name: str) -> float:
