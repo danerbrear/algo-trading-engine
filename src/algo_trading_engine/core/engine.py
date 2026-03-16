@@ -107,10 +107,7 @@ class TradingEngine(ABC):
 
                 use_cache = True
                 if hasattr(self, '_config') and hasattr(self._config, 'use_cache'):
-                    get_logger().info(f"Using cache setting from config: {self._config.use_cache}")
                     use_cache = self._config.use_cache
-                else:
-                    get_logger().info("Using default cache setting: True")
 
                 data_retriever = DataRetriever(symbol=symbol, use_free_tier=True, quiet_mode=True, use_cache=use_cache)
                 live_price = data_retriever.get_live_price()
