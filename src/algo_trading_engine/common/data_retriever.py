@@ -469,8 +469,6 @@ class DataRetriever:
     def get_live_price(self, symbol: str = None) -> Optional[float]:
         """Fetch live price for the current date.
         
-        First tries Polygon API (if available), then falls back to yfinance.
-        
         Args:
             symbol: Stock symbol to fetch price for (defaults to self.symbol)
             
