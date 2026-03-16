@@ -334,7 +334,7 @@ class PaperTradingEngine(TradingEngine):
                 create_dirs=self._config.use_cache
             )
             
-            store = JsonDecisionStore()
+            store = self._config.decision_store or JsonDecisionStore()
             capital_manager = CapitalManager.from_config_file(config_path, store)
         except Exception as e:
             get_logger().error(f"Failed to load capital allocation config: {e}")

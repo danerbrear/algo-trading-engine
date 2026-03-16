@@ -13,6 +13,7 @@ from algo_trading_engine.enums import BarTimeInterval
 
 if TYPE_CHECKING:
     from algo_trading_engine.core.strategy import Strategy
+    from algo_trading_engine.prediction.decision_store import DecisionStore
 
 
 # Re-export VolumeConfig and VolumeStats from backtest.config for backward compatibility
@@ -93,6 +94,7 @@ class PaperTradingConfig:
     use_cache: bool = True  # Whether to write fetched data to the local filesystem cache
     stop_loss: Optional[float] = None  # Optional stop loss percentage
     profit_target: Optional[float] = None  # Optional profit target percentage
+    decision_store: Optional['DecisionStore'] = None # Database immplementation for storing decisions
     
     def __post_init__(self):
         """Validate configuration after initialization."""

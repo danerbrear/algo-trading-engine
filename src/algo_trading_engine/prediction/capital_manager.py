@@ -12,7 +12,7 @@ from pathlib import Path
 import json
 
 from algo_trading_engine.common.models import StrategyType
-from algo_trading_engine.prediction.decision_store import JsonDecisionStore, DecisionResponseDTO
+from algo_trading_engine.prediction.decision_store import DecisionStore, DecisionResponseDTO
 
 
 class CapitalManager:
@@ -22,7 +22,7 @@ class CapitalManager:
     ensuring a single source of truth.
     """
     
-    def __init__(self, allocations_config: Dict, decision_store: JsonDecisionStore):
+    def __init__(self, allocations_config: Dict, decision_store: DecisionStore):
         """Initialize capital manager with allocation configuration.
         
         Args:
@@ -35,18 +35,18 @@ class CapitalManager:
                         }
                     }
                 }
-            decision_store: JsonDecisionStore instance for reading decisions
+            decision_store: DecisionStore instance for reading decisions
         """
         self.allocations = allocations_config.get("strategies", {})
         self.decision_store = decision_store
     
     @classmethod
-    def from_config_file(cls, config_path: str, decision_store: JsonDecisionStore) -> CapitalManager:
+    def from_config_file(cls, config_path: str, decision_store: DecisionStore) -> CapitalManager:
         """Load capital allocations from a JSON config file.
         
         Args:
             config_path: Path to capital_allocations.json file
-            decision_store: JsonDecisionStore instance
+            decision_store: DecisionStore instance
             
         Returns:
             CapitalManager instance
