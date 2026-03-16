@@ -15,6 +15,7 @@ import pandas as pd
 from algo_trading_engine.core.engine import PaperTradingEngine
 from algo_trading_engine.models.config import PaperTradingConfig
 from algo_trading_engine.prediction.decision_store import (
+    DecisionStore,
     JsonDecisionStore, 
     ProposedPositionRequestDTO, 
     DecisionResponseDTO,
@@ -434,3 +435,92 @@ class TestPaperTradingEngineFromConfig:
 
         assert engine.strategy == mock_strategy
         assert mock_strategy.symbol == 'QQQ'
+
+
+class TestCustomDecisionStore:
+    """Test that a custom DecisionStore passed via PaperTradingConfig is used by the engine."""
+
+    def test_engine_uses_custom_decision_store_from_config(
+        self, mock_strategy, mock_options_handler, monkeypatch, tmp_path
+    ):
+        """When PaperTradingConfig.decision_store is set, the engine must use it
+        instead of creating a default JsonDecisionStore."""
+        monkeypatch.chdir(tmp_path)
+
+        custom_store = MagicMock(spec=DecisionStore)
+        custom_store.get_open_positions.return_value = []
+
+        config = PaperTradingConfig(
+            symbol='SPY',
+            strategy_type='credit_spread',
+            api_key='test_api_key',
+            use_free_tier=True,
+            decision_store=custom_store,
+        )
+
+        engine = PaperTradingEngine(
+            strategy=mock_strategy,
+            config=config,
+            options_handler=mock_options_handler,
+        )
+
+        with patch.object(mock_strategy, 'get_current_underlying_price', return_value=500.0), \
+             patch('algo_trading_engine.common.data_retriever.DataRetriever.get_live_price', return_value=500.0), \
+             patch('algo_trading_engine.prediction.recommendation_engine.InteractiveStrategyRecommender') as mock_rec_cls:
+            mock_recommender = Mock()
+            mock_recommender.run.return_value = None
+            mock_rec_cls.return_value = mock_recommender
+
+            success = engine.run()
+
+            assert success is True
+
+            # The custom store (not a default JsonDecisionStore) should have been
+            # passed to CapitalManager and the recommender.
+            mock_rec_cls.assert_called_once()
+            _, call_kwargs = mock_rec_cls.call_args
+            if not call_kwargs:
+                call_args = mock_rec_cls.call_args[0]
+                assert call_args[1] is custom_store, "Recommender should receive the custom DecisionStore"
+            else:
+                assert call_kwargs.get('decision_store', mock_rec_cls.call_args[0][1]) is custom_store
+
+            custom_store.get_open_positions.assert_called_once_with(symbol='SPY')
+
+    def test_engine_falls_back_to_json_store_when_none(
+        self, mock_strategy, mock_options_handler, monkeypatch, tmp_path
+    ):
+        """When PaperTradingConfig.decision_store is None, the engine creates
+        a default JsonDecisionStore."""
+        monkeypatch.chdir(tmp_path)
+
+        config = PaperTradingConfig(
+            symbol='SPY',
+            strategy_type='credit_spread',
+            api_key='test_api_key',
+            use_free_tier=True,
+            decision_store=None,
+        )
+
+        engine = PaperTradingEngine(
+            strategy=mock_strategy,
+            config=config,
+            options_handler=mock_options_handler,
+        )
+
+        with patch.object(mock_strategy, 'get_current_underlying_price', return_value=500.0), \
+             patch('algo_trading_engine.common.data_retriever.DataRetriever.get_live_price', return_value=500.0), \
+             patch('algo_trading_engine.prediction.recommendation_engine.InteractiveStrategyRecommender') as mock_rec_cls:
+            mock_recommender = Mock()
+            mock_recommender.run.return_value = None
+            mock_rec_cls.return_value = mock_recommender
+
+            success = engine.run()
+
+            assert success is True
+
+            # A JsonDecisionStore should have been created and passed
+            call_args = mock_rec_cls.call_args[0]
+            assert isinstance(call_args[1], JsonDecisionStore), (
+                "Recommender should receive a JsonDecisionStore when config.decision_store is None"
+            )

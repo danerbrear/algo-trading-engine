@@ -70,7 +70,7 @@ from algo_trading_engine.models.metrics import (
 from algo_trading_engine.common.options_helpers import OptionsRetrieverHelper
 # Import sub-packages for easy access
 from algo_trading_engine import dto
-from algo_trading_engine import vo, enums, indicators
+from algo_trading_engine import vo, enums, indicators, database
 
 # Define public API
 __all__ = [
@@ -94,4 +94,5 @@ __all__ = [
     "vo",
     "enums",
     "indicators",
+    "database"
 ]

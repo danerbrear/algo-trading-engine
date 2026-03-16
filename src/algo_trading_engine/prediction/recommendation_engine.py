@@ -7,7 +7,7 @@ from algo_trading_engine.core.strategy import Strategy
 from algo_trading_engine.vo import Position, create_position
 from algo_trading_engine.common.models import StrategyType
 from algo_trading_engine.prediction.decision_store import (
-    JsonDecisionStore,
+    DecisionStore,
     ProposedPositionRequestDTO,
     DecisionResponseDTO,
     generate_decision_id,
@@ -24,7 +24,7 @@ class InteractiveStrategyRecommender:
     `get_current_volumes_for_position`).
     """
 
-    def __init__(self, strategy: Strategy, decision_store: JsonDecisionStore, capital_manager: CapitalManager, auto_yes: bool = False):
+    def __init__(self, strategy: Strategy, decision_store: DecisionStore, capital_manager: CapitalManager, auto_yes: bool = False):
         self.strategy = strategy
         self.decision_store = decision_store
         self.capital_manager = capital_manager

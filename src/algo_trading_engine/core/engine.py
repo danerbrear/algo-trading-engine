@@ -104,7 +104,12 @@ class TradingEngine(ABC):
         if date.date() == current_date:
             try:
                 from algo_trading_engine.common.data_retriever import DataRetriever
-                data_retriever = DataRetriever(symbol=symbol, use_free_tier=True, quiet_mode=True)
+
+                use_cache = True
+                if hasattr(self, '_config') and hasattr(self._config, 'use_cache'):
+                    use_cache = self._config.use_cache
+
+                data_retriever = DataRetriever(symbol=symbol, use_free_tier=True, quiet_mode=True, use_cache=use_cache)
                 live_price = data_retriever.get_live_price()
             except Exception as e:
                 raise ValueError(f"Failed to fetch live price from DataRetriever: {e}")
@@ -334,7 +339,7 @@ class PaperTradingEngine(TradingEngine):
                 create_dirs=self._config.use_cache
             )
             
-            store = JsonDecisionStore()
+            store = self._config.decision_store or JsonDecisionStore()
             capital_manager = CapitalManager.from_config_file(config_path, store)
         except Exception as e:
             get_logger().error(f"Failed to load capital allocation config: {e}")

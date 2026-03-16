@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal, Optional, Tuple, List
@@ -138,7 +139,41 @@ def generate_decision_id(proposal: ProposedPositionRequestDTO, decided_at_iso: s
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
-class JsonDecisionStore:
+class DecisionStore(ABC):
+    """Abstract base class for decision storage backends."""
+
+    @abstractmethod
+    def append_decision(self, record: DecisionResponseDTO) -> None:
+        """Persist a decision record."""
+
+    @abstractmethod
+    def get_open_positions(
+        self,
+        symbol: Optional[str] = None,
+        strategy_type: Optional[StrategyType] = None,
+    ) -> List[DecisionResponseDTO]:
+        """Return all accepted-but-not-closed decisions.
+
+        Filter by symbol and/or strategy_type if provided.
+        """
+
+    @abstractmethod
+    def get_all_decisions(
+        self,
+        strategy_name: Optional[str] = None,
+        symbol: Optional[str] = None,
+    ) -> List[DecisionResponseDTO]:
+        """Return all accepted decisions (both open and closed).
+
+        Filter by strategy_name and/or symbol if provided.
+        """
+
+    @abstractmethod
+    def mark_closed(self, open_decision_id: str, exit_price: float, closed_at: datetime) -> None:
+        """Mark a previously accepted decision as closed."""
+
+
+class JsonDecisionStore(DecisionStore):
     """Append-only JSON storage for decision records per day.
 
     - Files are written to `<base_dir>/decisions_YYYYMMDD.json`
