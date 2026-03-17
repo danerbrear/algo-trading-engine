@@ -459,9 +459,9 @@ class PaperTradingEngine(TradingEngine):
         # Internal: Fetch recent data for strategy initialization
         # For paper trading, we fetch data up to today
         data = retriever.fetch_data_for_period(lstm_start_date)
-        
         if data is None or len(data) == 0:
             raise ValueError(f"Failed to fetch data for {config.symbol}")
+        get_logger().info(f"Fetched {len(data)} data points for {config.symbol} from {data[0].index} to {data[-1].index}")
         
         # Internal: Create options handler
         options_handler = OptionsHandler(
