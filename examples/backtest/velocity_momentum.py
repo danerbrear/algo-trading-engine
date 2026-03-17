@@ -26,7 +26,7 @@ def main():
     config = BacktestConfig(
         initial_capital=3000,
         start_date=datetime(2025, 1, 2),
-        end_date=datetime(2026, 1, 2),
+        end_date=datetime(2026, 1, 30),
         max_position_size=0.20,
         symbol="SPY",
         strategy_type="velocity_momentum",  # Built-in strategy name

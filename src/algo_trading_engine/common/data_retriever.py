@@ -152,12 +152,16 @@ class DataRetriever:
         """
         Load cached data for a date range from the interval-specific cache directory.
         
+        Returns whatever cached data is available, even if it does not extend to
+        end_date. The caller is responsible for checking completeness and fetching
+        any remaining gap from the API.
+        
         Args:
             start_date: Start date (YYYY-MM-DD)
             end_date: End date (YYYY-MM-DD), defaults to today
             
         Returns:
-            DataFrame with cached data, or None if cache is incomplete
+            DataFrame with cached data (may be partial), or None if no cache exists
         """
         if end_date is None:
             end_date = pd.Timestamp.now().strftime('%Y-%m-%d')
@@ -169,20 +173,16 @@ class DataRetriever:
         if not cache_dir.exists():
             return None
         
-        # For daily bars, use single file per start_date (like old implementation)
+        # For daily bars, use single file per start_date
         if self.bar_interval == BarTimeInterval.DAY:
-            # Look for a cache file that matches this start_date
             cache_file = cache_dir / f"{start_date}.pkl"
             if cache_file.exists():
                 try:
                     data = pd.read_pickle(cache_file)
-                    # Filter to requested end_date if needed
                     end_ts = pd.Timestamp(end_date)
-                    if data.index[-1] < end_ts:
-                        # Cache doesn't have enough data, need to re-fetch
-                        return None
-                    # Filter to exact range
-                    data = data[data.index <= end_ts]
+                    # Trim to end_date only when cache extends past it
+                    if data.index[-1] > end_ts:
+                        data = data[data.index <= end_ts]
                     return data
                 except Exception as e:
                     get_logger().warning(f"Failed to load {cache_file.name}: {e}")
@@ -195,30 +195,25 @@ class DataRetriever:
         if not cache_files:
             return None
         
-        # Load and concatenate all cache files within the date range
         dfs = []
         start_ts = pd.Timestamp(start_date)
         end_ts = pd.Timestamp(end_date)
         
         for cache_file in cache_files:
             try:
-                # Extract date from filename
-                # Format: YYYY-MM-DD_HHMM.pkl (hourly/minute)
-                file_date_str = cache_file.stem.split('_')[0]  # Get date part
+                file_date_str = cache_file.stem.split('_')[0]
                 file_date = pd.Timestamp(file_date_str)
                 
                 if start_ts <= file_date <= end_ts:
                     df = pd.read_pickle(cache_file)
                     dfs.append(df)
             except Exception as e:
-                # If any file fails to load, return None to trigger re-fetch
                 get_logger().warning(f"Failed to load {cache_file.name}: {e}")
                 return None
         
         if not dfs:
             return None
         
-        # Concatenate and sort by index
         result = pd.concat(dfs).sort_index()
         return result
 
@@ -260,9 +255,123 @@ class DataRetriever:
 
         return self.lstm_data
 
+    def _fetch_bars_from_api(self, start_date: str, end_date: str) -> pd.DataFrame:
+        """
+        Fetch bar data from yfinance for a date range without caching.
+        
+        Args:
+            start_date: Start date (YYYY-MM-DD)
+            end_date: End date (YYYY-MM-DD)
+            
+        Returns:
+            DataFrame with OHLCV data, or empty DataFrame if no data available
+        """
+        interval_str = self._get_yfinance_interval()
+
+        if self.ticker is None:
+            self.ticker = yf.Ticker(self.symbol)
+
+        start_date_ts = pd.Timestamp(start_date)
+        end_date_ts = pd.Timestamp(end_date)
+
+        data = self.ticker.history(
+            start=start_date_ts,
+            end=end_date_ts,
+            interval=interval_str
+        )
+
+        if data.empty:
+            return pd.DataFrame()
+
+        data.index = data.index.tz_localize(None)
+        data = data[(data.index >= start_date_ts) & (data.index <= end_date_ts)].copy()
+
+        return data
+
+    def _save_data_to_cache(self, data: pd.DataFrame, start_date: str) -> None:
+        """
+        Persist bar data to the interval-appropriate cache structure.
+        
+        For daily bars, writes a single pickle file keyed by start_date.
+        For hourly/minute bars, writes one pickle file per bar.
+        """
+        interval_dir = self._get_cache_interval_dir()
+        interval_str = self._get_yfinance_interval()
+        cache_base = self.cache_manager.get_cache_dir('stocks', self.symbol)
+        cache_dir = cache_base / interval_dir
+        cache_dir.mkdir(parents=True, exist_ok=True)
+
+        if self.bar_interval == BarTimeInterval.DAY:
+            cache_file = cache_dir / f"{start_date}.pkl"
+            data.to_pickle(cache_file)
+            get_logger().info(f"Cached {len(data)} daily bars to {interval_dir}/{start_date}.pkl")
+        else:
+            for idx, row in data.iterrows():
+                date_str = idx.strftime('%Y-%m-%d')
+                time_str = idx.strftime('%H%M')
+                cache_file = cache_dir / f"{date_str}_{time_str}.pkl"
+                pd.DataFrame([row]).to_pickle(cache_file)
+            get_logger().info(f"Cached {len(data)} {interval_str} bars to {interval_dir}/")
+
+    def _fetch_gap_and_merge(
+        self, cached_data: pd.DataFrame, start_date: str, end_date: str
+    ) -> pd.DataFrame:
+        """
+        Given partial cached data that does not extend to end_date, fetch
+        only the missing bars from the API, merge, deduplicate, and update
+        the cache.
+        
+        Works for all bar intervals.
+        
+        Args:
+            cached_data: Partial cached DataFrame
+            start_date: Original start_date (used for daily cache filename)
+            end_date: Desired end date (YYYY-MM-DD)
+            
+        Returns:
+            Merged DataFrame covering cached_data through end_date
+        """
+        last_cached = cached_data.index[-1]
+        interval_str = self._get_yfinance_interval()
+
+        if self.bar_interval == BarTimeInterval.DAY:
+            gap_start = (last_cached + pd.Timedelta(days=1)).strftime('%Y-%m-%d')
+        else:
+            # Re-fetch from the last cached date to capture remaining intraday bars
+            gap_start = last_cached.strftime('%Y-%m-%d')
+
+        get_logger().info(
+            f"Partial cache hit: {len(cached_data)} {interval_str} bars through "
+            f"{last_cached.date()}, fetching remaining data from {gap_start} to {end_date}"
+        )
+
+        gap_data = self._fetch_bars_from_api(gap_start, end_date)
+
+        if gap_data.empty:
+            get_logger().info("No additional data available from API for the gap period")
+            return cached_data
+
+        get_logger().info(f"Fetched {len(gap_data)} additional {interval_str} bars from API")
+
+        merged_data = pd.concat([cached_data, gap_data]).sort_index()
+        merged_data = merged_data[~merged_data.index.duplicated(keep='last')]
+
+        if self.use_cache:
+            if self.bar_interval == BarTimeInterval.DAY:
+                self._save_data_to_cache(merged_data, start_date)
+            else:
+                # Only persist the new gap bars; existing cache files are untouched
+                self._save_data_to_cache(gap_data, start_date)
+
+        return merged_data
+
     def fetch_data_for_period(self, start_date: str, end_date: str = None) -> pd.DataFrame:
         """
         Fetch data for a specific period with caching.
+        
+        When cached data exists but does not extend to the requested end_date,
+        only the missing tail is fetched from the API and merged with the cache.
+        This applies to all bar intervals (daily, hourly, minute).
         
         Args:
             start_date: Start date (YYYY-MM-DD)
@@ -270,32 +379,32 @@ class DataRetriever:
             
         Returns:
             DataFrame with OHLCV data for the specified period
-            
-        Note: Caching is now process-agnostic using interval-based subdirectories.
         """
-        # Try to load from cache first
         cached_data = self._load_cached_data_range(start_date, end_date)
-        
-        if cached_data is not None:
+
+        if cached_data is not None and not cached_data.empty:
+            effective_end = end_date if end_date is not None else pd.Timestamp.now().strftime('%Y-%m-%d')
+            end_ts = pd.Timestamp(effective_end)
+
+            if cached_data.index[-1] < end_ts:
+                return self._fetch_gap_and_merge(cached_data, start_date, effective_end)
+
             interval_str = self._get_yfinance_interval()
             get_logger().info(f"Loaded {len(cached_data)} cached {interval_str} bars")
             return cached_data
         
-        # Fetch from yfinance
+        # No cached data — full fetch from yfinance
         interval_str = self._get_yfinance_interval()
-        interval_dir = self._get_cache_interval_dir()
         
         get_logger().info(f"Fetching {interval_str} bars from {start_date} onwards...")
         
         if self.ticker is None:
             self.ticker = yf.Ticker(self.symbol)
         
-        # Validate ticker exists
         info = self.ticker.info
         if not info or len(info) == 0:
             raise ValueError(f"Invalid symbol or no info available for {self.symbol}")
         
-        # Determine end date
         if end_date is None:
             end_date_ts = pd.Timestamp.now()
         else:
@@ -303,7 +412,6 @@ class DataRetriever:
         
         start_date_ts = pd.Timestamp(start_date)
         
-        # Fetch with interval parameter
         data = self.ticker.history(
             start=start_date_ts,
             end=end_date_ts,
@@ -322,36 +430,13 @@ class DataRetriever:
         data.index = data.index.tz_localize(None)
         get_logger().info(f"Fetched {len(data)} {interval_str} bars from {data.index[0]} to {data.index[-1]}")
         
-        # Filter to requested date range
         data = data[(data.index >= start_date_ts) & (data.index <= end_date_ts)].copy()
         
         if data.empty:
             raise ValueError(f"No data available after filtering for date range {start_date} to {end_date_ts.date()}")
         
         if self.use_cache:
-            # Save to cache using new structure
-            cache_base = self.cache_manager.get_cache_dir('stocks', self.symbol)
-            cache_dir = cache_base / interval_dir
-            cache_dir.mkdir(parents=True, exist_ok=True)
-
-            if self.bar_interval == BarTimeInterval.DAY:
-                # For daily bars, save one file per start_date (like old implementation)
-                # This avoids reading hundreds of files for large backtests
-                cache_file = cache_dir / f"{start_date}.pkl"
-                data.to_pickle(cache_file)
-                get_logger().info(f"Cached {len(data)} daily bars to {interval_dir}/{start_date}.pkl")
-            else:
-                # For hourly/minute, save each bar separately (granular caching)
-                # This makes sense for intraday data with smaller date ranges
-                for idx, row in data.iterrows():
-                    date_str = idx.strftime('%Y-%m-%d')
-                    time_str = idx.strftime('%H%M')  # e.g., '0930' for 9:30 AM
-                    cache_file = cache_dir / f"{date_str}_{time_str}.pkl"
-
-                    # Save single row as DataFrame
-                    pd.DataFrame([row]).to_pickle(cache_file)
-
-                get_logger().info(f"Cached {len(data)} {interval_str} bars to {interval_dir}/")
+            self._save_data_to_cache(data, start_date)
         
         return data
 

@@ -441,3 +441,225 @@ class TestDataRetrieverUseCache:
         cache_dir = retriever.cache_manager.get_cache_dir('stocks', 'SPY') / 'daily'
         expected_file = cache_dir / '2024-01-01.pkl'
         assert expected_file.exists(), "Cache file should be written when use_cache=True"
+
+
+class TestPartialCacheFetch:
+    """Test partial cache hit + gap fetch merging for all bar intervals."""
+
+    def _create_daily_data(self, start_date, num_days):
+        """Helper to create a DataFrame of daily OHLCV data."""
+        dates = pd.bdate_range(start=start_date, periods=num_days)
+        return pd.DataFrame({
+            'Open': [100.0 + i for i in range(num_days)],
+            'High': [105.0 + i for i in range(num_days)],
+            'Low': [95.0 + i for i in range(num_days)],
+            'Close': [101.0 + i for i in range(num_days)],
+            'Volume': [1000000] * num_days,
+        }, index=dates)
+
+    def _create_hourly_data(self, start_date, num_bars):
+        """Helper to create a DataFrame of hourly OHLCV data."""
+        dates = pd.date_range(start=f'{start_date} 09:30', periods=num_bars, freq='h')
+        return pd.DataFrame({
+            'Open': [100.0 + i for i in range(num_bars)],
+            'High': [105.0 + i for i in range(num_bars)],
+            'Low': [95.0 + i for i in range(num_bars)],
+            'Close': [101.0 + i for i in range(num_bars)],
+            'Volume': [1000000] * num_bars,
+        }, index=dates)
+
+    # ---- Daily bar tests ----
+
+    def test_daily_partial_cache_fetches_only_gap(self, mock_cache_manager):
+        """When cache covers start..mid and end_date > mid, only fetch mid+1..end."""
+        retriever = DataRetriever(symbol='SPY', bar_interval=BarTimeInterval.DAY)
+
+        cached = self._create_daily_data('2024-01-01', 10)
+        last_cached = cached.index[-1]
+
+        cache_dir = retriever.cache_manager.get_cache_dir('stocks', 'SPY') / 'daily'
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cached.to_pickle(cache_dir / '2024-01-01.pkl')
+
+        gap_data = self._create_daily_data(
+            (last_cached + pd.Timedelta(days=1)).strftime('%Y-%m-%d'), 5
+        )
+
+        with patch.object(retriever, '_fetch_bars_from_api', return_value=gap_data) as mock_api:
+            result = retriever.fetch_data_for_period('2024-01-01', '2024-02-01')
+
+        mock_api.assert_called_once()
+        call_start = mock_api.call_args[0][0]
+        assert pd.Timestamp(call_start) > last_cached, \
+            "API should only be called for dates after the last cached date"
+        assert len(result) == len(cached) + len(gap_data)
+
+    def test_daily_partial_cache_updates_cache_file(self, mock_cache_manager):
+        """Merged data should be persisted back to the cache file."""
+        retriever = DataRetriever(symbol='SPY', bar_interval=BarTimeInterval.DAY)
+
+        cached = self._create_daily_data('2024-01-01', 5)
+        last_cached = cached.index[-1]
+
+        cache_dir = retriever.cache_manager.get_cache_dir('stocks', 'SPY') / 'daily'
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_file = cache_dir / '2024-01-01.pkl'
+        cached.to_pickle(cache_file)
+
+        gap_data = self._create_daily_data(
+            (last_cached + pd.Timedelta(days=1)).strftime('%Y-%m-%d'), 3
+        )
+
+        with patch.object(retriever, '_fetch_bars_from_api', return_value=gap_data):
+            retriever.fetch_data_for_period('2024-01-01', '2024-02-01')
+
+        updated = pd.read_pickle(cache_file)
+        assert len(updated) == len(cached) + len(gap_data), \
+            "Cache file should contain both original and gap data"
+
+    def test_daily_partial_cache_returns_cached_when_api_empty(self, mock_cache_manager):
+        """If the API returns no gap data (e.g. weekends), return cached data as-is."""
+        retriever = DataRetriever(symbol='SPY', bar_interval=BarTimeInterval.DAY)
+
+        cached = self._create_daily_data('2024-01-01', 5)
+
+        cache_dir = retriever.cache_manager.get_cache_dir('stocks', 'SPY') / 'daily'
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cached.to_pickle(cache_dir / '2024-01-01.pkl')
+
+        with patch.object(retriever, '_fetch_bars_from_api', return_value=pd.DataFrame()):
+            result = retriever.fetch_data_for_period('2024-01-01', '2024-02-01')
+
+        assert len(result) == len(cached)
+
+    def test_daily_partial_cache_deduplicates_overlap(self, mock_cache_manager):
+        """Overlapping bars between cache and API are deduplicated (API wins)."""
+        retriever = DataRetriever(symbol='SPY', bar_interval=BarTimeInterval.DAY)
+
+        cached = self._create_daily_data('2024-01-01', 10)
+
+        cache_dir = retriever.cache_manager.get_cache_dir('stocks', 'SPY') / 'daily'
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cached.to_pickle(cache_dir / '2024-01-01.pkl')
+
+        overlap_start = cached.index[-2].strftime('%Y-%m-%d')
+        gap_data = self._create_daily_data(overlap_start, 5)
+        gap_data['Close'] = 999.0
+
+        with patch.object(retriever, '_fetch_bars_from_api', return_value=gap_data):
+            result = retriever.fetch_data_for_period('2024-01-01', '2024-02-01')
+
+        assert not result.index.duplicated().any(), "Result should have no duplicate dates"
+        overlap_idx = cached.index[-2]
+        assert result.loc[overlap_idx, 'Close'] == 999.0, \
+            "API data should take precedence on overlapping dates"
+
+    def test_daily_partial_cache_does_not_write_when_cache_disabled(self, mock_cache_manager):
+        """When use_cache=False, partial fetch should not update the cache file."""
+        retriever = DataRetriever(symbol='SPY', bar_interval=BarTimeInterval.DAY, use_cache=False)
+
+        cached = self._create_daily_data('2024-01-01', 5)
+        last_cached = cached.index[-1]
+
+        cache_dir = retriever.cache_manager.get_cache_dir('stocks', 'SPY') / 'daily'
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_file = cache_dir / '2024-01-01.pkl'
+        cached.to_pickle(cache_file)
+        original_size = cache_file.stat().st_size
+
+        gap_data = self._create_daily_data(
+            (last_cached + pd.Timedelta(days=1)).strftime('%Y-%m-%d'), 5
+        )
+
+        with patch.object(retriever, '_fetch_bars_from_api', return_value=gap_data):
+            result = retriever.fetch_data_for_period('2024-01-01', '2024-02-01')
+
+        assert len(result) == len(cached) + len(gap_data)
+        assert cache_file.stat().st_size == original_size, \
+            "Cache file should not be updated when use_cache=False"
+
+    # ---- Hourly bar tests ----
+
+    def test_hourly_partial_cache_fetches_gap(self, mock_cache_manager):
+        """Hourly bars with incomplete cache trigger a gap fetch instead of returning stale data."""
+        retriever = DataRetriever(symbol='SPY', bar_interval=BarTimeInterval.HOUR)
+
+        cached = self._create_hourly_data('2024-01-02', 7)
+
+        cache_dir = retriever.cache_manager.get_cache_dir('stocks', 'SPY') / 'hourly'
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        for idx, row in cached.iterrows():
+            fname = f"{idx.strftime('%Y-%m-%d')}_{idx.strftime('%H%M')}.pkl"
+            pd.DataFrame([row]).to_pickle(cache_dir / fname)
+
+        gap_data = self._create_hourly_data('2024-01-03', 7)
+
+        with patch.object(retriever, '_fetch_bars_from_api', return_value=gap_data) as mock_api:
+            result = retriever.fetch_data_for_period('2024-01-02', '2024-01-04')
+
+        mock_api.assert_called_once()
+        assert len(result) > len(cached), "Result should include gap data beyond cache"
+        assert not result.index.duplicated().any()
+
+    def test_hourly_partial_cache_saves_only_gap_bars(self, mock_cache_manager):
+        """When merging hourly cache, only the new gap bars are written to disk."""
+        retriever = DataRetriever(symbol='SPY', bar_interval=BarTimeInterval.HOUR)
+
+        cached = self._create_hourly_data('2024-01-02', 4)
+
+        cache_dir = retriever.cache_manager.get_cache_dir('stocks', 'SPY') / 'hourly'
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        for idx, row in cached.iterrows():
+            fname = f"{idx.strftime('%Y-%m-%d')}_{idx.strftime('%H%M')}.pkl"
+            pd.DataFrame([row]).to_pickle(cache_dir / fname)
+
+        files_before = set(cache_dir.glob('*.pkl'))
+
+        gap_data = self._create_hourly_data('2024-01-03', 4)
+
+        with patch.object(retriever, '_fetch_bars_from_api', return_value=gap_data):
+            retriever.fetch_data_for_period('2024-01-02', '2024-01-04')
+
+        files_after = set(cache_dir.glob('*.pkl'))
+        new_files = files_after - files_before
+        assert len(new_files) == len(gap_data), \
+            "Only the new gap bars should be written as new cache files"
+
+    def test_hourly_complete_cache_returns_without_api_call(self, mock_cache_manager):
+        """When hourly cache already covers end_date, no API call is made."""
+        retriever = DataRetriever(symbol='SPY', bar_interval=BarTimeInterval.HOUR)
+
+        # end_date is 2024-01-02 (midnight), cached data goes through 2024-01-02 16:30
+        cached = self._create_hourly_data('2024-01-02', 8)
+
+        cache_dir = retriever.cache_manager.get_cache_dir('stocks', 'SPY') / 'hourly'
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        for idx, row in cached.iterrows():
+            fname = f"{idx.strftime('%Y-%m-%d')}_{idx.strftime('%H%M')}.pkl"
+            pd.DataFrame([row]).to_pickle(cache_dir / fname)
+
+        with patch.object(retriever, '_fetch_bars_from_api') as mock_api:
+            result = retriever.fetch_data_for_period('2024-01-02', '2024-01-02')
+
+        mock_api.assert_not_called()
+        assert len(result) == len(cached)
+
+    # ---- end_date=None tests ----
+
+    def test_stale_cache_extended_when_end_date_is_none(self, mock_cache_manager):
+        """When end_date is None and cache is stale, fetch the gap to bring it current."""
+        retriever = DataRetriever(symbol='SPY', bar_interval=BarTimeInterval.DAY)
+
+        cached = self._create_daily_data('2024-01-01', 5)
+
+        cache_dir = retriever.cache_manager.get_cache_dir('stocks', 'SPY') / 'daily'
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cached.to_pickle(cache_dir / '2024-01-01.pkl')
+
+        gap_data = self._create_daily_data('2024-06-01', 10)
+
+        with patch.object(retriever, '_fetch_bars_from_api', return_value=gap_data) as mock_api:
+            result = retriever.fetch_data_for_period('2024-01-01')
+
+        mock_api.assert_called_once(), "Stale cache should trigger a gap fetch"
+        assert len(result) == len(cached) + len(gap_data)

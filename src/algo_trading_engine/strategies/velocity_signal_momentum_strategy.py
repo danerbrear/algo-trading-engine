@@ -605,7 +605,7 @@ class VelocitySignalMomentumStrategy(Strategy):
                 if exit_price is not None:
                     get_logger().info(f"Holding period met for {position.__str__()} at exit {exit_price} (held {days_held} days, target: {self.holding_period})")
                     current_volumes = self.get_current_volumes_for_position(position, date)
-                    remove_position(date, position, exit_price, current_volumes=current_volumes)
+                    remove_position(date, position, exit_price, underlying_price=current_underlying_price, current_volumes=current_volumes)
                 else:
                     get_logger().warning(f"⚠️  No exit price available for {position.__str__()} on {date}. Skipping holding-period close.")
             else:
