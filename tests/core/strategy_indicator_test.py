@@ -672,6 +672,56 @@ class TestStrategyGetIndicator:
         assert retrieved_atr.value > 0
 
 
+class TestStrategyGetIndicatorByName:
+    """Test cases for get_indicator_by_name method"""
+
+    def test_returns_correct_indicator_by_name(self):
+        mock1 = MockIndicator(name="Alpha")
+        mock2 = MockIndicator(name="Beta")
+
+        strategy = ConcreteTestStrategy()
+        strategy.add_indicator(mock1)
+        strategy.add_indicator(mock2)
+
+        assert strategy.get_indicator_by_name("Alpha") is mock1
+        assert strategy.get_indicator_by_name("Beta") is mock2
+
+    def test_returns_none_when_name_not_found(self):
+        strategy = ConcreteTestStrategy()
+        strategy.add_indicator(MockIndicator(name="Alpha"))
+
+        assert strategy.get_indicator_by_name("NonExistent") is None
+
+    def test_returns_none_when_no_indicators(self):
+        strategy = ConcreteTestStrategy()
+        assert strategy.get_indicator_by_name("ATR") is None
+
+    def test_disambiguates_multiple_same_type_indicators(self):
+        from algo_trading_engine.core.indicators.sma_indicator import SMAIndicator
+
+        sma_20 = SMAIndicator(period=20)
+        sma_50 = SMAIndicator(period=50)
+
+        strategy = ConcreteTestStrategy()
+        strategy.add_indicator(sma_20)
+        strategy.add_indicator(sma_50)
+
+        assert strategy.get_indicator_by_name("SMA_20") is sma_20
+        assert strategy.get_indicator_by_name("SMA_50") is sma_50
+
+    def test_works_alongside_get_indicator(self):
+        atr = ATRIndicator(period=14)
+        mock = MockIndicator(name="Custom")
+
+        strategy = ConcreteTestStrategy()
+        strategy.add_indicator(atr)
+        strategy.add_indicator(mock)
+
+        assert strategy.get_indicator(ATRIndicator) is atr
+        assert strategy.get_indicator_by_name("ATR") is atr
+        assert strategy.get_indicator_by_name("Custom") is mock
+
+
 class TestStrategyAddIndicator:
     """Test cases for add_indicator method"""
     

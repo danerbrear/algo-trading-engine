@@ -151,6 +151,27 @@ class Strategy(ABC):
                 return indicator
         return None
 
+    def get_indicator_by_name(self, name: str) -> Optional[Indicator]:
+        """
+        Get an indicator by its name.
+
+        Useful when multiple indicators of the same type exist (e.g. SMA_20 and SMA_50).
+
+        Args:
+            name: The indicator name to search for (e.g., "SMA_20", "ATR")
+
+        Returns:
+            Indicator instance if found, None otherwise
+
+        Example:
+            sma_20 = self.get_indicator_by_name("SMA_20")
+            sma_50 = self.get_indicator_by_name("SMA_50")
+        """
+        for indicator in self.indicators:
+            if indicator.name == name:
+                return indicator
+        return None
+
     def on_remove_position_success(self, date: datetime, position: 'Position', exit_price: float, underlying_price: float = None, current_volumes: list[int] = None):
         """
         Callback function for when a position is removed successfully via the TradingEngine.

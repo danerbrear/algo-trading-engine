@@ -8,7 +8,7 @@ strategies via the add_indicator() method.
 Example Usage:
 --------------
     from algo_trading_engine import Strategy
-    from algo_trading_engine.indicators import ATRIndicator
+    from algo_trading_engine.indicators import ATRIndicator, SMAIndicator
     from algo_trading_engine.enums import BarTimeInterval
     
     # Create custom strategy with indicators
@@ -23,6 +23,17 @@ Example Usage:
                 reset_daily=True
             )
             self.add_indicator(atr)
+
+            # SMA on daily close prices (any period)
+            sma_20 = SMAIndicator(period=20)
+            self.add_indicator(sma_20)
+
+            # SMA on hourly close prices
+            sma_10h = SMAIndicator(
+                period=10,
+                period_unit=BarTimeInterval.HOUR,
+            )
+            self.add_indicator(sma_10h)
         
         def on_new_date(self, date, positions, add_position, remove_position):
             super().on_new_date(date, positions, add_position, remove_position)
@@ -39,9 +50,11 @@ from algo_trading_engine.core.indicators.indicator import Indicator
 
 # Import public indicators
 from algo_trading_engine.core.indicators.average_true_return_indicator import ATRIndicator
+from algo_trading_engine.core.indicators.sma_indicator import SMAIndicator
 
 # Define public API
 __all__ = [
     "Indicator",
     "ATRIndicator",
+    "SMAIndicator",
 ]
