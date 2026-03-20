@@ -38,10 +38,15 @@ class SMAIndicator(Indicator):
         self.period_unit = period_unit
         self.column = column
         self.reset_daily = reset_daily
+        self._updated_dates: set = set()
 
     def update(self, date: datetime, data: pd.DataFrame) -> None:
         """
         Compute and store the SMA value for *date*.
+
+        When ``period_unit`` is DAY the indicator only needs to recalculate once
+        per calendar day.  If a strategy feeds bars more frequently (e.g. hourly),
+        subsequent calls on the same calendar day are no-ops.
 
         Args:
             date: The current bar datetime
@@ -52,6 +57,12 @@ class SMAIndicator(Indicator):
             ValueError: If the target column is missing or there are fewer bars
                         than the requested period.
         """
+        if self.period_unit == BarTimeInterval.DAY:
+            cal_date = date.date() if hasattr(date, "date") else date
+            if cal_date in self._updated_dates:
+                return
+            self._updated_dates.add(cal_date)
+
         if self.column not in data.columns:
             raise ValueError(
                 f"Column '{self.column}' not found in data. "

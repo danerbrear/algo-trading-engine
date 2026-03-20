@@ -294,6 +294,82 @@ class TestSMAIndicatorEdgeCases:
         assert SMAIndicator(period=5, period_unit=BarTimeInterval.MINUTE)._is_intraday() is True
 
 
+class TestSMAIndicatorDailyDedup:
+    """Test that a DAY-period SMA only recalculates once per calendar day"""
+
+    def _hourly_data(self) -> pd.DataFrame:
+        """Hourly bars spanning four days — enough for a period-3 daily SMA"""
+        days = [
+            pd.date_range(start=f"2024-01-0{d} 09:00", periods=7, freq="h")
+            for d in range(1, 5)
+        ]
+        all_dates = days[0].append(days[1:])
+        closes = [100.0 + i for i in range(len(all_dates))]
+        return pd.DataFrame({"Close": closes}, index=all_dates)
+
+    def test_second_call_same_day_is_noop(self):
+        """Calling update twice on the same calendar day should only compute once"""
+        data = self._hourly_data()
+        indicator = SMAIndicator(period=3)
+
+        indicator.update(datetime(2024, 1, 3, 12, 0), data)
+        first_value = indicator.value
+
+        indicator.update(datetime(2024, 1, 3, 15, 0), data)
+        second_value = indicator.value
+
+        assert first_value == second_value
+        assert len(indicator.get_values()) == 1
+
+    def test_different_day_does_recalculate(self):
+        """A new calendar day should produce a fresh calculation"""
+        data = self._hourly_data()
+        indicator = SMAIndicator(period=3)
+
+        indicator.update(datetime(2024, 1, 3, 15, 0), data)
+        day3_value = indicator.value
+
+        indicator.update(datetime(2024, 1, 4, 9, 0), data)
+        day4_value = indicator.value
+
+        assert len(indicator.get_values()) == 2
+        assert day4_value != day3_value
+
+    def test_hourly_period_unit_updates_every_bar(self):
+        """An HOUR-period SMA should update on every hourly call, no dedup"""
+        data = self._hourly_data()
+        indicator = SMAIndicator(period=3, period_unit=BarTimeInterval.HOUR)
+
+        indicator.update(datetime(2024, 1, 1, 11, 0), data)
+        indicator.update(datetime(2024, 1, 1, 12, 0), data)
+        indicator.update(datetime(2024, 1, 1, 13, 0), data)
+
+        assert len(indicator.get_values()) == 3
+
+    def test_updated_dates_tracks_calendar_days(self):
+        data = self._hourly_data()
+        indicator = SMAIndicator(period=3)
+
+        assert len(indicator._updated_dates) == 0
+
+        indicator.update(datetime(2024, 1, 3, 10, 0), data)
+        assert datetime(2024, 1, 3).date() in indicator._updated_dates
+
+        indicator.update(datetime(2024, 1, 4, 10, 0), data)
+        assert datetime(2024, 1, 4).date() in indicator._updated_dates
+        assert len(indicator._updated_dates) == 2
+
+    def test_many_hourly_calls_same_day_only_one_value(self):
+        """Simulate a full trading day of hourly bars hitting a daily SMA"""
+        data = self._hourly_data()
+        indicator = SMAIndicator(period=3)
+
+        for hour in range(9, 16):
+            indicator.update(datetime(2024, 1, 3, hour, 0), data)
+
+        assert len(indicator.get_values()) == 1
+
+
 class TestSMAIndicatorMultiplePeriods:
     """Verify that multiple SMA instances with different periods work independently"""
 
