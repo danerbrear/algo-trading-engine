@@ -8,6 +8,12 @@ class Indicator(ABC):
         self._values = pd.Series(dtype=float)  # Series indexed by datetime to store historical values
 
     @property
+    @abstractmethod
+    def warm_up_period(self) -> int:
+        """Minimum number of bars required before this indicator can produce a valid value."""
+        pass
+
+    @property
     def value(self) -> float:
         """Get the most recent indicator value"""
         if len(self._values) == 0:

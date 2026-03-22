@@ -37,6 +37,7 @@ class MyCustomStrategy(Strategy):
         - Add new positions via add_position()
         - Close positions via remove_position()
         """
+        get_logger().info(f"on_new_date called for date: {date}")
         # Add new positions
         if len(positions) == 0:
             self._try_open_position(date, add_position)

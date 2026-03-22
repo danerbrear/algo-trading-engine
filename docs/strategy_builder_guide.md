@@ -31,8 +31,8 @@ The Strategy Builder Pattern provides a flexible way to create trading strategie
 # Run credit spread strategy with default settings
 python run_backtest.py --strategy credit_spread
 
-# Run velocity momentum strategy with custom parameters
-python run_backtest.py --strategy velocity_momentum --start-date-offset 30
+# Run velocity momentum strategy
+python run_backtest.py --strategy velocity_momentum
 
 # Run with custom configuration
 python run_backtest.py --strategy credit_spread \
@@ -54,7 +54,6 @@ strategy = StrategyFactory.create_strategy(
     lstm_model=lstm_model,
     lstm_scaler=scaler,
     options_handler=options_handler,
-    start_date_offset=60,
     stop_loss=0.6,
     profit_target=0.4
 )
@@ -64,8 +63,7 @@ strategy = create_strategy_from_args(
     strategy_name='credit_spread',
     lstm_model=lstm_model,
     lstm_scaler=scaler,
-    options_handler=options_handler,
-    start_date_offset=60
+    options_handler=options_handler
 )
 ```
 
@@ -80,7 +78,6 @@ strategy = (builder
            .set_lstm_model(lstm_model)
            .set_lstm_scaler(scaler)
            .set_options_handler(options_handler)
-           .set_start_date_offset(60)
            .set_stop_loss(0.6)
            .set_profit_target(0.4)
            .build())
@@ -91,21 +88,21 @@ strategy = (builder
 ### Credit Spread Strategy (`credit_spread`)
 - **Description**: Options credit spread strategy using LSTM predictions
 - **Required Parameters**: `lstm_model`, `lstm_scaler`, `options_handler`
-- **Optional Parameters**: `start_date_offset`, `stop_loss`, `profit_target`
+- **Optional Parameters**: `stop_loss`, `profit_target`
 - **Default Stop Loss**: 60%
+- **Warm-Up Period**: 0 (no indicators; LSTM data fetched via `lstm_start_date_offset`)
 
 ### Velocity Signal Momentum Strategy (`velocity_momentum`)
 - **Description**: Momentum-based strategy using velocity signals
 - **Required Parameters**: None (uses default symbol 'SPY')
-- **Optional Parameters**: `symbol`, `start_date_offset`
-- **Default Start Date Offset**: 60 days
+- **Optional Parameters**: `symbol`
+- **Warm-Up Period**: 30 bars (derived from SMA_15 and SMA_30 indicators)
 
 ## Command Line Arguments
 
 | Argument | Type | Default | Description |
 |----------|------|---------|-------------|
 | `--strategy` | string | `credit_spread` | Strategy to use for backtesting |
-| `--start-date-offset` | int | 60 | Start date offset for strategy |
 | `--stop-loss` | float | 0.6 | Stop loss percentage |
 | `--profit-target` | float | None | Profit target percentage |
 | `--initial-capital` | float | 5000 | Initial capital for backtesting |
@@ -238,31 +235,11 @@ from src.backtest.strategy_builder import StrategyBuilder
 class MyNewStrategyBuilder(StrategyBuilder):
     def reset(self):
         self._custom_param = None
-        self._lstm_model = None
-        self._lstm_scaler = None
-        self._options_handler = None
-        self._start_date_offset = 0
         self._stop_loss = None
         self._profit_target = None
     
     def set_custom_param(self, value):
         self._custom_param = value
-        return self
-    
-    def set_lstm_model(self, model):
-        self._lstm_model = model
-        return self
-    
-    def set_lstm_scaler(self, scaler):
-        self._lstm_scaler = scaler
-        return self
-    
-    def set_options_handler(self, handler):
-        self._options_handler = handler
-        return self
-    
-    def set_start_date_offset(self, offset):
-        self._start_date_offset = offset
         return self
     
     def set_stop_loss(self, stop_loss):
@@ -275,8 +252,7 @@ class MyNewStrategyBuilder(StrategyBuilder):
     
     def build(self):
         return MyNewStrategy(
-            custom_param=self._custom_param,
-            start_date_offset=self._start_date_offset
+            custom_param=self._custom_param
         )
 ```
 
@@ -287,14 +263,12 @@ You can create predefined configuration profiles for different risk levels:
 ```python
 # Conservative profile
 conservative_config = {
-    'start_date_offset': 90,
     'stop_loss': 0.4,
     'profit_target': 0.2
 }
 
 # Aggressive profile
 aggressive_config = {
-    'start_date_offset': 30,
     'stop_loss': 0.8,
     'profit_target': 0.6
 }

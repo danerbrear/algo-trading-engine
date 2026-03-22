@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
 from algo_trading_engine.core.strategy import Strategy
+from algo_trading_engine.core.indicators.sma_indicator import SMAIndicator
 from algo_trading_engine.vo import Position, create_position
 from algo_trading_engine.common.models import StrategyType
 from algo_trading_engine.common.models import TreasuryRates
@@ -27,8 +28,8 @@ class VelocitySignalMomentumStrategy(Strategy):
     # Configurable holding period in trading days
     holding_period = 4
 
-    def __init__(self, get_contract_list_for_date: Callable, get_option_bar: Callable, get_options_chain: Callable, start_date_offset: int = 60, stop_loss: float = None, profit_target: float = None, symbol: str = 'SPY'):
-        super().__init__(start_date_offset=start_date_offset, stop_loss=stop_loss, profit_target=profit_target)
+    def __init__(self, get_contract_list_for_date: Callable, get_option_bar: Callable, get_options_chain: Callable, stop_loss: float = None, profit_target: float = None, symbol: str = 'SPY'):
+        super().__init__(stop_loss=stop_loss, profit_target=profit_target)
 
         self.get_contract_list_for_date = get_contract_list_for_date
         self.get_option_bar = get_option_bar
@@ -37,6 +38,9 @@ class VelocitySignalMomentumStrategy(Strategy):
         
         # Track position entries for plotting
         self._position_entries = []
+
+        self.add_indicator(SMAIndicator(period=15))
+        self.add_indicator(SMAIndicator(period=30))
     
     def set_data(self, data: pd.DataFrame, treasury_data: Optional[TreasuryRates] = None):
         super().set_data(data, treasury_data)

@@ -195,14 +195,14 @@ class BacktestEngine(TradingEngine):
         # Use only dates that exist in the data (not pd.bdate_range which includes holidays)
         # Filter data to the specified date range and use the actual dates
         date_range = self.data.index
+        warm_up = self.strategy.warm_up_period
 
-        self.benchmark.set_start_price(self.data.iloc[self.strategy.start_date_offset]['Close'])
+        self.benchmark.set_start_price(self.data.iloc[warm_up]['Close'])
         
         # Initialize progress tracker if enabled
         if self.enable_progress_tracking:
-            # Account for start_date_offset in progress tracking
-            effective_start_date = date_range[self.strategy.start_date_offset] if self.strategy.start_date_offset < len(date_range) else date_range[0]
-            effective_total_dates = len(date_range) - self.strategy.start_date_offset
+            effective_start_date = date_range[warm_up] if warm_up < len(date_range) else date_range[0]
+            effective_total_dates = len(date_range) - warm_up
             
             # Determine unit based on bar interval
             from algo_trading_engine.enums import BarTimeInterval
@@ -218,16 +218,25 @@ class BacktestEngine(TradingEngine):
             )
             set_global_progress_tracker(self.progress_tracker)
             
-        get_logger().info(f"Running backtest on {len(date_range)} trading days")
+        get_logger().info(f"Running backtest on {len(date_range)} trading days (warm-up: {warm_up} bars)")
         get_logger().info(f"   Date range: {date_range[0].date()} to {date_range[-1].date()}")
 
-        # For each date in the range, simulate the strategy
+        # For each date in the range, simulate the strategy.
+        # During the warm-up window (bars 0 .. warm_up-1) indicators are updated but
+        # on_new_date is not called. The first on_new_date runs on bar index warm_up —
+        # i.e. the first bar *after* the warm-up period.
         for i, date in enumerate(date_range):
-            # Convert to tuple for immutability
+            # Always update indicators so they can build their rolling windows
+            if not self.strategy._update_indicators(date):
+                get_logger().error(f"Error updating indicators for date {date}, skipping execution")
+                return False
+
+            if i < warm_up:
+                continue
+
             positions_tuple = tuple(self.positions)
 
-            # Update progress tracker only for dates that are actually being processed
-            if self.progress_tracker and i >= self.strategy.start_date_offset:
+            if self.progress_tracker:
                 self.progress_tracker.update(current_date=date)
 
             try:
@@ -669,8 +678,6 @@ def parse_arguments():
                        choices=StrategyFactory.get_available_strategies(),
                        default='credit_spread',
                        help='Strategy to use for backtesting')
-    parser.add_argument('--start-date-offset', type=int, default=60,
-                       help='Start date offset for strategy')
     parser.add_argument('--stop-loss', type=float, default=None,
                        help='Stop loss percentage')
     parser.add_argument('--profit-target', type=float, default=None,
@@ -729,7 +736,6 @@ def main():
         api_key=api_key,
         use_free_tier=args.free,
         quiet_mode=not args.verbose,
-        lstm_start_date_offset=args.start_date_offset,
         stop_loss=args.stop_loss,
         profit_target=args.profit_target
     )

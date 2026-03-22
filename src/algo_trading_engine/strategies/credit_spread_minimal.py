@@ -24,8 +24,8 @@ class CreditSpreadStrategy(Strategy):
 
     holding_period = 25
 
-    def __init__(self, get_contract_list_for_date: Callable, get_option_bar: Callable, get_options_chain: Callable, lstm_model, lstm_scaler, symbol: str = 'SPY', start_date_offset: int = 0, options_handler=None):
-        super().__init__(stop_loss=0.6, start_date_offset=start_date_offset)
+    def __init__(self, get_contract_list_for_date: Callable, get_option_bar: Callable, get_options_chain: Callable, lstm_model, lstm_scaler, symbol: str = 'SPY', options_handler=None):
+        super().__init__(stop_loss=0.6)
         self.lstm_model = lstm_model
         self.lstm_scaler = lstm_scaler
         self.symbol = symbol
@@ -124,9 +124,6 @@ class CreditSpreadStrategy(Strategy):
         On new date, determine if a new position should be opened. 
         We should not open a position if we already have one.
         """
-        if date.date() < self.data.index[self.start_date_offset].date():
-            return
-        
         super().on_new_date(date, positions)
 
         has_error = False

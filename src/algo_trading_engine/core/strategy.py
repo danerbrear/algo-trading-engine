@@ -44,21 +44,31 @@ class Strategy(ABC):
     get_current_volumes_for_position: Optional[Callable[['Position', datetime], Optional[List[int]]]] = None
     compute_exit_price: Optional[Callable[['Position', datetime], Optional[float]]] = None
 
-    def __init__(self, profit_target: float = None, stop_loss: float = None, start_date_offset: int = 0):
+    def __init__(self, profit_target: float = None, stop_loss: float = None):
         """
         Initialize the strategy.
         
         Args:
             profit_target: Optional profit target percentage (e.g., 0.5 for 50%)
             stop_loss: Optional stop loss percentage (e.g., 0.6 for 60%)
-            start_date_offset: Number of days to skip at the beginning for warm-up
         """
         self.profit_target = profit_target
         self.stop_loss = stop_loss
         self.data: Optional[pd.DataFrame] = None
-        self.start_date_offset = start_date_offset
         self.treasury_data: Optional[TreasuryRates] = None
         self.indicators: List[Indicator] = []
+
+    @property
+    def warm_up_period(self) -> int:
+        """
+        Number of initial bars used only to update indicators; the backtest engine does
+        not call on_new_date until bar index ``warm_up_period`` (the first bar after
+        this warm-up window). Derived from the most demanding indicator attached to the
+        strategy.
+        """
+        if not self.indicators:
+            return 0
+        return max(indicator.warm_up_period for indicator in self.indicators)
 
     @abstractmethod
     def on_new_date(

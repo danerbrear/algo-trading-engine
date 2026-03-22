@@ -413,6 +413,7 @@ class TestPaperTradingEngineFromConfig:
         mock_strategy = MagicMock()
         mock_strategy.set_data = Mock()
         mock_strategy.options_handler = None
+        mock_strategy.warm_up_period = 0
 
         mock_retriever_instance = MagicMock()
         mock_retriever_instance.treasury_rates = None

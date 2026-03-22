@@ -40,6 +40,10 @@ class SMAIndicator(Indicator):
         self.reset_daily = reset_daily
         self._updated_dates: set = set()
 
+    @property
+    def warm_up_period(self) -> int:
+        return self.period
+
     def update(self, date: datetime, data: pd.DataFrame) -> None:
         """
         Compute and store the SMA value for *date*.
@@ -54,14 +58,13 @@ class SMAIndicator(Indicator):
                   Must contain historical bars up to and including *date*.
 
         Raises:
-            ValueError: If the target column is missing or there are fewer bars
-                        than the requested period.
+            ValueError: If the target column is missing.
         """
+        cal_date = None
         if self.period_unit == BarTimeInterval.DAY:
             cal_date = date.date() if hasattr(date, "date") else date
             if cal_date in self._updated_dates:
                 return
-            self._updated_dates.add(cal_date)
 
         if self.column not in data.columns:
             raise ValueError(
@@ -77,17 +80,12 @@ class SMAIndicator(Indicator):
             filtered = filtered[filtered.index.date == filter_day]
 
         if len(filtered) < self.period:
-            context = ""
-            if self.reset_daily and self._is_intraday():
-                filter_day = filter_date.date() if hasattr(filter_date, "date") else filter_date
-                context = f" for current day {filter_day}"
-            raise ValueError(
-                f"Insufficient data to calculate SMA({self.period}). "
-                f"Need at least {self.period} bars, but only have {len(filtered)}{context}"
-            )
+            return
 
         sma_value = filtered[self.column].iloc[-self.period:].mean()
         self._values[date] = sma_value
+        if self.period_unit == BarTimeInterval.DAY:
+            self._updated_dates.add(cal_date)
 
     def print(self):
         print(f"{self.name}: {self.value}")

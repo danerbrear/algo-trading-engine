@@ -42,7 +42,7 @@ class ConcreteTestStrategy(Strategy):
 class MockIndicator(Indicator):
     """Mock indicator for testing"""
     
-    def __init__(self, name="MockIndicator", should_fail=False):
+    def __init__(self, name="MockIndicator", should_fail=False, mock_warm_up: int = 5):
         super().__init__(name=name)
         self.update_called = False
         self.update_call_count = 0
@@ -50,6 +50,11 @@ class MockIndicator(Indicator):
         self.last_update_data = None
         self.should_fail = should_fail
         self._value = None
+        self._mock_warm_up = mock_warm_up
+
+    @property
+    def warm_up_period(self) -> int:
+        return self._mock_warm_up
     
     def update(self, date, data):
         """Mock update implementation"""
@@ -115,6 +120,38 @@ class TestStrategyIndicatorInitialization:
         assert len(strategy.indicators) == 1
         assert isinstance(strategy.indicators[0], ATRIndicator)
         assert strategy.indicators[0].period == 14
+
+
+class TestStrategyWarmUpPeriod:
+    """Test cases for Strategy.warm_up_period property"""
+
+    def test_warm_up_period_zero_with_no_indicators(self):
+        strategy = ConcreteTestStrategy()
+        assert strategy.warm_up_period == 0
+
+    def test_warm_up_period_single_indicator(self):
+        strategy = ConcreteTestStrategy()
+        strategy.add_indicator(MockIndicator(mock_warm_up=10))
+        assert strategy.warm_up_period == 10
+
+    def test_warm_up_period_returns_max(self):
+        strategy = ConcreteTestStrategy()
+        strategy.add_indicator(MockIndicator(name="A", mock_warm_up=5))
+        strategy.add_indicator(MockIndicator(name="B", mock_warm_up=20))
+        strategy.add_indicator(MockIndicator(name="C", mock_warm_up=12))
+        assert strategy.warm_up_period == 20
+
+    def test_warm_up_period_with_real_indicators(self):
+        from algo_trading_engine.core.indicators.sma_indicator import SMAIndicator
+        strategy = ConcreteTestStrategy()
+        strategy.add_indicator(SMAIndicator(period=15))
+        strategy.add_indicator(SMAIndicator(period=30))
+        assert strategy.warm_up_period == 30
+
+    def test_warm_up_period_with_atr(self):
+        strategy = ConcreteTestStrategy()
+        strategy.add_indicator(ATRIndicator(period=14))
+        assert strategy.warm_up_period == 15
 
 
 class TestStrategyUpdateIndicators:
@@ -275,24 +312,22 @@ class TestStrategyWithATRIndicator:
         assert atr.value is not None
         assert atr.value > 0
     
-    def test_strategy_atr_insufficient_data_fails(self):
-        """Test Strategy with ATR fails gracefully with insufficient data"""
+    def test_strategy_atr_insufficient_data_noops_without_error(self):
+        """Before period+1 bars exist, ATR update is a no-op; strategy still succeeds."""
         atr = ATRIndicator(period=14)
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(atr)
         strategy.add_indicator(atr)
         strategy.set_data(self.create_sample_data(num_days=5))  # Not enough data
-        
+
         with patch("algo_trading_engine.core.strategy.get_logger") as mock_get_logger:
             mock_logger = MagicMock()
             mock_get_logger.return_value = mock_logger
             result = strategy._update_indicators(datetime(2024, 1, 5))
-        
-        assert result is False
+
+        assert result is True
         assert atr.value is None
-        mock_logger.error.assert_called_once()
-        call_args = mock_logger.error.call_args[0][0]
-        assert "Error updating indicator ATR" in call_args
+        mock_logger.error.assert_not_called()
     
     def test_strategy_multiple_indicators_including_atr(self):
         """Test Strategy with multiple indicators including ATR"""

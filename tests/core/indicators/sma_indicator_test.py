@@ -81,12 +81,12 @@ class TestSMAIndicatorDailyBars:
         # Should use last 3 bars: 10, 20, 30
         assert indicator.value == pytest.approx(20.0)
 
-    def test_insufficient_data_raises_error(self):
+    def test_insufficient_data_is_noop(self):
         data = self._daily_data("2024-01-01", [10, 20])
         indicator = SMAIndicator(period=5)
 
-        with pytest.raises(ValueError, match="Insufficient data to calculate SMA"):
-            indicator.update(datetime(2024, 1, 2), data)
+        indicator.update(datetime(2024, 1, 2), data)
+        assert indicator.value is None
 
     def test_sequential_updates_maintain_history(self):
         data = self._daily_data("2024-01-01", [10, 20, 30, 40, 50])
@@ -221,15 +221,15 @@ class TestSMAIndicatorResetDaily:
         # Day-2 closes at 09, 10, 11 are indices 7..9 → 107, 108, 109
         assert indicator.value == pytest.approx(108.0)
 
-    def test_reset_daily_true_insufficient_bars_raises_error(self):
+    def test_reset_daily_true_insufficient_bars_is_noop(self):
         data = self._multi_day_hourly_data()
         indicator = SMAIndicator(
             period=5, period_unit=BarTimeInterval.HOUR, reset_daily=True
         )
 
         # Day 2 at 10:00 → only 2 bars from day 2
-        with pytest.raises(ValueError, match="Insufficient data.*for current day"):
-            indicator.update(datetime(2024, 1, 2, 10, 0), data)
+        indicator.update(datetime(2024, 1, 2, 10, 0), data)
+        assert indicator.get_value_at(datetime(2024, 1, 2, 10, 0)) is None
 
     def test_reset_daily_has_no_effect_on_daily_bars(self):
         dates = pd.date_range(start="2024-01-01", periods=5, freq="D")
@@ -265,6 +265,19 @@ class TestSMAIndicatorWeekendAdjustment:
 
         # Last 3 business-day closes: 30, 40, 50
         assert indicator.value == pytest.approx(40.0)
+
+
+class TestSMAIndicatorWarmUpPeriod:
+    """Test warm_up_period property"""
+
+    def test_warm_up_period_matches_period(self):
+        assert SMAIndicator(period=20).warm_up_period == 20
+
+    def test_warm_up_period_small(self):
+        assert SMAIndicator(period=1).warm_up_period == 1
+
+    def test_warm_up_period_large(self):
+        assert SMAIndicator(period=200).warm_up_period == 200
 
 
 class TestSMAIndicatorEdgeCases:

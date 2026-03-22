@@ -31,6 +31,10 @@ class ATRIndicator(Indicator):
         self._current_date = None  # Track which day we're calculating ATR for
         self._current_atr = None  # Track current ATR for Wilder's smoothing calculation
 
+    @property
+    def warm_up_period(self) -> int:
+        return self.period + 1
+
     def update(self, date: datetime, data: pd.DataFrame) -> None:
         """
         Update the ATR indicator for a given bar of data.
@@ -40,9 +44,6 @@ class ATRIndicator(Indicator):
             data: DataFrame with OHLCV data indexed by datetime.
                   Columns: ['Open', 'High', 'Low', 'Close', 'Volume']
                   The data should contain historical bars up to and including the current date.
-                  
-        Raises:
-            ValueError: If there is insufficient data to calculate ATR
         """
         # Check if we've moved to a new trading day (reset ATR if reset_daily is True)
         current_day = date.date()
@@ -69,16 +70,10 @@ class ATRIndicator(Indicator):
             filter_day = filter_date.date() if hasattr(filter_date, 'date') else filter_date
             data_up_to_date = data_up_to_date[data_up_to_date.index.date == filter_day]
         
-        # Need at least 2 bars to calculate TR (need previous close)
+        # Need at least 2 bars to calculate TR (need previous close). During
+        # warm-up the backtest may call update before enough history exists — no-op.
         if len(data_up_to_date) < 2:
-            print(
-                f"Insufficient data to calculate True Range. Need at least 2 bars, but only have {len(data_up_to_date)} "
-                f"{'for current day ' + str(filter_day) if self.reset_daily and self._is_intraday() else ''}"
-            )
-            raise ValueError(
-                f"Insufficient data to calculate True Range. Need at least 2 bars, but only have {len(data_up_to_date)} "
-                f"{'for current day ' + str(filter_day) if self.reset_daily and self._is_intraday() else ''}"
-            )
+            return
         
         # Calculate the true range for the current bar
         current_high = data_up_to_date['High'].iloc[-1]
@@ -91,11 +86,7 @@ class ATRIndicator(Indicator):
         if self._current_atr is None:
             # Need 'period' bars to initialize
             if len(data_up_to_date) < self.period + 1:  # +1 because we need a previous close
-                raise ValueError(
-                    f"Insufficient data to initialize ATR. Need at least {self.period + 1} bars "
-                    f"for period={self.period}, but only have {len(data_up_to_date)} bars "
-                    f"{'for current day ' + str(filter_day) if self.reset_daily and self._is_intraday() else 'up to ' + str(filter_date)}"
-                )
+                return
             
             # Calculate initial ATR as simple average of first 'period' TRs
             true_ranges = []

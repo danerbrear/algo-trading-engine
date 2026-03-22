@@ -667,5 +667,70 @@ class TestUniversalCloseCallback:
         assert inv["position"] is not None
 
 
+def _minimal_spy_df(periods: int) -> pd.DataFrame:
+    """Minimal OHLCV frame for backtest run() (strategy.validate_data may still pass)."""
+    dates = pd.date_range("2024-01-01", periods=periods, freq="B")
+    return pd.DataFrame(
+        {
+            "Open": [100.0] * periods,
+            "High": [102.0] * periods,
+            "Low": [98.0] * periods,
+            "Close": [100.0 + i for i in range(periods)],
+            "Volume": [1_000_000] * periods,
+        },
+        index=dates,
+    )
+
+
+class WarmUpOrderStrategy(Strategy):
+    """Strategy with an explicit warm_up_period for ordering tests (no indicators)."""
+
+    def __init__(self, warm_up: int):
+        super().__init__()
+        self._warm_up = warm_up
+        self.dates_called_in_on_new_date: list = []
+
+    @property
+    def warm_up_period(self) -> int:
+        return self._warm_up
+
+    def on_new_date(self, date, positions, add_position, remove_position):
+        self.dates_called_in_on_new_date.append(date)
+
+    def on_end(self, positions, remove_position, date):
+        pass
+
+    def validate_data(self, data):
+        return True
+
+
+class TestWarmUpFirstOnNewDate:
+    """First on_new_date must be the first bar after the warm-up window."""
+
+    def test_first_on_new_date_is_bar_at_index_warm_up(self):
+        warm_up = 2
+        n = 5
+        data = _minimal_spy_df(n)
+        strategy = WarmUpOrderStrategy(warm_up)
+        strategy.data = data
+
+        engine = BacktestEngine(
+            data=data,
+            strategy=strategy,
+            initial_capital=10_000,
+            start_date=data.index[0].to_pydatetime(),
+            end_date=data.index[-1].to_pydatetime(),
+            volume_config=VolumeConfig(min_volume=10, enable_volume_validation=False),
+            enable_progress_tracking=False,
+            quiet_mode=True,
+        )
+        assert engine.run() is True
+
+        expected_first = data.index[warm_up]
+        assert len(strategy.dates_called_in_on_new_date) == n - warm_up
+        assert strategy.dates_called_in_on_new_date[0] == expected_first
+        assert strategy.dates_called_in_on_new_date == list(data.index[warm_up:])
+
+
 if __name__ == "__main__":
     pytest.main([__file__]) 

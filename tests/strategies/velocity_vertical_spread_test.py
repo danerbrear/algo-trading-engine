@@ -37,7 +37,6 @@ class TestVelocityVerticalSpread:
             get_contract_list_for_date=get_contract_list_for_date,
             get_option_bar=get_option_bar,
             get_options_chain=get_options_chain,
-            start_date_offset=60
         )
         
         current_date = datetime(2025, 10, 30, 14, 0, 0)
@@ -222,7 +221,6 @@ class TestVelocityVerticalSpread:
             get_contract_list_for_date=get_contract_list_for_date,
             get_option_bar=get_option_bar,
             get_options_chain=get_options_chain,
-            start_date_offset=60
         )
         
         current_date = datetime(2025, 10, 30, 14, 0, 0)

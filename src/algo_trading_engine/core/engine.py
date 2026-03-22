@@ -443,9 +443,14 @@ class PaperTradingEngine(TradingEngine):
         from algo_trading_engine.common.options_handler import OptionsHandler
         from algo_trading_engine.backtest.strategy_builder import create_strategy_from_args
         
-        # Calculate start date for data retrieval (120 days back from today)
+        # Calculate start date for data retrieval.
+        # We need enough data for both LSTM features (120 days) and any
+        # indicator warm-up the strategy may require.  The actual warm_up_period
+        # isn't known until the strategy is constructed, so we use 120 as the
+        # minimum and reconcile after creation.
         today = datetime.now()
-        lstm_start_date = (today - timedelta(days=120)).strftime("%Y-%m-%d")
+        default_lookback = 120
+        lstm_start_date = (today - timedelta(days=default_lookback)).strftime("%Y-%m-%d")
         
         retriever = DataRetriever(
             symbol=config.symbol,
@@ -509,7 +514,24 @@ class PaperTradingEngine(TradingEngine):
         
         # Internal: Set data on strategy
         strategy.set_data(data, retriever.treasury_rates)
-        
+
+        # If the strategy's indicator warm-up exceeds the default lookback,
+        # re-fetch with a larger window so indicators have enough history.
+        if strategy.warm_up_period > default_lookback:
+            extended_start = (today - timedelta(days=strategy.warm_up_period)).strftime("%Y-%m-%d")
+            retriever_ext = DataRetriever(
+                symbol=config.symbol,
+                lstm_start_date=extended_start,
+                quiet_mode=True,
+                use_free_tier=config.use_free_tier,
+                bar_interval=config.bar_interval,
+                use_cache=config.use_cache
+            )
+            data = retriever_ext.fetch_data_for_period(extended_start)
+            if data is not None and len(data) > 0:
+                strategy.set_data(data, retriever_ext.treasury_rates)
+                get_logger().info(f"Re-fetched {len(data)} data points to satisfy warm_up_period={strategy.warm_up_period}")
+
         # Create and return engine
         return cls(
             strategy=strategy,

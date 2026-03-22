@@ -25,7 +25,7 @@ class TestBacktestEngineFactory:
         # Setup mocks
         mock_strategy = Mock()
         mock_strategy.set_data = Mock()
-        mock_strategy.start_date_offset = 0
+        mock_strategy.warm_up_period = 0
         mock_create_strategy.return_value = mock_strategy
         
         mock_retriever_instance = Mock()
@@ -91,7 +91,7 @@ class TestBacktestEngineFactory:
         # Setup mocks
         mock_strategy = Mock()
         mock_strategy.set_data = Mock()
-        mock_strategy.start_date_offset = 0
+        mock_strategy.warm_up_period = 0
         mock_strategy.options_handler = None
         
         mock_retriever_instance = Mock()
@@ -162,7 +162,7 @@ class TestBacktestEngineFactory:
         # Setup mocks
         mock_strategy = Mock()
         mock_strategy.set_data = Mock()
-        mock_strategy.start_date_offset = 0
+        mock_strategy.warm_up_period = 0
         mock_create_strategy.return_value = mock_strategy
         
         mock_retriever_instance = Mock()
