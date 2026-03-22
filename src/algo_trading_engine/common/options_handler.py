@@ -579,10 +579,18 @@ class OptionsHandler:
                 matching = [b for b in response if _bar_ts(b) == target_ts]
                 if not matching:
                     hour_ms = 60 * 60 * 1000
-                    matching = [b for b in response if _bar_ts(b) and target_ts <= _bar_ts(b) < target_ts + hour_ms]
+                    matching = [
+                        b
+                        for b in response
+                        if _bar_ts(b) and target_ts <= _bar_ts(b) < target_ts + hour_ms
+                    ]
                 if not matching:
-                    matching = [b for b in response if _bar_ts(b) is not None]
-                bar_data = matching[0] if matching else response[0]
+                    progress_print(
+                        f"⚠️  No hourly aggregate for requested window (target_ts={target_ts}) "
+                        f"for {contract.ticker} on {dt.date()}; refusing fallback to another hour."
+                    )
+                    return None
+                bar_data = matching[0]
             else:
                 bar_data = response[0]
             bar_dto = self._convert_api_bar_to_dto(contract.ticker, bar_data, dt.date())

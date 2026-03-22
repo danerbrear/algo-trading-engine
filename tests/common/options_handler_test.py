@@ -10,7 +10,8 @@ import shutil
 from datetime import datetime, date, timedelta, time
 from decimal import Decimal
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
+from zoneinfo import ZoneInfo
 
 from algo_trading_engine.common.options_handler import OptionsHandler
 from algo_trading_engine.common.cache.options_cache_manager import OptionsCacheManager
@@ -820,7 +821,30 @@ class TestOptionsHandlerPhase3:
         
         # Verify API was called
         options_handler.api_retry_handler.fetch_with_retry.assert_called_once()
-    
+
+    def test_fetch_bar_from_api_hourly_returns_none_when_target_hour_absent(
+        self, options_handler, sample_contracts
+    ):
+        """Do not substitute another hour's bar when the requested hour aggregate is missing."""
+        contract = sample_contracts[0]
+        et = ZoneInfo("America/New_York")
+        dt = datetime(2021, 11, 19, 15, 30, 0, tzinfo=et)
+        ten_am = datetime(2021, 11, 19, 10, 0, 0, tzinfo=et)
+        wrong_ts = int(ten_am.timestamp() * 1000)
+        mock_bar_data = [
+            {
+                "o": 1.0,
+                "h": 1.0,
+                "l": 1.0,
+                "c": 1.0,
+                "v": 100,
+                "t": wrong_ts,
+            }
+        ]
+        options_handler.api_retry_handler.fetch_with_retry = Mock(return_value=mock_bar_data)
+        result = options_handler._fetch_bar_from_api(contract, dt, 1, "hour")
+        assert result is None
+
     def test_get_options_chain_integration(self, options_handler, sample_contracts, sample_bar):
         """Test complete options chain integration."""
         test_date = datetime(2021, 11, 19)
