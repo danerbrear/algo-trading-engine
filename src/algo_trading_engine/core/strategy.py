@@ -5,7 +5,8 @@ This module provides the abstract base class that all trading strategies must im
 """
 
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import datetime, timedelta
+import math
 from typing import Callable, Optional, List, TYPE_CHECKING
 import pandas as pd
 
@@ -70,6 +71,22 @@ class Strategy(ABC):
             return 0
         return max(indicator.warm_up_period for indicator in self.indicators)
 
+    def get_warm_up_period_timedelta(self, bar_interval: BarTimeInterval) -> timedelta:
+        """
+        Time delta representing the warm-up period.
+        """
+        if bar_interval == BarTimeInterval.DAY:
+            return timedelta(days=self.warm_up_period)
+        elif bar_interval == BarTimeInterval.HOUR:
+            if self.warm_up_period <= 0:
+                return timedelta(0)
+            trading_days = math.ceil(
+                self.warm_up_period / 7
+            )
+            return timedelta(days=trading_days)
+        else:
+            raise ValueError(f"Unsupported bar interval: {bar_interval}")
+        
     @abstractmethod
     def on_new_date(
         self,

@@ -106,28 +106,19 @@ class BacktestEngine(TradingEngine):
             use_free_tier=config.use_free_tier,
             bar_interval=config.bar_interval
         )
-        
-        # Internal: Fetch data for backtest period
-        data = retriever.fetch_data_for_period(
-            config.start_date.strftime("%Y-%m-%d"),
-            config.end_date.strftime("%Y-%m-%d")
-        )
-        
-        if data is None or len(data) == 0:
-            raise ValueError(f"Failed to fetch data for {config.symbol} from {config.start_date.date()} to {config.end_date.date()}")
-        
+
         # Internal: Create options handler
         options_handler = OptionsHandler(
             symbol=config.symbol,
             api_key=config.api_key,
             use_free_tier=config.use_free_tier
         )
-        
+
         # Internal: Extract methods as callables (no imports needed by child repos)
         get_contract_list_for_date = options_handler.get_contract_list_for_date
         get_option_bar = options_handler.get_option_bar
         get_options_chain = options_handler.get_options_chain
-        
+
         # Internal: Create or use provided strategy
         if isinstance(config.strategy_type, str):
             # Create strategy from string name
@@ -154,7 +145,16 @@ class BacktestEngine(TradingEngine):
             elif hasattr(strategy, 'options_handler'):
                 # Backward compatibility: if strategy still uses options_handler, inject it
                 strategy.options_handler = options_handler
-        
+
+        # Internal: Fetch data for backtest period
+        data = retriever.fetch_data_for_period(
+            (config.start_date - strategy.get_warm_up_period_timedelta(config.bar_interval)).strftime("%Y-%m-%d"),
+            config.end_date.strftime("%Y-%m-%d")
+        )
+
+        if data is None or len(data) == 0:
+            raise ValueError(f"Failed to fetch data for {config.symbol} from {config.start_date.date()} to {config.end_date.date()}")
+
         # Internal: Set data on strategy
         strategy.set_data(data, retriever.treasury_rates)
         
@@ -198,16 +198,16 @@ class BacktestEngine(TradingEngine):
         warm_up = self.strategy.warm_up_period
 
         self.benchmark.set_start_price(self.data.iloc[warm_up]['Close'])
-        
+
         # Initialize progress tracker if enabled
         if self.enable_progress_tracking:
             effective_start_date = date_range[warm_up] if warm_up < len(date_range) else date_range[0]
             effective_total_dates = len(date_range) - warm_up
-            
+
             # Determine unit based on bar interval
             from algo_trading_engine.enums import BarTimeInterval
             unit = "bar" if self.bar_interval and self.bar_interval != BarTimeInterval.DAY else "date"
-            
+
             self.progress_tracker = ProgressTracker(
                 start_date=effective_start_date,
                 end_date=date_range[-1],
@@ -217,7 +217,7 @@ class BacktestEngine(TradingEngine):
                 unit=unit
             )
             set_global_progress_tracker(self.progress_tracker)
-            
+
         get_logger().info(f"Running backtest on {len(date_range)} trading days (warm-up: {warm_up} bars)")
         get_logger().info(f"   Date range: {date_range[0].date()} to {date_range[-1].date()}")
 
@@ -247,7 +247,7 @@ class BacktestEngine(TradingEngine):
                 get_logger().error(error_msg)
                 get_logger().error(traceback.format_exc())
                 return False
-            
+
             self.check_univeral_close_conditions(date)
 
         self._end()
