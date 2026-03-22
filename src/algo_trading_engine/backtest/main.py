@@ -95,6 +95,9 @@ class BacktestEngine(TradingEngine):
         Raises:
             ValueError: If configuration is invalid or data fetching fails
         """
+        log_level = "info" if config.quiet_mode else "debug"
+        configure_logger("backtest", log_level=log_level)
+
         # Internal: Calculate LSTM start date (days before backtest start)
         lstm_start_date = (config.start_date - timedelta(days=config.lstm_start_date_offset))
         
@@ -158,10 +161,9 @@ class BacktestEngine(TradingEngine):
         # Internal: Set data on strategy
         strategy.set_data(data, retriever.treasury_rates)
 
-        get_logger().info(f"Data info: {data.info()}")
-        get_logger().info(f"Data describe: {data.describe()}")
-        get_logger().info(f"Data head: {data.head()}")
-        get_logger().info(f"Data tail: {data.tail()}")
+        get_logger().info(f"Data describe:\n{data.describe().to_string()}")
+        get_logger().info(f"Data head:\n{data.head(5).to_string()}")
+        get_logger().info(f"Data tail:\n{data.tail(5).to_string()}")
         
         # Create engine first so we can inject engine methods into strategy
         engine = cls(
