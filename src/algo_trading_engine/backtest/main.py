@@ -390,7 +390,7 @@ class BacktestEngine(TradingEngine):
                     self.volume_stats = self.volume_stats.increment_rejected_positions()
                     return  # Reject the position
 
-        position_size = self._get_position_size(position)
+        position_size = self.strategy.get_position_size(position) if hasattr(self.strategy, 'get_position_size') else self._get_position_size(position)
         if position_size == 0:
             get_logger().info("Not enough capital to add position. Position size is 0.")
             return
@@ -507,9 +507,9 @@ class BacktestEngine(TradingEngine):
 
         self.strategy.on_remove_position_success(date, position, exit_price, underlying_price, current_volumes)
     
-    # TODO: Only works for credit spreads since using max risk
     def _get_position_size(self, position: Position) -> int:
         """
+        Default position size calculation for positions that don't have a get_position_size method.
         Get the number of contracts to buy or sell for a position based on the max position size and the current capital.
         """
         if self.max_position_size is None:
