@@ -157,6 +157,11 @@ class BacktestEngine(TradingEngine):
 
         # Internal: Set data on strategy
         strategy.set_data(data, retriever.treasury_rates)
+
+        get_logger().info(f"Data info: {data.info()}")
+        get_logger().info(f"Data describe: {data.describe()}")
+        get_logger().info(f"Data head: {data.head()}")
+        get_logger().info(f"Data tail: {data.tail()}")
         
         # Create engine first so we can inject engine methods into strategy
         engine = cls(
@@ -233,6 +238,8 @@ class BacktestEngine(TradingEngine):
 
             if i < warm_up:
                 continue
+            elif i == warm_up:
+                get_logger().info(f"Warm-up period complete in {i + 1} bars")
 
             positions_tuple = tuple(self.positions)
 
