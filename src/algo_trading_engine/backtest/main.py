@@ -232,13 +232,12 @@ class BacktestEngine(TradingEngine):
         # During the warm-up window (bars 0 .. warm_up-1) indicators are updated but
         # on_new_date is not called. The first on_new_date runs on bar index warm_up —
         # i.e. the first bar *after* the warm-up period.
-        for i, date in enumerate(date_range):
-            # Always update indicators so they can build their rolling windows
-            if not self.strategy._update_indicators(date):
-                get_logger().error(f"Error updating indicators for date {date}, skipping execution")
-                return False
-
+        for i, date in enumerate(date_range):        
             if i < warm_up:
+                # Update indicators during warm-up period - handled by strategy after warm-up period
+                if not self.strategy._update_indicators(date):
+                    get_logger().error(f"Error updating indicators for date {date}, skipping execution")
+
                 continue
             elif i == warm_up:
                 get_logger().info(f"Warm-up period complete in {i + 1} bars")
