@@ -44,6 +44,7 @@ class Strategy(ABC):
     get_options_chain: Optional[Callable[[str, datetime, Optional['ExpirationRangeDTO'], Optional['StrikeRangeDTO'], Optional[BarTimeInterval], Optional[int]], 'OptionsChainDTO']] = None
     get_current_volumes_for_position: Optional[Callable[['Position', datetime], Optional[List[int]]]] = None
     compute_exit_price: Optional[Callable[['Position', datetime], Optional[float]]] = None
+    get_position_size: Optional[Callable[['Position', float], int]] = None
 
     def __init__(self, profit_target: float = None, stop_loss: float = None):
         """
