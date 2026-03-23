@@ -76,13 +76,14 @@ class Strategy(ABC):
         """
         Time delta representing the warm-up period.
         """
+        warm_up_period = self.warm_up_period * 1.3 # 1.3 is a factor to account for the fact that the warm-up period is a bar count, not a wall-clock time
         if bar_interval == BarTimeInterval.DAY:
-            return timedelta(days=self.warm_up_period)
+            return timedelta(days=warm_up_period)
         elif bar_interval == BarTimeInterval.HOUR:
-            if self.warm_up_period <= 0:
+            if warm_up_period <= 0:
                 return timedelta(0)
             trading_days = math.ceil(
-                self.warm_up_period / 7
+                warm_up_period / 7
             )
             return timedelta(days=trading_days)
         else:
