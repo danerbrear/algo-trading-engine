@@ -180,9 +180,13 @@ class InteractiveStrategyRecommender:
             strategy_name=strategy_name,
         )
         
-        # Calculate max risk
-        max_risk = self._calculate_max_risk(position.strategy_type, float(width), float(position.entry_price))
-        
+        max_risk = position.max_risk_dollars_per_contract()
+        if max_risk is None:
+            get_logger().error(
+                "Max risk is undefined for this position type; cannot apply capital risk check."
+            )
+            return None
+
         # Check risk threshold
         is_allowed, risk_message = self.capital_manager.check_risk_threshold(strategy_name, max_risk)
         
@@ -360,28 +364,6 @@ class InteractiveStrategyRecommender:
         }
         
         return name_mapping.get(strategy_name, strategy_name)
-    
-    def _calculate_max_risk(self, strategy_type: StrategyType, width: float, credit: float) -> float:
-        """Calculate max risk for a position.
-        
-        Args:
-            strategy_type: The strategy type
-            width: Spread width
-            credit: Net credit/debit received/paid
-            
-        Returns:
-            Max risk in dollars (for 1 contract)
-        """
-        if strategy_type in (StrategyType.PUT_CREDIT_SPREAD, StrategyType.CALL_CREDIT_SPREAD):
-            # Credit spread: max risk = (width - credit) * 100
-            return (width - credit) * 100
-        elif strategy_type in (StrategyType.SHORT_CALL, StrategyType.SHORT_PUT):
-            # Naked options: max risk is variable, use credit as placeholder
-            # For now, estimate as strike difference if available
-            return abs(credit) * 100  # Placeholder - actual calculation would need strikes
-        else:
-            # Debit spreads and long options: max risk is the debit paid
-            return abs(credit) * 100
 
     def _format_close_summary(self, position: Position, exit_price: float, rationale: str) -> str:
         # Compute P&L

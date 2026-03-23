@@ -12,7 +12,12 @@ from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch, Mock
 import pandas as pd
 
-from algo_trading_engine.core.engine import PaperTradingEngine
+from algo_trading_engine.core.engine import (
+    PaperTradingEngine,
+    compute_paper_trading_fetch_start_date,
+    DEFAULT_PAPER_TRADING_LSTM_LOOKBACK_DAYS,
+)
+from algo_trading_engine.enums import BarTimeInterval
 from algo_trading_engine.models.config import PaperTradingConfig
 from algo_trading_engine.prediction.decision_store import (
     DecisionStore,
@@ -401,6 +406,34 @@ def test_paper_trading_engine_strategy_name_extraction(
             assert strategy_name == expected_name
 
 
+class TestComputePaperTradingFetchStartDate:
+    """Unit tests for compute_paper_trading_fetch_start_date (warm-up + LSTM window)."""
+
+    def test_uses_earlier_date_when_indicator_warmup_exceeds_lstm_lookback(self):
+        strategy = MagicMock()
+        strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(days=150))
+        now = datetime(2025, 6, 1, 12, 0, 0)
+        result = compute_paper_trading_fetch_start_date(now, strategy, BarTimeInterval.DAY)
+        expected = (now - timedelta(days=150)).strftime("%Y-%m-%d")
+        assert result == expected
+        strategy.get_warm_up_period_timedelta.assert_called_once_with(BarTimeInterval.DAY)
+
+    def test_uses_lstm_lookback_when_it_exceeds_warmup_window(self):
+        strategy = MagicMock()
+        strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(days=30))
+        now = datetime(2025, 6, 1, 12, 0, 0)
+        result = compute_paper_trading_fetch_start_date(now, strategy, BarTimeInterval.DAY)
+        expected = (now - timedelta(days=DEFAULT_PAPER_TRADING_LSTM_LOOKBACK_DAYS)).strftime("%Y-%m-%d")
+        assert result == expected
+
+    def test_passes_bar_interval_for_hourly_bars(self):
+        strategy = MagicMock()
+        strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(days=15))
+        now = datetime(2025, 6, 1, 12, 0, 0)
+        compute_paper_trading_fetch_start_date(now, strategy, BarTimeInterval.HOUR)
+        strategy.get_warm_up_period_timedelta.assert_called_once_with(BarTimeInterval.HOUR)
+
+
 class TestPaperTradingEngineFromConfig:
     """Test PaperTradingEngine.from_config() factory method."""
 
@@ -414,6 +447,7 @@ class TestPaperTradingEngineFromConfig:
         mock_strategy.set_data = Mock()
         mock_strategy.options_handler = None
         mock_strategy.warm_up_period = 0
+        mock_strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(0))
 
         mock_retriever_instance = MagicMock()
         mock_retriever_instance.treasury_rates = None
@@ -436,6 +470,43 @@ class TestPaperTradingEngineFromConfig:
 
         assert engine.strategy == mock_strategy
         assert mock_strategy.symbol == 'QQQ'
+
+    @patch('algo_trading_engine.core.engine.compute_paper_trading_fetch_start_date', return_value='2024-06-01')
+    @patch('algo_trading_engine.common.options_handler.OptionsHandler')
+    @patch('algo_trading_engine.common.data_retriever.DataRetriever')
+    def test_from_config_passes_computed_fetch_start_to_retriever_and_fetch(
+        self, mock_data_retriever, mock_options_handler, mock_compute_start
+    ):
+        """Fetch window uses the same warm-up + LSTM logic as compute_paper_trading_fetch_start_date."""
+        mock_strategy = MagicMock()
+        mock_strategy.set_data = Mock()
+        mock_strategy.options_handler = None
+        mock_strategy.warm_up_period = 0
+        mock_strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(0))
+
+        mock_retriever_instance = MagicMock()
+        mock_retriever_instance.treasury_rates = None
+        mock_retriever_instance.fetch_data_for_period.return_value = pd.DataFrame({
+            'Close': [500.0] * 10,
+            'Open': [499.0] * 10,
+            'High': [501.0] * 10,
+            'Low': [498.0] * 10,
+        }, index=pd.date_range('2025-01-01', periods=10, freq='D'))
+        mock_data_retriever.return_value = mock_retriever_instance
+
+        config = PaperTradingConfig(
+            symbol='QQQ',
+            strategy_type=mock_strategy,
+            api_key='test_key',
+            use_free_tier=True,
+        )
+
+        PaperTradingEngine.from_config(config)
+
+        mock_compute_start.assert_called_once()
+        mock_data_retriever.assert_called_once()
+        assert mock_data_retriever.call_args[1]['lstm_start_date'] == '2024-06-01'
+        mock_retriever_instance.fetch_data_for_period.assert_called_once_with('2024-06-01')
 
 
 class TestCustomDecisionStore:
