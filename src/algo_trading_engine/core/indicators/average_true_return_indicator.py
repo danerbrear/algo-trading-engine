@@ -1,3 +1,4 @@
+from algo_trading_engine.common.logger import get_logger
 from algo_trading_engine.core.indicators.indicator import Indicator
 from datetime import datetime
 import pandas as pd
@@ -86,6 +87,7 @@ class ATRIndicator(Indicator):
         if self._current_atr is None:
             # Need 'period' bars to initialize
             if len(data_up_to_date) < self.period + 1:  # +1 because we need a previous close
+                get_logger().warning(f"Not enough data to calculate ATR for {date}")
                 return
             
             # Calculate initial ATR as simple average of first 'period' TRs

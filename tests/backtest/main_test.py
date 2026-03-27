@@ -682,17 +682,12 @@ def _minimal_spy_df(periods: int) -> pd.DataFrame:
     )
 
 
-class WarmUpOrderStrategy(Strategy):
-    """Strategy with an explicit warm_up_period for ordering tests (no indicators)."""
+class OnNewDateOrderStrategy(Strategy):
+    """Records on_new_date call order; indicators are fed full history in each update."""
 
-    def __init__(self, warm_up: int):
+    def __init__(self):
         super().__init__()
-        self._warm_up = warm_up
         self.dates_called_in_on_new_date: list = []
-
-    @property
-    def warm_up_period(self) -> int:
-        return self._warm_up
 
     def on_new_date(self, date, positions, add_position, remove_position):
         self.dates_called_in_on_new_date.append(date)
@@ -704,14 +699,13 @@ class WarmUpOrderStrategy(Strategy):
         return True
 
 
-class TestWarmUpFirstOnNewDate:
-    """First on_new_date must be the first bar after the warm-up window."""
+class TestBacktestOnNewDateDateRange:
+    """Backtest calls on_new_date once per bar between engine start_date and end_date (inclusive)."""
 
-    def test_first_on_new_date_is_bar_at_index_warm_up(self):
-        warm_up = 2
+    def test_on_new_date_visits_every_bar_in_range(self):
         n = 5
         data = _minimal_spy_df(n)
-        strategy = WarmUpOrderStrategy(warm_up)
+        strategy = OnNewDateOrderStrategy()
         strategy.data = data
 
         engine = BacktestEngine(
@@ -726,10 +720,9 @@ class TestWarmUpFirstOnNewDate:
         )
         assert engine.run() is True
 
-        expected_first = data.index[warm_up]
-        assert len(strategy.dates_called_in_on_new_date) == n - warm_up
-        assert strategy.dates_called_in_on_new_date[0] == expected_first
-        assert strategy.dates_called_in_on_new_date == list(data.index[warm_up:])
+        assert len(strategy.dates_called_in_on_new_date) == n
+        assert strategy.dates_called_in_on_new_date[0] == data.index[0]
+        assert strategy.dates_called_in_on_new_date == list(data.index)
 
 
 if __name__ == "__main__":

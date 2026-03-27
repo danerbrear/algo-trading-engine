@@ -1,3 +1,4 @@
+from algo_trading_engine.common.logger import get_logger
 from algo_trading_engine.core.indicators.indicator import Indicator
 from datetime import datetime
 import pandas as pd
@@ -10,8 +11,7 @@ class SMAIndicator(Indicator):
     Simple Moving Average indicator for any time frame.
 
     Computes the arithmetic mean of a specified column over a rolling window of bars.
-    Supports daily, hourly, and minute bar intervals with optional daily reset for
-    intraday periods.
+    Supports daily, hourly, and minute bar intervals.
     """
 
     def __init__(
@@ -19,15 +19,12 @@ class SMAIndicator(Indicator):
         period: int,
         period_unit: BarTimeInterval = BarTimeInterval.DAY,
         column: str = "Close",
-        reset_daily: bool = False,
     ):
         """
         Args:
             period: Number of bars in the rolling window
             period_unit: Time interval for bars (DAY, HOUR, MINUTE)
             column: DataFrame column to average (default "Close")
-            reset_daily: If True and period_unit is intraday, only use bars from
-                         the current trading day so the SMA resets each morning.
         """
         super().__init__(name=f"SMA_{period}")
 
@@ -37,7 +34,6 @@ class SMAIndicator(Indicator):
         self.period = period
         self.period_unit = period_unit
         self.column = column
-        self.reset_daily = reset_daily
         self._updated_dates: set = set()
 
     @property
@@ -72,14 +68,14 @@ class SMAIndicator(Indicator):
                 f"Available columns: {list(data.columns)}"
             )
 
-        filter_date = self._adjust_for_weekend(date, data)
-        filtered = data[data.index <= filter_date]
+        # If it's a weekend, it's a no-op
+        if date.weekday() >= 5:
+            return
 
-        if self.reset_daily and self._is_intraday():
-            filter_day = filter_date.date() if hasattr(filter_date, "date") else filter_date
-            filtered = filtered[filtered.index.date == filter_day]
+        filtered = data[data.index <= date]
 
         if len(filtered) < self.period:
+            get_logger().warning(f"Not enough data to calculate SMA for {date}")
             return
 
         sma_value = filtered[self.column].iloc[-self.period:].mean()
@@ -96,11 +92,3 @@ class SMAIndicator(Indicator):
 
     def _is_intraday(self) -> bool:
         return self.period_unit in (BarTimeInterval.HOUR, BarTimeInterval.MINUTE)
-
-    @staticmethod
-    def _adjust_for_weekend(date: datetime, data: pd.DataFrame) -> datetime:
-        """Fall back to the most recent trading day when *date* is a weekend."""
-        if date.weekday() >= 5 and date not in data.index:
-            days_back = date.weekday() - 4  # 4 = Friday
-            return date - pd.Timedelta(days=days_back)
-        return date

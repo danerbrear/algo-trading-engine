@@ -199,49 +199,37 @@ class BacktestEngine(TradingEngine):
             get_logger().error("Backtest aborted due to invalid data")
             return False
 
-        # Use only dates that exist in the data (not pd.bdate_range which includes holidays)
-        # Filter data to the specified date range and use the actual dates
-        date_range = self.data.index
-        warm_up = self.strategy.warm_up_period
+        # Bars in [start_date, end_date] via label slice on the frame — Index[datetime:]
+        # hits DatetimeArray slicing and raises on current pandas.
+        ts_start = pd.Timestamp(self.start_date)
+        ts_end = pd.Timestamp(self.end_date)
+        date_range = self.data.loc[ts_start:ts_end].index
+        if len(date_range) == 0:
+            get_logger().error("No rows in data for configured start/end range")
+            return False
 
-        self.benchmark.set_start_price(self.data.iloc[warm_up]['Close'])
+        self.benchmark.set_start_price(self.data.loc[date_range[0], 'Close'])
 
         # Initialize progress tracker if enabled
         if self.enable_progress_tracking:
-            effective_start_date = date_range[warm_up] if warm_up < len(date_range) else date_range[0]
-            effective_total_dates = len(date_range) - warm_up
-
             # Determine unit based on bar interval
             from algo_trading_engine.enums import BarTimeInterval
             unit = "bar" if self.bar_interval and self.bar_interval != BarTimeInterval.DAY else "date"
 
             self.progress_tracker = ProgressTracker(
-                start_date=effective_start_date,
+                start_date=date_range[0],
                 end_date=date_range[-1],
-                total_dates=effective_total_dates,
+                total_dates=len(date_range),
                 desc="Running Backtest",
                 quiet_mode=self.quiet_mode,
                 unit=unit
             )
             set_global_progress_tracker(self.progress_tracker)
 
-        get_logger().info(f"Running backtest on {len(date_range)} trading days (warm-up: {warm_up} bars)")
+        get_logger().info(f"Running backtest on {len(date_range)} trading days")
         get_logger().info(f"   Date range: {date_range[0].date()} to {date_range[-1].date()}")
 
-        # For each date in the range, simulate the strategy.
-        # During the warm-up window (bars 0 .. warm_up-1) indicators are updated but
-        # on_new_date is not called. The first on_new_date runs on bar index warm_up —
-        # i.e. the first bar *after* the warm-up period.
-        for i, date in enumerate(date_range):        
-            if i < warm_up:
-                # Update indicators during warm-up period - handled by strategy after warm-up period
-                if not self.strategy._update_indicators(date):
-                    get_logger().error(f"Error updating indicators for date {date}, skipping execution")
-
-                continue
-            elif i == warm_up:
-                get_logger().info(f"Warm-up period complete in {i + 1} bars")
-
+        for i, date in enumerate(date_range):
             positions_tuple = tuple(self.positions)
 
             if self.progress_tracker:
