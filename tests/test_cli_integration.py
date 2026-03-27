@@ -29,7 +29,6 @@ def test_backtest_cli_parse_arguments():
         '--max-position-size', '0.30',
         '--stop-loss', '0.6',
         '--profit-target', '0.5',
-        '--start-date-offset', '120',
         '--verbose',
         '--free'
     ]
@@ -45,7 +44,6 @@ def test_backtest_cli_parse_arguments():
         assert args.max_position_size == 0.30
         assert args.stop_loss == 0.6
         assert args.profit_target == 0.5
-        assert args.start_date_offset == 120
         assert args.verbose is True
         assert args.free is True
 
@@ -62,7 +60,6 @@ def test_backtest_cli_default_arguments():
         
         # Check defaults
         assert args.strategy == 'credit_spread'
-        assert args.start_date_offset == 60
         assert args.initial_capital == 3000
         assert args.max_position_size == 0.40
         assert args.symbol == 'SPY'
@@ -106,7 +103,6 @@ def test_backtest_cli_creates_config():
         '--symbol', 'DIA',
         '--stop-loss', '0.7',
         '--profit-target', '0.4',
-        '--start-date-offset', '90',
         '--free'
     ]
     
@@ -126,7 +122,6 @@ def test_backtest_cli_creates_config():
             max_position_size=args.max_position_size,
             use_free_tier=args.free,
             quiet_mode=not args.verbose,
-            lstm_start_date_offset=args.start_date_offset,
             stop_loss=args.stop_loss,
             profit_target=args.profit_target
         )
@@ -140,7 +135,6 @@ def test_backtest_cli_creates_config():
         assert config.max_position_size == 0.25
         assert config.use_free_tier is True
         assert config.quiet_mode is True  # verbose=False -> quiet_mode=True
-        assert config.lstm_start_date_offset == 90
         assert config.stop_loss == 0.7
         assert config.profit_target == 0.4
 

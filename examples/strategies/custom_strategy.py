@@ -4,7 +4,7 @@ from decimal import Decimal
 from algo_trading_engine import OptionsRetrieverHelper, Strategy
 from algo_trading_engine.common.logger import get_logger
 from algo_trading_engine.common.models import Option, StrategyType
-from algo_trading_engine.dto import ExpirationRangeDTO, OptionsChainDTO, StrikeRangeDTO
+from algo_trading_engine.dto import ExpirationRangeDTO, StrikeRangeDTO
 from algo_trading_engine.indicators import ATRIndicator
 from algo_trading_engine.enums import BarTimeInterval
 from algo_trading_engine.vo import StrikePrice, create_position
@@ -37,6 +37,8 @@ class MyCustomStrategy(Strategy):
         - Add new positions via add_position()
         - Close positions via remove_position()
         """
+        super().on_new_date(date, positions, add_position, remove_position)
+        get_logger().info(f"on_new_date called for date: {date}")
         # Add new positions
         if len(positions) == 0:
             self._try_open_position(date, add_position)

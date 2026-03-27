@@ -25,9 +25,10 @@ class TestBacktestEngineFactory:
         # Setup mocks
         mock_strategy = Mock()
         mock_strategy.set_data = Mock()
-        mock_strategy.start_date_offset = 0
+        mock_strategy.warm_up_period = 0
+        mock_strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(0))
         mock_create_strategy.return_value = mock_strategy
-        
+
         mock_retriever_instance = Mock()
         mock_retriever_instance.treasury_rates = None
         mock_retriever_instance.fetch_data_for_period.return_value = pd.DataFrame({
@@ -38,7 +39,7 @@ class TestBacktestEngineFactory:
             'Volume': [1000000, 1100000, 1200000]
         }, index=pd.date_range('2024-01-01', periods=3, freq='D'))
         mock_data_retriever.return_value = mock_retriever_instance
-        
+
         # Create config
         config = BacktestConfig(
             initial_capital=100000,
@@ -91,9 +92,10 @@ class TestBacktestEngineFactory:
         # Setup mocks
         mock_strategy = Mock()
         mock_strategy.set_data = Mock()
-        mock_strategy.start_date_offset = 0
+        mock_strategy.warm_up_period = 0
+        mock_strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(0))
         mock_strategy.options_handler = None
-        
+
         mock_retriever_instance = Mock()
         mock_retriever_instance.treasury_rates = None
         mock_retriever_instance.fetch_data_for_period.return_value = pd.DataFrame({
@@ -134,14 +136,26 @@ class TestBacktestEngineFactory:
         # Verify strategy.set_data was called
         mock_strategy.set_data.assert_called_once()
     
+    @patch('algo_trading_engine.backtest.main.create_strategy_from_args')
+    @patch('algo_trading_engine.backtest.main.OptionsHandler')
     @patch('algo_trading_engine.backtest.main.DataRetriever')
-    def test_from_config_data_fetch_failure(self, mock_data_retriever):
-        """Test factory method handles data fetch failure."""
-        # Setup mock to return None (fetch failure)
+    def test_from_config_data_fetch_failure(
+        self, mock_data_retriever, mock_options_handler, mock_create_strategy
+    ):
+        """Test factory method handles data fetch failure (after strategy is constructed)."""
+        mock_strategy = Mock()
+        mock_strategy.set_data = Mock()
+        mock_strategy.warm_up_period = 0
+        mock_strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(0))
+        mock_create_strategy.return_value = mock_strategy
+
         mock_retriever_instance = Mock()
         mock_retriever_instance.fetch_data_for_period.return_value = None
+        mock_retriever_instance.treasury_rates = None
         mock_data_retriever.return_value = mock_retriever_instance
-        
+
+        mock_options_handler.return_value = Mock()
+
         config = BacktestConfig(
             initial_capital=100000,
             start_date=datetime(2024, 1, 1),
@@ -149,8 +163,7 @@ class TestBacktestEngineFactory:
             symbol="SPY",
             strategy_type="credit_spread"
         )
-        
-        # Should raise ValueError
+
         with pytest.raises(ValueError, match="Failed to fetch data"):
             BacktestEngine.from_config(config)
     
@@ -162,9 +175,10 @@ class TestBacktestEngineFactory:
         # Setup mocks
         mock_strategy = Mock()
         mock_strategy.set_data = Mock()
-        mock_strategy.start_date_offset = 0
+        mock_strategy.warm_up_period = 0
+        mock_strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(0))
         mock_create_strategy.return_value = mock_strategy
-        
+
         mock_retriever_instance = Mock()
         mock_retriever_instance.treasury_rates = None
         mock_retriever_instance.fetch_data_for_period.return_value = pd.DataFrame({
@@ -175,7 +189,7 @@ class TestBacktestEngineFactory:
             'Volume': [1000000, 1100000, 1200000]
         }, index=pd.date_range('2024-01-01', periods=3, freq='D'))
         mock_data_retriever.return_value = mock_retriever_instance
-        
+
         volume_config = VolumeConfig(min_volume=20)
         
         # Create config with all options

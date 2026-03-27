@@ -95,6 +95,9 @@ class BacktestEngine(TradingEngine):
         Raises:
             ValueError: If configuration is invalid or data fetching fails
         """
+        log_level = "info" if config.quiet_mode else "debug"
+        configure_logger("backtest", log_level=log_level)
+
         # Internal: Calculate LSTM start date (days before backtest start)
         lstm_start_date = (config.start_date - timedelta(days=config.lstm_start_date_offset))
         
@@ -106,28 +109,19 @@ class BacktestEngine(TradingEngine):
             use_free_tier=config.use_free_tier,
             bar_interval=config.bar_interval
         )
-        
-        # Internal: Fetch data for backtest period
-        data = retriever.fetch_data_for_period(
-            config.start_date.strftime("%Y-%m-%d"),
-            config.end_date.strftime("%Y-%m-%d")
-        )
-        
-        if data is None or len(data) == 0:
-            raise ValueError(f"Failed to fetch data for {config.symbol} from {config.start_date.date()} to {config.end_date.date()}")
-        
+
         # Internal: Create options handler
         options_handler = OptionsHandler(
             symbol=config.symbol,
             api_key=config.api_key,
             use_free_tier=config.use_free_tier
         )
-        
+
         # Internal: Extract methods as callables (no imports needed by child repos)
         get_contract_list_for_date = options_handler.get_contract_list_for_date
         get_option_bar = options_handler.get_option_bar
         get_options_chain = options_handler.get_options_chain
-        
+
         # Internal: Create or use provided strategy
         if isinstance(config.strategy_type, str):
             # Create strategy from string name
@@ -154,9 +148,22 @@ class BacktestEngine(TradingEngine):
             elif hasattr(strategy, 'options_handler'):
                 # Backward compatibility: if strategy still uses options_handler, inject it
                 strategy.options_handler = options_handler
-        
+
+        # Internal: Fetch data for backtest period
+        data = retriever.fetch_data_for_period(
+            (config.start_date - strategy.get_warm_up_period_timedelta(config.bar_interval)).strftime("%Y-%m-%d"),
+            config.end_date.strftime("%Y-%m-%d")
+        )
+
+        if data is None or len(data) == 0:
+            raise ValueError(f"Failed to fetch data for {config.symbol} from {config.start_date.date()} to {config.end_date.date()}")
+
         # Internal: Set data on strategy
         strategy.set_data(data, retriever.treasury_rates)
+
+        get_logger().info(f"Data describe:\n{data.describe().to_string()}")
+        get_logger().info(f"Data head:\n{data.head(5).to_string()}")
+        get_logger().info(f"Data tail:\n{data.tail(5).to_string()}")
         
         # Create engine first so we can inject engine methods into strategy
         engine = cls(
@@ -192,42 +199,40 @@ class BacktestEngine(TradingEngine):
             get_logger().error("Backtest aborted due to invalid data")
             return False
 
-        # Use only dates that exist in the data (not pd.bdate_range which includes holidays)
-        # Filter data to the specified date range and use the actual dates
-        date_range = self.data.index
+        # Bars in [start_date, end_date] via label slice on the frame — Index[datetime:]
+        # hits DatetimeArray slicing and raises on current pandas.
+        ts_start = pd.Timestamp(self.start_date)
+        ts_end = pd.Timestamp(self.end_date)
+        date_range = self.data.loc[ts_start:ts_end].index
+        if len(date_range) == 0:
+            get_logger().error("No rows in data for configured start/end range")
+            return False
 
-        self.benchmark.set_start_price(self.data.iloc[self.strategy.start_date_offset]['Close'])
-        
+        self.benchmark.set_start_price(self.data.loc[date_range[0], 'Close'])
+
         # Initialize progress tracker if enabled
         if self.enable_progress_tracking:
-            # Account for start_date_offset in progress tracking
-            effective_start_date = date_range[self.strategy.start_date_offset] if self.strategy.start_date_offset < len(date_range) else date_range[0]
-            effective_total_dates = len(date_range) - self.strategy.start_date_offset
-            
             # Determine unit based on bar interval
             from algo_trading_engine.enums import BarTimeInterval
             unit = "bar" if self.bar_interval and self.bar_interval != BarTimeInterval.DAY else "date"
-            
+
             self.progress_tracker = ProgressTracker(
-                start_date=effective_start_date,
+                start_date=date_range[0],
                 end_date=date_range[-1],
-                total_dates=effective_total_dates,
+                total_dates=len(date_range),
                 desc="Running Backtest",
                 quiet_mode=self.quiet_mode,
                 unit=unit
             )
             set_global_progress_tracker(self.progress_tracker)
-            
+
         get_logger().info(f"Running backtest on {len(date_range)} trading days")
         get_logger().info(f"   Date range: {date_range[0].date()} to {date_range[-1].date()}")
 
-        # For each date in the range, simulate the strategy
         for i, date in enumerate(date_range):
-            # Convert to tuple for immutability
             positions_tuple = tuple(self.positions)
 
-            # Update progress tracker only for dates that are actually being processed
-            if self.progress_tracker and i >= self.strategy.start_date_offset:
+            if self.progress_tracker:
                 self.progress_tracker.update(current_date=date)
 
             try:
@@ -238,7 +243,7 @@ class BacktestEngine(TradingEngine):
                 get_logger().error(error_msg)
                 get_logger().error(traceback.format_exc())
                 return False
-            
+
             self.check_univeral_close_conditions(date)
 
         self._end()
@@ -373,7 +378,7 @@ class BacktestEngine(TradingEngine):
                     self.volume_stats = self.volume_stats.increment_rejected_positions()
                     return  # Reject the position
 
-        position_size = self._get_position_size(position)
+        position_size = self.strategy.get_position_size(position, self.capital) if self.strategy.get_position_size is not None else self._get_position_size(position)
         if position_size == 0:
             get_logger().info("Not enough capital to add position. Position size is 0.")
             return
@@ -490,9 +495,9 @@ class BacktestEngine(TradingEngine):
 
         self.strategy.on_remove_position_success(date, position, exit_price, underlying_price, current_volumes)
     
-    # TODO: Only works for credit spreads since using max risk
     def _get_position_size(self, position: Position) -> int:
         """
+        Default position size calculation for positions that don't have a get_position_size method.
         Get the number of contracts to buy or sell for a position based on the max position size and the current capital.
         """
         if self.max_position_size is None:
@@ -669,8 +674,6 @@ def parse_arguments():
                        choices=StrategyFactory.get_available_strategies(),
                        default='credit_spread',
                        help='Strategy to use for backtesting')
-    parser.add_argument('--start-date-offset', type=int, default=60,
-                       help='Start date offset for strategy')
     parser.add_argument('--stop-loss', type=float, default=None,
                        help='Stop loss percentage')
     parser.add_argument('--profit-target', type=float, default=None,
@@ -729,7 +732,6 @@ def main():
         api_key=api_key,
         use_free_tier=args.free,
         quiet_mode=not args.verbose,
-        lstm_start_date_offset=args.start_date_offset,
         stop_loss=args.stop_loss,
         profit_target=args.profit_target
     )

@@ -32,11 +32,6 @@ class StrategyBuilder(ABC):
         pass
     
     @abstractmethod
-    def set_start_date_offset(self, offset: int):
-        """Set the start date offset"""
-        pass
-    
-    @abstractmethod
     def set_stop_loss(self, stop_loss: float):
         """Set the stop loss"""
         pass
@@ -63,7 +58,6 @@ class CreditSpreadStrategyBuilder(StrategyBuilder):
         self._get_option_bar = None
         self._get_options_chain = None
         self._options_handler = None
-        self._start_date_offset = 0
         self._stop_loss = 0.6
         self._profit_target = None
     
@@ -92,10 +86,6 @@ class CreditSpreadStrategyBuilder(StrategyBuilder):
         self._get_current_volumes_for_position = get_current_volumes_for_position
         self._compute_exit_price = compute_exit_price
         self._options_handler = options_handler
-        return self
-    
-    def set_start_date_offset(self, offset: int):
-        self._start_date_offset = offset
         return self
     
     def set_stop_loss(self, stop_loss: float):
@@ -136,7 +126,6 @@ class CreditSpreadStrategyBuilder(StrategyBuilder):
             lstm_model=self._lstm_model,
             lstm_scaler=self._lstm_scaler,
             symbol=self._symbol,
-            start_date_offset=self._start_date_offset,
             options_handler=self._options_handler
         )
         
@@ -155,7 +144,6 @@ class VelocitySignalMomentumStrategyBuilder(StrategyBuilder):
         self._get_contract_list_for_date = None
         self._get_option_bar = None
         self._get_options_chain = None
-        self._start_date_offset = 60
         self._stop_loss = None
         self._profit_target = None
     
@@ -177,16 +165,11 @@ class VelocitySignalMomentumStrategyBuilder(StrategyBuilder):
         self._compute_exit_price = compute_exit_price
         return self
     
-    def set_start_date_offset(self, offset: int):
-        self._start_date_offset = offset
-        return self
-    
     def set_stop_loss(self, stop_loss: float):
         self._stop_loss = stop_loss
         return self
 
     def set_profit_target(self, profit_target: float):
-        # Not used for this strategy but required by interface
         self._profit_target = profit_target
         return self
     
@@ -200,7 +183,6 @@ class VelocitySignalMomentumStrategyBuilder(StrategyBuilder):
             get_contract_list_for_date=self._get_contract_list_for_date,
             get_option_bar=self._get_option_bar,
             get_options_chain=self._get_options_chain,
-            start_date_offset=self._start_date_offset,
             stop_loss=self._stop_loss,
             profit_target=self._profit_target,
             symbol=self._symbol
@@ -278,7 +260,6 @@ def create_strategy_from_args(strategy_name: str, **kwargs):
             - get_current_volumes_for_position: Callable for getting current volumes for position
             - compute_exit_price: Callable for computing exit price for position
             - options_handler: Optional, OptionsHandler instance (needed for CreditSpreadStrategy with LSTM)
-            - start_date_offset: Optional, defaults to 60
             - stop_loss: Optional
             - profit_target: Optional
         
@@ -300,8 +281,6 @@ def create_strategy_from_args(strategy_name: str, **kwargs):
             )
         if 'symbol' in kwargs:
             builder.set_symbol(kwargs['symbol'])
-        if 'start_date_offset' in kwargs:
-            builder.set_start_date_offset(kwargs['start_date_offset'])
         if 'stop_loss' in kwargs and kwargs['stop_loss'] is not None:
             builder.set_stop_loss(kwargs['stop_loss'])
         if 'profit_target' in kwargs and kwargs['profit_target'] is not None:

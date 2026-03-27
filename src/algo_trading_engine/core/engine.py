@@ -7,12 +7,36 @@ and concrete implementations for backtesting and paper trading.
 
 from abc import ABC, abstractmethod, abstractclassmethod
 from typing import List, Optional, Union, TYPE_CHECKING
-from datetime import datetime
+from datetime import datetime, timedelta
 import pandas as pd
 
 from .strategy import Strategy
 from algo_trading_engine.common.logger import configure_logger, get_logger, log_and_echo
+from algo_trading_engine.enums import BarTimeInterval
 from algo_trading_engine.models.config import PaperTradingConfig
+
+# Minimum calendar lookback for LSTM / feature history in paper trading (aligned with prior default).
+DEFAULT_PAPER_TRADING_LSTM_LOOKBACK_DAYS = 120
+
+
+def compute_paper_trading_fetch_start_date(
+    now: datetime,
+    strategy: Strategy,
+    bar_interval: BarTimeInterval,
+    lstm_lookback_days: int = DEFAULT_PAPER_TRADING_LSTM_LOOKBACK_DAYS,
+) -> str:
+    """
+    First calendar date (YYYY-MM-DD) for historical data fetch in paper trading.
+
+    Mirrors backtest behavior: extend the window backward by
+    ``strategy.get_warm_up_period_timedelta(bar_interval)`` from the effective
+    end date (here, ``now``), and ensure at least ``lstm_lookback_days`` of
+    history for models that need a fixed window.
+    """
+    lstm_start = now - timedelta(days=lstm_lookback_days)
+    warmup_start = now - strategy.get_warm_up_period_timedelta(bar_interval)
+    earliest = min(lstm_start, warmup_start)
+    return earliest.strftime("%Y-%m-%d")
 
 if TYPE_CHECKING:
     from algo_trading_engine.vo import Position
@@ -435,50 +459,27 @@ class PaperTradingEngine(TradingEngine):
         # Configure logger first so data fetch and all setup log to trade.log (not stdout)
         configure_logger("trade", log_level="info")
 
-        # Internal: Create data retriever
-        # For paper trading, we need recent historical data for strategy initialization
-        # Use a default lookback period (e.g., 120 days) for LSTM data
-        from datetime import timedelta
         from algo_trading_engine.common.data_retriever import DataRetriever
         from algo_trading_engine.common.options_handler import OptionsHandler
         from algo_trading_engine.backtest.strategy_builder import create_strategy_from_args
-        
-        # Calculate start date for data retrieval (120 days back from today)
+
         today = datetime.now()
-        lstm_start_date = (today - timedelta(days=120)).strftime("%Y-%m-%d")
-        
-        retriever = DataRetriever(
-            symbol=config.symbol,
-            lstm_start_date=lstm_start_date,
-            quiet_mode=True,
-            use_free_tier=config.use_free_tier,
-            bar_interval=config.bar_interval,
-            use_cache=config.use_cache
-        )
-        
-        # Internal: Fetch recent data for strategy initialization
-        # For paper trading, we fetch data up to today
-        data = retriever.fetch_data_for_period(lstm_start_date)
-        if data is None or len(data) == 0:
-            raise ValueError(f"Failed to fetch data for {config.symbol}")
-        get_logger().info(f"Fetched {len(data)} data points for {config.symbol} from {data.index[0]} to {data.index[-1]}")
-        
-        # Internal: Create options handler
+
+        # Internal: Create options handler (strategy needs option callables before first fetch)
         options_handler = OptionsHandler(
             symbol=config.symbol,
             api_key=config.api_key,
             use_free_tier=config.use_free_tier,
             use_cache=config.use_cache
         )
-        
+
         # Internal: Extract methods as callables (no imports needed by child repos)
         get_contract_list_for_date = options_handler.get_contract_list_for_date
         get_option_bar = options_handler.get_option_bar
         get_options_chain = options_handler.get_options_chain
-        
-        # Internal: Create or use provided strategy
+
+        # Internal: Create or use provided strategy (needed to compute warm-up window like backtest)
         if isinstance(config.strategy_type, str):
-            # Create strategy from string name
             strategy = create_strategy_from_args(
                 strategy_name=config.strategy_type,
                 symbol=config.symbol,
@@ -487,14 +488,13 @@ class PaperTradingEngine(TradingEngine):
                 get_options_chain=get_options_chain,
                 get_current_volumes_for_position=cls.get_current_volumes_for_position,
                 compute_exit_price=cls.compute_exit_price,
-                options_handler=options_handler,  # Needed for CreditSpreadStrategy with LSTM
+                options_handler=options_handler,
                 stop_loss=config.stop_loss,
                 profit_target=config.profit_target
             )
             if strategy is None:
                 raise ValueError(f"Failed to create strategy: {config.strategy_type}")
         else:
-            # Strategy instance provided - inject callables if strategy expects them
             strategy = config.strategy_type
             strategy.symbol = config.symbol
             if hasattr(strategy, 'get_contract_list_for_date'):
@@ -504,12 +504,28 @@ class PaperTradingEngine(TradingEngine):
                 strategy.get_current_volumes_for_position = cls.get_current_volumes_for_position
                 strategy.compute_exit_price = cls.compute_exit_price
             elif hasattr(strategy, 'options_handler'):
-                # Backward compatibility: if strategy still uses options_handler, inject it
                 strategy.options_handler = options_handler
-        
-        # Internal: Set data on strategy
+
+        fetch_start_date = compute_paper_trading_fetch_start_date(
+            today, strategy, config.bar_interval
+        )
+
+        retriever = DataRetriever(
+            symbol=config.symbol,
+            lstm_start_date=fetch_start_date,
+            quiet_mode=True,
+            use_free_tier=config.use_free_tier,
+            bar_interval=config.bar_interval,
+            use_cache=config.use_cache
+        )
+
+        data = retriever.fetch_data_for_period(fetch_start_date)
+        if data is None or len(data) == 0:
+            raise ValueError(f"Failed to fetch data for {config.symbol}")
+        get_logger().info(f"Fetched {len(data)} data points for {config.symbol} from {data.index[0]} to {data.index[-1]}")
+
         strategy.set_data(data, retriever.treasury_rates)
-        
+
         # Create and return engine
         return cls(
             strategy=strategy,

@@ -52,7 +52,6 @@ class TestVelocitySignalMomentumStrategyEnhancements:
             get_contract_list_for_date=self.get_contract_list_for_date,
             get_option_bar=self.get_option_bar,
             get_options_chain=self.get_options_chain,
-            start_date_offset=60
         )
         
         # Create sample data
@@ -215,7 +214,6 @@ class TestCreditSpreadStrategyEnhancements:
             lstm_model=self.lstm_model,
             lstm_scaler=self.lstm_scaler,
             symbol='SPY',
-            start_date_offset=0,
             options_handler=self.options_handler  # Still needed for LSTMModel
         )
         

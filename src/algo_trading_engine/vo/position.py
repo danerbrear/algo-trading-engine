@@ -483,13 +483,11 @@ class CreditSpreadPosition(Position):
         return spread_width - self.entry_price
 
     def max_risk_dollars_per_contract(self) -> float:
-        """Max risk for credit spread = (width - net credit) * 100 per contract."""
-        if not self.spread_options or len(self.spread_options) != 2:
-            raise ValueError("Credit spread requires 2 options in spread_options")
-        atm_option, otm_option = self.spread_options
-        width = abs(atm_option.strike - otm_option.strike)
-        net_credit = atm_option.last_price - otm_option.last_price
-        return (width - net_credit) * 100
+        """Max risk for credit spread = max loss per share × 100 (uses entry net credit)."""
+        loss = self.max_loss_per_share()
+        if loss is None:
+            raise ValueError("Credit spread max loss per share is not defined")
+        return float(loss) * 100
 
 
 class DebitSpreadPosition(Position):

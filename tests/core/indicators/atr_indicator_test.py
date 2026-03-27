@@ -117,20 +117,20 @@ class TestATRIndicatorDailyBars:
         return data
     
     def test_update_insufficient_data_single_bar(self):
-        """Test that update raises error with only 1 bar"""
+        """With only 1 bar, update is a no-op until enough history exists."""
         indicator = ATRIndicator(period=14)
         data = self.create_daily_data('2024-01-01', 1)
-        
-        with pytest.raises(ValueError, match="Insufficient data to calculate True Range"):
-            indicator.update(datetime(2024, 1, 1), data)
+
+        indicator.update(datetime(2024, 1, 1), data)
+        assert indicator.value is None
     
     def test_update_insufficient_data_for_initialization(self):
-        """Test that update raises error when not enough bars to initialize ATR"""
+        """Before period+1 bars exist, update does not initialize ATR."""
         indicator = ATRIndicator(period=14)
         data = self.create_daily_data('2024-01-01', 10)  # Need 15 bars (14 + 1)
-        
-        with pytest.raises(ValueError, match="Insufficient data to initialize ATR"):
-            indicator.update(datetime(2024, 1, 10), data)
+
+        indicator.update(datetime(2024, 1, 10), data)
+        assert indicator.value is None
     
     def test_update_initialization_with_exact_period(self):
         """Test ATR initialization with exactly period+1 bars"""
@@ -310,9 +310,9 @@ class TestATRIndicatorResetDaily:
         day1_atr = indicator.value
         assert day1_atr is not None
         
-        # Update early on day 2 (should reset and raise error - not enough bars yet)
-        with pytest.raises(ValueError, match="Insufficient data to initialize ATR.*for current day"):
-            indicator.update(datetime(2024, 1, 2, 11, 0, 0), data)
+        # Early on day 2: not enough bars in the day yet — no value for this bar
+        indicator.update(datetime(2024, 1, 2, 11, 0, 0), data)
+        assert indicator.get_value_at(datetime(2024, 1, 2, 11, 0, 0)) is None
     
     def test_reset_daily_true_only_uses_current_day_bars(self):
         """Test that reset_daily=True only uses bars from current day"""
@@ -336,11 +336,8 @@ class TestATRIndicatorResetDaily:
         indicator.update(datetime(2024, 1, 1, 13, 0, 0), data)
         assert indicator._current_date == datetime(2024, 1, 1).date()
         
-        # Update on day 2 (will raise error but should update _current_date)
-        try:
-            indicator.update(datetime(2024, 1, 2, 11, 0, 0), data)
-        except ValueError:
-            pass
+        # Update on day 2 early (insufficient bars for init; _current_date still advances)
+        indicator.update(datetime(2024, 1, 2, 11, 0, 0), data)
         assert indicator._current_date == datetime(2024, 1, 2).date()
     
     def test_reset_daily_false_with_hourly_does_not_reset(self):
@@ -384,6 +381,19 @@ class TestATRIndicatorResetDaily:
         assert daily_indicator._is_intraday() is False
         assert hourly_indicator._is_intraday() is True
         assert minute_indicator._is_intraday() is True
+
+
+class TestATRIndicatorWarmUpPeriod:
+    """Test warm_up_period property"""
+
+    def test_warm_up_period_is_period_plus_one(self):
+        assert ATRIndicator(period=14).warm_up_period == 15
+
+    def test_warm_up_period_small(self):
+        assert ATRIndicator(period=1).warm_up_period == 2
+
+    def test_warm_up_period_large(self):
+        assert ATRIndicator(period=100).warm_up_period == 101
 
 
 class TestATRIndicatorEdgeCases:

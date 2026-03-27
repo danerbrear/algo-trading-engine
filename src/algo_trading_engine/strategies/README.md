@@ -49,9 +49,9 @@ strategy.set_data(market_data, options_data, treasury_rates)
 ```
 
 #### Configuration
-- `start_date_offset`: Number of days to skip at the beginning (default: 60)
 - `profit_target`: Optional profit target percentage
 - `stop_loss`: Optional stop loss percentage
+- The warm-up period is derived automatically from the strategy's registered indicators (SMA_15 and SMA_30 → 30 bars).
 
 ### 2. Credit Spread Minimal Strategy (`credit_spread_minimal.py`)
 
@@ -122,7 +122,9 @@ from algo_trading_engine.core.strategy import Strategy
 
 class MyNewStrategy(Strategy):
     def __init__(self):
-        super().__init__(start_date_offset=60)
+        super().__init__()
+        # Register indicators – warm_up_period is derived automatically
+        self.add_indicator(SMAIndicator(period=20))
     
     def on_new_date(self, date, positions, add_position, remove_position):
         # Implement your strategy logic

@@ -17,7 +17,6 @@ class TestSMAIndicatorInitialization:
         assert indicator.period == 20
         assert indicator.period_unit == BarTimeInterval.DAY
         assert indicator.column == "Close"
-        assert indicator.reset_daily is False
         assert indicator.value is None
         assert indicator.name == "SMA_20"
 
@@ -30,12 +29,6 @@ class TestSMAIndicatorInitialization:
     def test_valid_creation_with_custom_column(self):
         indicator = SMAIndicator(period=5, column="Volume")
         assert indicator.column == "Volume"
-
-    def test_valid_creation_with_reset_daily(self):
-        indicator = SMAIndicator(
-            period=10, period_unit=BarTimeInterval.HOUR, reset_daily=True
-        )
-        assert indicator.reset_daily is True
 
     def test_invalid_period_zero_raises_error(self):
         with pytest.raises(ValueError, match="Period must be a positive integer"):
@@ -81,12 +74,12 @@ class TestSMAIndicatorDailyBars:
         # Should use last 3 bars: 10, 20, 30
         assert indicator.value == pytest.approx(20.0)
 
-    def test_insufficient_data_raises_error(self):
+    def test_insufficient_data_is_noop(self):
         data = self._daily_data("2024-01-01", [10, 20])
         indicator = SMAIndicator(period=5)
 
-        with pytest.raises(ValueError, match="Insufficient data to calculate SMA"):
-            indicator.update(datetime(2024, 1, 2), data)
+        indicator.update(datetime(2024, 1, 2), data)
+        assert indicator.value is None
 
     def test_sequential_updates_maintain_history(self):
         data = self._daily_data("2024-01-01", [10, 20, 30, 40, 50])
@@ -160,9 +153,7 @@ class TestSMAIndicatorHourlyBars:
 
     def test_hourly_sma_rolling_window(self):
         data = self._hourly_data("2024-01-01 09:00", [10, 20, 30, 40, 50])
-        indicator = SMAIndicator(
-            period=3, period_unit=BarTimeInterval.HOUR, reset_daily=False
-        )
+        indicator = SMAIndicator(period=3, period_unit=BarTimeInterval.HOUR)
         indicator.update(datetime(2024, 1, 1, 13, 0), data)
 
         # Last 3 bars: 30, 40, 50
@@ -170,9 +161,7 @@ class TestSMAIndicatorHourlyBars:
 
     def test_hourly_sma_filters_data_up_to_current_time(self):
         data = self._hourly_data("2024-01-01 09:00", [10, 20, 30, 40, 50])
-        indicator = SMAIndicator(
-            period=3, period_unit=BarTimeInterval.HOUR, reset_daily=False
-        )
+        indicator = SMAIndicator(period=3, period_unit=BarTimeInterval.HOUR)
 
         indicator.update(datetime(2024, 1, 1, 11, 0), data)
 
@@ -180,77 +169,10 @@ class TestSMAIndicatorHourlyBars:
         assert indicator.value == pytest.approx(20.0)
 
 
-class TestSMAIndicatorResetDaily:
-    """Test cases for reset_daily functionality"""
+class TestSMAIndicatorWeekendBehavior:
+    """Weekend timestamps do not update the indicator (no-op)."""
 
-    def _multi_day_hourly_data(self) -> pd.DataFrame:
-        day1 = pd.date_range(start="2024-01-01 09:00", periods=7, freq="h")
-        day2 = pd.date_range(start="2024-01-02 09:00", periods=7, freq="h")
-        all_dates = day1.append(day2)
-
-        closes = [100 + i for i in range(len(all_dates))]
-        return pd.DataFrame(
-            {
-                "Open": closes,
-                "High": closes,
-                "Low": closes,
-                "Close": closes,
-                "Volume": [100_000] * len(all_dates),
-            },
-            index=all_dates,
-        )
-
-    def test_reset_daily_false_uses_bars_across_days(self):
-        data = self._multi_day_hourly_data()
-        indicator = SMAIndicator(
-            period=3, period_unit=BarTimeInterval.HOUR, reset_daily=False
-        )
-        indicator.update(datetime(2024, 1, 2, 9, 0), data)
-
-        assert indicator.value is not None
-
-    def test_reset_daily_true_only_uses_current_day(self):
-        data = self._multi_day_hourly_data()
-        indicator = SMAIndicator(
-            period=3, period_unit=BarTimeInterval.HOUR, reset_daily=True
-        )
-
-        # Day 2 at 11:00 → only 3 bars from day 2 (09:00, 10:00, 11:00)
-        indicator.update(datetime(2024, 1, 2, 11, 0), data)
-
-        # Day-2 closes at 09, 10, 11 are indices 7..9 → 107, 108, 109
-        assert indicator.value == pytest.approx(108.0)
-
-    def test_reset_daily_true_insufficient_bars_raises_error(self):
-        data = self._multi_day_hourly_data()
-        indicator = SMAIndicator(
-            period=5, period_unit=BarTimeInterval.HOUR, reset_daily=True
-        )
-
-        # Day 2 at 10:00 → only 2 bars from day 2
-        with pytest.raises(ValueError, match="Insufficient data.*for current day"):
-            indicator.update(datetime(2024, 1, 2, 10, 0), data)
-
-    def test_reset_daily_has_no_effect_on_daily_bars(self):
-        dates = pd.date_range(start="2024-01-01", periods=5, freq="D")
-        data = pd.DataFrame(
-            {
-                "Close": [10, 20, 30, 40, 50],
-            },
-            index=dates,
-        )
-        indicator = SMAIndicator(
-            period=3, period_unit=BarTimeInterval.DAY, column="Close", reset_daily=True
-        )
-        indicator.update(datetime(2024, 1, 5), data)
-
-        assert indicator.value == pytest.approx(40.0)
-
-
-class TestSMAIndicatorWeekendAdjustment:
-    """Test weekend date fallback"""
-
-    def test_weekend_date_falls_back_to_friday(self):
+    def test_weekend_update_is_noop(self):
         dates = pd.date_range(start="2024-01-01", periods=5, freq="B")  # Mon-Fri
         data = pd.DataFrame(
             {
@@ -260,11 +182,24 @@ class TestSMAIndicatorWeekendAdjustment:
         )
         indicator = SMAIndicator(period=3)
 
-        # 2024-01-06 is Saturday, should fall back to 2024-01-05 (Fri)
+        # 2024-01-06 is Saturday — update returns without writing a value
         indicator.update(datetime(2024, 1, 6), data)
 
-        # Last 3 business-day closes: 30, 40, 50
-        assert indicator.value == pytest.approx(40.0)
+        assert indicator.value is None
+        assert len(indicator.get_values()) == 0
+
+
+class TestSMAIndicatorWarmUpPeriod:
+    """Test warm_up_period property"""
+
+    def test_warm_up_period_matches_period(self):
+        assert SMAIndicator(period=20).warm_up_period == 20
+
+    def test_warm_up_period_small(self):
+        assert SMAIndicator(period=1).warm_up_period == 1
+
+    def test_warm_up_period_large(self):
+        assert SMAIndicator(period=200).warm_up_period == 200
 
 
 class TestSMAIndicatorEdgeCases:
