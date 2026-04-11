@@ -95,6 +95,7 @@ class PaperTradingConfig:
     stop_loss: Optional[float] = None  # Optional stop loss percentage
     profit_target: Optional[float] = None  # Optional profit target percentage
     decision_store: Optional['DecisionStore'] = None # Database immplementation for storing decisions
+    auto_yes: bool = False  # Skip interactive prompts (e.g., for Lambda / headless environments)
     
     def __post_init__(self):
         """Validate configuration after initialization."""

@@ -377,7 +377,7 @@ class PaperTradingEngine(TradingEngine):
             self._strategy,
             store,
             capital_manager,
-            auto_yes=False
+            auto_yes=self._config.auto_yes
         )
         
         # Check for open positions and display status (recommendation-relevant -> stdout via log_and_echo)
@@ -404,7 +404,7 @@ class PaperTradingEngine(TradingEngine):
         log_and_echo("")
 
         try:
-            recommender.run(run_date, auto_yes=False)
+            recommender.run(run_date)
             self.check_univeral_close_conditions(run_date)
             return True
         except Exception as e:

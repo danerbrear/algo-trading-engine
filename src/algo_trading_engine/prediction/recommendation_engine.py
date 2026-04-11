@@ -30,15 +30,13 @@ class InteractiveStrategyRecommender:
         self.capital_manager = capital_manager
         self.auto_yes = auto_yes
 
-    def run(self, date: datetime, auto_yes: Optional[bool] = None) -> None:
+    def run(self, date: datetime) -> None:
         """Run recommendation flow by calling on_new_date once to handle both opens and closes.
-        
+
         This ensures indicators are only updated once per bar, avoiding duplicate updates
         that would occur if we called recommend_open_position and recommend_close_positions
         separately (as they both call on_new_date internally).
         """
-        if auto_yes is not None:
-            self.auto_yes = auto_yes
         
         # Validate strategy data
         if getattr(self.strategy, "data", None) is None:

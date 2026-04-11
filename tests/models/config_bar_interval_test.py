@@ -240,3 +240,31 @@ class TestPaperTradingConfigUseCache:
         )
         with pytest.raises(Exception):
             config.use_cache = True  # type: ignore
+
+
+class TestPaperTradingConfigAutoYes:
+    """Test cases for PaperTradingConfig auto_yes parameter."""
+
+    def test_auto_yes_defaults_to_false(self):
+        config = PaperTradingConfig(
+            symbol='SPY',
+            strategy_type='velocity_signal_momentum'
+        )
+        assert config.auto_yes is False
+
+    def test_auto_yes_can_be_set_to_true(self):
+        config = PaperTradingConfig(
+            symbol='SPY',
+            strategy_type='velocity_signal_momentum',
+            auto_yes=True
+        )
+        assert config.auto_yes is True
+
+    def test_auto_yes_is_immutable(self):
+        config = PaperTradingConfig(
+            symbol='SPY',
+            strategy_type='velocity_signal_momentum',
+            auto_yes=False
+        )
+        with pytest.raises(Exception):
+            config.auto_yes = True  # type: ignore

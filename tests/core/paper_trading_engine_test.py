@@ -596,3 +596,44 @@ class TestCustomDecisionStore:
             assert isinstance(call_args[1], JsonDecisionStore), (
                 "Recommender should receive a JsonDecisionStore when config.decision_store is None"
             )
+
+
+class TestAutoYesPassthrough:
+    """Test that PaperTradingConfig.auto_yes is forwarded to InteractiveStrategyRecommender."""
+
+    @pytest.mark.parametrize("auto_yes_value", [True, False])
+    def test_engine_passes_auto_yes_to_recommender(
+        self, mock_strategy, mock_options_handler, monkeypatch, tmp_path, auto_yes_value
+    ):
+        monkeypatch.chdir(tmp_path)
+
+        custom_store = MagicMock(spec=DecisionStore)
+        custom_store.get_open_positions.return_value = []
+
+        config = PaperTradingConfig(
+            symbol='SPY',
+            strategy_type='credit_spread',
+            api_key='test_api_key',
+            use_free_tier=True,
+            decision_store=custom_store,
+            auto_yes=auto_yes_value,
+        )
+
+        engine = PaperTradingEngine(
+            strategy=mock_strategy,
+            config=config,
+            options_handler=mock_options_handler,
+        )
+
+        with patch.object(mock_strategy, 'get_current_underlying_price', return_value=500.0), \
+             patch('algo_trading_engine.common.data_retriever.DataRetriever.get_live_price', return_value=500.0), \
+             patch('algo_trading_engine.prediction.recommendation_engine.InteractiveStrategyRecommender') as mock_rec_cls:
+            mock_recommender = Mock()
+            mock_recommender.run.return_value = None
+            mock_rec_cls.return_value = mock_recommender
+
+            success = engine.run()
+
+            assert success is True
+            _, call_kwargs = mock_rec_cls.call_args
+            assert call_kwargs['auto_yes'] is auto_yes_value
