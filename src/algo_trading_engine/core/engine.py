@@ -526,17 +526,10 @@ class PaperTradingEngine(TradingEngine):
 
         strategy.set_data(data, retriever.treasury_rates)
 
-        engine = cls(
+        # Create and return engine
+        return cls(
             strategy=strategy,
             config=config,
             options_handler=options_handler
         )
-
-        # Rebind engine methods to the instance so `self` is properly injected
-        # when the strategy calls them. The earlier assignments used `cls.*`
-        # (unbound), which caused missing-argument errors.
-        engine.strategy.compute_exit_price = engine.compute_exit_price
-        engine.strategy.get_current_volumes_for_position = engine.get_current_volumes_for_position
-
-        return engine
 
