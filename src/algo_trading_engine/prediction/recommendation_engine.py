@@ -214,6 +214,7 @@ class InteractiveStrategyRecommender:
             entry_price=proposal.credit,
         )
         self.decision_store.append_decision(record)
+        self.strategy.on_add_position_success(position)
         return record
     
     def _process_close_recommendations(self, date: datetime, close_recommendations: List[dict], open_records: List[DecisionResponseDTO]) -> List[DecisionResponseDTO]:
@@ -244,7 +245,11 @@ class InteractiveStrategyRecommender:
                 if rec_position == position:
                     # Mark closed in the store
                     self.decision_store.mark_closed(rec.id, exit_price=exit_price, closed_at=date)
-                    # Return an updated record instance for the caller
+                    self.strategy.on_remove_position_success(
+                        date, position, exit_price,
+                        recommendation.get("underlying_price"),
+                        recommendation.get("current_volumes"),
+                    )
                     updated = DecisionResponseDTO(
                         id=rec.id,
                         proposal=rec.proposal,

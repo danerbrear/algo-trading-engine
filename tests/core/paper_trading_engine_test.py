@@ -637,3 +637,147 @@ class TestAutoYesPassthrough:
             assert success is True
             _, call_kwargs = mock_rec_cls.call_args
             assert call_kwargs['auto_yes'] is auto_yes_value
+
+
+class TestStrategyCallbacksFromPaperTradingEngine:
+    """Verify that strategy lifecycle callbacks fire through PaperTradingEngine.
+
+    These tests let the real InteractiveStrategyRecommender run (no class-level
+    mock) so we exercise the full path:
+        PaperTradingEngine.run() -> InteractiveStrategyRecommender.run()
+        -> strategy.on_new_date() -> capture callbacks -> process recommendation
+        -> strategy.on_add_position_success / on_remove_position_success
+    """
+
+    def _build_engine(self, strategy, tmp_path, decision_store=None, auto_yes=True):
+        """Helper: build a PaperTradingEngine with minimal plumbing."""
+        config = PaperTradingConfig(
+            symbol='SPY',
+            strategy_type='credit_spread',
+            api_key='test_api_key',
+            use_free_tier=True,
+            decision_store=decision_store or JsonDecisionStore(base_dir=str(tmp_path / "predictions")),
+            auto_yes=auto_yes,
+        )
+        handler = MagicMock()
+        handler.symbol = 'SPY'
+        return PaperTradingEngine(strategy=strategy, config=config, options_handler=handler)
+
+    def _make_strategy_mock(self):
+        strategy = MagicMock()
+        strategy.symbol = 'SPY'
+        strategy.__class__ = type('CreditSpreadStrategy', (), {})
+        dates = pd.date_range(start='2025-01-01', end='2025-08-08', freq='D')
+        strategy.data = pd.DataFrame({'Close': [500.0] * len(dates)}, index=dates)
+        strategy.profit_target = None
+        strategy.stop_loss = None
+        return strategy
+
+    def test_on_add_position_success_called_after_accepted_open(self, monkeypatch, tmp_path):
+        """PaperTradingEngine -> real recommender -> on_add_position_success fires."""
+        monkeypatch.chdir(tmp_path)
+
+        atm = _make_option('A', 500, '2025-09-06', 'put', 2.0)
+        otm = _make_option('B', 495, '2025-09-06', 'put', 1.0)
+
+        strategy = self._make_strategy_mock()
+
+        from algo_trading_engine.vo import create_position as _cp
+
+        def fake_on_new_date(date_arg, positions, add_position, remove_position):
+            if len(positions) == 0:
+                pos = _cp(
+                    symbol='SPY',
+                    expiration_date=datetime(2025, 9, 6),
+                    strategy_type=StrategyType.PUT_CREDIT_SPREAD,
+                    strike_price=500.0,
+                    entry_date=date_arg,
+                    entry_price=1.05,
+                    spread_options=(atm, otm),
+                )
+                pos.set_quantity(1)
+                add_position(pos)
+
+        strategy.on_new_date = fake_on_new_date
+
+        store = JsonDecisionStore(base_dir=str(tmp_path / "predictions"))
+        engine = self._build_engine(strategy, tmp_path, decision_store=store)
+
+        with patch.object(strategy, 'get_current_underlying_price', return_value=500.0):
+            success = engine.run()
+
+        assert success is True
+        strategy.on_add_position_success.assert_called_once()
+        accepted_pos = strategy.on_add_position_success.call_args[0][0]
+        assert accepted_pos.entry_price == 1.05
+
+    def test_on_remove_position_success_called_after_accepted_close(self, monkeypatch, tmp_path):
+        """PaperTradingEngine -> real recommender -> on_remove_position_success fires."""
+        monkeypatch.chdir(tmp_path)
+
+        legs = (
+            _make_option('A', 500, '2025-09-06', 'call', 2.0, 500),
+            _make_option('B', 505, '2025-09-06', 'call', 1.0, 500),
+        )
+
+        store = JsonDecisionStore(base_dir=str(tmp_path / "predictions"))
+
+        proposal = ProposedPositionRequestDTO(
+            symbol='SPY',
+            strategy_type=StrategyType.CALL_CREDIT_SPREAD,
+            legs=legs,
+            credit=1.0,
+            width=5.0,
+            probability_of_profit=0.6,
+            confidence=0.6,
+            expiration_date='2025-09-06',
+            created_at=datetime(2025, 7, 1).isoformat(),
+        )
+        decided_at = datetime(2025, 7, 1).isoformat()
+        rec_id = generate_decision_id(proposal, decided_at)
+        record = DecisionResponseDTO(
+            id=rec_id,
+            proposal=proposal,
+            outcome='accepted',
+            decided_at=decided_at,
+            rationale='init',
+            quantity=1,
+            entry_price=1.0,
+        )
+        store.append_decision(record)
+
+        strategy = self._make_strategy_mock()
+
+        def fake_on_new_date(date_arg, positions, add_position, remove_position):
+            for pos in positions:
+                remove_position(date_arg, pos, 0.5, 500.0, [200, 300])
+
+        strategy.on_new_date = fake_on_new_date
+
+        engine = self._build_engine(strategy, tmp_path, decision_store=store)
+
+        with patch.object(strategy, 'get_current_underlying_price', return_value=500.0):
+            success = engine.run()
+
+        assert success is True
+        strategy.on_remove_position_success.assert_called_once()
+        args = strategy.on_remove_position_success.call_args[0]
+        assert args[2] == 0.5
+        assert args[3] == 500.0
+        assert args[4] == [200, 300]
+
+    def test_on_add_position_success_not_called_when_no_recommendation(self, monkeypatch, tmp_path):
+        """Callback must not fire when the strategy produces no position."""
+        monkeypatch.chdir(tmp_path)
+
+        strategy = self._make_strategy_mock()
+        strategy.on_new_date = lambda date, positions, add_pos, remove_pos: None
+
+        store = JsonDecisionStore(base_dir=str(tmp_path / "predictions"))
+        engine = self._build_engine(strategy, tmp_path, decision_store=store)
+
+        with patch.object(strategy, 'get_current_underlying_price', return_value=500.0):
+            success = engine.run()
+
+        assert success is True
+        strategy.on_add_position_success.assert_not_called()

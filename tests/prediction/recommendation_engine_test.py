@@ -183,6 +183,107 @@ def test_recommender_close_accept(monkeypatch, tmp_path):
     assert len(open_positions) == 0  # Position should be closed
 
 
+def test_recommender_open_calls_on_add_position_success(tmp_path):
+    """on_add_position_success is called after an accepted open recommendation."""
+    atm_option = _make_option('A', 500, '2025-09-06', 'put', 2.0)
+    otm_option = _make_option('B', 495, '2025-09-06', 'put', 1.0)
+
+    strategy = MagicMock()
+    strategy.data = MagicMock()
+    strategy.symbol = 'SPY'
+    date = datetime(2025, 8, 8)
+    strategy.data.loc.__getitem__.return_value = {'Close': 500}
+    mock_class = type('CreditSpreadStrategy', (), {})
+    strategy.__class__ = mock_class
+
+    created_position = create_position(
+        symbol='SPY',
+        expiration_date=datetime(2025, 9, 6),
+        strategy_type=StrategyType.PUT_CREDIT_SPREAD,
+        strike_price=500.0,
+        entry_date=date,
+        entry_price=1.05,
+        spread_options=(atm_option, otm_option),
+    )
+    created_position.set_quantity(1)
+
+    def mock_on_new_date(date_arg, positions, add_position, remove_position):
+        if len(positions) == 0:
+            add_position(created_position)
+
+    strategy.on_new_date = mock_on_new_date
+
+    store = JsonDecisionStore(base_dir=str(tmp_path))
+    allocations_config = {"strategies": {"credit_spread": {"allocated_capital": 10000.0, "max_risk_percentage": 0.05}}}
+    capital_manager = CapitalManager(allocations_config, store)
+
+    recommender = InteractiveStrategyRecommender(strategy, store, capital_manager, auto_yes=True)
+    recommender.run(date)
+
+    strategy.on_add_position_success.assert_called_once_with(created_position)
+
+
+def test_recommender_close_calls_on_remove_position_success(tmp_path):
+    """on_remove_position_success is called after an accepted close recommendation."""
+    legs = (
+        _make_option('A', 500, '2025-09-06', 'call', 2.0, 500),
+        _make_option('B', 505, '2025-09-06', 'call', 1.0, 500),
+    )
+    proposal = ProposedPositionRequestDTO(
+        symbol='SPY',
+        strategy_type=StrategyType.CALL_CREDIT_SPREAD,
+        legs=legs,
+        credit=1.0,
+        width=5.0,
+        probability_of_profit=0.6,
+        confidence=0.6,
+        expiration_date='2025-09-06',
+        created_at=datetime(2025, 7, 1).isoformat(),
+    )
+    decided_at = datetime(2025, 7, 1).isoformat()
+    rec_id = generate_decision_id(proposal, decided_at)
+    record = DecisionResponseDTO(
+        id=rec_id,
+        proposal=proposal,
+        outcome='accepted',
+        decided_at=decided_at,
+        rationale='init',
+        quantity=1,
+        entry_price=1.0,
+    )
+
+    store = JsonDecisionStore(base_dir=str(tmp_path))
+    store.append_decision(record)
+
+    strategy = MagicMock()
+    strategy.symbol = 'SPY'
+    strategy.data = MagicMock()
+    strategy.data.loc.__getitem__.return_value = {'Close': 500}
+    mock_class = type('CreditSpreadStrategy', (), {})
+    strategy.__class__ = mock_class
+
+    close_date = datetime(2025, 8, 8)
+
+    def mock_on_new_date(date_arg, positions, add_position, remove_position):
+        for position in positions:
+            remove_position(date_arg, position, 0.5, 500.0, [200, 300])
+
+    strategy.on_new_date = mock_on_new_date
+
+    allocations_config = {"strategies": {"credit_spread": {"allocated_capital": 10000.0, "max_risk_percentage": 0.05}}}
+    capital_manager = CapitalManager(allocations_config, store)
+
+    recommender = InteractiveStrategyRecommender(strategy, store, capital_manager, auto_yes=True)
+    recommender.run(close_date)
+
+    strategy.on_remove_position_success.assert_called_once()
+    call_args = strategy.on_remove_position_success.call_args
+    assert call_args[0][0] == close_date
+    assert call_args[0][2] == 0.5
+    assert call_args[0][3] == 500.0
+    assert call_args[0][4] == [200, 300]
+
+
 def test_get_exit_price_from_user_prompts_with_bar_data_uses_defaults(tmp_path):
     """With auto_yes=False and get_option_bar returning data, prompt for exit price with default from bar (Enter = use default)."""
     atm_option = _make_option("SPY_500P", 500, "2025-09-06", "put", 2.0)
