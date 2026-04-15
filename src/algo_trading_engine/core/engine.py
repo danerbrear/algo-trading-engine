@@ -52,9 +52,10 @@ class TradingEngine(ABC):
     allowing for unified usage patterns.
     """
 
-    def __init__(self, strategy: Strategy, data: pd.DataFrame):
+    def __init__(self, strategy: Strategy, data: pd.DataFrame, bar_interval: 'BarTimeInterval' = None):
         self._strategy = strategy
         self._data = data
+        self.bar_interval = bar_interval
         strategy.get_current_underlying_price = self._get_current_underlying_price
     
     @abstractmethod
@@ -305,7 +306,7 @@ class PaperTradingEngine(TradingEngine):
         if strategy_data is None:
             import pandas as pd
             strategy_data = pd.DataFrame()
-        super().__init__(strategy, strategy_data)
+        super().__init__(strategy, strategy_data, bar_interval=config.bar_interval)
         self._config = config
         self._positions: List['Position'] = []
         self._closed_positions: List[dict] = []

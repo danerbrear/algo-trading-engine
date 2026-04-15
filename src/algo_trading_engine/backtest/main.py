@@ -33,7 +33,7 @@ class BacktestEngine(TradingEngine):
                  enable_progress_tracking: bool = True,
                  quiet_mode: bool = True,
                  bar_interval = None):  # Import BarTimeInterval at top
-        super().__init__(strategy, data)
+        super().__init__(strategy, data, bar_interval=bar_interval)
         self._capital = initial_capital
         self.initial_capital = initial_capital  # Store initial capital for reporting
         self.start_date = start_date
@@ -44,7 +44,6 @@ class BacktestEngine(TradingEngine):
         self.max_position_size = max_position_size
         self.daily_returns = []  # Track daily returns for Sharpe Ratio calculation
         self.previous_capital = initial_capital  # Track previous day's capital
-        self.bar_interval = bar_interval  # Store bar interval for progress tracking
         
         # Volume validation configuration and statistics
         self.volume_config = volume_config or VolumeConfig(min_volume=10)
