@@ -526,10 +526,17 @@ class PaperTradingEngine(TradingEngine):
 
         strategy.set_data(data, retriever.treasury_rates)
 
-        # Create and return engine
-        return cls(
+        engine = cls(
             strategy=strategy,
             config=config,
             options_handler=options_handler
         )
+
+        # Inject engine methods into strategy (mirrors BacktestEngine.from_config)
+        if hasattr(strategy, 'compute_exit_price'):
+            strategy.compute_exit_price = engine.compute_exit_price
+        if hasattr(strategy, 'get_current_volumes_for_position'):
+            strategy.get_current_volumes_for_position = engine.get_current_volumes_for_position
+
+        return engine
 
