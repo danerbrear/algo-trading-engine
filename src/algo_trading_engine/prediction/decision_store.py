@@ -129,6 +129,7 @@ def generate_decision_id(proposal: ProposedPositionRequestDTO, decided_at_iso: s
         [
             proposal.symbol,
             proposal.strategy_type.value,
+            proposal.strategy_name,
             legs_signature,
             str(proposal.width),
             str(proposal.credit),
@@ -151,10 +152,11 @@ class DecisionStore(ABC):
         self,
         symbol: Optional[str] = None,
         strategy_type: Optional[StrategyType] = None,
+        strategy_name: Optional[str] = None,
     ) -> List[DecisionResponseDTO]:
         """Return all accepted-but-not-closed decisions.
 
-        Filter by symbol and/or strategy_type if provided.
+        Filter by symbol, strategy_type, and/or strategy_name if provided.
         """
 
     @abstractmethod
@@ -206,10 +208,11 @@ class JsonDecisionStore(DecisionStore):
         self,
         symbol: Optional[str] = None,
         strategy_type: Optional[StrategyType] = None,
+        strategy_name: Optional[str] = None,
     ) -> List[DecisionResponseDTO]:
         """Return all accepted-but-not-closed decisions across all files.
 
-        Filter by symbol and/or strategy_type if provided.
+        Filter by symbol, strategy_type, and/or strategy_name if provided.
         """
         results: List[DecisionResponseDTO] = []
         for path in self._list_decision_files():
@@ -223,6 +226,8 @@ class JsonDecisionStore(DecisionStore):
                 if symbol and record.proposal.symbol != symbol:
                     continue
                 if strategy_type and record.proposal.strategy_type != strategy_type:
+                    continue
+                if strategy_name and record.proposal.strategy_name != strategy_name:
                     continue
                 results.append(record)
         return results

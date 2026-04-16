@@ -732,6 +732,7 @@ class TestStrategyCallbacksFromPaperTradingEngine:
             confidence=0.6,
             expiration_date='2025-09-06',
             created_at=datetime(2025, 7, 1).isoformat(),
+            strategy_name='credit_spread',
         )
         decided_at = datetime(2025, 7, 1).isoformat()
         rec_id = generate_decision_id(proposal, decided_at)

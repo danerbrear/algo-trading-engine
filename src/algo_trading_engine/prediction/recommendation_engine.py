@@ -52,8 +52,9 @@ class InteractiveStrategyRecommender:
         if hasattr(self.strategy, '__class__') and 'velocity' in self.strategy.__class__.__name__.lower():
             self._display_recent_underlying_prices(date)
         
-        # Get open positions for closing logic
-        open_records = self.decision_store.get_open_positions()
+        # Get open positions for closing logic (scoped to this strategy)
+        strategy_name = self._get_strategy_name_from_class()
+        open_records = self.decision_store.get_open_positions(strategy_name=strategy_name)
         strategy_positions = [self._position_from_decision(rec) for rec in open_records]
         
         # Capture both opens and closes in a single on_new_date call
@@ -272,7 +273,7 @@ class InteractiveStrategyRecommender:
         Stats include exit price, P&L dollars and percent, days held, and DTE.
         """
         statuses: List[dict] = []
-        for rec in self.decision_store.get_open_positions():
+        for rec in self.decision_store.get_open_positions(strategy_name=self._get_strategy_name_from_class()):
             position = self._position_from_decision(rec)
             # For status display, always use auto mode (no prompts)
             exit_price = self._get_exit_price_for_status(position, date)

@@ -59,6 +59,46 @@ def test_store_append_and_read(tmp_path):
     assert open_positions[0].id == rec_id
 
 
+def test_different_strategies_produce_distinct_decision_ids(tmp_path):
+    """Two strategies with identical proposals except strategy_name must get different IDs."""
+    date = datetime(2025, 8, 8)
+    legs = (
+        _make_option('OPT1', 500, '2025-09-06', 'put', 2.0),
+        _make_option('OPT2', 495, '2025-09-06', 'put', 1.0),
+    )
+    shared_kwargs = dict(
+        symbol='SPY',
+        strategy_type=StrategyType.PUT_CREDIT_SPREAD,
+        legs=legs,
+        credit=1.0,
+        width=5.0,
+        probability_of_profit=0.7,
+        confidence=0.7,
+        expiration_date='2025-09-06',
+        created_at=date.isoformat(),
+    )
+    proposal_a = ProposedPositionRequestDTO(**shared_kwargs, strategy_name='credit_spread')
+    proposal_b = ProposedPositionRequestDTO(**shared_kwargs, strategy_name='velocity_momentum')
+
+    id_a = generate_decision_id(proposal_a, date.isoformat())
+    id_b = generate_decision_id(proposal_b, date.isoformat())
+
+    assert id_a != id_b, "IDs must differ when strategy_name differs"
+
+    # Both must be persistable without the duplicate guard dropping one
+    store = JsonDecisionStore(base_dir=str(tmp_path))
+    store.append_decision(DecisionResponseDTO(
+        id=id_a, proposal=proposal_a, outcome='accepted',
+        decided_at=date.isoformat(), rationale='a', quantity=1, entry_price=1.0,
+    ))
+    store.append_decision(DecisionResponseDTO(
+        id=id_b, proposal=proposal_b, outcome='accepted',
+        decided_at=date.isoformat(), rationale='b', quantity=1, entry_price=1.0,
+    ))
+
+    assert len(store.get_open_positions()) == 2
+
+
 def test_recommender_open_accept(monkeypatch, tmp_path):
     # Create proper option objects first
     atm_option = _make_option('A', 500, '2025-09-06', 'put', 2.0)
@@ -129,6 +169,7 @@ def test_recommender_close_accept(monkeypatch, tmp_path):
         confidence=0.6,
         expiration_date='2025-09-06',
         created_at=datetime(2025, 7, 1).isoformat(),
+        strategy_name='credit_spread',
     )
     decided_at = datetime(2025, 7, 1).isoformat()
     rec_id = generate_decision_id(proposal, decided_at)
@@ -239,6 +280,7 @@ def test_recommender_close_calls_on_remove_position_success(tmp_path):
         confidence=0.6,
         expiration_date='2025-09-06',
         created_at=datetime(2025, 7, 1).isoformat(),
+        strategy_name='credit_spread',
     )
     decided_at = datetime(2025, 7, 1).isoformat()
     rec_id = generate_decision_id(proposal, decided_at)
@@ -282,6 +324,142 @@ def test_recommender_close_calls_on_remove_position_success(tmp_path):
     assert call_args[0][2] == 0.5
     assert call_args[0][3] == 500.0
     assert call_args[0][4] == [200, 300]
+
+
+def test_strategy_b_ignores_strategy_a_open_position(tmp_path):
+    """Strategy B must not see open positions that belong to Strategy A.
+
+    Seed the store with an open position created by 'credit_spread' strategy,
+    then run the recommender with a 'velocity_momentum' strategy and verify
+    that on_new_date receives an empty positions tuple.
+    """
+    # --- Seed a Strategy A (credit_spread) open position ---
+    legs_a = (
+        _make_option('A_ATM', 500, '2025-09-06', 'put', 2.0),
+        _make_option('A_OTM', 495, '2025-09-06', 'put', 1.0),
+    )
+    proposal_a = ProposedPositionRequestDTO(
+        symbol='SPY',
+        strategy_type=StrategyType.PUT_CREDIT_SPREAD,
+        legs=legs_a,
+        credit=1.0,
+        width=5.0,
+        probability_of_profit=0.7,
+        confidence=0.7,
+        expiration_date='2025-09-06',
+        created_at=datetime(2025, 7, 1).isoformat(),
+        strategy_name='credit_spread',
+    )
+    decided_at_a = datetime(2025, 7, 1).isoformat()
+    record_a = DecisionResponseDTO(
+        id=generate_decision_id(proposal_a, decided_at_a),
+        proposal=proposal_a,
+        outcome='accepted',
+        decided_at=decided_at_a,
+        rationale='strategy_a_open',
+        quantity=1,
+        entry_price=1.0,
+    )
+    store = JsonDecisionStore(base_dir=str(tmp_path))
+    store.append_decision(record_a)
+
+    # Confirm position is in the store
+    assert len(store.get_open_positions()) == 1
+
+    # --- Run Strategy B (velocity_momentum) ---
+    strategy_b = MagicMock()
+    strategy_b.data = MagicMock()
+    strategy_b.symbol = 'SPY'
+    date = datetime(2025, 8, 8)
+    strategy_b.data.loc.__getitem__.return_value = {'Close': 500}
+    strategy_b.__class__ = type('VelocitySignalMomentumStrategy', (), {})
+
+    received_positions = []
+
+    def mock_on_new_date(date_arg, positions, add_position, remove_position):
+        received_positions.extend(positions)
+
+    strategy_b.on_new_date = mock_on_new_date
+
+    allocations_config = {
+        "strategies": {
+            "velocity_momentum": {
+                "allocated_capital": 10000.0,
+                "max_risk_percentage": 0.05,
+            }
+        }
+    }
+    capital_manager = CapitalManager(allocations_config, store)
+
+    recommender = InteractiveStrategyRecommender(strategy_b, store, capital_manager, auto_yes=True)
+    recommender.run(date)
+
+    # Strategy B should have received zero positions —
+    # the credit_spread position belongs to Strategy A.
+    assert received_positions == []
+
+
+def test_strategy_sees_its_own_open_position(tmp_path):
+    """Strategy A must see its own open positions during execution."""
+    legs = (
+        _make_option('A_ATM', 500, '2025-09-06', 'put', 2.0),
+        _make_option('A_OTM', 495, '2025-09-06', 'put', 1.0),
+    )
+    proposal = ProposedPositionRequestDTO(
+        symbol='SPY',
+        strategy_type=StrategyType.PUT_CREDIT_SPREAD,
+        legs=legs,
+        credit=1.0,
+        width=5.0,
+        probability_of_profit=0.7,
+        confidence=0.7,
+        expiration_date='2025-09-06',
+        created_at=datetime(2025, 7, 1).isoformat(),
+        strategy_name='credit_spread',
+    )
+    decided_at = datetime(2025, 7, 1).isoformat()
+    record = DecisionResponseDTO(
+        id=generate_decision_id(proposal, decided_at),
+        proposal=proposal,
+        outcome='accepted',
+        decided_at=decided_at,
+        rationale='own_position',
+        quantity=1,
+        entry_price=1.0,
+    )
+    store = JsonDecisionStore(base_dir=str(tmp_path))
+    store.append_decision(record)
+
+    # Run Strategy A (credit_spread) — same strategy that created the position
+    strategy_a = MagicMock()
+    strategy_a.data = MagicMock()
+    strategy_a.symbol = 'SPY'
+    date = datetime(2025, 8, 8)
+    strategy_a.data.loc.__getitem__.return_value = {'Close': 500}
+    strategy_a.__class__ = type('CreditSpreadStrategy', (), {})
+
+    received_positions = []
+
+    def mock_on_new_date(date_arg, positions, add_position, remove_position):
+        received_positions.extend(positions)
+
+    strategy_a.on_new_date = mock_on_new_date
+
+    allocations_config = {
+        "strategies": {
+            "credit_spread": {
+                "allocated_capital": 10000.0,
+                "max_risk_percentage": 0.05,
+            }
+        }
+    }
+    capital_manager = CapitalManager(allocations_config, store)
+
+    recommender = InteractiveStrategyRecommender(strategy_a, store, capital_manager, auto_yes=True)
+    recommender.run(date)
+
+    # Strategy A should see its own open position
+    assert len(received_positions) == 1
 
 
 def test_get_exit_price_from_user_prompts_with_bar_data_uses_defaults(tmp_path):
