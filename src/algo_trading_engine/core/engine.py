@@ -381,8 +381,12 @@ class PaperTradingEngine(TradingEngine):
             auto_yes=self._config.auto_yes
         )
         
-        # Check for open positions and display status (recommendation-relevant -> stdout via log_and_echo)
-        open_records = store.get_open_positions(symbol=self._config.symbol)
+        # Check for open positions and display status (recommendation-relevant -> stdout via log_and_echo).
+        # Scope by strategy_name so one strategy's Lambda run does not load another strategy's Dynamo rows.
+        open_records = store.get_open_positions(
+            symbol=self._config.symbol,
+            strategy_name=strategy_name,
+        )
         if open_records:
             log_and_echo(f"Open positions found: {len(open_records)}")
             statuses = recommender.get_open_positions_status(run_date)

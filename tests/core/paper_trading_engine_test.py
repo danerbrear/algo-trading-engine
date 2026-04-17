@@ -201,6 +201,7 @@ def test_paper_trading_engine_run_with_open_positions(
         confidence=0.7,
         expiration_date='2025-09-06',
         created_at=datetime(2025, 7, 1).isoformat(),
+        strategy_name='credit_spread',
     )
     decided_at = datetime(2025, 7, 1).isoformat()
     rec_id = generate_decision_id(proposal, decided_at)
@@ -557,7 +558,10 @@ class TestCustomDecisionStore:
             else:
                 assert call_kwargs.get('decision_store', mock_rec_cls.call_args[0][1]) is custom_store
 
-            custom_store.get_open_positions.assert_called_once_with(symbol='SPY')
+            custom_store.get_open_positions.assert_called_once_with(
+                symbol='SPY',
+                strategy_name='credit_spread',
+            )
 
     def test_engine_falls_back_to_json_store_when_none(
         self, mock_strategy, mock_options_handler, monkeypatch, tmp_path
