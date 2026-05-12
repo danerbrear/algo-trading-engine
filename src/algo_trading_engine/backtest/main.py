@@ -32,7 +32,8 @@ class BacktestEngine(TradingEngine):
                  volume_config: VolumeConfig = None,
                  enable_progress_tracking: bool = True,
                  quiet_mode: bool = True,
-                 bar_interval = None):  # Import BarTimeInterval at top
+                 bar_interval = None,
+                 benchmark_data: pd.DataFrame = None):
         super().__init__(strategy, data, bar_interval=bar_interval)
         self._capital = initial_capital
         self.initial_capital = initial_capital  # Store initial capital for reporting
@@ -41,6 +42,7 @@ class BacktestEngine(TradingEngine):
         self.positions = []
         self.total_positions = 0
         self.benchmark = Benchmark(initial_capital)
+        self.benchmark_data = benchmark_data
         self.max_position_size = max_position_size
         self.daily_returns = []  # Track daily returns for Sharpe Ratio calculation
         self.previous_capital = initial_capital  # Track previous day's capital
@@ -163,7 +165,30 @@ class BacktestEngine(TradingEngine):
         get_logger().info(f"Data describe:\n{data.describe().to_string()}")
         get_logger().info(f"Data head:\n{data.head(5).to_string()}")
         get_logger().info(f"Data tail:\n{data.tail(5).to_string()}")
-        
+
+        # Fetch separate benchmark data if benchmark_ticker differs from trading symbol
+        benchmark_data = None
+        if config.benchmark_ticker and config.benchmark_ticker != config.symbol:
+            benchmark_retriever = DataRetriever(
+                symbol=config.benchmark_ticker,
+                lstm_start_date=lstm_start_date.strftime("%Y-%m-%d"),
+                quiet_mode=config.quiet_mode,
+                use_free_tier=config.use_free_tier,
+                bar_interval=config.bar_interval
+            )
+            benchmark_data = benchmark_retriever.fetch_data_for_period(
+                config.start_date.strftime("%Y-%m-%d"),
+                config.end_date.strftime("%Y-%m-%d")
+            )
+            if benchmark_data is None or len(benchmark_data) == 0:
+                get_logger().warning(
+                    f"Failed to fetch benchmark data for {config.benchmark_ticker}; "
+                    f"falling back to {config.symbol} as benchmark"
+                )
+                benchmark_data = None
+            else:
+                get_logger().info(f"Loaded benchmark data for {config.benchmark_ticker}: {len(benchmark_data)} bars")
+
         # Create engine first so we can inject engine methods into strategy
         engine = cls(
             data=data,
@@ -175,7 +200,8 @@ class BacktestEngine(TradingEngine):
             volume_config=config.volume_config,
             enable_progress_tracking=config.enable_progress_tracking,
             quiet_mode=config.quiet_mode,
-            bar_interval=config.bar_interval
+            bar_interval=config.bar_interval,
+            benchmark_data=benchmark_data
         )
         
         # Inject engine methods into strategy
@@ -207,7 +233,14 @@ class BacktestEngine(TradingEngine):
             get_logger().error("No rows in data for configured start/end range")
             return False
 
-        self.benchmark.set_start_price(self.data.loc[date_range[0], 'Close'])
+        benchmark_source = self.benchmark_data if self.benchmark_data is not None else self.data
+        benchmark_ts_start = pd.Timestamp(self.start_date)
+        benchmark_ts_end = pd.Timestamp(self.end_date)
+        benchmark_range = benchmark_source.loc[benchmark_ts_start:benchmark_ts_end].index
+        if len(benchmark_range) > 0:
+            self.benchmark.set_start_price(benchmark_source.loc[benchmark_range[0], 'Close'])
+        else:
+            self.benchmark.set_start_price(self.data.loc[date_range[0], 'Close'])
 
         # Initialize progress tracker if enabled
         if self.enable_progress_tracking:
@@ -255,11 +288,18 @@ class BacktestEngine(TradingEngine):
         """
         get_logger().info(f"Closing backtest - {len(self.positions)} positions remaining")
 
-        # Get the last available price from the data
+        # Get the last available price from benchmark data (or trading data as fallback)
+        benchmark_source = self.benchmark_data if self.benchmark_data is not None else self.data
         last_date = self.data.index[-1]
         last_price = self.data.loc[last_date, 'Close']
 
-        self.benchmark.set_end_price(last_price)
+        benchmark_ts_end = pd.Timestamp(self.end_date)
+        benchmark_end_range = benchmark_source.loc[:benchmark_ts_end].index
+        if len(benchmark_end_range) > 0:
+            benchmark_end_price = benchmark_source.loc[benchmark_end_range[-1], 'Close']
+        else:
+            benchmark_end_price = last_price
+        self.benchmark.set_end_price(benchmark_end_price)
 
         get_logger().info(f"   Last trading date: {last_date.date()}")
         get_logger().info(f"   Last closing price: ${last_price:.2f}")
@@ -687,6 +727,8 @@ def parse_arguments():
                        help='End date for backtest (YYYY-MM-DD). Defaults to today if not provided.')
     parser.add_argument('--symbol', type=str, default='SPY',
                        help='Symbol to trade')
+    parser.add_argument('--benchmark', type=str, default=None,
+                       help='Benchmark ticker for buy-and-hold comparison (defaults to trading symbol)')
     parser.add_argument('--verbose', action='store_true', default=False,
                        help='Run in quiet mode')
     parser.add_argument('-f', '--free', action='store_true', default=False,
@@ -732,7 +774,8 @@ def main():
         use_free_tier=args.free,
         quiet_mode=not args.verbose,
         stop_loss=args.stop_loss,
-        profit_target=args.profit_target
+        profit_target=args.profit_target,
+        benchmark_ticker=args.benchmark
     )
     
     # CLI startup lines to stdout so user sees them; run() configures logger and logs to backtest.log
@@ -741,6 +784,8 @@ def main():
     print(f"   Symbol: {args.symbol}")
     print(f"   Initial capital: ${args.initial_capital:,.2f}")
     print(f"   Max position size: {args.max_position_size * 100:.1f}%")
+    if args.benchmark:
+        print(f"   Benchmark: {args.benchmark}")
     if args.stop_loss:
         print(f"   Stop loss: {args.stop_loss * 100:.1f}%")
     if args.profit_target:

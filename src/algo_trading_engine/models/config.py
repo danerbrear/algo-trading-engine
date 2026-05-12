@@ -44,6 +44,7 @@ class BacktestConfig:
     lstm_start_date_offset: int = 120  # Days before start_date for LSTM data
     stop_loss: Optional[float] = None  # Optional stop loss percentage
     profit_target: Optional[float] = None  # Optional profit target percentage
+    benchmark_ticker: Optional[str] = None  # Ticker for buy-and-hold benchmark comparison (defaults to symbol)
     
     def __post_init__(self):
         """Validate configuration after initialization."""
