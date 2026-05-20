@@ -9,6 +9,7 @@ import pandas as pd
 from algo_trading_engine.core.strategy import Strategy
 from algo_trading_engine.core.indicators.indicator import Indicator
 from algo_trading_engine.core.indicators.average_true_return_indicator import ATRIndicator
+from algo_trading_engine.core.indicators.sma_indicator import SMAIndicator
 from algo_trading_engine.enums import BarTimeInterval
 
 
@@ -879,3 +880,187 @@ class TestStrategyAddIndicator:
         assert len(strategy.indicators) == 2
         assert isinstance(strategy.indicators[0], ATRIndicator)
         assert isinstance(strategy.indicators[1], MockIndicator)
+
+
+# ---------------------------------------------------------------------------
+# warm_up_indicators tests
+# ---------------------------------------------------------------------------
+
+def _hourly_ohlcv(n: int = 10) -> pd.DataFrame:
+    dates = pd.date_range(start="2026-05-19 09:30:00", periods=n, freq="h")
+    return pd.DataFrame(
+        {
+            "Open": [500 + i for i in range(n)],
+            "High": [510 + i for i in range(n)],
+            "Low": [490 + i for i in range(n)],
+            "Close": [500 + i for i in range(n)],
+            "Volume": [1_000_000] * n,
+        },
+        index=dates,
+    )
+
+
+def _daily_ohlcv(n: int = 30) -> pd.DataFrame:
+    dates = pd.date_range(start="2026-04-01", periods=n, freq="D")
+    return pd.DataFrame(
+        {
+            "Open": [500 + i for i in range(n)],
+            "High": [510 + i for i in range(n)],
+            "Low": [490 + i for i in range(n)],
+            "Close": [500 + i for i in range(n)],
+            "Volume": [1_000_000] * n,
+        },
+        index=dates,
+    )
+
+
+class TestStrategyWarmUpIndicators:
+    """Tests for Strategy.warm_up_indicators()."""
+
+    def test_warm_up_indicators_is_callable(self):
+        strategy = ConcreteTestStrategy()
+        assert hasattr(strategy, "warm_up_indicators")
+        assert callable(strategy.warm_up_indicators)
+
+    def test_raises_when_no_data(self):
+        strategy = ConcreteTestStrategy()
+        strategy.add_indicator(ATRIndicator(period=3))
+        with pytest.raises(ValueError, match="Cannot warm up indicators without data"):
+            strategy.warm_up_indicators()
+
+    def test_raises_when_empty_data(self):
+        strategy = ConcreteTestStrategy()
+        strategy.add_indicator(ATRIndicator(period=3))
+        strategy.set_data(pd.DataFrame())
+        with pytest.raises(ValueError, match="Cannot warm up indicators without data"):
+            strategy.warm_up_indicators()
+
+    def test_no_op_when_no_indicators(self):
+        strategy = ConcreteTestStrategy()
+        strategy.set_data(_hourly_ohlcv())
+        strategy.warm_up_indicators()
+
+    def test_multiple_indicators_all_warmed_up(self):
+        atr = ATRIndicator(period=3)
+        sma = SMAIndicator(period=5, period_unit=BarTimeInterval.HOUR)
+        strategy = ConcreteTestStrategy()
+        strategy.add_indicator(atr)
+        strategy.add_indicator(sma)
+        strategy.set_data(_hourly_ohlcv())
+
+        strategy.warm_up_indicators()
+
+        test_bar = strategy.data.index[6]
+        assert atr.get_value_at(test_bar) is not None
+        assert sma.get_value_at(test_bar) is not None
+
+
+class TestStrategyWarmUpBacktestParity:
+    """Values produced by warm_up_indicators + single on_new_date must match
+    values from iterating on_new_date over every bar (backtest style)."""
+
+    def test_atr_values_match_backtest_iteration(self):
+        data = _hourly_ohlcv()
+
+        atr_bt = ATRIndicator(period=3)
+        bt = ConcreteTestStrategy()
+        bt.add_indicator(atr_bt)
+        bt.set_data(data)
+        for date in data.index:
+            bt.on_new_date(date, (), Mock(), Mock())
+
+        atr_pt = ATRIndicator(period=3)
+        pt = ConcreteTestStrategy()
+        pt.add_indicator(atr_pt)
+        pt.set_data(data)
+        pt.warm_up_indicators()
+        pt.on_new_date(data.index[-1], (), Mock(), Mock())
+
+        for bar in data.index[atr_bt.warm_up_period - 1:]:
+            assert atr_bt.get_value_at(bar) == pytest.approx(atr_pt.get_value_at(bar))
+
+    def test_sma_values_match_backtest_iteration(self):
+        data = _hourly_ohlcv()
+
+        sma_bt = SMAIndicator(period=5, period_unit=BarTimeInterval.HOUR)
+        bt = ConcreteTestStrategy()
+        bt.add_indicator(sma_bt)
+        bt.set_data(data)
+        for date in data.index:
+            bt.on_new_date(date, (), Mock(), Mock())
+
+        sma_pt = SMAIndicator(period=5, period_unit=BarTimeInterval.HOUR)
+        pt = ConcreteTestStrategy()
+        pt.add_indicator(sma_pt)
+        pt.set_data(data)
+        pt.warm_up_indicators()
+        pt.on_new_date(data.index[-1], (), Mock(), Mock())
+
+        for bar in data.index[sma_bt.warm_up_period - 1:]:
+            assert sma_bt.get_value_at(bar) == pytest.approx(sma_pt.get_value_at(bar))
+
+
+class TestStrategyHistoricalLookupWithWarmUp:
+    """Strategy that looks up indicator values at historical bar dates
+    (e.g. ATR K bars ago) must succeed after warm-up and fail without it."""
+
+    class _LookbackStrategy(Strategy):
+        def __init__(self, atr, lookback_bars=4):
+            super().__init__()
+            self.add_indicator(atr)
+            self.lookback_bars = lookback_bars
+            self.historical_atr_value = "NOT_CHECKED"
+            self.current_atr_value = "NOT_CHECKED"
+
+        def on_new_date(self, date, positions, add_position, remove_position):
+            super().on_new_date(date, positions, add_position, remove_position)
+            atr = self.indicators[0]
+            self.current_atr_value = atr.get_value_at(date)
+            bar_idx = self.data.index.get_loc(date)
+            if bar_idx >= self.lookback_bars:
+                hist_date = self.data.index[bar_idx - self.lookback_bars]
+                self.historical_atr_value = atr.get_value_at(hist_date)
+
+        def on_end(self, positions, remove_position, date):
+            pass
+
+        def validate_data(self, data):
+            return True
+
+    def test_backtest_iteration_historical_lookup_succeeds(self):
+        atr = ATRIndicator(period=3)
+        data = _hourly_ohlcv()
+        strategy = self._LookbackStrategy(atr, lookback_bars=4)
+        strategy.set_data(data)
+        for date in data.index:
+            strategy.on_new_date(date, (), Mock(), Mock())
+        assert strategy.current_atr_value is not None
+        assert strategy.historical_atr_value is not None
+
+    def test_single_on_new_date_without_warmup_historical_lookup_returns_none(self):
+        atr = ATRIndicator(period=3)
+        data = _hourly_ohlcv()
+        strategy = self._LookbackStrategy(atr, lookback_bars=4)
+        strategy.set_data(data)
+        strategy.on_new_date(data.index[-1], (), Mock(), Mock())
+        assert strategy.current_atr_value is not None
+        assert strategy.historical_atr_value is None
+
+    def test_warmup_then_single_on_new_date_historical_lookup_succeeds(self):
+        atr = ATRIndicator(period=3)
+        data = _hourly_ohlcv()
+        strategy = self._LookbackStrategy(atr, lookback_bars=4)
+        strategy.set_data(data)
+        strategy.warm_up_indicators()
+        strategy.on_new_date(data.index[-1], (), Mock(), Mock())
+        assert strategy.current_atr_value is not None
+        assert strategy.historical_atr_value is not None
+
+    def test_daily_bars_without_warmup_historical_lookup_returns_none(self):
+        atr = ATRIndicator(period=5)
+        data = _daily_ohlcv(20)
+        strategy = self._LookbackStrategy(atr, lookback_bars=4)
+        strategy.set_data(data)
+        strategy.on_new_date(data.index[-1], (), Mock(), Mock())
+        assert strategy.current_atr_value is not None
+        assert strategy.historical_atr_value is None

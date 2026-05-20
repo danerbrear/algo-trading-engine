@@ -285,9 +285,17 @@ class Strategy(ABC):
         Should be called after set_data() and before the first on_new_date() in
         contexts where the engine does not iterate through every bar (e.g. paper
         trading, Lambda).
+
+        Raises:
+            ValueError: If indicators are registered but no data is available.
         """
-        if self.data is None or self.data.empty or not self.indicators:
+        if not self.indicators:
             return
+        if self.data is None or self.data.empty:
+            raise ValueError(
+                "Cannot warm up indicators without data. "
+                "Call set_data() before warm_up_indicators()."
+            )
         for date in self.data.index:
             for indicator in self.indicators:
                 indicator.update(date, self.data)
@@ -314,5 +322,4 @@ class Strategy(ABC):
             except Exception as e:
                 get_logger().error(f"Error updating indicator {indicator.name}: {e}")
                 return False
-        get_logger().info(f"Indicators updated successfully for date {date}")
         return True

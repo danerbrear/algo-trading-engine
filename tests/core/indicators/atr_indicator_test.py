@@ -457,3 +457,84 @@ class TestATRIndicatorEdgeCases:
         """Test that name property is set correctly"""
         indicator = ATRIndicator(period=14)
         assert indicator.name == "ATR"
+
+
+class TestATRGetValueAtBehavior:
+    """Verify that get_value_at only returns values for bars that have been
+    explicitly updated — a single update() stores exactly one entry."""
+
+    def _hourly_data(self, n=10):
+        dates = pd.date_range(start="2026-05-19 09:30:00", periods=n, freq="h")
+        return pd.DataFrame(
+            {
+                "Open": [500 + i for i in range(n)],
+                "High": [510 + i for i in range(n)],
+                "Low": [490 + i for i in range(n)],
+                "Close": [500 + i for i in range(n)],
+                "Volume": [1_000_000] * n,
+            },
+            index=dates,
+        )
+
+    def _daily_data(self, n=20):
+        dates = pd.date_range(start="2026-04-20", periods=n, freq="D")
+        return pd.DataFrame(
+            {
+                "Open": [500 + i for i in range(n)],
+                "High": [510 + i for i in range(n)],
+                "Low": [490 + i for i in range(n)],
+                "Close": [500 + i for i in range(n)],
+                "Volume": [1_000_000] * n,
+            },
+            index=dates,
+        )
+
+    def test_all_bars_updated_has_historical_values(self):
+        """When update() is called for every bar, get_value_at() returns a
+        value for any bar that has been processed."""
+        atr = ATRIndicator(period=3)
+        data = self._hourly_data()
+        for date in data.index:
+            atr.update(date, data)
+        assert atr.get_value_at(data.index[4]) is not None
+
+    def test_single_update_missing_historical_values(self):
+        """A single update() at the latest bar does not populate earlier bars."""
+        atr = ATRIndicator(period=3)
+        data = self._hourly_data()
+        atr.update(data.index[-1], data)
+        assert atr.get_value_at(data.index[4]) is None
+
+    def test_single_update_only_stores_one_value(self):
+        """After a single update(), exactly one datetime has a stored value."""
+        atr = ATRIndicator(period=3)
+        data = self._hourly_data()
+        latest = data.index[-1]
+        atr.update(latest, data)
+        stored = atr.get_values()
+        assert len(stored) == 1
+        assert latest in stored.index
+
+    def test_all_bars_updated_stores_all_values(self):
+        """After iterating every bar, every datetime past warm-up has a value."""
+        atr = ATRIndicator(period=3)
+        data = self._hourly_data()
+        for date in data.index:
+            atr.update(date, data)
+        for bar in data.index[atr.warm_up_period - 1:]:
+            assert atr.get_value_at(bar) is not None
+
+    def test_daily_all_bars_updated_has_historical_values(self):
+        """Daily-bar variant: full iteration stores values at every bar."""
+        atr = ATRIndicator(period=5)
+        data = self._daily_data()
+        for date in data.index:
+            atr.update(date, data)
+        assert atr.get_value_at(data.index[10]) is not None
+
+    def test_daily_single_update_missing_historical_values(self):
+        """Daily-bar variant: single update misses historical bars."""
+        atr = ATRIndicator(period=5)
+        data = self._daily_data()
+        atr.update(data.index[-1], data)
+        assert atr.get_value_at(data.index[10]) is None
