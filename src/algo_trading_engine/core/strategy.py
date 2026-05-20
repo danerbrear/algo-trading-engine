@@ -278,6 +278,24 @@ class Strategy(ABC):
             return False
         return position.stop_loss_hit(self.stop_loss, exit_price)
 
+    def warm_up_indicators(self) -> None:
+        """Replay historical bars through all indicators so they have values
+        at every datetime, matching backtest behavior.
+
+        Should be called after set_data() and before the first on_new_date() in
+        contexts where the engine does not iterate through every bar (e.g. paper
+        trading, Lambda).
+        """
+        if self.data is None or self.data.empty or not self.indicators:
+            return
+        for date in self.data.index:
+            for indicator in self.indicators:
+                indicator.update(date, self.data)
+        get_logger().info(
+            f"Indicator warm-up complete: {len(self.indicators)} indicator(s), "
+            f"{len(self.data)} bar(s)"
+        )
+
     def _update_indicators(self, date: datetime) -> bool:
         """
         Update the indicators for the strategy.
@@ -290,6 +308,8 @@ class Strategy(ABC):
         """
         for indicator in self.indicators:
             try:
+                if date in indicator._values.index:
+                    continue
                 indicator.update(date, self.data)
             except Exception as e:
                 get_logger().error(f"Error updating indicator {indicator.name}: {e}")
