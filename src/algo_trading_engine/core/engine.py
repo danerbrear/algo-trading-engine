@@ -529,6 +529,14 @@ class PaperTradingEngine(TradingEngine):
             raise ValueError(f"Failed to fetch data for {config.symbol}")
         get_logger().info(f"Fetched {len(data)} data points for {config.symbol} from {data.index[0]} to {data.index[-1]}")
 
+        from algo_trading_engine.common.ml_pipeline import (
+            is_credit_spread_strategy,
+            prepare_credit_spread_backtest_data,
+        )
+
+        if is_credit_spread_strategy(config.strategy_type):
+            data = prepare_credit_spread_backtest_data(data, retriever, config.symbol)
+
         strategy.set_data(data, retriever.treasury_rates)
         strategy.warm_up_indicators()
 

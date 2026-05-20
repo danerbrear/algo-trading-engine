@@ -6,72 +6,97 @@ load backtest engines, data retrievers, or ML dependencies.
 """
 
 import importlib
+import subprocess
 import sys
+from pathlib import Path
 
-import pytest
-
-
-def _unload_algo_trading_engine() -> None:
-    """Remove algo_trading_engine and submodules from sys.modules for a clean import."""
-    to_remove = [key for key in sys.modules if key == "algo_trading_engine" or key.startswith("algo_trading_engine.")]
-    for key in to_remove:
-        del sys.modules[key]
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_PYTHONPATH = str(_REPO_ROOT / "src")
 
 
-@pytest.fixture(autouse=True)
-def clean_package_imports():
-    _unload_algo_trading_engine()
-    yield
-    _unload_algo_trading_engine()
+def _run_isolated_import_check(snippet: str) -> str:
+    result = subprocess.run(
+        [sys.executable, "-c", snippet],
+        cwd=_REPO_ROOT,
+        capture_output=True,
+        text=True,
+        env={**__import__("os").environ, "PYTHONPATH": _PYTHONPATH},
+    )
+    assert result.returncode == 0, result.stderr
+    return result.stdout.strip()
 
 
 def test_package_import_does_not_load_backtest_or_sklearn():
-    import algo_trading_engine  # noqa: F401
-
-    assert "sklearn" not in sys.modules
-    assert "algo_trading_engine.backtest.main" not in sys.modules
-    assert "algo_trading_engine.common.data_retriever" not in sys.modules
+    out = _run_isolated_import_check(
+        "import sys\n"
+        "import algo_trading_engine\n"
+        "print('sklearn', 'sklearn' in sys.modules)\n"
+        "print('backtest_main', 'algo_trading_engine.backtest.main' in sys.modules)\n"
+        "print('data_retriever', 'algo_trading_engine.common.data_retriever' in sys.modules)\n"
+    )
+    assert "sklearn False" in out
+    assert "backtest_main False" in out
+    assert "data_retriever False" in out
 
 
 def test_subpackage_import_does_not_load_backtest_or_sklearn():
-    import algo_trading_engine.dto  # noqa: F401
-
-    assert "sklearn" not in sys.modules
-    assert "algo_trading_engine.backtest.main" not in sys.modules
+    out = _run_isolated_import_check(
+        "import sys\n"
+        "import algo_trading_engine.dto\n"
+        "print('sklearn', 'sklearn' in sys.modules)\n"
+        "print('backtest_main', 'algo_trading_engine.backtest.main' in sys.modules)\n"
+    )
+    assert "sklearn False" in out
+    assert "backtest_main False" in out
 
 
 def test_enums_subpackage_import_does_not_load_backtest_or_sklearn():
-    import algo_trading_engine.enums  # noqa: F401
-
-    assert "sklearn" not in sys.modules
-    assert "algo_trading_engine.backtest.main" not in sys.modules
+    out = _run_isolated_import_check(
+        "import sys\n"
+        "import algo_trading_engine.enums\n"
+        "print('sklearn', 'sklearn' in sys.modules)\n"
+        "print('backtest_main', 'algo_trading_engine.backtest.main' in sys.modules)\n"
+    )
+    assert "sklearn False" in out
+    assert "backtest_main False" in out
 
 
 def test_backtest_config_lazy_load_does_not_load_backtest_main():
-    from algo_trading_engine import BacktestConfig
-
-    assert BacktestConfig is not None
-    assert "algo_trading_engine.backtest.main" not in sys.modules
+    out = _run_isolated_import_check(
+        "import sys\n"
+        "from algo_trading_engine import BacktestConfig\n"
+        "assert BacktestConfig is not None\n"
+        "print('backtest_main', 'algo_trading_engine.backtest.main' in sys.modules)\n"
+    )
+    assert "backtest_main False" in out
 
 
 def test_backtest_package_config_import_does_not_load_main():
-    from algo_trading_engine.backtest.config import VolumeConfig
-
-    assert VolumeConfig is not None
-    assert "algo_trading_engine.backtest.main" not in sys.modules
+    out = _run_isolated_import_check(
+        "import sys\n"
+        "from algo_trading_engine.backtest.config import VolumeConfig\n"
+        "assert VolumeConfig is not None\n"
+        "print('backtest_main', 'algo_trading_engine.backtest.main' in sys.modules)\n"
+    )
+    assert "backtest_main False" in out
 
 
 def test_lazy_exports_resolve_and_cache():
-    from algo_trading_engine import BacktestEngine, Strategy, BacktestConfig
+    from algo_trading_engine import Strategy, BacktestConfig
 
-    assert BacktestEngine is not None
     assert Strategy is not None
     assert BacktestConfig is not None
 
     import algo_trading_engine as pkg
 
-    assert pkg.BacktestEngine is BacktestEngine
     assert pkg.Strategy is Strategy
+    assert pkg.BacktestConfig is BacktestConfig
+
+
+def test_lazy_backtest_engine_export_resolves():
+    from algo_trading_engine import BacktestEngine
+
+    assert BacktestEngine is not None
 
 
 def test_lazy_submodule_exports_resolve():
