@@ -328,3 +328,47 @@ class TestSMAIndicatorMultiplePeriods:
         assert sma_5.value == pytest.approx(8.0)
         # SMA_10 of all: mean(1..10) = 5.5
         assert sma_10.value == pytest.approx(5.5)
+
+
+class TestSMAGetValueAtBehavior:
+    """Verify that get_value_at only returns values for bars that have been
+    explicitly updated — mirrors the ATR equivalent for SMA."""
+
+    def _hourly_data(self, n=10):
+        dates = pd.date_range(start="2026-05-19 09:30:00", periods=n, freq="h")
+        return pd.DataFrame(
+            {
+                "Open": [500 + i for i in range(n)],
+                "High": [510 + i for i in range(n)],
+                "Low": [490 + i for i in range(n)],
+                "Close": [500 + i for i in range(n)],
+                "Volume": [1_000_000] * n,
+            },
+            index=dates,
+        )
+
+    def test_all_bars_updated_has_historical_values(self):
+        """Iterating every bar stores values at every qualifying bar."""
+        sma = SMAIndicator(period=5, period_unit=BarTimeInterval.HOUR)
+        data = self._hourly_data()
+        for date in data.index:
+            sma.update(date, data)
+        for bar in data.index[sma.warm_up_period - 1:]:
+            assert sma.get_value_at(bar) is not None
+
+    def test_single_update_only_stores_one_value(self):
+        """A single update() at the latest bar stores exactly one entry."""
+        sma = SMAIndicator(period=5, period_unit=BarTimeInterval.HOUR)
+        data = self._hourly_data()
+        latest = data.index[-1]
+        sma.update(latest, data)
+        stored = sma.get_values()
+        assert len(stored) == 1
+        assert latest in stored.index
+
+    def test_single_update_missing_historical_values(self):
+        """A single update at the latest bar does not populate earlier bars."""
+        sma = SMAIndicator(period=5, period_unit=BarTimeInterval.HOUR)
+        data = self._hourly_data()
+        sma.update(data.index[-1], data)
+        assert sma.get_value_at(data.index[5]) is None

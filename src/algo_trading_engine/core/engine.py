@@ -530,6 +530,7 @@ class PaperTradingEngine(TradingEngine):
         get_logger().info(f"Fetched {len(data)} data points for {config.symbol} from {data.index[0]} to {data.index[-1]}")
 
         strategy.set_data(data, retriever.treasury_rates)
+        strategy.warm_up_indicators()
 
         engine = cls(
             strategy=strategy,

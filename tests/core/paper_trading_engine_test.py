@@ -509,6 +509,41 @@ class TestPaperTradingEngineFromConfig:
         assert mock_data_retriever.call_args[1]['lstm_start_date'] == '2024-06-01'
         mock_retriever_instance.fetch_data_for_period.assert_called_once_with('2024-06-01')
 
+    @patch('algo_trading_engine.common.options_handler.OptionsHandler')
+    @patch('algo_trading_engine.common.data_retriever.DataRetriever')
+    def test_from_config_calls_warm_up_indicators(
+        self, mock_data_retriever, mock_options_handler
+    ):
+        """from_config must call strategy.warm_up_indicators() after set_data."""
+        mock_strategy = MagicMock()
+        mock_strategy.set_data = Mock()
+        mock_strategy.warm_up_indicators = Mock()
+        mock_strategy.options_handler = None
+        mock_strategy.warm_up_period = 0
+        mock_strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(0))
+
+        mock_retriever_instance = MagicMock()
+        mock_retriever_instance.treasury_rates = None
+        mock_retriever_instance.fetch_data_for_period.return_value = pd.DataFrame({
+            'Close': [500.0] * 10,
+            'Open': [499.0] * 10,
+            'High': [501.0] * 10,
+            'Low': [498.0] * 10,
+        }, index=pd.date_range('2025-01-01', periods=10, freq='D'))
+        mock_data_retriever.return_value = mock_retriever_instance
+
+        config = PaperTradingConfig(
+            symbol='SPY',
+            strategy_type=mock_strategy,
+            api_key='test_key',
+            use_free_tier=True,
+        )
+
+        PaperTradingEngine.from_config(config)
+
+        mock_strategy.set_data.assert_called_once()
+        mock_strategy.warm_up_indicators.assert_called_once()
+
 
 class TestCustomDecisionStore:
     """Test that a custom DecisionStore passed via PaperTradingConfig is used by the engine."""
