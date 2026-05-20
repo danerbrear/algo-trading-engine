@@ -75,7 +75,7 @@ class SMAIndicator(Indicator):
         filtered = data[data.index <= date]
 
         if len(filtered) < self.period:
-            get_logger().warning(f"Not enough data to calculate SMA for {date}")
+            get_logger().debug(f"Not enough data to calculate SMA for {date}")
             return
 
         sma_value = filtered[self.column].iloc[-self.period:].mean()
