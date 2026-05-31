@@ -73,13 +73,24 @@ def _make_price_data(start, periods, base_price=100.0):
     }, index=pd.date_range(start, periods=periods, freq='D'))
 
 
+def _passthrough_credit_spread_ml_prep(data, _retriever, _symbol):
+    """Avoid calendar/HMM I/O when unit-testing BacktestEngine.from_config."""
+    return data
+
+
 class TestBacktestEngineBenchmarkFromConfig:
     """Test BacktestEngine.from_config with benchmark_ticker."""
 
+    @patch(
+        'algo_trading_engine.common.ml_pipeline.prepare_credit_spread_backtest_data',
+        side_effect=_passthrough_credit_spread_ml_prep,
+    )
     @patch('algo_trading_engine.backtest.main.DataRetriever')
     @patch('algo_trading_engine.backtest.main.OptionsHandler')
     @patch('algo_trading_engine.backtest.main.create_strategy_from_args')
-    def test_no_benchmark_ticker_uses_trading_data(self, mock_create_strategy, mock_options_handler, mock_data_retriever):
+    def test_no_benchmark_ticker_uses_trading_data(
+        self, mock_create_strategy, mock_options_handler, mock_data_retriever, _mock_ml_prep
+    ):
         """When benchmark_ticker is None, benchmark uses trading symbol data."""
         mock_strategy = Mock()
         mock_strategy.set_data = Mock()
@@ -105,10 +116,16 @@ class TestBacktestEngineBenchmarkFromConfig:
         # Only one DataRetriever should have been constructed (for trading data)
         assert mock_data_retriever.call_count == 1
 
+    @patch(
+        'algo_trading_engine.common.ml_pipeline.prepare_credit_spread_backtest_data',
+        side_effect=_passthrough_credit_spread_ml_prep,
+    )
     @patch('algo_trading_engine.backtest.main.DataRetriever')
     @patch('algo_trading_engine.backtest.main.OptionsHandler')
     @patch('algo_trading_engine.backtest.main.create_strategy_from_args')
-    def test_benchmark_ticker_same_as_symbol_skips_extra_fetch(self, mock_create_strategy, mock_options_handler, mock_data_retriever):
+    def test_benchmark_ticker_same_as_symbol_skips_extra_fetch(
+        self, mock_create_strategy, mock_options_handler, mock_data_retriever, _mock_ml_prep
+    ):
         """When benchmark_ticker equals symbol, no extra data fetch is made."""
         mock_strategy = Mock()
         mock_strategy.set_data = Mock()
@@ -134,10 +151,16 @@ class TestBacktestEngineBenchmarkFromConfig:
         assert engine.benchmark_data is None
         assert mock_data_retriever.call_count == 1
 
+    @patch(
+        'algo_trading_engine.common.ml_pipeline.prepare_credit_spread_backtest_data',
+        side_effect=_passthrough_credit_spread_ml_prep,
+    )
     @patch('algo_trading_engine.backtest.main.DataRetriever')
     @patch('algo_trading_engine.backtest.main.OptionsHandler')
     @patch('algo_trading_engine.backtest.main.create_strategy_from_args')
-    def test_different_benchmark_ticker_fetches_separate_data(self, mock_create_strategy, mock_options_handler, mock_data_retriever):
+    def test_different_benchmark_ticker_fetches_separate_data(
+        self, mock_create_strategy, mock_options_handler, mock_data_retriever, _mock_ml_prep
+    ):
         """When benchmark_ticker differs from symbol, a second DataRetriever fetches benchmark data."""
         mock_strategy = Mock()
         mock_strategy.set_data = Mock()
@@ -179,10 +202,16 @@ class TestBacktestEngineBenchmarkFromConfig:
         second_call_kwargs = mock_data_retriever.call_args_list[1][1]
         assert second_call_kwargs['symbol'] == 'SPY'
 
+    @patch(
+        'algo_trading_engine.common.ml_pipeline.prepare_credit_spread_backtest_data',
+        side_effect=_passthrough_credit_spread_ml_prep,
+    )
     @patch('algo_trading_engine.backtest.main.DataRetriever')
     @patch('algo_trading_engine.backtest.main.OptionsHandler')
     @patch('algo_trading_engine.backtest.main.create_strategy_from_args')
-    def test_benchmark_fetch_failure_falls_back(self, mock_create_strategy, mock_options_handler, mock_data_retriever):
+    def test_benchmark_fetch_failure_falls_back(
+        self, mock_create_strategy, mock_options_handler, mock_data_retriever, _mock_ml_prep
+    ):
         """When benchmark data fetch fails, engine falls back to trading data."""
         mock_strategy = Mock()
         mock_strategy.set_data = Mock()
