@@ -20,6 +20,9 @@ from algo_trading_engine.dto.options_dtos import (
     ExpirationRangeDTO,
     OptionsChainDTO,
 )
+from algo_trading_engine.dto.volatility_term_structure_dtos import (
+    ImpliedForwardVarianceTermStructureDTO,
+)
 
 # Define public API
 __all__ = [
@@ -28,4 +31,5 @@ __all__ = [
     "StrikeRangeDTO",
     "ExpirationRangeDTO",
     "OptionsChainDTO",
+    "ImpliedForwardVarianceTermStructureDTO",
 ]
