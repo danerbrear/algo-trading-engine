@@ -1,32 +1,13 @@
 import yfinance as yf
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import StandardScaler
 from datetime import datetime
-import os
-import sys
-import os
 from typing import Optional
-# Add the algo_trading_engine directory to the path for imports
-current_dir = os.path.dirname(os.path.abspath(__file__))
-package_dir = os.path.join(current_dir, '..')
-sys.path.insert(0, package_dir)
 
-# Add try/except for linter compatibility
-try:
-    from algo_trading_engine.ml_models.market_state_classifier import MarketStateClassifier
-    from algo_trading_engine.ml_models.calendar_features import CalendarFeatureProcessor
-    from algo_trading_engine.common.cache.cache_manager import CacheManager
-except ImportError:
-    # Fallback for direct script execution
-    sys.path.insert(0, os.path.join(package_dir, '..'))
-    from algo_trading_engine.ml_models.market_state_classifier import MarketStateClassifier
-    from algo_trading_engine.ml_models.calendar_features import CalendarFeatureProcessor
-    from algo_trading_engine.common.cache.cache_manager import CacheManager
+from algo_trading_engine.common.cache.cache_manager import CacheManager
 from algo_trading_engine.common.logger import get_logger
 from algo_trading_engine.common.models import TreasuryRates
 from algo_trading_engine.enums import BarTimeInterval
-from pathlib import Path
 
 class DataRetriever:
     """Handles data retrieval, feature calculation, and preparation for LSTM and HMM models."""
@@ -57,7 +38,6 @@ class DataRetriever:
         self.lstm_start_date = lstm_start_date
         self.start_date = lstm_start_date  # Backward compatibility
         self.bar_interval = bar_interval
-        self.scaler = StandardScaler()
         self.data = None
         self.hmm_data = None  # Separate data for HMM training
         self.lstm_data = None  # Separate data for LSTM training
@@ -65,7 +45,6 @@ class DataRetriever:
         self.ticker = None
         self.use_cache = use_cache
         self.cache_manager = CacheManager(create_dirs=use_cache)
-        self.calendar_processor = None  # Initialize lazily when needed
         self.treasury_rates: Optional[TreasuryRates] = None  # Store treasury rates data
     
     def _get_yfinance_interval(self) -> str:
@@ -216,44 +195,6 @@ class DataRetriever:
         
         result = pd.concat(dfs).sort_index()
         return result
-
-    def prepare_data_for_lstm(self, sequence_length=60, state_classifier=None):
-        """Prepare data for LSTM model with basic features (no options features)
-        
-        Note: This method now only prepares basic technical and calendar features.
-        Options-specific features should be calculated by the strategy that needs them
-        (e.g., CreditSpreadStrategy.__init__).
-        
-        Args:
-            sequence_length: Length of sequences for LSTM
-            state_classifier: Trained MarketStateClassifier instance for market state prediction
-            
-        Returns:
-            pd.DataFrame: DataFrame with calculated features for LSTM training
-        """
-        get_logger().info(f"Phase 1: Preparing LSTM training data from {self.lstm_start_date}")
-        # Fetch LSTM training data (more recent data for options trading)
-        self.lstm_data = self.fetch_data_for_period(self.lstm_start_date)
-        self.calculate_features_for_data(self.lstm_data)
-
-        get_logger().info("Phase 2: Applying trained HMM to LSTM data")
-        # Apply the trained HMM to the LSTM data
-        if state_classifier is not None:
-            self.lstm_data['Market_State'] = state_classifier.predict_states(self.lstm_data)
-        else:
-            get_logger().warning("No state classifier provided, skipping market state prediction")
-            self.lstm_data['Market_State'] = 0  # Default state
-
-        get_logger().info("Phase 3: Adding economic calendar features")
-        # Add all calendar features at once (CPI and CC)
-        if self.calendar_processor is None:
-            self.calendar_processor = CalendarFeatureProcessor()
-        self.lstm_data = self.calendar_processor.calculate_all_features(self.lstm_data)
-
-        # Use LSTM data as the main dataset for training
-        self.data = self.lstm_data
-
-        return self.lstm_data
 
     def _fetch_bars_from_api(self, start_date: str, end_date: str) -> pd.DataFrame:
         """

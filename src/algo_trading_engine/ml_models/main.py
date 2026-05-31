@@ -44,19 +44,10 @@ class StockPredictor:
 
     def prepare_data(self):
         """Prepare the data for training"""
-        # First prepare HMM training data and train the HMM model
-        print(f"\n📈 Phase 1: Preparing HMM training data from {self.data_retriever.hmm_start_date}")
-        hmm_data = self.data_retriever.fetch_data_for_period(self.data_retriever.hmm_start_date)
-        self.data_retriever.calculate_features_for_data(hmm_data)
-        
-        print(f"\n🎯 Phase 2: Training HMM on market data ({len(hmm_data)} samples)")
-        from algo_trading_engine.ml_models.market_state_classifier import MarketStateClassifier
-        self.state_classifier = MarketStateClassifier()
-        states = self.state_classifier.train_hmm_model(hmm_data)
-        print(f"✅ HMM model trained with {states} optimal states")
-        
-        # Then fetch and prepare the data for LSTM
-        self.data_retriever.prepare_data_for_lstm(state_classifier=self.state_classifier)
+        from algo_trading_engine.common.ml_pipeline import prepare_training_data
+
+        self.state_classifier = prepare_training_data(self.data_retriever)
+        print(f"✅ HMM model trained with {self.state_classifier.n_states} optimal states")
 
         # Initialize LSTM model with data preparation capabilities
         # Note: n_features will be determined dynamically in prepare_data()

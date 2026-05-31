@@ -106,16 +106,15 @@ class CreditSpreadStrategyBuilder(StrategyBuilder):
         if not self._symbol:
             raise ValueError("Symbol is required for CreditSpreadStrategy. Use set_symbol() to provide it.")
         
-        # Load LSTM model and scaler if not already provided
+        # Load LSTM model and scaler if not already provided (ML pipeline entry point)
         if self._lstm_model is None or self._lstm_scaler is None:
             try:
-                from ..common.functions import get_model_directory, load_lstm_model
+                from ..common.ml_pipeline import load_credit_spread_models
             except ImportError:
-                from algo_trading_engine.common.functions import get_model_directory, load_lstm_model
-            
-            model_dir = get_model_directory(symbol=self._symbol)
+                from algo_trading_engine.common.ml_pipeline import load_credit_spread_models
+
             try:
-                self._lstm_model, self._lstm_scaler = load_lstm_model(model_dir, return_lstm_instance=True)
+                self._lstm_model, self._lstm_scaler = load_credit_spread_models(self._symbol)
             except Exception as e:
                 raise ValueError(f"Failed to load LSTM model for symbol {self._symbol}: {e}")
         

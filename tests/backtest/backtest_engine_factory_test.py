@@ -14,13 +14,22 @@ from algo_trading_engine.models.config import BacktestConfig
 from algo_trading_engine.backtest.config import VolumeConfig
 
 
+def _passthrough_credit_spread_ml_prep(data, _retriever, _symbol):
+    """Avoid calendar/HMM I/O when unit-testing BacktestEngine.from_config."""
+    return data
+
+
 class TestBacktestEngineFactory:
     """Test BacktestEngine.from_config() factory method."""
     
+    @patch(
+        'algo_trading_engine.common.ml_pipeline.prepare_credit_spread_backtest_data',
+        side_effect=_passthrough_credit_spread_ml_prep,
+    )
     @patch('algo_trading_engine.backtest.main.DataRetriever')
     @patch('algo_trading_engine.backtest.main.OptionsHandler')
     @patch('algo_trading_engine.backtest.main.create_strategy_from_args')
-    def test_from_config_with_strategy_name(self, mock_create_strategy, mock_options_handler, mock_data_retriever):
+    def test_from_config_with_strategy_name(self, mock_create_strategy, mock_options_handler, mock_data_retriever, _mock_ml_prep):
         """Test factory method with strategy name string."""
         # Setup mocks
         mock_strategy = Mock()
@@ -78,7 +87,8 @@ class TestBacktestEngineFactory:
 
         # Verify strategy.set_data was called
         mock_strategy.set_data.assert_called_once()
-        
+        _mock_ml_prep.assert_called_once()
+
         # Verify engine was created correctly
         assert engine.initial_capital == 100000
         assert engine.start_date == datetime(2024, 1, 1)
@@ -136,11 +146,15 @@ class TestBacktestEngineFactory:
         # Verify strategy.set_data was called
         mock_strategy.set_data.assert_called_once()
     
+    @patch(
+        'algo_trading_engine.common.ml_pipeline.prepare_credit_spread_backtest_data',
+        side_effect=_passthrough_credit_spread_ml_prep,
+    )
     @patch('algo_trading_engine.backtest.main.create_strategy_from_args')
     @patch('algo_trading_engine.backtest.main.OptionsHandler')
     @patch('algo_trading_engine.backtest.main.DataRetriever')
     def test_from_config_data_fetch_failure(
-        self, mock_data_retriever, mock_options_handler, mock_create_strategy
+        self, mock_data_retriever, mock_options_handler, mock_create_strategy, _mock_ml_prep
     ):
         """Test factory method handles data fetch failure (after strategy is constructed)."""
         mock_strategy = Mock()
@@ -167,10 +181,14 @@ class TestBacktestEngineFactory:
         with pytest.raises(ValueError, match="Failed to fetch data"):
             BacktestEngine.from_config(config)
     
+    @patch(
+        'algo_trading_engine.common.ml_pipeline.prepare_credit_spread_backtest_data',
+        side_effect=_passthrough_credit_spread_ml_prep,
+    )
     @patch('algo_trading_engine.backtest.main.DataRetriever')
     @patch('algo_trading_engine.backtest.main.OptionsHandler')
     @patch('algo_trading_engine.backtest.main.create_strategy_from_args')
-    def test_from_config_with_all_options(self, mock_create_strategy, mock_options_handler, mock_data_retriever):
+    def test_from_config_with_all_options(self, mock_create_strategy, mock_options_handler, mock_data_retriever, _mock_ml_prep):
         """Test factory method with all optional parameters."""
         # Setup mocks
         mock_strategy = Mock()

@@ -11,6 +11,7 @@ from .models import Benchmark
 from algo_trading_engine.common.models import StrategyType
 from algo_trading_engine.vo import Position
 from algo_trading_engine.common.data_retriever import DataRetriever
+from algo_trading_engine.common.ml_pipeline import is_credit_spread_strategy
 from .config import VolumeConfig, VolumeStats
 from algo_trading_engine.models import OverallPerformanceStats, StrategyPerformanceStats
 from algo_trading_engine.common.logger import configure_logger, get_logger, log_and_echo
@@ -158,6 +159,11 @@ class BacktestEngine(TradingEngine):
 
         if data is None or len(data) == 0:
             raise ValueError(f"Failed to fetch data for {config.symbol} from {config.start_date.date()} to {config.end_date.date()}")
+
+        if is_credit_spread_strategy(config.strategy_type):
+            from algo_trading_engine.common.ml_pipeline import prepare_credit_spread_backtest_data
+
+            data = prepare_credit_spread_backtest_data(data, retriever, config.symbol)
 
         # Internal: Set data on strategy
         strategy.set_data(data, retriever.treasury_rates)

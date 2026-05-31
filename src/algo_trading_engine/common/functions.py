@@ -4,7 +4,7 @@ Common utility functions used across the project.
 
 import os
 import pickle
-from algo_trading_engine.ml_models.market_state_classifier import MarketStateClassifier
+
 
 def load_hmm_model(model_dir):
     """
@@ -24,6 +24,8 @@ def load_hmm_model(model_dir):
     if not os.path.exists(hmm_path):
         raise FileNotFoundError(f"HMM model not found at {hmm_path}")
     try:
+        from algo_trading_engine.ml_models.market_state_classifier import MarketStateClassifier
+
         with open(hmm_path, 'rb') as f:
             hmm_data = pickle.load(f)
         hmm_model = MarketStateClassifier(max_states=hmm_data['max_states'])
