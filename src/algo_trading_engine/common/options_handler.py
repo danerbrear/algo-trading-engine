@@ -22,6 +22,7 @@ from algo_trading_engine.enums import BarTimeInterval
 from .models import OptionType
 from ..ml_models.api_retry_handler import APIRetryHandler
 from .progress_tracker import progress_print
+from algo_trading_engine.common.logger import get_logger
 
 # Load environment variables
 load_dotenv()
@@ -552,14 +553,19 @@ class OptionsHandler:
 
             def fetch_func():
                 limit_val = 5000 if timespan == "hour" else 1
-                bars_response = self.client.get_aggs(
-                    ticker=contract.ticker,
-                    multiplier=multiplier,
-                    timespan=timespan,
-                    from_=from_str,
-                    to=to_str,
-                    limit=limit_val
+                aggs_params = {
+                    "ticker": contract.ticker,
+                    "multiplier": multiplier,
+                    "timespan": timespan,
+                    "from_": from_str,
+                    "to": to_str,
+                    "limit": limit_val,
+                }
+                get_logger().debug(
+                    "Polygon get_aggs request params: %s",
+                    aggs_params,
                 )
+                bars_response = self.client.get_aggs(**aggs_params)
                 bars_list = list(bars_response)
                 progress_print(f"✅ Fetched {len(bars_list)} bars from API for {contract.ticker} on {dt.date()}")
                 return bars_list
