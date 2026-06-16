@@ -809,18 +809,35 @@ class OptionsHandler:
             return None
 
     @staticmethod
+    def _last_trade_age(last_trade) -> Optional[timedelta]:
+        """Age of last_trade from sip_timestamp, or None if unavailable."""
+        if last_trade is None:
+            return None
+        ts_ns = getattr(last_trade, 'sip_timestamp', None)
+        if ts_ns is None:
+            return None
+        trade_time = datetime.fromtimestamp(ts_ns / 1_000_000_000)
+        return datetime.now() - trade_time
+
+    @staticmethod
     def _last_trade_is_fresh(
         last_trade,
         max_age: timedelta = SNAPSHOT_LAST_TRADE_MAX_AGE,
     ) -> bool:
         """True when last_trade has a sip_timestamp within max_age of now."""
-        if last_trade is None:
-            return False
-        ts_ns = getattr(last_trade, 'sip_timestamp', None)
-        if ts_ns is None:
-            return False
-        trade_time = datetime.fromtimestamp(ts_ns / 1_000_000_000)
-        return datetime.now() - trade_time <= max_age
+        age = OptionsHandler._last_trade_age(last_trade)
+        return age is not None and age <= max_age
+
+    @staticmethod
+    def _format_trade_age(age: timedelta) -> str:
+        total_seconds = int(age.total_seconds())
+        if total_seconds < 60:
+            return f"{total_seconds}s"
+        minutes, seconds = divmod(total_seconds, 60)
+        if minutes < 60:
+            return f"{minutes}m {seconds}s"
+        hours, minutes = divmod(minutes, 60)
+        return f"{hours}h {minutes}m"
 
     @staticmethod
     def _snapshot_close_price(
@@ -842,14 +859,25 @@ class OptionsHandler:
 
         if last_trade is not None:
             trade_price = getattr(last_trade, 'price', None)
-            if trade_price is not None and OptionsHandler._last_trade_is_fresh(last_trade):
+            trade_age = OptionsHandler._last_trade_age(last_trade)
+            if (
+                trade_price is not None
+                and trade_age is not None
+                and trade_age <= SNAPSHOT_LAST_TRADE_MAX_AGE
+            ):
+                get_logger().info(
+                    "Using last_trade.price ({}) for {}; trade age {}",
+                    trade_price,
+                    ticker,
+                    OptionsHandler._format_trade_age(trade_age),
+                )
                 return float(trade_price)
 
         if day is not None:
             day_close = getattr(day, 'close', None)
             if day_close is not None:
                 get_logger().info(
-                    "Using day.close (%s) for %s; last_quote unavailable and "
+                    "Using day.close ({}) for {}; last_quote unavailable and "
                     "last_trade missing, stale (>1h), or has no sip_timestamp",
                     day_close,
                     ticker,

@@ -99,9 +99,16 @@ class TestSnapshotClosePrice:
 
     def test_falls_back_to_last_trade_when_fresh(self):
         snapshot = _make_snapshot(trade_price=19.5, day_close=20.0, include_day=True)
-        assert OptionsHandler._snapshot_close_price(
-            snapshot.last_quote, snapshot.last_trade, snapshot.day
-        ) == pytest.approx(19.5)
+        with patch("algo_trading_engine.common.options_handler.get_logger") as mock_logger:
+            price = OptionsHandler._snapshot_close_price(
+                snapshot.last_quote,
+                snapshot.last_trade,
+                snapshot.day,
+                ticker="O:SPY211119C00045000",
+            )
+        assert price == pytest.approx(19.5)
+        mock_logger.return_value.info.assert_called_once()
+        assert "last_trade.price" in mock_logger.return_value.info.call_args[0][0]
 
     def test_falls_back_to_day_close_when_no_quote_or_trade(self):
         snapshot = _make_snapshot(day_close=18.75, include_day=True)
