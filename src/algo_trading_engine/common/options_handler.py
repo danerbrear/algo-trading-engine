@@ -30,6 +30,9 @@ load_dotenv()
 # Preserve date class reference for type validation (param 'date' shadows it in methods)
 _date_class = date
 
+# Reject snapshot last_trade prices older than this when resolving live option marks.
+SNAPSHOT_LAST_TRADE_MAX_AGE = timedelta(hours=1)
+
 
 class OptionsHandler:
     """
@@ -76,8 +79,9 @@ class OptionsHandler:
             '_cache_contracts', '_cache_bar', '_get_cache_stats',
             '_cached_contracts_satisfy_criteria', '_merge_contracts',
             '_apply_contract_filters', '_fetch_contracts_from_api',
-            '_fetch_bar_from_api', '_convert_api_contract_to_dto',
-            '_convert_api_bar_to_dto'
+            '_fetch_bar_from_api', '_fetch_snapshot_from_api',
+            '_convert_api_contract_to_dto', '_convert_api_bar_to_dto',
+            '_convert_snapshot_to_dto'
         }
         
         # Check if the requested attribute is a private method
@@ -258,7 +262,34 @@ class OptionsHandler:
         
         progress_print(f"⚠️  No bar data received from API for {contract.ticker} on {date_obj}")
         return None
-    
+
+    def get_option_snapshot(self, contract: OptionContractDTO) -> Optional[OptionBarDTO]:
+        """
+        Get near-real-time price data for an option contract via Polygon snapshot endpoint.
+
+        Prefer this over get_option_bar for live/current-day pricing in paper trading.
+        Not cached — always fetches fresh data from the API.
+
+        Args:
+            contract: The option contract
+
+        Returns:
+            OptionBarDTO if snapshot data is available, None otherwise
+        """
+        if not hasattr(contract, 'ticker'):
+            return None
+
+        progress_print(f"🔄 Fetching snapshot for {contract.ticker}...")
+        snapshot = self._fetch_snapshot_from_api(contract)
+        if snapshot:
+            bar = self._convert_snapshot_to_dto(contract.ticker, snapshot)
+            if bar:
+                progress_print(f"✅ Snapshot data received for {contract.ticker}")
+                return bar
+
+        progress_print(f"⚠️  No snapshot data received for {contract.ticker}")
+        return None
+
     def get_options_chain(
         self, 
         date: datetime, 
@@ -609,7 +640,21 @@ class OptionsHandler:
         except Exception as e:
             progress_print(f"❌ Error fetching bar data from API for {contract.ticker} on {dt.date()}: {e}")
             return None
-    
+
+    def _fetch_snapshot_from_api(self, contract: OptionContractDTO):
+        """Fetch option contract snapshot from Polygon.io API."""
+        try:
+            def fetch_func():
+                return self.client.get_snapshot_option(self.symbol, contract.ticker)
+
+            return self.api_retry_handler.fetch_with_retry(
+                fetch_func,
+                f"Error fetching snapshot for {contract.ticker}",
+            )
+        except Exception as e:
+            progress_print(f"❌ Error fetching snapshot for {contract.ticker}: {e}")
+            return None
+
     def _convert_api_contract_to_dto(self, contract_data) -> Optional[OptionContractDTO]:
         """Convert API contract response to OptionContractDTO."""
         try:
@@ -713,3 +758,102 @@ class OptionsHandler:
         except Exception as e:
             progress_print(f"⚠️  Error converting bar data: {e}")
             return None
+
+    def _convert_snapshot_to_dto(self, ticker: str, snapshot) -> Optional[OptionBarDTO]:
+        """Convert Polygon option contract snapshot to OptionBarDTO."""
+        try:
+            last_quote = getattr(snapshot, 'last_quote', None)
+            last_trade = getattr(snapshot, 'last_trade', None)
+            day = getattr(snapshot, 'day', None)
+
+            close_price = self._snapshot_close_price(
+                last_quote, last_trade, day, ticker=ticker
+            )
+            if close_price is None:
+                return None
+
+            close_decimal = Decimal(str(close_price))
+
+            if day is not None:
+                open_price = getattr(day, 'open', None)
+                high_price = getattr(day, 'high', None)
+                low_price = getattr(day, 'low', None)
+                volume = getattr(day, 'volume', 0) or 0
+                vwap = getattr(day, 'vwap', None)
+                open_decimal = Decimal(str(open_price)) if open_price is not None else close_decimal
+                high_decimal = Decimal(str(high_price)) if high_price is not None else close_decimal
+                low_decimal = Decimal(str(low_price)) if low_price is not None else close_decimal
+                vwap_decimal = Decimal(str(vwap)) if vwap is not None else close_decimal
+            else:
+                progress_print(f"Warning: No day data available to hydrate option - {str(snapshot)}")
+                open_decimal = close_decimal
+                high_decimal = close_decimal
+                low_decimal = close_decimal
+                volume = 0
+                vwap_decimal = close_decimal
+
+            return OptionBarDTO(
+                ticker=ticker,
+                timestamp=datetime.now(),
+                open_price=open_decimal,
+                high_price=high_decimal,
+                low_price=low_decimal,
+                close_price=close_decimal,
+                volume=int(volume),
+                volume_weighted_avg_price=vwap_decimal,
+                number_of_transactions=1,
+                adjusted=True,
+            )
+        except Exception as e:
+            progress_print(f"⚠️  Error converting snapshot data: {e}")
+            return None
+
+    @staticmethod
+    def _last_trade_is_fresh(
+        last_trade,
+        max_age: timedelta = SNAPSHOT_LAST_TRADE_MAX_AGE,
+    ) -> bool:
+        """True when last_trade has a sip_timestamp within max_age of now."""
+        if last_trade is None:
+            return False
+        ts_ns = getattr(last_trade, 'sip_timestamp', None)
+        if ts_ns is None:
+            return False
+        trade_time = datetime.fromtimestamp(ts_ns / 1_000_000_000)
+        return datetime.now() - trade_time <= max_age
+
+    @staticmethod
+    def _snapshot_close_price(
+        last_quote,
+        last_trade,
+        day,
+        *,
+        ticker: str = "unknown",
+    ) -> Optional[float]:
+        """Resolve close price from snapshot: midpoint, bid/ask, fresh last trade, day close."""
+        if last_quote is not None:
+            midpoint = getattr(last_quote, 'midpoint', None)
+            if midpoint is not None:
+                return float(midpoint)
+            bid = getattr(last_quote, 'bid', None)
+            ask = getattr(last_quote, 'ask', None)
+            if bid is not None and ask is not None:
+                return (float(bid) + float(ask)) / 2.0
+
+        if last_trade is not None:
+            trade_price = getattr(last_trade, 'price', None)
+            if trade_price is not None and OptionsHandler._last_trade_is_fresh(last_trade):
+                return float(trade_price)
+
+        if day is not None:
+            day_close = getattr(day, 'close', None)
+            if day_close is not None:
+                get_logger().info(
+                    "Using day.close (%s) for %s; last_quote unavailable and "
+                    "last_trade missing, stale (>1h), or has no sip_timestamp",
+                    day_close,
+                    ticker,
+                )
+                return float(day_close)
+
+        return None

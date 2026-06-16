@@ -31,7 +31,10 @@ class Strategy(ABC):
         as instance attributes (set via strategy builder):
         
         - get_contract_list_for_date: Get list of option contracts for a specific date and symbol
-        - get_option_bar: Get bar data for a specific option contract on a specific date
+        - get_option_bar: Get historical bar data for an option contract on a specific date (/aggs)
+        - get_rt_option_bar: Get near-real-time bar data for an option contract via Polygon
+          snapshot. Only set during live/paper execution; None during backtesting. Use the
+          ``is_live`` property to branch between live and historical pricing.
         - get_options_chain: Get the full options chain for a symbol on a specific date
         - get_current_volumes_for_position: Get current volumes for an open position (position, date)
         - compute_exit_price: Compute the exit price for a position on a specific date
@@ -41,6 +44,7 @@ class Strategy(ABC):
     # These are set via the strategy builder and available for use in concrete strategies
     get_contract_list_for_date: Optional[Callable[[datetime, str], List['OptionContractDTO']]] = None
     get_option_bar: Optional[Callable[['OptionContractDTO', datetime], Optional['OptionBarDTO']]] = None
+    get_rt_option_bar: Optional[Callable[['OptionContractDTO'], Optional['OptionBarDTO']]] = None
     get_options_chain: Optional[Callable[[str, datetime, Optional['ExpirationRangeDTO'], Optional['StrikeRangeDTO'], Optional[BarTimeInterval], Optional[int]], 'OptionsChainDTO']] = None
     get_current_volumes_for_position: Optional[Callable[['Position', datetime], Optional[List[int]]]] = None
     compute_exit_price: Optional[Callable[['Position', datetime], Optional[float]]] = None
@@ -59,6 +63,34 @@ class Strategy(ABC):
         self.data: Optional[pd.DataFrame] = None
         self.treasury_data: Optional[TreasuryRates] = None
         self.indicators: List[Indicator] = []
+
+    @property
+    def is_live(self) -> bool:
+        """
+        True when running under live/paper execution (real-time option data available).
+
+        Determined by the presence of the ``get_rt_option_bar`` callable, which is injected
+        by ``PaperTradingEngine`` and left None by ``BacktestEngine``. Use this to branch
+        between near-real-time snapshot pricing and historical (/aggs) pricing.
+        """
+        return self.get_rt_option_bar is not None
+
+    def get_current_option_bar(
+        self,
+        contract: 'OptionContractDTO',
+        date: datetime,
+        timespan: BarTimeInterval = BarTimeInterval.DAY,
+    ) -> Optional['OptionBarDTO']:
+        """
+        Fetch an option bar for current valuation.
+
+        When live (paper), use the near-real-time Polygon snapshot (dateless). Otherwise use
+        the historical /aggs bar for ``date`` at the given ``timespan``. Centralizes the
+        live-vs-historical decision so call sites don't reimplement it.
+        """
+        if self.is_live and self.get_rt_option_bar is not None:
+            return self.get_rt_option_bar(contract)
+        return self.get_option_bar(contract, date, timespan=timespan)
 
     @property
     def warm_up_period(self) -> int:

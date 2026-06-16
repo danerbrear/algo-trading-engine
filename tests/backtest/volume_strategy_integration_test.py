@@ -132,7 +132,7 @@ class TestStrategyCurrentDateVolumeValidation:
         self.mock_options_handler.get_contract_list_for_date.side_effect = get_contracts_side_effect
         
         # Mock get_option_bar to return bars based on contract
-        def get_bar_side_effect(contract, date):
+        def get_bar_side_effect(contract, date, multiplier=1, timespan=None):
             if contract.strike_price.value == Decimal('500.0'):
                 return bar1
             elif contract.strike_price.value == Decimal('510.0'):
@@ -257,7 +257,7 @@ class TestStrategyCurrentDateVolumeValidation:
                 return [contract2]
             return []
         
-        def get_bar_side_effect(contract, date):
+        def get_bar_side_effect(contract, date, multiplier=1, timespan=None):
             if contract.strike_price.value == Decimal('500.0'):
                 return bar1  # Success
             elif contract.strike_price.value == Decimal('510.0'):

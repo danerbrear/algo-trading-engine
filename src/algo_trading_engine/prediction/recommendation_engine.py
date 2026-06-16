@@ -397,18 +397,9 @@ class InteractiveStrategyRecommender:
 
             atm_option, otm_option = position.spread_options
 
-            # If the date is the current date, try to fetch previous day's close data
-            # since end-of-day data may not be available yet (processed after 4:30 PM ET)
-            fetch_date = date
-            current_date = datetime.now().date()
-            if date.date() == current_date:
-                from datetime import timedelta
-                fetch_date = date - timedelta(days=1)
-                get_logger().info(f"Current date detected, fetching previous day's data: {fetch_date.strftime('%Y-%m-%d')}")
-
             # Get bar data for both options (optional; used for convenience only)
-            atm_bar = self.strategy.get_option_bar(atm_option, fetch_date)
-            otm_bar = self.strategy.get_option_bar(otm_option, fetch_date)
+            atm_bar = self.strategy.get_current_option_bar(atm_option, date)
+            otm_bar = self.strategy.get_current_option_bar(otm_option, date)
 
             if atm_bar and otm_bar:
                 # Bar data available: prompt per-leg with current prices and defaults on Enter
@@ -438,7 +429,7 @@ class InteractiveStrategyRecommender:
                 return exit_price
 
             # No bar data: still prompt once for net exit price (no current price, no default)
-            get_logger().warning(f"No bar data available for options on {fetch_date.strftime('%Y-%m-%d')}; prompting for net exit price only.")
+            get_logger().warning(f"No bar data available for options on {date.strftime('%Y-%m-%d')}; prompting for net exit price only.")
             net_input = input("Enter net exit price for spread: ").strip()
             if not net_input:
                 return None
@@ -455,17 +446,10 @@ class InteractiveStrategyRecommender:
                 return None
                 
             atm_option, otm_option = position.spread_options
-            
-            # If the date is the current date, try to fetch previous day's close data
-            fetch_date = date
-            current_date = datetime.now().date()
-            if date.date() == current_date:
-                from datetime import timedelta
-                fetch_date = date - timedelta(days=1)
-            
+
             # Get bar data for both options
-            atm_bar = self.strategy.get_option_bar(atm_option, fetch_date)
-            otm_bar = self.strategy.get_option_bar(otm_option, fetch_date)
+            atm_bar = self.strategy.get_current_option_bar(atm_option, date)
+            otm_bar = self.strategy.get_current_option_bar(otm_option, date)
             
             if not atm_bar or not otm_bar:
                 return None
