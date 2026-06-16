@@ -397,7 +397,7 @@ class PaperTradingEngine(TradingEngine):
                     pnl_pct = f"{s['pnl_percent']:.1%}" if s.get('pnl_percent') is not None else "N/A"
                     log_and_echo(
                         f"  - {s['symbol']} {s['strategy_type']} x{s['quantity']} | "
-                        f"Entry ${s['entry_price']:.2f}  Exit ${s['exit_price']:.2f} | "
+                        f"Entry ${s['entry_price']:.2f}  Exit (Last daily price) ${s['exit_price']:.2f} | "
                         f"P&L {pnl_dollars} ({pnl_pct}) | Held {s['days_held']}d  DTE {s['dte']}d"
                     )
                 log_and_echo("")
