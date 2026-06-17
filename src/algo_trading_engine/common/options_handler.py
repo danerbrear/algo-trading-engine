@@ -30,9 +30,6 @@ load_dotenv()
 # Preserve date class reference for type validation (param 'date' shadows it in methods)
 _date_class = date
 
-# Reject snapshot last_trade prices older than this when resolving live option marks.
-SNAPSHOT_LAST_TRADE_MAX_AGE = timedelta(hours=1)
-
 
 class OptionsHandler:
     """
@@ -760,37 +757,31 @@ class OptionsHandler:
             return None
 
     def _convert_snapshot_to_dto(self, ticker: str, snapshot) -> Optional[OptionBarDTO]:
-        """Convert Polygon option contract snapshot to OptionBarDTO."""
+        """Convert Polygon option contract snapshot to OptionBarDTO using day.close only."""
         try:
-            last_quote = getattr(snapshot, 'last_quote', None)
-            last_trade = getattr(snapshot, 'last_trade', None)
             day = getattr(snapshot, 'day', None)
-
-            close_price = self._snapshot_close_price(
-                last_quote, last_trade, day, ticker=ticker
-            )
-            if close_price is None:
+            if day is None:
+                progress_print(f"Warning: No day data available to hydrate option - {str(snapshot)}")
                 return None
+
+            close_price = getattr(day, 'close', None)
+            if close_price is None:
+                progress_print(f"Warning: No day.close available to hydrate option - {str(snapshot)}")
+                return None
+
+            get_logger().info("Using day.close ({}) for {}", close_price, ticker)
 
             close_decimal = Decimal(str(close_price))
 
-            if day is not None:
-                open_price = getattr(day, 'open', None)
-                high_price = getattr(day, 'high', None)
-                low_price = getattr(day, 'low', None)
-                volume = getattr(day, 'volume', 0) or 0
-                vwap = getattr(day, 'vwap', None)
-                open_decimal = Decimal(str(open_price)) if open_price is not None else close_decimal
-                high_decimal = Decimal(str(high_price)) if high_price is not None else close_decimal
-                low_decimal = Decimal(str(low_price)) if low_price is not None else close_decimal
-                vwap_decimal = Decimal(str(vwap)) if vwap is not None else close_decimal
-            else:
-                progress_print(f"Warning: No day data available to hydrate option - {str(snapshot)}")
-                open_decimal = close_decimal
-                high_decimal = close_decimal
-                low_decimal = close_decimal
-                volume = 0
-                vwap_decimal = close_decimal
+            open_price = getattr(day, 'open', None)
+            high_price = getattr(day, 'high', None)
+            low_price = getattr(day, 'low', None)
+            volume = getattr(day, 'volume', 0) or 0
+            vwap = getattr(day, 'vwap', None)
+            open_decimal = Decimal(str(open_price)) if open_price is not None else close_decimal
+            high_decimal = Decimal(str(high_price)) if high_price is not None else close_decimal
+            low_decimal = Decimal(str(low_price)) if low_price is not None else close_decimal
+            vwap_decimal = Decimal(str(vwap)) if vwap is not None else close_decimal
 
             return OptionBarDTO(
                 ticker=ticker,
@@ -807,81 +798,3 @@ class OptionsHandler:
         except Exception as e:
             progress_print(f"⚠️  Error converting snapshot data: {e}")
             return None
-
-    @staticmethod
-    def _last_trade_age(last_trade) -> Optional[timedelta]:
-        """Age of last_trade from sip_timestamp, or None if unavailable."""
-        if last_trade is None:
-            return None
-        ts_ns = getattr(last_trade, 'sip_timestamp', None)
-        if ts_ns is None:
-            return None
-        trade_time = datetime.fromtimestamp(ts_ns / 1_000_000_000)
-        return datetime.now() - trade_time
-
-    @staticmethod
-    def _last_trade_is_fresh(
-        last_trade,
-        max_age: timedelta = SNAPSHOT_LAST_TRADE_MAX_AGE,
-    ) -> bool:
-        """True when last_trade has a sip_timestamp within max_age of now."""
-        age = OptionsHandler._last_trade_age(last_trade)
-        return age is not None and age <= max_age
-
-    @staticmethod
-    def _format_trade_age(age: timedelta) -> str:
-        total_seconds = int(age.total_seconds())
-        if total_seconds < 60:
-            return f"{total_seconds}s"
-        minutes, seconds = divmod(total_seconds, 60)
-        if minutes < 60:
-            return f"{minutes}m {seconds}s"
-        hours, minutes = divmod(minutes, 60)
-        return f"{hours}h {minutes}m"
-
-    @staticmethod
-    def _snapshot_close_price(
-        last_quote,
-        last_trade,
-        day,
-        *,
-        ticker: str = "unknown",
-    ) -> Optional[float]:
-        """Resolve close price from snapshot: midpoint, bid/ask, fresh last trade, day close."""
-        if last_quote is not None:
-            midpoint = getattr(last_quote, 'midpoint', None)
-            if midpoint is not None:
-                return float(midpoint)
-            bid = getattr(last_quote, 'bid', None)
-            ask = getattr(last_quote, 'ask', None)
-            if bid is not None and ask is not None:
-                return (float(bid) + float(ask)) / 2.0
-
-        if last_trade is not None:
-            trade_price = getattr(last_trade, 'price', None)
-            trade_age = OptionsHandler._last_trade_age(last_trade)
-            if (
-                trade_price is not None
-                and trade_age is not None
-                and trade_age <= SNAPSHOT_LAST_TRADE_MAX_AGE
-            ):
-                get_logger().info(
-                    "Using last_trade.price ({}) for {}; trade age {}",
-                    trade_price,
-                    ticker,
-                    OptionsHandler._format_trade_age(trade_age),
-                )
-                return float(trade_price)
-
-        if day is not None:
-            day_close = getattr(day, 'close', None)
-            if day_close is not None:
-                get_logger().info(
-                    "Using day.close ({}) for {}; last_quote unavailable and "
-                    "last_trade missing, stale (>1h), or has no sip_timestamp",
-                    day_close,
-                    ticker,
-                )
-                return float(day_close)
-
-        return None
