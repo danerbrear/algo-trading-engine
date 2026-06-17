@@ -243,21 +243,32 @@ class TradingEngine(ABC):
                 get_logger().warning("get_option_bar is not callable")
                 return None
 
+            underlying_price = self.strategy.get_current_underlying_price(
+                date,
+                getattr(self.strategy, 'symbol', None),
+            )
+
             if len(position.spread_options) == 1:
                 option = position.spread_options[0]
                 bar = self._get_valuation_bar(option, date)
                 if not bar:
                     get_logger().warning(f"No bar data available for option: {option.ticker} on {date.date()}")
                     return None
-                return float(position.calculate_exit_price_from_bars(bar, bar))
+                exit_price = position.calculate_exit_price_from_bars(bar, bar, underlying_price)
+                return float(exit_price) if exit_price is not None else None
 
             atm_option, otm_option = position.spread_options
             atm_bar = self._get_valuation_bar(atm_option, date)
             otm_bar = self._get_valuation_bar(otm_option, date)
             if not atm_bar or not otm_bar:
-                get_logger().warning(f"No bar data available for options: {atm_option.ticker} and {otm_option.ticker} on {date.date()}")
-                return None
-            return float(position.calculate_exit_price_from_bars(atm_bar, otm_bar))
+                get_logger().warning(
+                    "Missing bar data for spread options {} and {} on {}; attempting robust resolution",
+                    atm_option.ticker,
+                    otm_option.ticker,
+                    date.date(),
+                )
+            exit_price = position.calculate_exit_price_from_bars(atm_bar, otm_bar, underlying_price)
+            return float(exit_price) if exit_price is not None else None
 
         except Exception as e:
             get_logger().warning(f"Error computing exit price: {e}")

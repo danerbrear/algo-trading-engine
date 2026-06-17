@@ -17,7 +17,9 @@ if TYPE_CHECKING:
 
 # Import from common models
 from algo_trading_engine.common.logger import get_logger
-from algo_trading_engine.common.models import Option, OptionChain
+from algo_trading_engine.common.models import Option, OptionChain, OptionType
+
+_SPREAD_VALUE_TOLERANCE = 0.01
 
 
 class Position(ABC):
@@ -127,58 +129,6 @@ class Position(ABC):
         atm_option, otm_option = self.spread_options
         return abs(atm_option.strike - otm_option.strike)
     
-    def _options_match(self, bar: 'OptionBarDTO', option: Option) -> bool:
-        """
-        Check if an OptionBarDTO matches an Option by either ticker match OR 
-        (expiration, strike, type) match.
-        
-        Args:
-            bar: OptionBarDTO to check
-            option: Option to match against
-            
-        Returns:
-            bool: True if options match, False otherwise
-        """
-        # Direct ticker match
-        if bar.ticker == option.ticker:
-            return True
-            
-        # Check expiration date match
-        bar_expiration = bar.timestamp.date()
-        option_expiration = datetime.strptime(option.expiration, '%Y-%m-%d').date()
-        if bar_expiration != option_expiration:
-            return False
-            
-        # Extract strike and type from bar ticker
-        # Format: O:SYMBOLyymmdd[C/P]strikeprice
-        try:
-            # Find the option type in the ticker
-            option_type_in_ticker = None
-            if 'C' in bar.ticker:
-                option_type_in_ticker = 'C'
-            elif 'P' in bar.ticker:
-                option_type_in_ticker = 'P'
-            
-            # Check option type match
-            if option_type_in_ticker != option.option_type.value:
-                return False
-            
-            # Extract strike price from ticker
-            # Find the position after the option type
-            type_pos = bar.ticker.find(option_type_in_ticker)
-            if type_pos == -1:
-                return False
-                
-            strike_str = bar.ticker[type_pos + 1:]
-            if len(strike_str) >= 8:
-                strike_from_ticker = float(strike_str[:8]) / 1000
-                return abs(strike_from_ticker - option.strike) < 0.001  # Allow small floating point differences
-                
-        except (ValueError, IndexError):
-            return False
-            
-        return False
-    
     def __eq__(self, other) -> bool:
         """
         Check if two positions are equal based on key attributes.
@@ -246,12 +196,21 @@ class Position(ABC):
         pass
     
     @abstractmethod
-    def calculate_exit_price(self, current_option_chain: OptionChain) -> float:
+    def calculate_exit_price(
+        self,
+        current_option_chain: OptionChain,
+        underlying_price: Optional[float],
+    ) -> Optional[float]:
         """Calculate current exit price from option chain."""
         pass
     
     @abstractmethod
-    def calculate_exit_price_from_bars(self, atm_bar: 'OptionBarDTO', otm_bar: 'OptionBarDTO') -> float:
+    def calculate_exit_price_from_bars(
+        self,
+        atm_bar: Optional['OptionBarDTO'],
+        otm_bar: Optional['OptionBarDTO'],
+        underlying_price: Optional[float],
+    ) -> Optional[float]:
         """Calculate current exit price from option bars."""
         pass
     
@@ -326,7 +285,207 @@ class Position(ABC):
         return (max_profit_val * probability_of_profit) - (max_loss_val * (1 - probability_of_profit))
 
 
-class CreditSpreadPosition(Position):
+class SpreadPosition(Position):
+    """
+    Abstract base for two-leg option spread positions.
+
+    Owns shared spread pricing logic: leg matching, robust exit value resolution,
+    and exit price calculation from option chains or bars.
+    """
+
+    def spread_width(self) -> float:
+        """Calculate the spread width (difference between strikes)."""
+        if not self.spread_options or len(self.spread_options) != 2:
+            raise ValueError("Spread strategy requires 2 options in spread_options")
+
+        atm_option, otm_option = self.spread_options
+        return abs(atm_option.strike - otm_option.strike)
+
+    def _options_match(self, bar: 'OptionBarDTO', option: Option) -> bool:
+        """
+        Check if an OptionBarDTO matches an Option by either ticker match OR
+        (expiration, strike, type) match.
+        """
+        if bar.ticker == option.ticker:
+            return True
+
+        bar_expiration = bar.timestamp.date()
+        option_expiration = datetime.strptime(option.expiration, '%Y-%m-%d').date()
+        if bar_expiration != option_expiration:
+            return False
+
+        try:
+            option_type_in_ticker = None
+            if 'C' in bar.ticker:
+                option_type_in_ticker = 'C'
+            elif 'P' in bar.ticker:
+                option_type_in_ticker = 'P'
+
+            if option_type_in_ticker != option.option_type.value:
+                return False
+
+            type_pos = bar.ticker.find(option_type_in_ticker)
+            if type_pos == -1:
+                return False
+
+            strike_str = bar.ticker[type_pos + 1:]
+            if len(strike_str) >= 8:
+                strike_from_ticker = float(strike_str[:8]) / 1000
+                return abs(strike_from_ticker - option.strike) < 0.001
+
+        except (ValueError, IndexError):
+            return False
+
+        return False
+
+    def _resolve_spread_value(
+        self,
+        atm_price: Optional[float],
+        otm_price: Optional[float],
+        underlying_price: Optional[float],
+    ) -> Optional[float]:
+        """
+        Resolve a spread's exit value from leg prices, validating against [0, width].
+
+        When leg prices are missing or produce an out-of-bound value, substitute the
+        spread's intrinsic value only when the underlying is deeply ITM or OTM
+        (beyond both strikes by at least one full spread width).
+        """
+        if not self.spread_options or len(self.spread_options) != 2:
+            raise ValueError("Spread options are not set")
+
+        low_strike = min(leg.strike for leg in self.spread_options)
+        high_strike = max(leg.strike for leg in self.spread_options)
+        width = high_strike - low_strike
+
+        raw_value = atm_price - otm_price if atm_price is not None and otm_price is not None else None
+        if (
+            raw_value is not None
+            and -_SPREAD_VALUE_TOLERANCE <= raw_value <= width + _SPREAD_VALUE_TOLERANCE
+        ):
+            return raw_value
+
+        if underlying_price is None:
+            get_logger().warning(
+                "Cannot resolve spread value for {} {}: raw={}, underlying unavailable",
+                self.symbol,
+                self.strategy_type.value,
+                raw_value,
+            )
+            return None
+
+        option_type = self.spread_options[0].option_type
+        if option_type == OptionType.CALL:
+            deeply_itm = underlying_price >= high_strike + width
+            deeply_otm = underlying_price <= low_strike - width
+        elif option_type == OptionType.PUT:
+            deeply_itm = underlying_price <= low_strike - width
+            deeply_otm = underlying_price >= high_strike + width
+        else:
+            raise ValueError(f"Unsupported option type for spread value resolution: {option_type}")
+
+        if deeply_itm:
+            get_logger().warning(
+                "Garbage or missing spread leg data for {} {} (raw={}, strikes={}/{}, underlying={}); "
+                "using deep ITM intrinsic value {}",
+                self.symbol,
+                self.strategy_type.value,
+                raw_value,
+                low_strike,
+                high_strike,
+                underlying_price,
+                width,
+            )
+            return width
+
+        if deeply_otm:
+            get_logger().warning(
+                "Garbage or missing spread leg data for {} {} (raw={}, strikes={}/{}, underlying={}); "
+                "using deep OTM intrinsic value 0.0",
+                self.symbol,
+                self.strategy_type.value,
+                raw_value,
+                low_strike,
+                high_strike,
+                underlying_price,
+            )
+            return 0.0
+
+        get_logger().warning(
+            "Cannot safely resolve spread value for {} {} near the money "
+            "(raw={}, strikes={}/{}, underlying={})",
+            self.symbol,
+            self.strategy_type.value,
+            raw_value,
+            low_strike,
+            high_strike,
+            underlying_price,
+        )
+        return None
+
+    def calculate_exit_price(
+        self,
+        current_option_chain: OptionChain,
+        underlying_price: Optional[float],
+    ) -> Optional[float]:
+        """Calculate current exit price for a spread from option chain data."""
+        if not self.spread_options or len(self.spread_options) != 2:
+            raise ValueError("Spread options are not set")
+
+        atm_option, otm_option = self.spread_options
+
+        current_atm_option = current_option_chain.get_option_data_for_option(atm_option)
+        current_otm_option = current_option_chain.get_option_data_for_option(otm_option)
+
+        current_atm_price = current_atm_option.last_price if current_atm_option is not None else None
+        current_otm_price = current_otm_option.last_price if current_otm_option is not None else None
+
+        if current_atm_price is None or current_otm_price is None:
+            get_logger().warning(
+                "Missing current option data for {} or {}",
+                atm_option.__str__(),
+                otm_option.__str__(),
+            )
+
+        get_logger().debug(f"Current ATM price: {current_atm_price}, Current OTM price: {current_otm_price}")
+
+        return self._resolve_spread_value(current_atm_price, current_otm_price, underlying_price)
+
+    def calculate_exit_price_from_bars(
+        self,
+        atm_bar: Optional['OptionBarDTO'],
+        otm_bar: Optional['OptionBarDTO'],
+        underlying_price: Optional[float],
+    ) -> Optional[float]:
+        """Calculate current exit price for a spread from option bar data."""
+        if not self.spread_options or len(self.spread_options) != 2:
+            raise ValueError("Spread options are not set")
+
+        atm_option, otm_option = self.spread_options
+
+        if atm_bar is not None and not self._options_match(atm_bar, atm_option):
+            raise ValueError(
+                f"ATM bar doesn't match position ATM option. Expected: {atm_option.ticker} "
+                f"(strike: {atm_option.strike}, exp: {atm_option.expiration}, "
+                f"type: {atm_option.option_type.value}), Got: {atm_bar.ticker}"
+            )
+
+        if otm_bar is not None and not self._options_match(otm_bar, otm_option):
+            raise ValueError(
+                f"OTM bar doesn't match position OTM option. Expected: {otm_option.ticker} "
+                f"(strike: {otm_option.strike}, exp: {otm_option.expiration}, "
+                f"type: {otm_option.option_type.value}), Got: {otm_bar.ticker}"
+            )
+
+        current_atm_price = float(atm_bar.close_price) if atm_bar is not None else None
+        current_otm_price = float(otm_bar.close_price) if otm_bar is not None else None
+
+        get_logger().debug(f"Current ATM price: {current_atm_price}, Current OTM price: {current_otm_price}")
+
+        return self._resolve_spread_value(current_atm_price, current_otm_price, underlying_price)
+
+
+class CreditSpreadPosition(SpreadPosition):
     """Position for credit spread strategies (CALL_CREDIT_SPREAD, PUT_CREDIT_SPREAD)."""
     
     def get_return_dollars(self, exit_price: float) -> float:
@@ -349,74 +508,6 @@ class CreditSpreadPosition(Position):
         if self.quantity is None or exit_price is None:
             raise ValueError("Quantity is not set")
         return ((self.entry_price * self.quantity * 100) - (exit_price * self.quantity * 100)) / (self.entry_price * self.quantity * 100)
-    
-    def calculate_exit_price(self, current_option_chain: OptionChain) -> float:
-        """
-        Calculate the current exit price for a credit spread position based on current market prices.
-        
-        Args:
-            current_option_chain: Current option chain data for the date
-            
-        Returns:
-            float: Current net credit/debit for the spread, or None if option contract data is not available
-        """
-        if not self.spread_options or len(self.spread_options) != 2:
-            raise ValueError("Spread options are not set")
-            
-        atm_option, otm_option = self.spread_options
-
-        # Find current prices for our specific options
-        current_atm_option = current_option_chain.get_option_data_for_option(atm_option)
-        current_otm_option = current_option_chain.get_option_data_for_option(otm_option)
-        
-        if current_atm_option is None or current_otm_option is None:
-            get_logger().warning(f"No current option data found for {atm_option.__str__()} or {otm_option.__str__()}")
-            return None
-
-        current_atm_price = current_atm_option.last_price
-        current_otm_price = current_otm_option.last_price
-
-        get_logger().debug(f"Current ATM price: {current_atm_price}, Current OTM price: {current_otm_price}")
-
-        # For call/put credit spread: sell ATM, buy OTM
-        current_net_credit = current_atm_price - current_otm_price
-        return current_net_credit
-    
-    def calculate_exit_price_from_bars(self, atm_bar: 'OptionBarDTO', otm_bar: 'OptionBarDTO') -> float:
-        """
-        Calculate the current exit price for a credit spread position using OptionBarDTO data.
-        
-        Args:
-            atm_bar: OptionBarDTO for the ATM option
-            otm_bar: OptionBarDTO for the OTM option
-            
-        Returns:
-            float: Current net credit/debit for the spread
-            
-        Raises:
-            ValueError: If the input options don't match the position's spread_options
-        """
-        if not self.spread_options or len(self.spread_options) != 2:
-            raise ValueError("Spread options are not set")
-            
-        atm_option, otm_option = self.spread_options
-        
-        # Verify the input bars match our spread options
-        if not self._options_match(atm_bar, atm_option):
-            raise ValueError(f"ATM bar doesn't match position ATM option. Expected: {atm_option.ticker} (strike: {atm_option.strike}, exp: {atm_option.expiration}, type: {atm_option.option_type.value}), Got: {atm_bar.ticker}")
-            
-        if not self._options_match(otm_bar, otm_option):
-            raise ValueError(f"OTM bar doesn't match position OTM option. Expected: {otm_option.ticker} (strike: {otm_option.strike}, exp: {otm_option.expiration}, type: {otm_option.option_type.value}), Got: {otm_bar.ticker}")
-
-        # Extract current prices from bar data
-        current_atm_price = float(atm_bar.close_price)
-        current_otm_price = float(otm_bar.close_price)
-
-        get_logger().debug(f"Current ATM price: {current_atm_price}, Current OTM price: {current_otm_price}")
-
-        # For call/put credit spread: sell ATM, buy OTM
-        current_net_credit = current_atm_price - current_otm_price
-        return current_net_credit
     
     def get_return_dollars_from_assignment(self, underlying_price: float) -> float:
         """
@@ -490,7 +581,7 @@ class CreditSpreadPosition(Position):
         return float(loss) * 100
 
 
-class DebitSpreadPosition(Position):
+class DebitSpreadPosition(SpreadPosition):
     """Position for debit spread strategies (CALL_DEBIT_SPREAD, PUT_DEBIT_SPREAD)."""
     
     def get_return_dollars(self, exit_price: float) -> float:
@@ -513,75 +604,6 @@ class DebitSpreadPosition(Position):
         if self.quantity is None or exit_price is None:
             raise ValueError("Quantity is not set")
         return ((exit_price * self.quantity * 100) - (self.entry_price * self.quantity * 100)) / (self.entry_price * self.quantity * 100)
-    
-    def calculate_exit_price(self, current_option_chain: OptionChain) -> float:
-        """
-        Calculate the current exit price for a debit spread position based on current market prices.
-        
-        Args:
-            current_option_chain: Current option chain data for the date
-            
-        Returns:
-            float: Current net value for the spread, or None if option contract data is not available
-        """
-        if not self.spread_options or len(self.spread_options) != 2:
-            raise ValueError("Spread options are not set")
-            
-        atm_option, otm_option = self.spread_options
-
-        # Find current prices for our specific options
-        current_atm_option = current_option_chain.get_option_data_for_option(atm_option)
-        current_otm_option = current_option_chain.get_option_data_for_option(otm_option)
-        
-        if current_atm_option is None or current_otm_option is None:
-            get_logger().warning(f"No current option data found for {atm_option.__str__()} or {otm_option.__str__()}")
-            return None
-
-        current_atm_price = current_atm_option.last_price
-        current_otm_price = current_otm_option.last_price
-
-        get_logger().debug(f"Current ATM price: {current_atm_price}, Current OTM price: {current_otm_price}")
-
-        # For debit spread: buy ITM/ATM, sell OTM
-        # Current value = what you'd get for closing (selling ITM, buying back OTM)
-        current_net_value = current_atm_price - current_otm_price
-        return current_net_value
-    
-    def calculate_exit_price_from_bars(self, atm_bar: 'OptionBarDTO', otm_bar: 'OptionBarDTO') -> float:
-        """
-        Calculate the current exit price for a debit spread position using OptionBarDTO data.
-        
-        Args:
-            atm_bar: OptionBarDTO for the ITM/ATM option (the one we bought)
-            otm_bar: OptionBarDTO for the OTM option (the one we sold)
-            
-        Returns:
-            float: Current net value for the spread
-            
-        Raises:
-            ValueError: If the input options don't match the position's spread_options
-        """
-        if not self.spread_options or len(self.spread_options) != 2:
-            raise ValueError("Spread options are not set")
-            
-        atm_option, otm_option = self.spread_options
-        
-        # Verify the input bars match our spread options
-        if not self._options_match(atm_bar, atm_option):
-            raise ValueError(f"ATM bar doesn't match position ATM option. Expected: {atm_option.ticker} (strike: {atm_option.strike}, exp: {atm_option.expiration}, type: {atm_option.option_type.value}), Got: {atm_bar.ticker}")
-            
-        if not self._options_match(otm_bar, otm_option):
-            raise ValueError(f"OTM bar doesn't match position OTM option. Expected: {otm_option.ticker} (strike: {otm_option.strike}, exp: {otm_option.expiration}, type: {otm_option.option_type.value}), Got: {otm_bar.ticker}")
-
-        # Extract current prices from bar data
-        current_atm_price = float(atm_bar.close_price)
-        current_otm_price = float(otm_bar.close_price)
-
-        get_logger().debug(f"Current ATM price: {current_atm_price}, Current OTM price: {current_otm_price}")
-
-        # For debit spread: current value = ITM price - OTM price
-        current_net_value = current_atm_price - current_otm_price
-        return current_net_value
     
     def get_return_dollars_from_assignment(self, underlying_price: float) -> float:
         """
@@ -670,7 +692,11 @@ class LongCallPosition(Position):
             raise ValueError("Quantity is not set")
         return ((exit_price * self.quantity * 100) - (self.entry_price * self.quantity * 100)) / (self.entry_price * self.quantity * 100)
     
-    def calculate_exit_price(self, current_option_chain: OptionChain) -> float:
+    def calculate_exit_price(
+        self,
+        current_option_chain: OptionChain,
+        underlying_price: Optional[float],
+    ) -> Optional[float]:
         """Calculate current exit price for long call from option chain."""
         if not self.spread_options or len(self.spread_options) == 0:
             raise ValueError("Long call requires option data in spread_options")
@@ -680,8 +706,15 @@ class LongCallPosition(Position):
             return None
         return current_option.last_price
     
-    def calculate_exit_price_from_bars(self, atm_bar: 'OptionBarDTO', otm_bar: 'OptionBarDTO') -> float:
+    def calculate_exit_price_from_bars(
+        self,
+        atm_bar: Optional['OptionBarDTO'],
+        otm_bar: Optional['OptionBarDTO'],
+        underlying_price: Optional[float],
+    ) -> Optional[float]:
         """For single leg, we only need one bar."""
+        if atm_bar is None:
+            return None
         return float(atm_bar.close_price)
     
     def get_return_dollars_from_assignment(self, underlying_price: float) -> float:
@@ -722,7 +755,11 @@ class ShortCallPosition(Position):
             raise ValueError("Quantity is not set")
         return ((self.entry_price * self.quantity * 100) - (exit_price * self.quantity * 100)) / (self.entry_price * self.quantity * 100)
     
-    def calculate_exit_price(self, current_option_chain: OptionChain) -> float:
+    def calculate_exit_price(
+        self,
+        current_option_chain: OptionChain,
+        underlying_price: Optional[float],
+    ) -> Optional[float]:
         """Calculate current exit price for short call from option chain."""
         if not self.spread_options or len(self.spread_options) == 0:
             raise ValueError("Short call requires option data in spread_options")
@@ -732,8 +769,15 @@ class ShortCallPosition(Position):
             return None
         return current_option.last_price
     
-    def calculate_exit_price_from_bars(self, atm_bar: 'OptionBarDTO', otm_bar: 'OptionBarDTO') -> float:
+    def calculate_exit_price_from_bars(
+        self,
+        atm_bar: Optional['OptionBarDTO'],
+        otm_bar: Optional['OptionBarDTO'],
+        underlying_price: Optional[float],
+    ) -> Optional[float]:
         """For single leg, we only need one bar."""
+        if atm_bar is None:
+            return None
         return float(atm_bar.close_price)
     
     def get_return_dollars_from_assignment(self, underlying_price: float) -> float:
@@ -774,7 +818,11 @@ class LongPutPosition(Position):
             raise ValueError("Quantity is not set")
         return ((exit_price * self.quantity * 100) - (self.entry_price * self.quantity * 100)) / (self.entry_price * self.quantity * 100)
     
-    def calculate_exit_price(self, current_option_chain: OptionChain) -> float:
+    def calculate_exit_price(
+        self,
+        current_option_chain: OptionChain,
+        underlying_price: Optional[float],
+    ) -> Optional[float]:
         """Calculate current exit price for long put from option chain."""
         if not self.spread_options or len(self.spread_options) == 0:
             raise ValueError("Long put requires option data in spread_options")
@@ -784,8 +832,15 @@ class LongPutPosition(Position):
             return None
         return current_option.last_price
     
-    def calculate_exit_price_from_bars(self, atm_bar: 'OptionBarDTO', otm_bar: 'OptionBarDTO') -> float:
+    def calculate_exit_price_from_bars(
+        self,
+        atm_bar: Optional['OptionBarDTO'],
+        otm_bar: Optional['OptionBarDTO'],
+        underlying_price: Optional[float],
+    ) -> Optional[float]:
         """For single leg, we only need one bar."""
+        if atm_bar is None:
+            return None
         return float(atm_bar.close_price)
     
     def get_return_dollars_from_assignment(self, underlying_price: float) -> float:
@@ -829,7 +884,11 @@ class ShortPutPosition(Position):
             raise ValueError("Quantity is not set")
         return ((self.entry_price * self.quantity * 100) - (exit_price * self.quantity * 100)) / (self.entry_price * self.quantity * 100)
     
-    def calculate_exit_price(self, current_option_chain: OptionChain) -> float:
+    def calculate_exit_price(
+        self,
+        current_option_chain: OptionChain,
+        underlying_price: Optional[float],
+    ) -> Optional[float]:
         """Calculate current exit price for short put from option chain."""
         if not self.spread_options or len(self.spread_options) == 0:
             raise ValueError("Short put requires option data in spread_options")
@@ -839,8 +898,15 @@ class ShortPutPosition(Position):
             return None
         return current_option.last_price
     
-    def calculate_exit_price_from_bars(self, atm_bar: 'OptionBarDTO', otm_bar: 'OptionBarDTO') -> float:
+    def calculate_exit_price_from_bars(
+        self,
+        atm_bar: Optional['OptionBarDTO'],
+        otm_bar: Optional['OptionBarDTO'],
+        underlying_price: Optional[float],
+    ) -> Optional[float]:
         """For single leg, we only need one bar."""
+        if atm_bar is None:
+            return None
         return float(atm_bar.close_price)
     
     def get_return_dollars_from_assignment(self, underlying_price: float) -> float:

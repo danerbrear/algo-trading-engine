@@ -11,7 +11,7 @@ paths:
 
 The Option Contract Snapshot endpoint returns a comprehensive snapshot for a single options contract: latest quote (bid/ask/midpoint), latest trade, greeks, implied volatility, open interest, break-even price, the most recent daily bar, and the underlying asset price.
 
-**Prefer this endpoint for live options quotes** — `last_quote.bid`, `last_quote.ask`, and `last_quote.midpoint` give the freshest pricing available on the plan.
+**Prefer this endpoint for live options quotes** — `last_quote.bid`, `last_quote.ask`, and `last_quote.midpoint` give the freshest pricing on plans that include quotes. **Note: this project is on the Options Starter plan, which does NOT include quotes/trades — `day` (the daily OHLC bar) is the only pricing data available to us here (see [Plan notes](#plan-notes)).**
 
 ## Endpoint
 
@@ -49,7 +49,8 @@ midpoint = snapshot.last_quote.midpoint
 
 ## Plan notes
 
-- `last_quote` requires a plan that includes quotes; `last_trade` requires trades.
+- **This project is on the Options Starter plan.** That plan does NOT include quotes or trades, so `last_quote` (bid/ask/midpoint) and `last_trade` are unavailable. **`day` (the most recent daily OHLC bar) is the only pricing data available to us** — code in this repo must price options from `day.close` (or other `day` fields), not from `last_quote`/`last_trade`.
+- `last_quote` requires a plan that includes quotes; `last_trade` requires trades. Neither is accessible on Starter.
 - `fmv` is Business plans only.
 - Recency: Starter/Developer are 15-minute delayed; Advanced/Business are real-time.
 

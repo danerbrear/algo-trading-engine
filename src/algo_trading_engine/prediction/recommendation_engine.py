@@ -281,8 +281,7 @@ class InteractiveStrategyRecommender:
                 continue
             try:
                 pnl_dollars = position.get_return_dollars(exit_price)
-                # Percentage based on credit spread convention
-                pnl_pct = ((position.entry_price * position.quantity * 100) - (exit_price * position.quantity * 100)) / (position.entry_price * position.quantity * 100)
+                pnl_pct = position._get_return(exit_price)
             except Exception:
                 pnl_dollars = None
                 pnl_pct = None
@@ -428,7 +427,12 @@ class InteractiveStrategyRecommender:
                     raise ValueError(f"Unsupported strategy type for manual exit price calculation: {position.strategy_type.value}")
                 return exit_price
 
-            # No bar data: still prompt once for net exit price (no current price, no default)
+            # No bar data: attempt robust resolution before prompting
+            underlying_price = self.strategy.get_current_underlying_price(date, position.symbol)
+            exit_price = position.calculate_exit_price_from_bars(None, None, underlying_price)
+            if exit_price is not None:
+                return exit_price
+
             get_logger().warning(f"No bar data available for options on {date.strftime('%Y-%m-%d')}; prompting for net exit price only.")
             net_input = input("Enter net exit price for spread: ").strip()
             if not net_input:
@@ -450,12 +454,9 @@ class InteractiveStrategyRecommender:
             # Get bar data for both options
             atm_bar = self.strategy.get_current_option_bar(atm_option, date)
             otm_bar = self.strategy.get_current_option_bar(otm_option, date)
-            
-            if not atm_bar or not otm_bar:
-                return None
-            
-            # Use the calculate_exit_price_from_bars method for status display
-            exit_price = position.calculate_exit_price_from_bars(atm_bar, otm_bar)
+            underlying_price = self.strategy.get_current_underlying_price(date, position.symbol)
+
+            exit_price = position.calculate_exit_price_from_bars(atm_bar, otm_bar, underlying_price)
             return exit_price
     
         except Exception:
