@@ -516,6 +516,7 @@ def test_get_exit_price_from_user_prompts_without_bar_data_prompts_without_defau
     strategy = MagicMock()
     strategy.symbol = "SPY"
     strategy.get_current_option_bar = MagicMock(return_value=None)
+    strategy.get_current_underlying_price = MagicMock(return_value=None)
 
     store = JsonDecisionStore(base_dir=str(tmp_path))
     allocations_config = {"strategies": {"credit_spread": {"allocated_capital": 10000.0, "max_risk_percentage": 0.05}}}

@@ -2,7 +2,7 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 from datetime import datetime
-from typing import Optional
+from typing import ClassVar, Dict, Optional
 
 from algo_trading_engine.common.cache.cache_manager import CacheManager
 from algo_trading_engine.common.logger import get_logger
@@ -11,7 +11,14 @@ from algo_trading_engine.enums import BarTimeInterval
 
 class DataRetriever:
     """Handles data retrieval, feature calculation, and preparation for LSTM and HMM models."""
-    
+
+    _live_price_cache: ClassVar[Dict[str, float]] = {}
+
+    @classmethod
+    def clear_live_price_cache(cls) -> None:
+        """Clear cached live prices. Intended for tests."""
+        cls._live_price_cache.clear()
+
     def __init__(
         self, 
         symbol='SPY', 
@@ -495,6 +502,8 @@ class DataRetriever:
     def get_live_price(self, symbol: str = None) -> Optional[float]:
         """Fetch live price for the current date.
         
+        Results are cached at the class level per symbol for the lifetime of the process.
+        
         Args:
             symbol: Stock symbol to fetch price for (defaults to self.symbol)
             
@@ -503,6 +512,11 @@ class DataRetriever:
         """
         if symbol is None:
             symbol = self.symbol
+
+        if symbol in self._live_price_cache:
+            cached_price = self._live_price_cache[symbol]
+            get_logger().debug(f"Using cached live price for {symbol}: ${cached_price:.2f}")
+            return cached_price
         
         try:
             get_logger().info(f"Fetching live price for {symbol} using yfinance...")
@@ -513,19 +527,18 @@ class DataRetriever:
             if 'currentPrice' in info and info['currentPrice'] is not None:
                 live_price = float(info['currentPrice'])
                 get_logger().info(f"Live price for {symbol} (from yfinance): ${live_price:.2f}")
-                return live_price
             elif 'regularMarketPrice' in info and info['regularMarketPrice'] is not None:
                 live_price = float(info['regularMarketPrice'])
                 get_logger().info(f"Live price for {symbol} (from yfinance regular market): ${live_price:.2f}")
-                return live_price
             elif 'previousClose' in info and info['previousClose'] is not None:
-                # Use previous close as fallback
                 live_price = float(info['previousClose'])
                 get_logger().warning(f"Using previous close for {symbol} (from yfinance): ${live_price:.2f}")
-                return live_price
             else:
                 get_logger().warning(f"No price data available from yfinance for {symbol}")
                 return None
+
+            self._live_price_cache[symbol] = live_price
+            return live_price
                 
         except Exception as yfinance_error:
             get_logger().error(f"Error fetching live price from yfinance for {symbol}: {str(yfinance_error)}")
