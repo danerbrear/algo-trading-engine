@@ -166,7 +166,8 @@ class CreditSpreadStrategy(Strategy):
                 
                 # Get option chain using OptionsHandler
                 option_chain = self._get_options_chain_for_date(date)
-                exit_price = position.calculate_exit_price(option_chain)
+                underlying_price = self.get_current_underlying_price(date, self.symbol)
+                exit_price = position.calculate_exit_price(option_chain, underlying_price)
 
                 # Fetch missing contract using new API
                 if exit_price is None:
@@ -197,7 +198,7 @@ class CreditSpreadStrategy(Strategy):
                                 has_error = True
 
                     if not has_error:
-                        exit_price = position.calculate_exit_price(option_chain)
+                        exit_price = position.calculate_exit_price(option_chain, underlying_price)
 
                 if exit_price is None or has_error:
                     print(f"Error calculating exit price for {position.__str__()}")
@@ -243,7 +244,8 @@ class CreditSpreadStrategy(Strategy):
             try:
                 # Calculate the return for this position using OptionsHandler
                 option_chain = self._get_options_chain_for_date(date)
-                exit_price = position.calculate_exit_price(option_chain)
+                underlying_price = self.get_current_underlying_price(date, self.symbol)
+                exit_price = position.calculate_exit_price(option_chain, underlying_price)
 
                 # Fetch current date volume data for enhanced validation
                 current_volumes = self.get_current_volumes_for_position(position, date)
@@ -422,8 +424,8 @@ class CreditSpreadStrategy(Strategy):
             if contract_dto is None:
                 return None
             
-            # Get price/volume data using get_option_bar
-            bar = self.get_option_bar(contract_dto, date)
+            # Get price/volume data (real-time snapshot when live, else historical /aggs)
+            bar = self.get_current_option_bar(contract_dto, date)
             if bar is None:
                 return None
             

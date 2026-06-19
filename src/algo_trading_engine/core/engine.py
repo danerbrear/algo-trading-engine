@@ -6,7 +6,7 @@ and concrete implementations for backtesting and paper trading.
 """
 
 from abc import ABC, abstractmethod, abstractclassmethod
-from typing import List, Optional, Union, TYPE_CHECKING
+from typing import Callable, List, Optional, Union, TYPE_CHECKING
 from datetime import datetime, timedelta
 import pandas as pd
 
@@ -14,6 +14,8 @@ from .strategy import Strategy
 from algo_trading_engine.common.logger import configure_logger, get_logger, log_and_echo
 from algo_trading_engine.enums import BarTimeInterval
 from algo_trading_engine.models.config import PaperTradingConfig
+from algo_trading_engine.dto import OptionBarDTO
+from algo_trading_engine.dto import OptionContractDTO
 
 # Minimum calendar lookback for LSTM / feature history in paper trading (aligned with prior default).
 DEFAULT_PAPER_TRADING_LSTM_LOOKBACK_DAYS = 120
@@ -37,6 +39,25 @@ def compute_paper_trading_fetch_start_date(
     warmup_start = now - strategy.get_warm_up_period_timedelta(bar_interval)
     earliest = min(lstm_start, warmup_start)
     return earliest.strftime("%Y-%m-%d")
+
+
+def make_rt_option_bar(
+    options_handler,
+) -> Callable[['OptionContractDTO'], Optional[OptionBarDTO]]:
+    """
+    Build a near-real-time option bar callable for live/paper trading.
+
+    The returned callable fetches current prices via the Polygon snapshot endpoint, which is
+    inherently "now" and takes no date. It returns None when no snapshot price is available
+    (no historical /aggs fallback) - callers should branch on Strategy.is_live and use the
+    historical get_option_bar for any non-live valuation.
+    """
+
+    def _get_rt_option_bar(contract: 'OptionContractDTO') -> Optional[OptionBarDTO]:
+        return options_handler.get_option_snapshot(contract)
+
+    return _get_rt_option_bar
+
 
 if TYPE_CHECKING:
     from algo_trading_engine.vo import Position
@@ -168,15 +189,15 @@ class TradingEngine(ABC):
         if not hasattr(position, 'spread_options') or position.spread_options is None:
             return current_volumes
 
-        # Resolve strategy and option bar callable (may be called with self=engine or self=strategy after injection)
+        # Resolve strategy and current-bar callable (may be called with self=engine or self=strategy after injection)
         strategy_ref = getattr(self, 'strategy', self) if hasattr(self, 'strategy') else self
-        get_option_bar = getattr(strategy_ref, 'get_option_bar', None) if strategy_ref is not None else None
-            
+        get_current_option_bar = getattr(strategy_ref, 'get_current_option_bar', None) if strategy_ref is not None else None
+
         for option in position.spread_options:
             try:
-                # Get current volume data from strategy's callable if available
-                if get_option_bar is not None and callable(get_option_bar):
-                    bar_data = get_option_bar(option, date)
+                # Real-time snapshot when live, historical /aggs otherwise (handled by the strategy helper)
+                if get_current_option_bar is not None and callable(get_current_option_bar):
+                    bar_data = get_current_option_bar(option, date)
                 else:
                     get_logger().warning(f"No option bar data available for {option.ticker} on {date.date()}")
                     current_volumes.append(None)
@@ -194,6 +215,15 @@ class TradingEngine(ABC):
                 current_volumes.append(None)
         return current_volumes
     
+    def _get_valuation_bar(self, option: 'OptionContractDTO', date: datetime) -> Optional[OptionBarDTO]:
+        """
+        Fetch a bar for valuing a position leg.
+
+        Delegates to Strategy.get_current_option_bar: near-real-time snapshot when live,
+        historical /aggs (at the configured bar interval) during backtests.
+        """
+        return self.strategy.get_current_option_bar(option, date, timespan=self.bar_interval)
+
     def compute_exit_price(self, position: 'Position', date: datetime) -> Optional[float]:
         """
         Compute exit price for a position on a specific date.
@@ -213,21 +243,32 @@ class TradingEngine(ABC):
                 get_logger().warning("get_option_bar is not callable")
                 return None
 
+            underlying_price = self.strategy.get_current_underlying_price(
+                date,
+                getattr(self.strategy, 'symbol', None),
+            )
+
             if len(position.spread_options) == 1:
                 option = position.spread_options[0]
-                bar = self.strategy.get_option_bar(option, date, timespan=self.bar_interval)
+                bar = self._get_valuation_bar(option, date)
                 if not bar:
                     get_logger().warning(f"No bar data available for option: {option.ticker} on {date.date()}")
                     return None
-                return float(position.calculate_exit_price_from_bars(bar, bar))
+                exit_price = position.calculate_exit_price_from_bars(bar, bar, underlying_price)
+                return float(exit_price) if exit_price is not None else None
 
             atm_option, otm_option = position.spread_options
-            atm_bar = self.strategy.get_option_bar(atm_option, date, timespan=self.bar_interval)
-            otm_bar = self.strategy.get_option_bar(otm_option, date, timespan=self.bar_interval)
+            atm_bar = self._get_valuation_bar(atm_option, date)
+            otm_bar = self._get_valuation_bar(otm_option, date)
             if not atm_bar or not otm_bar:
-                get_logger().warning(f"No bar data available for options: {atm_option.ticker} and {otm_option.ticker} on {date.date()}")
-                return None
-            return float(position.calculate_exit_price_from_bars(atm_bar, otm_bar))
+                get_logger().warning(
+                    "Missing bar data for spread options {} and {} on {}; attempting robust resolution",
+                    atm_option.ticker,
+                    otm_option.ticker,
+                    date.date(),
+                )
+            exit_price = position.calculate_exit_price_from_bars(atm_bar, otm_bar, underlying_price)
+            return float(exit_price) if exit_price is not None else None
 
         except Exception as e:
             get_logger().warning(f"Error computing exit price: {e}")
@@ -551,6 +592,10 @@ class PaperTradingEngine(TradingEngine):
             strategy.compute_exit_price = engine.compute_exit_price
         if hasattr(strategy, 'get_current_volumes_for_position'):
             strategy.get_current_volumes_for_position = engine.get_current_volumes_for_position
+
+        # Live-only: enable near-real-time option pricing via Polygon snapshot. Left None by
+        # BacktestEngine so Strategy.is_live is False during backtests.
+        strategy.get_rt_option_bar = make_rt_option_bar(options_handler)
 
         return engine
 

@@ -426,9 +426,9 @@ class VelocitySignalMomentumStrategy(Strategy):
             
             get_logger().info(f"✅ Verified: Both legs have same expiration {expiration} (vertical spread)")
             
-            # Get bar data to calculate net credit
-            atm_bar = self.get_option_bar(atm_put, date)
-            otm_bar = self.get_option_bar(otm_put, date)
+            # Get bar data to calculate net credit (real-time snapshot when live, else historical)
+            atm_bar = self.get_current_option_bar(atm_put, date)
+            otm_bar = self.get_current_option_bar(otm_put, date)
             
             if not atm_bar or not otm_bar:
                 get_logger().warning("⚠️  No bar data available for credit calculation")

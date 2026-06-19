@@ -445,8 +445,8 @@ class TestDataRetrieverLivePrice:
     
     def setup_method(self):
         """Set up test fixtures"""
-        # Note: DataRetriever will be created in each test with mock_cache_manager
-        pass
+        from algo_trading_engine.common.data_retriever import DataRetriever
+        DataRetriever.clear_live_price_cache()
     
     @patch('algo_trading_engine.common.data_retriever.yf.Ticker')
     def test_get_live_price_yfinance_fallback(self, mock_ticker, mock_cache_manager):
@@ -544,6 +544,47 @@ class TestDataRetrieverLivePrice:
         price = data_retriever.get_live_price('SPY')
         
         assert price is None
+
+    @patch('algo_trading_engine.common.data_retriever.yf.Ticker')
+    def test_get_live_price_caches_by_symbol_across_instances(self, mock_ticker, mock_cache_manager):
+        """Second get_live_price call for the same symbol uses class-level cache."""
+        from algo_trading_engine.common.data_retriever import DataRetriever
+
+        mock_ticker_instance = Mock()
+        mock_ticker_instance.info = {
+            'currentPrice': 450.0,
+            'regularMarketPrice': 450.0,
+            'previousClose': 445.0,
+        }
+        mock_ticker.return_value = mock_ticker_instance
+
+        retriever_one = DataRetriever(symbol='SPY', use_free_tier=True, quiet_mode=True)
+        retriever_two = DataRetriever(symbol='SPY', use_free_tier=True, quiet_mode=True)
+
+        assert retriever_one.get_live_price('SPY') == 450.0
+        assert retriever_two.get_live_price('SPY') == 450.0
+        mock_ticker.assert_called_once_with('SPY')
+
+    @patch('algo_trading_engine.common.data_retriever.yf.Ticker')
+    def test_get_live_price_cache_is_symbol_specific(self, mock_ticker, mock_cache_manager):
+        """Cached live prices are stored separately per symbol."""
+        from algo_trading_engine.common.data_retriever import DataRetriever
+
+        def ticker_side_effect(symbol):
+            mock_instance = Mock()
+            if symbol == 'SPY':
+                mock_instance.info = {'currentPrice': 450.0}
+            else:
+                mock_instance.info = {'currentPrice': 380.0}
+            return mock_instance
+
+        mock_ticker.side_effect = ticker_side_effect
+
+        retriever = DataRetriever(symbol='SPY', use_free_tier=True, quiet_mode=True)
+
+        assert retriever.get_live_price('SPY') == 450.0
+        assert retriever.get_live_price('QQQ') == 380.0
+        assert mock_ticker.call_count == 2
     
     @patch('algo_trading_engine.common.data_retriever.yf.Ticker')
     def test_get_live_price_yfinance_exception(self, mock_ticker, mock_cache_manager):

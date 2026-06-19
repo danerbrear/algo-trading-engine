@@ -425,7 +425,7 @@ class TestVelocitySignalMomentumStrategy:
             number_of_transactions=80
         )
         
-        strategy.get_option_bar = Mock(side_effect=lambda opt, date: atm_bar if '100' in opt.ticker else otm_bar)
+        strategy.get_option_bar = Mock(side_effect=lambda opt, date, multiplier=1, timespan=None: atm_bar if '100' in opt.ticker else otm_bar)
         
         # Create mock data
         data = pd.DataFrame({

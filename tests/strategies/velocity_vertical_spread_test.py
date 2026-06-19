@@ -145,7 +145,7 @@ class TestVelocityVerticalSpread:
         strategy.get_contract_list_for_date = Mock(return_value=mock_contracts)
         
         # Mock get_option_bar to return appropriate bars based on contract
-        def mock_get_option_bar(contract, date):
+        def mock_get_option_bar(contract, date, multiplier=1, timespan=None):
             # Return bars based on contract ticker and expiration
             # The strategy will request bars for contracts with the target expiration
             if "585" in contract.ticker and str(contract.expiration_date) == "2025-11-06":

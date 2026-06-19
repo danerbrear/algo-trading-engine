@@ -33,6 +33,7 @@ from algo_trading_engine.common.models import (
 # Import Position classes from position module
 from algo_trading_engine.vo.position import (
     Position,
+    SpreadPosition,
     CreditSpreadPosition,
     DebitSpreadPosition,
     LongCallPosition,
@@ -56,6 +57,7 @@ from algo_trading_engine.vo.value_objects import (
 __all__ = [
     # Runtime Objects - Position classes (options only)
     "Position",
+    "SpreadPosition",
     "CreditSpreadPosition",
     "DebitSpreadPosition",
     "LongCallPosition",
