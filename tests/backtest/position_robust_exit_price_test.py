@@ -96,7 +96,7 @@ class TestRobustSpreadExitPrice:
 
         assert exit_price == pytest.approx(3.0)
 
-    def test_garbage_deep_itm_call_debit_returns_width(self):
+    def test_garbage_deep_itm_call_debit_returns_capped_width(self):
         long_leg = _make_call_option("O:SPY250630C00737000", 737.0, 16.31)
         short_leg = _make_call_option("O:SPY250630C00739000", 739.0, 19.54)
         position = create_position(
@@ -116,8 +116,8 @@ class TestRobustSpreadExitPrice:
             underlying_price=756.0,
         )
 
-        assert exit_price == pytest.approx(2.0)
-        assert position.get_return_dollars(exit_price) == pytest.approx(112.0)
+        assert exit_price == pytest.approx(1.8)
+        assert position.get_return_dollars(exit_price) == pytest.approx(92.0)
 
     def test_missing_bar_deep_otm_call_debit_returns_zero(self):
         long_leg = _make_call_option("O:SPY250630C00100000", 100.0, 3.0)
@@ -182,7 +182,7 @@ class TestRobustSpreadExitPrice:
 
         assert exit_price is None
 
-    def test_put_spread_deep_itm_returns_width(self):
+    def test_put_spread_deep_itm_returns_capped_width(self):
         long_leg = _make_put_option("O:SPY250630P00100000", 100.0, 8.0)
         short_leg = _make_put_option("O:SPY250630P00095000", 95.0, 3.0)
         position = create_position(
@@ -201,7 +201,7 @@ class TestRobustSpreadExitPrice:
             underlying_price=88.0,
         )
 
-        assert exit_price == pytest.approx(5.0)
+        assert exit_price == pytest.approx(4.5)
 
     def test_put_spread_deep_otm_returns_zero(self):
         long_leg = _make_put_option("O:SPY250630P00100000", 100.0, 1.0)
@@ -240,4 +240,4 @@ class TestRobustSpreadExitPrice:
 
         exit_price = position.calculate_exit_price(option_chain, underlying_price=756.0)
 
-        assert exit_price == pytest.approx(2.0)
+        assert exit_price == pytest.approx(1.8)

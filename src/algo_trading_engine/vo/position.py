@@ -20,6 +20,8 @@ from algo_trading_engine.common.logger import get_logger
 from algo_trading_engine.common.models import Option, OptionChain, OptionType
 
 _SPREAD_VALUE_TOLERANCE = 0.01
+# Far ITM/OTM substitution caps at 90% of width; 100% is reserved for expiration.
+_DEEP_ITM_INTRINSIC_FRACTION = 0.9
 
 
 class Position(ABC):
@@ -349,7 +351,8 @@ class SpreadPosition(Position):
 
         When leg prices are missing or produce an out-of-bound value, substitute the
         spread's intrinsic value only when the underlying is deeply ITM or OTM
-        (beyond both strikes by at least one full spread width).
+        (beyond both strikes by at least one full spread width). Deep ITM is capped
+        at 90% of width so full spread value is reserved for expiration.
         """
         if not self.spread_options or len(self.spread_options) != 2:
             raise ValueError("Spread options are not set")
@@ -385,18 +388,21 @@ class SpreadPosition(Position):
             raise ValueError(f"Unsupported option type for spread value resolution: {option_type}")
 
         if deeply_itm:
+            capped_value = width * _DEEP_ITM_INTRINSIC_FRACTION
             get_logger().warning(
                 "Garbage or missing spread leg data for {} {} (raw={}, strikes={}/{}, underlying={}); "
-                "using deep ITM intrinsic value {}",
+                "using deep ITM intrinsic value {} ({}% of width {})",
                 self.symbol,
                 self.strategy_type.value,
                 raw_value,
                 low_strike,
                 high_strike,
                 underlying_price,
+                capped_value,
+                int(_DEEP_ITM_INTRINSIC_FRACTION * 100),
                 width,
             )
-            return width
+            return capped_value
 
         if deeply_otm:
             get_logger().warning(
