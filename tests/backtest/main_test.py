@@ -828,5 +828,88 @@ class TestBacktestOnNewDateDateRange:
         assert strategy.dates_called_in_on_new_date == list(data.index)
 
 
+class TestCreditSpreadAssignmentCapital:
+    """Capital accounting when a credit spread is closed by assignment at expiration.
+
+    On the assignment path the strategy passes a placeholder exit_price of 0.0. Capital must
+    still reflect the polymorphic assignment return (intrinsic settlement), not the placeholder.
+    Capital is starting equity + realized P&L for every strategy type.
+    """
+
+    def _make_engine(self):
+        strategy = MockStrategy()
+        return BacktestEngine(
+            data=strategy.data,
+            strategy=strategy,
+            initial_capital=10_000,
+            volume_config=VolumeConfig(min_volume=10, enable_volume_validation=False),
+            enable_progress_tracking=False,
+            quiet_mode=True,
+        )
+
+    def _make_put_credit_spread(self, entry_price: float, short_strike: float, long_strike: float):
+        # spread_options ordering follows the engine convention: [short (ATM), long (OTM)]
+        short_put = Option(
+            ticker="SPY", symbol="SPY240119P00658000", strike=short_strike,
+            expiration="2024-01-19", option_type=OptionType.PUT, last_price=1.0,
+            volume=100, open_interest=100, bid=0.95, ask=1.05,
+        )
+        long_put = Option(
+            ticker="SPY", symbol="SPY240119P00654000", strike=long_strike,
+            expiration="2024-01-19", option_type=OptionType.PUT, last_price=0.5,
+            volume=100, open_interest=100, bid=0.45, ask=0.55,
+        )
+        position = create_position(
+            symbol="SPY",
+            expiration_date=datetime(2024, 1, 19),
+            strategy_type=StrategyType.PUT_CREDIT_SPREAD,
+            strike_price=short_strike,
+            entry_date=datetime(2024, 1, 1),
+            entry_price=entry_price,
+            spread_options=[short_put, long_put],
+        )
+        position.set_quantity(1)
+        return position
+
+    def test_assignment_in_the_money_debits_intrinsic_loss(self):
+        """Fully-ITM put credit spread at expiration loses (width - credit) x 100."""
+        engine = self._make_engine()
+        position = self._make_put_credit_spread(entry_price=1.06, short_strike=658.0, long_strike=654.0)
+        engine.positions.append(position)
+
+        # Underlying finishes below both strikes -> spread worth its full $4 width.
+        engine._remove_position(
+            date=datetime(2024, 1, 19),
+            position=position,
+            exit_price=0.0,
+            underlying_price=647.65,
+        )
+
+        # Realized return = credit - width*100 = 106 - 400 = -294
+        expected_return = -294.0
+        assert engine.closed_positions[-1]["return_dollars"] == pytest.approx(expected_return)
+        # Capital is starting equity + realized P&L (no cash-flow booking at open).
+        assert engine.capital == pytest.approx(10_000 + expected_return)
+
+    def test_assignment_out_of_the_money_keeps_full_credit(self):
+        """Put credit spread expiring worthless keeps the full credit."""
+        engine = self._make_engine()
+        position = self._make_put_credit_spread(entry_price=1.06, short_strike=658.0, long_strike=654.0)
+        engine.positions.append(position)
+
+        credit = position.entry_price * position.quantity * 100  # $106
+
+        # Underlying finishes above the short strike -> both legs expire worthless.
+        engine._remove_position(
+            date=datetime(2024, 1, 19),
+            position=position,
+            exit_price=0.0,
+            underlying_price=670.0,
+        )
+
+        assert engine.closed_positions[-1]["return_dollars"] == pytest.approx(credit)
+        assert engine.capital == pytest.approx(10_000 + credit)
+
+
 if __name__ == "__main__":
     pytest.main([__file__]) 

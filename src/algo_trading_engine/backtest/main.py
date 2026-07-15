@@ -8,7 +8,6 @@ from algo_trading_engine.common.options_handler import OptionsHandler
 
 from algo_trading_engine.core.strategy import Strategy
 from .models import Benchmark
-from algo_trading_engine.common.models import StrategyType
 from algo_trading_engine.vo import Position
 from algo_trading_engine.common.data_retriever import DataRetriever
 from algo_trading_engine.common.ml_pipeline import is_credit_spread_strategy
@@ -430,17 +429,11 @@ class BacktestEngine(TradingEngine):
         
         position.set_quantity(position_size)
 
-        # For credit spreads, we need to reserve the maximum risk amount
-        if position.strategy_type in [StrategyType.CALL_CREDIT_SPREAD, StrategyType.PUT_CREDIT_SPREAD]:
-            # For credit spreads: Add the net credit received to capital
-            # The net credit is already stored in position.entry_price
-            credit_received = position.entry_price * position.quantity * 100
-            self.capital += credit_received
-            get_logger().info(f"Added net credit of ${credit_received:.2f} to capital")
-        else:
-            # For other position types, check if we have enough capital
-            if self.capital < position.entry_price * position.quantity * 100:
-                raise ValueError("Not enough capital to add position")
+        # Capital is starting equity + realized P&L only; no cash-flow adjustment at open.
+        # Position sizing already gatekeeps capacity via max risk.
+        max_risk = position.max_risk_dollars_per_contract()
+        if max_risk is not None and self.capital < max_risk * position.quantity:
+            raise ValueError("Not enough capital to add position")
 
         get_logger().info(f"Adding position: {position.__str__()}")
 
@@ -498,16 +491,8 @@ class BacktestEngine(TradingEngine):
                 raise ValueError("Exit price not provided for the unexpired position")
             position_return = position.get_return_dollars(exit_price)
 
-        # Update capital based on position type
-        if position.strategy_type in [StrategyType.CALL_CREDIT_SPREAD, StrategyType.PUT_CREDIT_SPREAD]:
-            # For credit spreads: Subtract the cost to buy back the spread
-            # The exit_price represents the cost to close the position
-            cost_to_close = exit_price * position.quantity * 100
-            self.capital -= cost_to_close
-            get_logger().info(f"Subtracted cost to close of ${cost_to_close:.2f} from capital")
-        else:
-            # For other position types, add the return
-            self.capital += position_return
+        # Apply realized P&L (polymorphic via Position subclass return methods above).
+        self.capital += position_return
 
         # Calculate daily return and add to tracking
         daily_return = (self.capital - self.previous_capital) / self.previous_capital
