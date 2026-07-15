@@ -30,6 +30,8 @@ from algo_trading_engine.common.models import (
 # SignalType is LSTM-specific (3 classes only); re-export for public API
 from algo_trading_engine.ml_models.signals import SignalType
 
+from algo_trading_engine.enums.universal_close_condition import UniversalCloseCondition
+
 # Define public API
 __all__ = [
     "StrategyType",
@@ -37,4 +39,5 @@ __all__ = [
     "MarketStateType",
     "SignalType",
     "BarTimeInterval",
+    "UniversalCloseCondition",
 ]

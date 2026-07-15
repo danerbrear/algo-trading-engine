@@ -12,7 +12,7 @@ import pandas as pd
 
 from .strategy import Strategy
 from algo_trading_engine.common.logger import configure_logger, get_logger, log_and_echo
-from algo_trading_engine.enums import BarTimeInterval
+from algo_trading_engine.enums import BarTimeInterval, UniversalCloseCondition
 from algo_trading_engine.models.config import PaperTradingConfig
 from algo_trading_engine.dto import OptionBarDTO
 from algo_trading_engine.dto import OptionContractDTO
@@ -299,17 +299,23 @@ class TradingEngine(ABC):
                 self._remove_position(date, position, exit_price if exit_price is not None else 0.0, current_volumes=current_volumes)
     
     def _should_close_due_to_assignment(self, position: 'Position', date: datetime) -> bool:
+        if UniversalCloseCondition.ASSIGNMENT not in self.strategy.universal_close_conditions:
+            return False
         try:
             return position.get_days_to_expiration(date) < 1
         except Exception:
             return False
 
     def _should_close_due_to_profit_target(self, position: 'Position', exit_price: Optional[float]) -> bool:
+        if UniversalCloseCondition.PROFIT_TARGET not in self.strategy.universal_close_conditions:
+            return False
         if exit_price is None or self.strategy.profit_target is None:
             return False
         return position.profit_target_hit(self.strategy.profit_target, exit_price)
 
     def _should_close_due_to_stop(self, position: 'Position', exit_price: Optional[float]) -> bool:
+        if UniversalCloseCondition.STOP_LOSS not in self.strategy.universal_close_conditions:
+            return False
         if exit_price is None or self.strategy.stop_loss is None:
             return False
         return position.stop_loss_hit(self.strategy.stop_loss, exit_price)

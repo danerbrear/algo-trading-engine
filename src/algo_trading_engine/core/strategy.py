@@ -7,13 +7,13 @@ This module provides the abstract base class that all trading strategies must im
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 import math
-from typing import Callable, Optional, List, TYPE_CHECKING
+from typing import Callable, Optional, List, Iterable, TYPE_CHECKING
 import pandas as pd
 
 from algo_trading_engine.common.logger import get_logger
 from algo_trading_engine.common.models import TreasuryRates
 from algo_trading_engine.core.indicators.indicator import Indicator
-from algo_trading_engine.enums import BarTimeInterval
+from algo_trading_engine.enums import BarTimeInterval, UniversalCloseCondition
 
 if TYPE_CHECKING:
     from algo_trading_engine.vo import Position
@@ -50,16 +50,27 @@ class Strategy(ABC):
     compute_exit_price: Optional[Callable[['Position', datetime], Optional[float]]] = None
     get_position_size: Optional[Callable[['Position', float], int]] = None
 
-    def __init__(self, profit_target: float = None, stop_loss: float = None):
+    def __init__(
+        self,
+        profit_target: float = None,
+        stop_loss: float = None,
+        universal_close_conditions: Optional[Iterable[UniversalCloseCondition]] = None,
+    ):
         """
         Initialize the strategy.
         
         Args:
             profit_target: Optional profit target percentage (e.g., 0.5 for 50%)
             stop_loss: Optional stop loss percentage (e.g., 0.6 for 60%)
+            universal_close_conditions: Engine-level close conditions to apply after
+                on_new_date. Defaults to all members when omitted.
         """
         self.profit_target = profit_target
         self.stop_loss = stop_loss
+        if universal_close_conditions is None:
+            self.universal_close_conditions = frozenset(UniversalCloseCondition)
+        else:
+            self.universal_close_conditions = frozenset(universal_close_conditions)
         self.data: Optional[pd.DataFrame] = None
         self.treasury_data: Optional[TreasuryRates] = None
         self.indicators: List[Indicator] = []
