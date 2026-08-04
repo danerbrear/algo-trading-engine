@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from unittest.mock import Mock, MagicMock, patch
 import pandas as pd
 
-from algo_trading_engine.core.strategy import Strategy
+from algo_trading_engine.core.strategy import IndicatorUpdateError, Strategy
 from algo_trading_engine.core.indicators.indicator import Indicator
 from algo_trading_engine.core.indicators.average_true_return_indicator import ATRIndicator
 from algo_trading_engine.core.indicators.sma_indicator import SMAIndicator
@@ -412,8 +412,8 @@ class TestStrategyOnNewDateWithIndicators:
         # Strategy logic should have executed
         assert strategy.on_new_date_called is True
     
-    def test_on_new_date_skips_strategy_logic_when_indicators_fail(self):
-        """Test on_new_date prints error message when indicators fail to update"""
+    def test_on_new_date_aborts_strategy_logic_when_indicators_fail(self):
+        """Test on_new_date raises so strategy logic never runs on stale indicators"""
         failing_indicator = MockIndicator(should_fail=True)
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(failing_indicator)
@@ -422,19 +422,22 @@ class TestStrategyOnNewDateWithIndicators:
         mock_add_position = Mock()
         mock_remove_position = Mock()
         
-        strategy.on_new_date(
-            datetime(2024, 1, 10),
-            (),
-            mock_add_position,
-            mock_remove_position
-        )
+        with pytest.raises(IndicatorUpdateError) as exc_info:
+            strategy.on_new_date(
+                datetime(2024, 1, 10),
+                (),
+                mock_add_position,
+                mock_remove_position
+            )
         
         # Indicator update should have been attempted
         assert failing_indicator.update_called is True
-        # The parent's on_new_date still executes (prints message and returns)
-        # but the child's logic executes after the parent returns early
-        # So on_new_date_called will be True but execution was logged as error
-        assert strategy.on_new_date_called is True
+        # The failing indicator's name and underlying cause are preserved for the
+        # failure notification sent by the Lambda handler.
+        assert "MockIndicator" in str(exc_info.value)
+        assert isinstance(exc_info.value.__cause__, Exception)
+        # Subclass logic must not run with stale indicator values
+        assert strategy.on_new_date_called is False
     
     def test_on_new_date_with_atr_indicator(self):
         """Test on_new_date works correctly with ATRIndicator"""

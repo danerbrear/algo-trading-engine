@@ -10,7 +10,7 @@ from typing import Callable, List, Optional, Union, TYPE_CHECKING
 from datetime import datetime, timedelta
 import pandas as pd
 
-from .strategy import Strategy
+from .strategy import IndicatorUpdateError, Strategy
 from algo_trading_engine.common.logger import configure_logger, get_logger, log_and_echo
 from algo_trading_engine.enums import BarTimeInterval, UniversalCloseCondition
 from algo_trading_engine.models.config import PaperTradingConfig
@@ -417,8 +417,9 @@ class PaperTradingEngine(TradingEngine):
             get_logger().error(f"Failed to load capital allocation config: {e}")
             return False
         
-        # Get current date
-        run_date = datetime.now()
+        # Get current date. Sub-second precision cannot be represented in coarser
+        # bar-index resolutions, which breaks indicator writes keyed on this date.
+        run_date = datetime.now().replace(microsecond=0)
         
         # Create recommender (needed for position status checks)
         recommender = InteractiveStrategyRecommender(
@@ -459,6 +460,10 @@ class PaperTradingEngine(TradingEngine):
             recommender.run(run_date)
             self.check_univeral_close_conditions(run_date)
             return True
+        except IndicatorUpdateError:
+            # Surfaced to the caller so the failure notification carries the real cause.
+            log_and_echo("ERROR: Indicator update failed, aborting run")
+            raise
         except Exception as e:
             log_and_echo(f"ERROR: Failed to run recommendation engine: {e}")
             get_logger().error(f"Failed to run recommendation engine: {e}")

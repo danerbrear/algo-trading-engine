@@ -19,6 +19,15 @@ if TYPE_CHECKING:
     from algo_trading_engine.vo import Position
     from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO, OptionsChainDTO, ExpirationRangeDTO, StrikeRangeDTO
 
+
+class IndicatorUpdateError(RuntimeError):
+    """Raised when an indicator fails to update for the current date.
+
+    Strategy signals derived from a stale indicator are not trustworthy, so this
+    aborts the run rather than letting it report success with stale values.
+    """
+
+
 class Strategy(ABC):
     """
     Abstract base class for trading strategies.
@@ -74,6 +83,8 @@ class Strategy(ABC):
         self.data: Optional[pd.DataFrame] = None
         self.treasury_data: Optional[TreasuryRates] = None
         self.indicators: List[Indicator] = []
+        self._indicator_error: Optional[Exception] = None
+        self._failed_indicator_name: Optional[str] = None
 
     @property
     def is_live(self) -> bool:
@@ -151,8 +162,11 @@ class Strategy(ABC):
                 Signature: (date, position, exit_price, underlying_price=None, current_volumes=None)
         """
         if not self._update_indicators(date):
-            get_logger().error(f"Error updating indicators for date {date}, skipping execution")
-            return
+            get_logger().error(f"Error updating indicators for date {date}, aborting execution")
+            raise IndicatorUpdateError(
+                f"Indicator {self._failed_indicator_name} failed to update for {date}: "
+                f"{self._indicator_error}"
+            ) from self._indicator_error
 
     @abstractmethod
     def on_end(
@@ -357,6 +371,8 @@ class Strategy(ABC):
         Returns:
             True if indicators were updated, False otherwise
         """
+        self._indicator_error = None
+        self._failed_indicator_name = None
         for indicator in self.indicators:
             try:
                 if date in indicator._values.index:
@@ -364,5 +380,7 @@ class Strategy(ABC):
                 indicator.update(date, self.data)
             except Exception as e:
                 get_logger().error(f"Error updating indicator {indicator.name}: {e}")
+                self._failed_indicator_name = indicator.name
+                self._indicator_error = e
                 return False
         return True
