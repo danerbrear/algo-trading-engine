@@ -400,6 +400,8 @@ class CalendarFeatureProcessor:
         days_until_col = f'Days_Until_Next_{feature_prefix}'
         
         try:
+            # Deferred: plotting libraries ship in the optional [ml] extra.
+            # pylint: disable=import-outside-toplevel
             import matplotlib.pyplot as plt
             import seaborn as sns
             

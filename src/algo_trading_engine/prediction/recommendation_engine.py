@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from typing import Optional, List
 
@@ -357,7 +358,6 @@ class InteractiveStrategyRecommender:
         """Get strategy name from class and map to config key."""
         class_name = self.strategy.__class__.__name__.replace("Strategy", "")
         # Convert from CamelCase to snake_case
-        import re
         strategy_name = re.sub(r'(?<!^)(?=[A-Z])', '_', class_name).lower()
         
         # Map class names to config keys

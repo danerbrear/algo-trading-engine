@@ -13,11 +13,10 @@ from abc import ABC, abstractmethod
 
 if TYPE_CHECKING:
     from algo_trading_engine.dto import OptionBarDTO
-    from algo_trading_engine.common.models import StrategyType
 
 # Import from common models
 from algo_trading_engine.common.logger import get_logger
-from algo_trading_engine.common.models import Option, OptionChain, OptionType
+from algo_trading_engine.common.models import Option, OptionChain, OptionType, StrategyType
 
 _SPREAD_VALUE_TOLERANCE = 0.01
 # Far ITM/OTM substitution caps at 90% of width; 100% is reserved for expiration.
@@ -116,8 +115,6 @@ class Position(ABC):
         Returns:
             Spread width (difference between strikes), or None if not a spread strategy.
         """
-        # Import here to avoid circular import
-        from algo_trading_engine.common.models import StrategyType
         
         if self.strategy_type not in [
             StrategyType.CALL_CREDIT_SPREAD, StrategyType.PUT_CREDIT_SPREAD,
@@ -565,8 +562,6 @@ class CreditSpreadPosition(SpreadPosition):
         - Maximum risk is the width of the spread minus the credit received
         - At expiration, we calculate the intrinsic value of our short and long legs
         """
-        # Import here to avoid circular import
-        from algo_trading_engine.common.models import StrategyType
         
         if not self.spread_options or len(self.spread_options) != 2:
             raise ValueError("Spread options are not set")
@@ -661,8 +656,6 @@ class DebitSpreadPosition(SpreadPosition):
         - At expiration, we calculate the intrinsic value of our long and short legs
         - P&L = Intrinsic Value - Debit Paid
         """
-        # Import here to avoid circular import
-        from algo_trading_engine.common.models import StrategyType
         
         if not self.spread_options or len(self.spread_options) != 2:
             raise ValueError("Spread options are not set")
@@ -1003,8 +996,6 @@ def create_position(symbol: str, expiration_date: datetime, strategy_type: 'Stra
     Raises:
         ValueError: If strategy type is unknown
     """
-    # Import here to avoid circular import
-    from algo_trading_engine.common.models import StrategyType
     
     if strategy_type in [StrategyType.CALL_CREDIT_SPREAD, StrategyType.PUT_CREDIT_SPREAD]:
         return CreditSpreadPosition(symbol, expiration_date, strategy_type, strike_price,

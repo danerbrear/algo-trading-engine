@@ -1,8 +1,12 @@
+import argparse
 import os
-import pandas as pd
+import sys
+import traceback
 from datetime import datetime, timedelta
 from typing import List
-import argparse
+
+import numpy as np
+import pandas as pd
 
 from algo_trading_engine.common.options_handler import OptionsHandler
 
@@ -10,7 +14,8 @@ from algo_trading_engine.core.strategy import Strategy
 from .models import Benchmark
 from algo_trading_engine.vo import Position
 from algo_trading_engine.common.data_retriever import DataRetriever
-from algo_trading_engine.common.ml_pipeline import is_credit_spread_strategy
+from algo_trading_engine.common.ml_pipeline import is_credit_spread_strategy, prepare_credit_spread_backtest_data
+from algo_trading_engine.enums import BarTimeInterval
 from .config import VolumeConfig, VolumeStats
 from algo_trading_engine.models import OverallPerformanceStats, StrategyPerformanceStats
 from algo_trading_engine.common.logger import configure_logger, get_logger, log_and_echo
@@ -158,8 +163,6 @@ class BacktestEngine(TradingEngine):
             raise ValueError(f"Failed to fetch data for {config.symbol} from {config.start_date.date()} to {config.end_date.date()}")
 
         if is_credit_spread_strategy(config.strategy_type):
-            from algo_trading_engine.common.ml_pipeline import prepare_credit_spread_backtest_data
-
             data = prepare_credit_spread_backtest_data(data, retriever, config.symbol)
 
         # Internal: Set data on strategy
@@ -246,7 +249,6 @@ class BacktestEngine(TradingEngine):
         # Initialize progress tracker if enabled
         if self.enable_progress_tracking:
             # Determine unit based on bar interval
-            from algo_trading_engine.enums import BarTimeInterval
             unit = "bar" if self.bar_interval and self.bar_interval != BarTimeInterval.DAY else "date"
 
             self.progress_tracker = ProgressTracker(
@@ -260,7 +262,7 @@ class BacktestEngine(TradingEngine):
         get_logger().info(f"Running backtest on {len(date_range)} trading days")
         get_logger().info(f"   Date range: {date_range[0].date()} to {date_range[-1].date()}")
 
-        for i, date in enumerate(date_range):
+        for _, date in enumerate(date_range):
             positions_tuple = tuple(self.positions)
 
             if self.progress_tracker:
@@ -269,7 +271,6 @@ class BacktestEngine(TradingEngine):
             try:
                 self.strategy.on_new_date(date, positions_tuple, self._add_position, self._remove_position)
             except Exception as e:
-                import traceback
                 error_msg = f"Error in on_new_date: {e}"
                 get_logger().error(error_msg)
                 get_logger().error(traceback.format_exc())
@@ -543,8 +544,6 @@ class BacktestEngine(TradingEngine):
         if not self.daily_returns:
             return 0.0
         
-        import numpy as np
-        
         # Convert daily returns to numpy array
         returns = np.array(self.daily_returns)
         
@@ -724,9 +723,6 @@ def parse_arguments():
 
 def main():
     """Main entry point for backtest CLI."""
-    import os
-    import sys
-    
     # Parse command line arguments
     args = parse_arguments()
     
@@ -792,7 +788,6 @@ def main():
         sys.exit(1)
     except Exception as e:
         print(f"Error during backtest: {e}")
-        import traceback
         traceback.print_exc()
         sys.exit(1)
 

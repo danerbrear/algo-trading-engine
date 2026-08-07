@@ -1,4 +1,5 @@
 from ..common.data_retriever import DataRetriever
+from ..common.ml_pipeline import prepare_training_data
 from .lstm_model import LSTMModel
 import numpy as np
 from sklearn.metrics import classification_report, confusion_matrix
@@ -6,6 +7,7 @@ from .plots import create_plotter
 from .config import EPOCHS, BATCH_SIZE, SEQUENCE_LENGTH
 import argparse
 import os
+import pickle
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -40,8 +42,6 @@ class StockPredictor:
 
     def prepare_data(self):
         """Prepare the data for training"""
-        from algo_trading_engine.common.ml_pipeline import prepare_training_data
-
         self.state_classifier = prepare_training_data(self.data_retriever)
         print(f"✅ HMM model trained with {self.state_classifier.n_states} optimal states")
 
@@ -211,8 +211,6 @@ class StockPredictor:
 
 def save_model(lstm_model_obj, hmm_model=None, mode='lstm_poc', symbol='SPY'):
     """Save both LSTM and HMM models to timestamped and latest folders"""
-    import pickle
-    
     # Only use the environment variable, default to a generic relative path if not set
     base_dir = os.environ.get('MODEL_SAVE_BASE_PATH', 'Trained_Models')
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -245,8 +243,6 @@ def save_model(lstm_model_obj, hmm_model=None, mode='lstm_poc', symbol='SPY'):
     
     # Save HMM model if provided
     if hmm_model is not None:
-        import pickle
-        
         # Save HMM model and scaler
         hmm_data = {
             'hmm_model': hmm_model.hmm_model,

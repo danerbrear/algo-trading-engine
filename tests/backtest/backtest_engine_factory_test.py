@@ -18,7 +18,7 @@ def _passthrough_credit_spread_ml_prep(data, _retriever, _symbol):
 class TestBacktestEngineFactory:
     """Test BacktestEngine.from_config() factory method."""
 
-    @patch('algo_trading_engine.common.ml_pipeline.prepare_credit_spread_backtest_data', side_effect=_passthrough_credit_spread_ml_prep)
+    @patch('algo_trading_engine.backtest.main.prepare_credit_spread_backtest_data', side_effect=_passthrough_credit_spread_ml_prep)
     @patch('algo_trading_engine.backtest.main.DataRetriever')
     @patch('algo_trading_engine.backtest.main.OptionsHandler')
     @patch('algo_trading_engine.backtest.main.create_strategy_from_args')
@@ -75,7 +75,7 @@ class TestBacktestEngineFactory:
             assert mock_strategy.options_handler is not None
         mock_strategy.set_data.assert_called_once()
 
-    @patch('algo_trading_engine.common.ml_pipeline.prepare_credit_spread_backtest_data', side_effect=_passthrough_credit_spread_ml_prep)
+    @patch('algo_trading_engine.backtest.main.prepare_credit_spread_backtest_data', side_effect=_passthrough_credit_spread_ml_prep)
     @patch('algo_trading_engine.backtest.main.create_strategy_from_args')
     @patch('algo_trading_engine.backtest.main.OptionsHandler')
     @patch('algo_trading_engine.backtest.main.DataRetriever')
@@ -95,7 +95,7 @@ class TestBacktestEngineFactory:
         with pytest.raises(ValueError, match='Failed to fetch data'):
             BacktestEngine.from_config(config)
 
-    @patch('algo_trading_engine.common.ml_pipeline.prepare_credit_spread_backtest_data', side_effect=_passthrough_credit_spread_ml_prep)
+    @patch('algo_trading_engine.backtest.main.prepare_credit_spread_backtest_data', side_effect=_passthrough_credit_spread_ml_prep)
     @patch('algo_trading_engine.backtest.main.create_strategy_from_args')
     @patch('algo_trading_engine.backtest.main.OptionsHandler')
     @patch('algo_trading_engine.backtest.main.DataRetriever')

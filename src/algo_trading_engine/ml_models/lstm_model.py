@@ -6,6 +6,11 @@ from keras.callbacks import EarlyStopping
 from keras.regularizers import l2
 import numpy as np
 import pandas as pd
+from decimal import Decimal
+
+from algo_trading_engine.dto import StrikeRangeDTO, ExpirationRangeDTO
+from algo_trading_engine.vo import StrikePrice
+from ..common.models import Option
 from sklearn.preprocessing import StandardScaler
 from .config import (
     EPOCHS, BATCH_SIZE, VALIDATION_SPLIT, LSTM_UNITS, 
@@ -501,9 +506,6 @@ class LSTMModel:
         Returns:
             DataFrame with calculated option features
         """
-        import pandas as pd
-        from decimal import Decimal
-        
         print(f"\n💰 Calculating option features for {len(data)} dates...")
         
         # Track successful and failed dates
@@ -517,10 +519,6 @@ class LSTMModel:
             try:
                 # Get current price
                 current_price = data.loc[current_date, 'Close']
-                
-                from algo_trading_engine.dto import StrikeRangeDTO, ExpirationRangeDTO
-                from algo_trading_engine.vo import StrikePrice
-                from ..common.models import Option, OptionType
                 
                 # Find ATM strike (closest to current price)
                 atm_strike = round(current_price)

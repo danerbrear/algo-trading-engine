@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import traceback
 from datetime import datetime
 from typing import Callable, Optional
 import pandas as pd
@@ -10,7 +11,7 @@ from algo_trading_engine.core.strategy import Strategy
 from algo_trading_engine.core.indicators.sma_indicator import SMAIndicator
 from algo_trading_engine.vo import Position, create_position
 from algo_trading_engine.common.models import StrategyType
-from algo_trading_engine.common.models import TreasuryRates
+from algo_trading_engine.common.models import Option, TreasuryRates
 from algo_trading_engine.dto import ExpirationRangeDTO, OptionsChainDTO, StrikeRangeDTO
 from algo_trading_engine.vo import StrikePrice
 from algo_trading_engine.common.logger import get_logger
@@ -177,7 +178,6 @@ class VelocitySignalMomentumStrategy(Strategy):
             
         except Exception as e:
             get_logger().warning(f"⚠️  Error creating plot: {e}")
-            import traceback
             traceback.print_exc()
 
     def _has_buy_signal(self, date: datetime) -> bool:
@@ -439,8 +439,6 @@ class VelocitySignalMomentumStrategy(Strategy):
             
             if net_credit > 0:  # Only consider if we receive a credit
                 # Convert OptionContractDTO to Option using the new conversion method
-                # Use the same import path as Position to ensure class identity
-                from algo_trading_engine.common.models import Option
                 atm_option = Option.from_contract_and_bar(atm_put, atm_bar)
                 otm_option = Option.from_contract_and_bar(otm_put, otm_bar)
                 
@@ -549,7 +547,6 @@ class VelocitySignalMomentumStrategy(Strategy):
             get_logger().info("🔍 Fetching expirations from options_retriever for 5-10 day window...")
             
             # Use new_options_handler to get available expirations
-            from algo_trading_engine.dto import ExpirationRangeDTO
             expiration_range = ExpirationRangeDTO(min_days=5, max_days=10)
             
             # Get contracts for the date (already filtered by expiration range)

@@ -1,6 +1,8 @@
 name: Lint
 
 on:
+  push:
+    branches: [ '*' ]
   pull_request:
     branches: [ '*' ]
 
@@ -25,4 +27,4 @@ jobs:
 
     - name: Lint (errors only)
       run: |
-        python -m pylint --disable=all --enable=E src/algo_trading_engine
+        python -m pylint --disable=all --enable=E,import-outside-toplevel src/algo_trading_engine

@@ -34,6 +34,8 @@ def load_credit_spread_models(symbol: str) -> Tuple[Any, Any]:
 
     Used by ``CreditSpreadStrategyBuilder.build()``.
     """
+    # Deferred so importing this module stays free of sklearn/hmmlearn/TensorFlow.
+    # pylint: disable=import-outside-toplevel
     from algo_trading_engine.common.functions import get_model_directory, load_lstm_model
 
     model_dir = get_model_directory(symbol=symbol)
@@ -50,6 +52,8 @@ def prepare_data_for_lstm(
 
     Used by ``prepare_training_data()`` and training entry points.
     """
+    # Deferred so importing this module stays free of sklearn/hmmlearn/TensorFlow.
+    # pylint: disable=import-outside-toplevel
     from algo_trading_engine.ml_models.calendar_features import CalendarFeatureProcessor
 
     get_logger().info(f"Phase 1: Preparing LSTM training data from {data_retriever.lstm_start_date}")
@@ -79,6 +83,8 @@ def prepare_training_data(data_retriever: "DataRetriever") -> "MarketStateClassi
 
     Entry point for ``StockPredictor.prepare_data()`` and ML training scripts.
     """
+    # Deferred so importing this module stays free of sklearn/hmmlearn/TensorFlow.
+    # pylint: disable=import-outside-toplevel
     from algo_trading_engine.ml_models.market_state_classifier import MarketStateClassifier
 
     get_logger().info(f"Phase 1: Preparing HMM training data from {data_retriever.hmm_start_date}")
@@ -103,6 +109,8 @@ def prepare_credit_spread_backtest_data(
 
     Used by ``BacktestEngine.from_config()`` when ``strategy_type`` is credit spread.
     """
+    # Deferred so importing this module stays free of sklearn/hmmlearn/TensorFlow.
+    # pylint: disable=import-outside-toplevel
     from algo_trading_engine.common.functions import get_model_directory, load_hmm_model
     from algo_trading_engine.ml_models.calendar_features import CalendarFeatureProcessor
 

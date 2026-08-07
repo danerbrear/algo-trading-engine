@@ -24,6 +24,7 @@ __all__ = [
 
 def __getattr__(name: str) -> Any:
     if name == "BacktestEngine":
+        # pylint: disable-next=import-outside-toplevel
         from .main import BacktestEngine
 
         globals()["BacktestEngine"] = BacktestEngine

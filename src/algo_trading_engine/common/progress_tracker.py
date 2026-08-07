@@ -5,11 +5,7 @@ from datetime import datetime, timedelta
 import sys
 import threading
 
-
-def _get_logger():
-    """Lazy import to avoid circular dependency at module load."""
-    from algo_trading_engine.common.logger import get_logger
-    return get_logger()
+from algo_trading_engine.common.logger import get_logger
 
 class ProgressTracker:
     def __init__(self, total_dates: int, desc: str = "Processing", quiet_mode: bool = True, unit: str = "date"):
@@ -105,7 +101,7 @@ class ProgressTracker:
         with self._lock:
             stats = self.get_progress_stats()
             self.pbar.close()
-            log = _get_logger()
+            log = get_logger()
             log.info("Processing completed:")
             log.info(f"   Total time: {timedelta(seconds=int(stats['elapsed_time']))}")
             log.info(f"   Average time per {self.unit}: {stats['avg_time_per_date']:.2f} seconds")
@@ -132,7 +128,7 @@ def progress_print(message: str, force: bool = False):
     ProgressTracker is only responsible for the progress bar; all other output goes to the log file.
     force=True logs at INFO (visible when log_level is info or debug); force=False logs at DEBUG.
     """
-    log = _get_logger()
+    log = get_logger()
     if force:
         log.info(message)
     else:

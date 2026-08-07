@@ -43,7 +43,7 @@ def _passthrough_credit_spread_ml_prep(data, _retriever, _symbol):
 class TestBacktestEngineBenchmarkFromConfig:
     """Test BacktestEngine.from_config with benchmark_ticker."""
 
-    @patch('algo_trading_engine.common.ml_pipeline.prepare_credit_spread_backtest_data', side_effect=_passthrough_credit_spread_ml_prep)
+    @patch('algo_trading_engine.backtest.main.prepare_credit_spread_backtest_data', side_effect=_passthrough_credit_spread_ml_prep)
     @patch('algo_trading_engine.backtest.main.DataRetriever')
     @patch('algo_trading_engine.backtest.main.OptionsHandler')
     @patch('algo_trading_engine.backtest.main.create_strategy_from_args')
@@ -62,7 +62,7 @@ class TestBacktestEngineBenchmarkFromConfig:
         assert engine.benchmark_data is None
         assert mock_data_retriever.call_count == 1
 
-    @patch('algo_trading_engine.common.ml_pipeline.prepare_credit_spread_backtest_data', side_effect=_passthrough_credit_spread_ml_prep)
+    @patch('algo_trading_engine.backtest.main.prepare_credit_spread_backtest_data', side_effect=_passthrough_credit_spread_ml_prep)
     @patch('algo_trading_engine.backtest.main.DataRetriever')
     @patch('algo_trading_engine.backtest.main.OptionsHandler')
     @patch('algo_trading_engine.backtest.main.create_strategy_from_args')
@@ -81,7 +81,7 @@ class TestBacktestEngineBenchmarkFromConfig:
         assert engine.benchmark_data is None
         assert mock_data_retriever.call_count == 1
 
-    @patch('algo_trading_engine.common.ml_pipeline.prepare_credit_spread_backtest_data', side_effect=_passthrough_credit_spread_ml_prep)
+    @patch('algo_trading_engine.backtest.main.prepare_credit_spread_backtest_data', side_effect=_passthrough_credit_spread_ml_prep)
     @patch('algo_trading_engine.backtest.main.DataRetriever')
     @patch('algo_trading_engine.backtest.main.OptionsHandler')
     @patch('algo_trading_engine.backtest.main.create_strategy_from_args')
@@ -114,7 +114,7 @@ class TestBacktestEngineBenchmarkFromConfig:
         second_call_kwargs = mock_data_retriever.call_args_list[1][1]
         assert second_call_kwargs['symbol'] == 'SPY'
 
-    @patch('algo_trading_engine.common.ml_pipeline.prepare_credit_spread_backtest_data', side_effect=_passthrough_credit_spread_ml_prep)
+    @patch('algo_trading_engine.backtest.main.prepare_credit_spread_backtest_data', side_effect=_passthrough_credit_spread_ml_prep)
     @patch('algo_trading_engine.backtest.main.DataRetriever')
     @patch('algo_trading_engine.backtest.main.OptionsHandler')
     @patch('algo_trading_engine.backtest.main.create_strategy_from_args')
