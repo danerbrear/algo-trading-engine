@@ -1,6 +1,7 @@
 venv
 __pycache__
 data_cache
+build
 .env
 .DS_Store
 .vscode
