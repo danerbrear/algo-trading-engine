@@ -122,7 +122,7 @@ class CreditSpreadStrategy(Strategy):
         On new date, determine if a new position should be opened. 
         We should not open a position if we already have one.
         """
-        super().on_new_date(date, positions)
+        super().on_new_date(date, positions, add_position, remove_position)
 
         has_error = False
 
@@ -265,7 +265,7 @@ class CreditSpreadStrategy(Strategy):
         print(f"   🔍 Evaluating spreads for {strategy_type.value} strategy...")
         
         # Get available expirations from options handler using new API
-        if not self.options_handler:
+        if not self._options_handler:
             print("   ⚠️  No options handler available")
             raise Exception("No options handler available")
             

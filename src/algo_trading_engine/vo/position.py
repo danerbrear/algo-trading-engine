@@ -158,12 +158,10 @@ class Position(ABC):
             self.entry_date != other.entry_date):
             return False
             
-        # Compare exit dates if both have them
-        if hasattr(self, 'exit_date') and hasattr(other, 'exit_date'):
-            if self.exit_date != other.exit_date:
-                return False
-        elif hasattr(self, 'exit_date') or hasattr(other, 'exit_date'):
-            # One has exit date, other doesn't
+        # Compare exit dates when present on concrete position types
+        self_exit = getattr(self, "exit_date", None)
+        other_exit = getattr(other, "exit_date", None)
+        if self_exit != other_exit:
             return False
             
         # Compare spread options if both have them
