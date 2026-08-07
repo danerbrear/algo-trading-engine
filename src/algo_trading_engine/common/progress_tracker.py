@@ -12,7 +12,7 @@ def _get_logger():
     return get_logger()
 
 class ProgressTracker:
-    def __init__(self, start_date: datetime, end_date: datetime, total_dates: int, desc: str = "Processing", quiet_mode: bool = True, unit: str = "date"):
+    def __init__(self, total_dates: int, desc: str = "Processing", quiet_mode: bool = True, unit: str = "date"):
         self.start_time = time()
         self.processed_dates = 0
         self.total_dates = total_dates
@@ -57,7 +57,7 @@ class ProgressTracker:
             # Force refresh the progress bar to redraw it at the bottom
             self.pbar.refresh()
     
-    def update(self, current_date: datetime = None, additional_info: Dict[str, Any] = None, increment_operations: int = 0, summary_info: str = ""):
+    def update(self, current_date: datetime = None, additional_info: Dict[str, Any] = None, summary_info: str = ""):
         """Update progress with current date and additional information"""
         with self._lock:
             if current_date:

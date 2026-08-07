@@ -106,8 +106,6 @@ class BacktestEngine(TradingEngine):
         retriever = DataRetriever(
             symbol=config.symbol,
             lstm_start_date=lstm_start_date.strftime("%Y-%m-%d"),
-            quiet_mode=config.quiet_mode,
-            use_free_tier=config.use_free_tier,
             bar_interval=config.bar_interval
         )
 
@@ -177,8 +175,6 @@ class BacktestEngine(TradingEngine):
             benchmark_retriever = DataRetriever(
                 symbol=config.benchmark_ticker,
                 lstm_start_date=lstm_start_date.strftime("%Y-%m-%d"),
-                quiet_mode=config.quiet_mode,
-                use_free_tier=config.use_free_tier,
                 bar_interval=config.bar_interval
             )
             benchmark_data = benchmark_retriever.fetch_data_for_period(
@@ -254,8 +250,6 @@ class BacktestEngine(TradingEngine):
             unit = "bar" if self.bar_interval and self.bar_interval != BarTimeInterval.DAY else "date"
 
             self.progress_tracker = ProgressTracker(
-                start_date=date_range[0],
-                end_date=date_range[-1],
                 total_dates=len(date_range),
                 desc="Running Backtest",
                 quiet_mode=self.quiet_mode,

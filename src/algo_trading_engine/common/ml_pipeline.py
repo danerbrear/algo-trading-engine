@@ -42,7 +42,7 @@ def load_credit_spread_models(symbol: str) -> Tuple[Any, Any]:
 
 def prepare_data_for_lstm(
     data_retriever: "DataRetriever",
-    sequence_length: int = 60,
+    _sequence_length: int = 60,
     state_classifier: Optional["MarketStateClassifier"] = None,
 ) -> pd.DataFrame:
     """

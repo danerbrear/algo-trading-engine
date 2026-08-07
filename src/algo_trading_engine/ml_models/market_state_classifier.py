@@ -10,7 +10,7 @@ class HMMStateClassifier(BaseEstimator, ClassifierMixin):
         self.n_iter = n_iter
         self.model = None
         
-    def fit(self, X, y=None):
+    def fit(self, X, _y=None):
         self.model = hmm.GaussianHMM(
             n_components=self.n_components,
             n_iter=self.n_iter,

@@ -37,7 +37,7 @@ class Position(ABC):
 
     def __init__(self, symbol: str, expiration_date: datetime, strategy_type: 'StrategyType', 
                  strike_price: float, entry_date: datetime, entry_price: float, 
-                 exit_price: float = None, spread_options: list[Option] = None):
+                 spread_options: list[Option] = None):
         self.symbol = symbol
         self.expiration_date = expiration_date
         self.quantity = None
@@ -984,7 +984,7 @@ class ShortPutPosition(Position):
 
 def create_position(symbol: str, expiration_date: datetime, strategy_type: 'StrategyType',
                    strike_price: float, entry_date: datetime, entry_price: float,
-                   exit_price: float = None, spread_options: list[Option] = None) -> Position:
+                   spread_options: list[Option] = None) -> Position:
     """
     Factory function to create appropriate Position subclass based on strategy_type.
     
@@ -995,7 +995,6 @@ def create_position(symbol: str, expiration_date: datetime, strategy_type: 'Stra
         strike_price: Strike price
         entry_date: Date position was entered
         entry_price: Price at entry
-        exit_price: Price at exit (optional)
         spread_options: List of Option objects for the position
         
     Returns:
@@ -1009,21 +1008,21 @@ def create_position(symbol: str, expiration_date: datetime, strategy_type: 'Stra
     
     if strategy_type in [StrategyType.CALL_CREDIT_SPREAD, StrategyType.PUT_CREDIT_SPREAD]:
         return CreditSpreadPosition(symbol, expiration_date, strategy_type, strike_price,
-                                   entry_date, entry_price, exit_price, spread_options)
+                                   entry_date, entry_price, spread_options)
     elif strategy_type in [StrategyType.CALL_DEBIT_SPREAD, StrategyType.PUT_DEBIT_SPREAD]:
         return DebitSpreadPosition(symbol, expiration_date, strategy_type, strike_price,
-                                   entry_date, entry_price, exit_price, spread_options)
+                                   entry_date, entry_price, spread_options)
     elif strategy_type == StrategyType.LONG_CALL:
         return LongCallPosition(symbol, expiration_date, strategy_type, strike_price,
-                               entry_date, entry_price, exit_price, spread_options)
+                               entry_date, entry_price, spread_options)
     elif strategy_type == StrategyType.SHORT_CALL:
         return ShortCallPosition(symbol, expiration_date, strategy_type, strike_price,
-                                entry_date, entry_price, exit_price, spread_options)
+                                entry_date, entry_price, spread_options)
     elif strategy_type == StrategyType.LONG_PUT:
         return LongPutPosition(symbol, expiration_date, strategy_type, strike_price,
-                              entry_date, entry_price, exit_price, spread_options)
+                              entry_date, entry_price, spread_options)
     elif strategy_type == StrategyType.SHORT_PUT:
         return ShortPutPosition(symbol, expiration_date, strategy_type, strike_price,
-                               entry_date, entry_price, exit_price, spread_options)
+                               entry_date, entry_price, spread_options)
     else:
         raise ValueError(f"Unknown strategy type: {strategy_type}")

@@ -16,7 +16,7 @@ class APIRetryHandler:
         self.rate_limit_delay = rate_limit_delay
         self.use_rate_limit = use_rate_limit
     
-    def fetch_with_retry(self, fetch_func: Callable[[], Any], error_msg: str, max_retries: int = 3, retry_delay: int = 60) -> Any:
+    def fetch_with_retry(self, fetch_func: Callable[[], Any], _error_msg: str, max_retries: int = 3, retry_delay: int = 60) -> Any:
         """Generic retry mechanism for API calls that may hit rate limits
         
         Args:

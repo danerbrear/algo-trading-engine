@@ -518,8 +518,6 @@ class OptionsRetrieverHelper:
     
     @staticmethod
     def calculate_credit_spread_premium(
-        short_leg: OptionContractDTO, 
-        long_leg: OptionContractDTO,
         short_premium: float,
         long_premium: float
     ) -> float:
@@ -527,8 +525,6 @@ class OptionsRetrieverHelper:
         Calculate net credit received for a credit spread.
         
         Args:
-            short_leg: Short leg contract
-            long_leg: Long leg contract
             short_premium: Premium received for short leg
             long_premium: Premium paid for long leg
             
@@ -583,9 +579,7 @@ class OptionsRetrieverHelper:
     
     @staticmethod
     def calculate_implied_volatility_rank(
-        contracts: List[OptionContractDTO], 
-        current_price: float,
-        lookback_days: int = 30
+        contracts: List[OptionContractDTO],
     ) -> Dict[str, float]:
         """
         Calculate implied volatility rank for contracts.
@@ -595,8 +589,6 @@ class OptionsRetrieverHelper:
         
         Args:
             contracts: List of option contracts
-            current_price: Current underlying price
-            lookback_days: Days to look back for IV calculation
             
         Returns:
             Dict mapping contract ticker to IV rank (0-100)
@@ -652,8 +644,7 @@ class OptionsRetrieverHelper:
     
     @staticmethod
     def calculate_delta_exposure(
-        contracts: List[OptionContractDTO], 
-        bars: Dict[str, OptionBarDTO],
+        contracts: List[OptionContractDTO],
         quantity: int = 1
     ) -> float:
         """
@@ -664,7 +655,6 @@ class OptionsRetrieverHelper:
         
         Args:
             contracts: List of option contracts
-            bars: Dict mapping ticker to bar data
             quantity: Number of contracts
             
         Returns:
@@ -744,8 +734,7 @@ class OptionsRetrieverHelper:
     
     @staticmethod
     def calculate_breakeven_points(
-        short_leg: OptionContractDTO, 
-        long_leg: OptionContractDTO,
+        short_leg: OptionContractDTO,
         net_credit: float,
         option_type: OptionType
     ) -> Tuple[float, float]:
@@ -754,7 +743,6 @@ class OptionsRetrieverHelper:
         
         Args:
             short_leg: Short leg contract
-            long_leg: Long leg contract
             net_credit: Net credit received
             option_type: Type of spread (CALL or PUT)
             
