@@ -14,8 +14,11 @@ from decimal import Decimal
 from typing import Optional, List, Dict, Any
 import re
 
+from algo_trading_engine.common.logger import get_logger
 from algo_trading_engine.vo import StrikePrice, ExpirationDate
 from algo_trading_engine.common.models import OptionType
+
+_SNAPSHOT_INTRINSIC_TOLERANCE = 0.01
 
 
 @dataclass(frozen=True)
@@ -186,6 +189,107 @@ class OptionBarDTO:
             number_of_transactions=data["number_of_transactions"],
             adjusted=data.get("adjusted", True)
         )
+
+    @classmethod
+    def from_snapshot(cls, ticker: str, snapshot: Any) -> Optional['OptionBarDTO']:
+        """
+        Build an OptionBarDTO from a Massive/Polygon option contract snapshot.
+
+        Uses ``day.close`` unless close is below intrinsic (impossible for American
+        options); then uses ``day.vwap`` if it clears intrinsic, otherwise returns None.
+        """
+        try:
+            day = getattr(snapshot, 'day', None)
+            if day is None:
+                get_logger().warning("No day data available to hydrate option - {}", snapshot)
+                return None
+
+            if getattr(day, 'close', None) is None:
+                get_logger().warning("No day.close available to hydrate option - {}", snapshot)
+                return None
+
+            leg_price = cls._snapshot_day_leg_price(ticker, day, snapshot)
+            if leg_price is None:
+                return None
+
+            close_decimal = Decimal(str(leg_price))
+            open_price = getattr(day, 'open', None)
+            high_price = getattr(day, 'high', None)
+            low_price = getattr(day, 'low', None)
+            volume = getattr(day, 'volume', 0) or 0
+            vwap = getattr(day, 'vwap', None)
+            open_decimal = Decimal(str(open_price)) if open_price is not None else close_decimal
+            high_decimal = Decimal(str(high_price)) if high_price is not None else close_decimal
+            low_decimal = Decimal(str(low_price)) if low_price is not None else close_decimal
+            vwap_decimal = Decimal(str(vwap)) if vwap is not None else close_decimal
+
+            return cls(
+                ticker=ticker,
+                timestamp=datetime.now(),
+                open_price=open_decimal,
+                high_price=high_decimal,
+                low_price=low_decimal,
+                close_price=close_decimal,
+                volume=int(volume),
+                volume_weighted_avg_price=vwap_decimal,
+                number_of_transactions=1,
+                adjusted=True,
+            )
+        except Exception as e:
+            get_logger().warning("Error converting snapshot data for {}: {}", ticker, e)
+            return None
+
+    @staticmethod
+    def _snapshot_day_leg_price(ticker: str, day: Any, snapshot: Any) -> Optional[float]:
+        close_price = float(getattr(day, 'close'))
+        underlying_asset = getattr(snapshot, 'underlying_asset', None)
+        details = getattr(snapshot, 'details', None)
+        if underlying_asset is None or details is None:
+            get_logger().info("Using day.close ({}) for {}", close_price, ticker)
+            return close_price
+
+        underlying = getattr(underlying_asset, 'price', None)
+        strike = getattr(details, 'strike_price', None)
+        contract_type_str = getattr(details, 'contract_type', None)
+        if underlying is None or strike is None or contract_type_str is None:
+            get_logger().info("Using day.close ({}) for {}", close_price, ticker)
+            return close_price
+
+        intrinsic = OptionBarDTO._american_intrinsic(
+            contract_type_str,
+            float(strike),
+            float(underlying),
+        )
+        floor = intrinsic - _SNAPSHOT_INTRINSIC_TOLERANCE
+        if close_price >= floor:
+            get_logger().info("Using day.close ({}) for {}", close_price, ticker)
+            return close_price
+
+        vwap = getattr(day, 'vwap', None)
+        if vwap is not None and float(vwap) >= floor:
+            get_logger().warning(
+                "day.close ({}) below intrinsic ({}) for {}; using day.vwap ({})",
+                close_price,
+                intrinsic,
+                ticker,
+                vwap,
+            )
+            return float(vwap)
+
+        get_logger().warning(
+            "Rejecting snapshot leg {}: day.close ({}) and day.vwap ({}) below intrinsic ({})",
+            ticker,
+            close_price,
+            vwap,
+            intrinsic,
+        )
+        return None
+
+    @staticmethod
+    def _american_intrinsic(contract_type_str: str, strike: float, underlying: float) -> float:
+        if contract_type_str.lower() == 'call':
+            return max(0.0, underlying - strike)
+        return max(0.0, strike - underlying)
 
 
 @dataclass(frozen=True)

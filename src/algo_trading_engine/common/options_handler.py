@@ -78,7 +78,6 @@ class OptionsHandler:
             '_apply_contract_filters', '_fetch_contracts_from_api',
             '_fetch_bar_from_api', '_fetch_snapshot_from_api',
             '_convert_api_contract_to_dto', '_convert_api_bar_to_dto',
-            '_convert_snapshot_to_dto'
         }
         
         # Check if the requested attribute is a private method
@@ -279,7 +278,7 @@ class OptionsHandler:
         progress_print(f"🔄 Fetching snapshot for {contract.ticker}...")
         snapshot = self._fetch_snapshot_from_api(contract)
         if snapshot:
-            bar = self._convert_snapshot_to_dto(contract.ticker, snapshot)
+            bar = OptionBarDTO.from_snapshot(contract.ticker, snapshot)
             if bar:
                 progress_print(f"✅ Snapshot data received for {contract.ticker}")
                 return bar
@@ -754,47 +753,4 @@ class OptionsHandler:
             
         except Exception as e:
             progress_print(f"⚠️  Error converting bar data: {e}")
-            return None
-
-    def _convert_snapshot_to_dto(self, ticker: str, snapshot) -> Optional[OptionBarDTO]:
-        """Convert Polygon option contract snapshot to OptionBarDTO using day.close only."""
-        try:
-            day = getattr(snapshot, 'day', None)
-            if day is None:
-                progress_print(f"Warning: No day data available to hydrate option - {str(snapshot)}")
-                return None
-
-            close_price = getattr(day, 'close', None)
-            if close_price is None:
-                progress_print(f"Warning: No day.close available to hydrate option - {str(snapshot)}")
-                return None
-
-            get_logger().info("Using day.close ({}) for {}", close_price, ticker)
-
-            close_decimal = Decimal(str(close_price))
-
-            open_price = getattr(day, 'open', None)
-            high_price = getattr(day, 'high', None)
-            low_price = getattr(day, 'low', None)
-            volume = getattr(day, 'volume', 0) or 0
-            vwap = getattr(day, 'vwap', None)
-            open_decimal = Decimal(str(open_price)) if open_price is not None else close_decimal
-            high_decimal = Decimal(str(high_price)) if high_price is not None else close_decimal
-            low_decimal = Decimal(str(low_price)) if low_price is not None else close_decimal
-            vwap_decimal = Decimal(str(vwap)) if vwap is not None else close_decimal
-
-            return OptionBarDTO(
-                ticker=ticker,
-                timestamp=datetime.now(),
-                open_price=open_decimal,
-                high_price=high_decimal,
-                low_price=low_decimal,
-                close_price=close_decimal,
-                volume=int(volume),
-                volume_weighted_avg_price=vwap_decimal,
-                number_of_transactions=1,
-                adjusted=True,
-            )
-        except Exception as e:
-            progress_print(f"⚠️  Error converting snapshot data: {e}")
             return None

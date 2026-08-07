@@ -1,8 +1,4 @@
-"""Unit tests for OptionsHandler snapshot-based live option pricing.
-
-Snapshot pricing intentionally uses ``day.close`` only; quote and last_trade
-fields are ignored entirely.
-"""
+"""Unit tests for OptionsHandler snapshot-based live option pricing."""
 
 from datetime import date, timedelta
 from decimal import Decimal
@@ -11,7 +7,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from algo_trading_engine.common.options_handler import OptionsHandler
-from algo_trading_engine.dto import OptionContractDTO
+from algo_trading_engine.dto import OptionBarDTO, OptionContractDTO
 from algo_trading_engine.vo import ExpirationDate, StrikePrice
 from algo_trading_engine.common.models import OptionType
 
@@ -47,6 +43,9 @@ def _make_snapshot(
     day_volume=42,
     day_vwap=10.25,
     include_day=False,
+    underlying_price=None,
+    strike_price=450.0,
+    contract_type="call",
 ):
     day = None
     if include_day or day_close is not None:
@@ -58,13 +57,20 @@ def _make_snapshot(
             volume=day_volume,
             vwap=day_vwap,
         )
-    return Mock(day=day)
+    details = Mock(
+        strike_price=strike_price,
+        contract_type=contract_type,
+    )
+    underlying_asset = None
+    if underlying_price is not None:
+        underlying_asset = Mock(price=underlying_price)
+    return Mock(day=day, details=details, underlying_asset=underlying_asset)
 
 
-class TestConvertSnapshotToDto:
-    def test_maps_full_snapshot(self, options_handler, sample_contract):
+class TestFromSnapshot:
+    def test_maps_full_snapshot(self, sample_contract):
         snapshot = _make_snapshot(day_close=21.0)
-        bar = options_handler._convert_snapshot_to_dto(sample_contract.ticker, snapshot)
+        bar = OptionBarDTO.from_snapshot(sample_contract.ticker, snapshot)
 
         assert bar is not None
         assert bar.ticker == sample_contract.ticker
@@ -76,7 +82,7 @@ class TestConvertSnapshotToDto:
         assert bar.volume_weighted_avg_price == Decimal("10.25")
         assert bar.number_of_transactions == 1
 
-    def test_uses_close_for_ohlc_when_day_fields_missing(self, options_handler, sample_contract):
+    def test_uses_close_for_ohlc_when_day_fields_missing(self, sample_contract):
         snapshot = _make_snapshot(
             day_close=5.5,
             day_open=None,
@@ -85,7 +91,7 @@ class TestConvertSnapshotToDto:
             day_volume=0,
             day_vwap=None,
         )
-        bar = options_handler._convert_snapshot_to_dto(sample_contract.ticker, snapshot)
+        bar = OptionBarDTO.from_snapshot(sample_contract.ticker, snapshot)
 
         assert bar is not None
         assert bar.close_price == Decimal("5.5")
@@ -95,13 +101,44 @@ class TestConvertSnapshotToDto:
         assert bar.volume_weighted_avg_price == Decimal("5.5")
         assert bar.volume == 0
 
-    def test_returns_none_when_day_missing(self, options_handler, sample_contract):
+    def test_returns_none_when_day_missing(self, sample_contract):
         snapshot = _make_snapshot()
-        assert options_handler._convert_snapshot_to_dto(sample_contract.ticker, snapshot) is None
+        assert OptionBarDTO.from_snapshot(sample_contract.ticker, snapshot) is None
 
-    def test_returns_none_when_day_close_missing(self, options_handler, sample_contract):
+    def test_returns_none_when_day_close_missing(self, sample_contract):
         snapshot = _make_snapshot(include_day=True, day_close=None)
-        assert options_handler._convert_snapshot_to_dto(sample_contract.ticker, snapshot) is None
+        assert OptionBarDTO.from_snapshot(sample_contract.ticker, snapshot) is None
+
+    def test_close_below_intrinsic_uses_vwap(self, sample_contract):
+        # 500 spot, 450 call -> intrinsic 50; close 40 is impossible, vwap 51 is ok
+        snapshot = _make_snapshot(
+            day_close=40.0,
+            day_vwap=51.0,
+            underlying_price=500.0,
+            strike_price=450.0,
+            contract_type="call",
+        )
+        bar = OptionBarDTO.from_snapshot(sample_contract.ticker, snapshot)
+        assert bar is not None
+        assert bar.close_price == Decimal("51.0")
+
+    def test_close_below_intrinsic_and_vwap_rejects_leg(self, sample_contract):
+        snapshot = _make_snapshot(
+            day_close=40.0,
+            day_vwap=45.0,
+            underlying_price=500.0,
+        )
+        assert OptionBarDTO.from_snapshot(sample_contract.ticker, snapshot) is None
+
+    def test_close_above_intrinsic_uses_close(self, sample_contract):
+        snapshot = _make_snapshot(
+            day_close=55.0,
+            day_vwap=52.0,
+            underlying_price=500.0,
+        )
+        bar = OptionBarDTO.from_snapshot(sample_contract.ticker, snapshot)
+        assert bar is not None
+        assert bar.close_price == Decimal("55.0")
 
 
 class TestGetOptionSnapshot:
