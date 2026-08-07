@@ -25,6 +25,7 @@ dev = [
     "pytest>=7.0.0",
     "psutil>=5.9.0",
     "matplotlib>=3.8.0",
+    "pylint~=3.3",
     "algo_trading_engine[ml]"
 ]
 ml = [
@@ -47,3 +48,36 @@ include = ["algo_trading_engine*"]
 testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
 pythonpath = ["src"]
+
+[tool.pylint.main]
+py-version = "3.10"
+source-roots = ["src"]
+jobs = 0
+ignore-paths = [
+    "^venv/.*$",
+    "^build/.*$",
+    "^src/.*\\.egg-info/.*$",
+]
+
+[tool.pylint."messages control"]
+disable = [
+    "missing-module-docstring",
+    "missing-function-docstring",
+    # Owned by the code formatter, not the linter
+    "line-too-long",
+    "trailing-whitespace",
+    "trailing-newlines",
+    "missing-final-newline",
+    "superfluous-parens",
+    "wrong-import-order",
+    "ungrouped-imports",
+]
+
+[tool.pylint.design]
+max-args = 8
+max-positional-arguments = 8
+max-attributes = 12
+max-locals = 20
+
+[tool.pylint.similarities]
+min-similarity-lines = 10

@@ -59,6 +59,10 @@ Example Usage:
 
 from __future__ import annotations
 
+# Names in __all__ are resolved by the PEP 562 __getattr__ below, so static
+# analysis cannot see them defined at module level.
+# pylint: disable=undefined-all-variable
+
 import importlib
 from typing import Any
 
