@@ -11,6 +11,15 @@ alwaysApply: true
 
 - Prefer polymorphism over type/enum branching. When behavior differs by type, put the behavior on the type (override a method) and call it through a shared interface. Do not switch on `strategy_type`, class name, or similar discriminators in callers when a subclass method would do.
 
+### Startup and imports
+
+- Keep **program startup fast**: importing a module for a lightweight workflow (CLI, DTOs, backtest wiring without ML) must not eagerly load heavy stacks (TensorFlow/keras, sklearn/hmmlearn, matplotlib/seaborn) unless that module’s job is ML or plotting.
+- **Default to module-level imports.** Use `from __future__ import annotations` and `TYPE_CHECKING` for type-only imports. Use PEP 562 `__getattr__` on package `__init__.py` when a public name would otherwise pull in a heavy subgraph at import time.
+- **Lazy (function-scoped) imports** are allowed only for **large / expensive dependencies**, deferred at a **narrow boundary** (e.g. model loaders, strategy `build()`, modules like `common/ml_pipeline` that are documented as “import only from explicit entry points”). Each one needs a short comment explaining why, and `# pylint: disable-next=import-outside-toplevel` (or an equivalent scoped disable). CI lint enables `import-outside-toplevel`—do not defer imports just to satisfy the linter without a real startup cost.
+- **Before adding a new lazy import for a large dependency, review the approach with the user** (where to defer, what stays eager, impact on tests and entry points).
+- Do **not** lazy-import stdlib or already-light project modules (`traceback`, `re`, `datetime`, shared `common` types, etc.). Do not claim “circular import” without verifying; fix structure when possible instead of scattering deferred imports.
+- When hoisting imports, **patch mocks at the consumer** (where the name is bound), e.g. `algo_trading_engine.backtest.main.prepare_credit_spread_backtest_data`, not only at the defining module.
+
 ### Tests vs production code
 
 - Structure production code so it is testable (clear dependencies, real types at boundaries, seams for injection where appropriate).
