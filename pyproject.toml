@@ -61,8 +61,6 @@ ignore-paths = [
 
 [tool.pylint."messages control"]
 disable = [
-    "missing-module-docstring",
-    "missing-function-docstring",
     # Owned by the code formatter, not the linter
     "line-too-long",
     "trailing-whitespace",
@@ -75,9 +73,6 @@ disable = [
 
 [tool.pylint.design]
 max-args = 8
-max-positional-arguments = 8
+max-positional-arguments = 3
 max-attributes = 12
-max-locals = 20
-
-[tool.pylint.similarities]
-min-similarity-lines = 10
+max-returns = 4
