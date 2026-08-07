@@ -1,3 +1,24 @@
+---
+description: "Rules to apply while coding for the algo-trading-engine project."
+alwaysApply: true
+---
+
+## Running Commands as an Agent
+
+- Run Python and tests from the project venv (e.g. `venv/bin/python`, `venv/bin/python -m pytest`).
+
+## Coding as an Agent
+
+- Prefer polymorphism over type/enum branching. When behavior differs by type, put the behavior on the type (override a method) and call it through a shared interface. Do not switch on `strategy_type`, class name, or similar discriminators in callers when a subclass method would do.
+
+### Tests vs production code
+
+- Structure production code so it is testable (clear dependencies, real types at boundaries, seams for injection where appropriate).
+- Do not add production functions, helpers, or normalization layers whose **only** purpose is to make loose test doubles (e.g. `Mock` objects with wrong types) pass. Fix the tests—use real domain types (`OptionType`, DTOs, `Option`, etc.) or narrow mocks that honor the same contract.
+- Add production code for test convenience only when it reflects a real requirement (e.g. a public API consumers need), not to paper over test setup shortcuts.
+
+---
+
 # Cursor Rules for LSTM POC Project
 
 ## Table of Contents

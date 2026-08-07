@@ -58,16 +58,14 @@ class MockStrategy(Strategy):
             option1.volume = 15
             option1.strike = 500.0
             option1.expiration = "2024-03-15"
-            option1.option_type = Mock()
-            option1.option_type.value = "C"
+            option1.option_type = OptionType.CALL
             
             option2 = Mock(spec=Option)
             option2.symbol = "SPY240315C00510000"
             option2.volume = 20
             option2.strike = 510.0
             option2.expiration = "2024-03-15"
-            option2.option_type = Mock()
-            option2.option_type.value = "C"
+            option2.option_type = OptionType.CALL
             
             position = create_position(
                 symbol="SPY",
@@ -152,16 +150,14 @@ class TestVolumeValidationIntegration:
                     option1.volume = 5  # Below minimum
                     option1.strike = 500.0
                     option1.expiration = "2024-03-15"
-                    option1.option_type = Mock()
-                    option1.option_type.value = "C"
+                    option1.option_type = OptionType.CALL
                     
                     option2 = Mock(spec=Option)
                     option2.symbol = "SPY240315C00510000"
                     option2.volume = 20  # Above minimum
                     option2.strike = 510.0
                     option2.expiration = "2024-03-15"
-                    option2.option_type = Mock()
-                    option2.option_type.value = "C"
+                    option2.option_type = OptionType.CALL
                     
                     position = create_position(
                         symbol="SPY",
@@ -213,16 +209,14 @@ class TestVolumeValidationIntegration:
                     option1.volume = None  # Missing volume data
                     option1.strike = 500.0
                     option1.expiration = "2024-03-15"
-                    option1.option_type = Mock()
-                    option1.option_type.value = "C"
+                    option1.option_type = OptionType.CALL
                     
                     option2 = Mock(spec=Option)
                     option2.symbol = "SPY240315C00510000"
                     option2.volume = 20  # Above minimum
                     option2.strike = 510.0
                     option2.expiration = "2024-03-15"
-                    option2.option_type = Mock()
-                    option2.option_type.value = "C"
+                    option2.option_type = OptionType.CALL
                     
                     position = create_position(
                         symbol="SPY",
@@ -274,16 +268,14 @@ class TestVolumeValidationIntegration:
                     option1.volume = 8  # Below min_volume=15
                     option1.strike = 500.0
                     option1.expiration = "2024-03-15"
-                    option1.option_type = Mock()
-                    option1.option_type.value = "C"
+                    option1.option_type = OptionType.CALL
                     
                     option2 = Mock(spec=Option)
                     option2.symbol = "SPY240315C00510000"
                     option2.volume = 20  # Above min_volume=15
                     option2.strike = 510.0
                     option2.expiration = "2024-03-15"
-                    option2.option_type = Mock()
-                    option2.option_type.value = "C"
+                    option2.option_type = OptionType.CALL
                     
                     position = create_position(
                         symbol="SPY",
@@ -514,8 +506,7 @@ class TestUniversalCloseCallback:
                     option1.strike = 500.0
                     option1.expiration = "2024-01-01"
                     option1.last_price = 1.50
-                    option1.option_type = Mock()
-                    option1.option_type.value = "C"
+                    option1.option_type = OptionType.CALL
 
                     option2 = Mock(spec=Option)
                     option2.symbol = "SPY240101C00510000"
@@ -524,8 +515,7 @@ class TestUniversalCloseCallback:
                     option2.strike = 510.0
                     option2.expiration = "2024-01-01"
                     option2.last_price = 0.75
-                    option2.option_type = Mock()
-                    option2.option_type.value = "C"
+                    option2.option_type = OptionType.CALL
 
                     position = create_position(
                         symbol="SPY",
@@ -607,8 +597,7 @@ class TestUniversalCloseCallback:
                     self._option1.strike = 500.0
                     self._option1.expiration = "2024-03-15"
                     self._option1.last_price = 1.50
-                    self._option1.option_type = Mock()
-                    self._option1.option_type.value = "C"
+                    self._option1.option_type = OptionType.CALL
 
                     self._option2 = Mock(spec=Option)
                     self._option2.symbol = "SPY240315C00510000"
@@ -617,8 +606,7 @@ class TestUniversalCloseCallback:
                     self._option2.strike = 510.0
                     self._option2.expiration = "2024-03-15"
                     self._option2.last_price = 0.75
-                    self._option2.option_type = Mock()
-                    self._option2.option_type.value = "C"
+                    self._option2.option_type = OptionType.CALL
 
                     position = create_position(
                         symbol="SPY",
@@ -712,8 +700,7 @@ class TestUniversalCloseCallback:
                     self._option1.strike = 500.0
                     self._option1.expiration = "2024-03-15"
                     self._option1.last_price = 1.50
-                    self._option1.option_type = Mock()
-                    self._option1.option_type.value = "C"
+                    self._option1.option_type = OptionType.CALL
 
                     self._option2 = Mock(spec=Option)
                     self._option2.symbol = "SPY240315C00510000"
@@ -722,8 +709,7 @@ class TestUniversalCloseCallback:
                     self._option2.strike = 510.0
                     self._option2.expiration = "2024-03-15"
                     self._option2.last_price = 0.75
-                    self._option2.option_type = Mock()
-                    self._option2.option_type.value = "C"
+                    self._option2.option_type = OptionType.CALL
 
                     position = create_position(
                         symbol="SPY",
