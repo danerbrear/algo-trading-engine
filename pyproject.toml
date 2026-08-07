@@ -61,6 +61,8 @@ ignore-paths = [
 
 [tool.pylint."messages control"]
 disable = [
+    # Explicitly disabled rules
+    "broad-exception-caught",
     # Owned by the code formatter, not the linter
     "line-too-long",
     "trailing-whitespace",
