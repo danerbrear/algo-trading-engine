@@ -340,26 +340,6 @@ class SpreadPosition(Position):
 
         return False
 
-    def _spread_intrinsic(self, underlying_price: float) -> float:
-        """
-        Intrinsic value of the spread at ``underlying_price``, bounded to [0, width].
-
-        Derived from the strikes rather than the ``spread_options`` order, so it holds
-        for both debit and credit spreads.
-        """
-        if not self.spread_options or len(self.spread_options) != 2:
-            raise ValueError("Spread options are not set")
-
-        low_strike = min(leg.strike for leg in self.spread_options)
-        high_strike = max(leg.strike for leg in self.spread_options)
-
-        option_type = self.spread_options[0].option_type
-        if option_type == OptionType.CALL:
-            return max(0.0, underlying_price - low_strike) - max(0.0, underlying_price - high_strike)
-        if option_type == OptionType.PUT:
-            return max(0.0, high_strike - underlying_price) - max(0.0, low_strike - underlying_price)
-        raise ValueError(f"Unsupported option type for spread value resolution: {option_type}")
-
     def _resolve_spread_value(
         self,
         atm_price: Optional[float],
@@ -367,15 +347,12 @@ class SpreadPosition(Position):
         underlying_price: Optional[float],
     ) -> Optional[float]:
         """
-        Resolve a spread's exit value from leg prices, validating against [0, width]
-        and against the spread's intrinsic value.
+        Resolve a spread's exit value from leg prices, validating against [0, width].
 
-        A leg-derived value inside [0, width] is only trusted when it is at or above
-        intrinsic; a mark below intrinsic is an arbitrage violation, so the leg data is
-        treated as garbage. When leg prices are missing, out of bounds, or below
-        intrinsic, substitute the spread's intrinsic value only when the underlying is
-        deeply ITM or OTM (beyond both strikes by at least one full spread width). Deep
-        ITM is capped at 90% of width so full spread value is reserved for expiration.
+        When leg prices are missing or produce an out-of-bound value, substitute the
+        spread's intrinsic value only when the underlying is deeply ITM or OTM
+        (beyond both strikes by at least one full spread width). Deep ITM is capped
+        at 90% of width so full spread value is reserved for expiration.
         """
         if not self.spread_options or len(self.spread_options) != 2:
             raise ValueError("Spread options are not set")
@@ -385,14 +362,13 @@ class SpreadPosition(Position):
         width = high_strike - low_strike
 
         raw_value = atm_price - otm_price if atm_price is not None and otm_price is not None else None
-        in_range = (
+        if (
             raw_value is not None
             and -_SPREAD_VALUE_TOLERANCE <= raw_value <= width + _SPREAD_VALUE_TOLERANCE
-        )
+        ):
+            return raw_value
 
         if underlying_price is None:
-            if in_range:
-                return raw_value
             get_logger().warning(
                 "Cannot resolve spread value for {} {}: raw={}, underlying unavailable",
                 self.symbol,
@@ -400,23 +376,6 @@ class SpreadPosition(Position):
                 raw_value,
             )
             return None
-
-        intrinsic_value = self._spread_intrinsic(underlying_price)
-
-        if in_range:
-            if raw_value >= intrinsic_value - _SPREAD_VALUE_TOLERANCE:
-                return raw_value
-            get_logger().warning(
-                "Spread mark below intrinsic for {} {} (raw={}, intrinsic={}, strikes={}/{}, "
-                "underlying={}); rejecting leg data",
-                self.symbol,
-                self.strategy_type.value,
-                raw_value,
-                intrinsic_value,
-                low_strike,
-                high_strike,
-                underlying_price,
-            )
 
         option_type = self.spread_options[0].option_type
         if option_type == OptionType.CALL:
