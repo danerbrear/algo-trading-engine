@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+import numpy as np
 import pandas as pd
 import yfinance as yf
 
@@ -326,7 +327,7 @@ def plot_equity_curve(
     fig, ax1 = plt.subplots(figsize=(14, 8))
     
     # Plot each strategy's equity curve on primary axis
-    colors = plt.cm.tab10(range(len(strategy_groups)))
+    colors = plt.colormaps["tab10"](np.linspace(0, 1, max(len(strategy_groups), 1)))[: len(strategy_groups)]
     
     for (strategy_name, strategy_positions), color in zip(strategy_groups.items(), colors):
         # Map strategy name to config key

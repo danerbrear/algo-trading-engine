@@ -1,13 +1,19 @@
 from ..common.data_retriever import DataRetriever
+from ..common.ml_pipeline import prepare_training_data
 from .lstm_model import LSTMModel
-import numpy as np
-from sklearn.metrics import classification_report, confusion_matrix
-from .plots import create_plotter
-from .config import EPOCHS, BATCH_SIZE, SEQUENCE_LENGTH
 import argparse
 import os
+import pickle
 from datetime import datetime
+from typing import cast
+
+import numpy as np
+import pandas as pd
 from dotenv import load_dotenv
+from sklearn.metrics import classification_report, confusion_matrix
+
+from .config import BATCH_SIZE, EPOCHS, SEQUENCE_LENGTH
+from .plots import create_plotter
 
 # Load environment variables from .env
 load_dotenv()
@@ -15,7 +21,7 @@ load_dotenv()
 class StockPredictor:
     """Main class for training and evaluating LSTM-based options trading models."""
     
-    def __init__(self, symbol='SPY', hmm_start_date='2010-01-01', lstm_start_date='2021-06-01', sequence_length=SEQUENCE_LENGTH, use_free_tier=False, quiet_mode=True):
+    def __init__(self, symbol='SPY', hmm_start_date='2010-01-01', lstm_start_date='2021-06-01', sequence_length=SEQUENCE_LENGTH):
         """Initialize StockPredictor with separate date ranges for HMM and LSTM
         
         Args:
@@ -23,16 +29,12 @@ class StockPredictor:
             hmm_start_date: Start date for HMM training (market state classification)
             lstm_start_date: Start date for LSTM training (options signal prediction)  
             sequence_length: Length of sequences for LSTM
-            use_free_tier: Whether to use free tier rate limiting (13 second timeout)
-            quiet_mode: Whether to suppress detailed output for cleaner progress display
         """
         self.sequence_length = sequence_length
         self.data_retriever = DataRetriever(
             symbol=symbol, 
             hmm_start_date=hmm_start_date, 
             lstm_start_date=lstm_start_date,
-            use_free_tier=use_free_tier,
-            quiet_mode=quiet_mode
         )
         self.model = None
         self.X_train = None
@@ -44,8 +46,6 @@ class StockPredictor:
 
     def prepare_data(self):
         """Prepare the data for training"""
-        from algo_trading_engine.common.ml_pipeline import prepare_training_data
-
         self.state_classifier = prepare_training_data(self.data_retriever)
         print(f"✅ HMM model trained with {self.state_classifier.n_states} optimal states")
 
@@ -138,6 +138,11 @@ class StockPredictor:
             
             if lstm_data is None or len(lstm_data) == 0:
                 return None, None
+
+            if not isinstance(lstm_data, pd.DataFrame):
+                return None, None
+
+            lstm_frame = cast(pd.DataFrame, lstm_data)
                 
             # Calculate the starting index for test data in the original dataset
             # Test data starts after training data + sequence length
@@ -150,7 +155,7 @@ class StockPredictor:
             test_end_idx = test_start_idx + len(test_predictions)
             
             # Ensure we don't go beyond available data
-            test_end_idx = min(test_end_idx, len(lstm_data))
+            test_end_idx = min(test_end_idx, len(lstm_frame))
             actual_test_length = test_end_idx - test_start_idx
             
             if actual_test_length <= 0:
@@ -160,7 +165,7 @@ class StockPredictor:
             test_predictions = test_predictions[:actual_test_length]
             
             # Get actual SPY log returns for the test period
-            actual_spy_returns = lstm_data['Log_Returns'].iloc[test_start_idx:test_end_idx].values
+            actual_spy_returns = lstm_frame.loc[test_start_idx:test_end_idx, "Log_Returns"].values
             
             # Calculate predicted strategy returns based on the predicted labels
             predicted_returns = np.zeros(len(test_predictions))
@@ -173,13 +178,13 @@ class StockPredictor:
                 if predicted_label == 0:  # Hold
                     predicted_returns[i] = 0.0  # No return for hold
                 elif predicted_label == 1:  # Call Credit Spread
-                    if 'Future_Call_Credit_Return' in lstm_data.columns and data_idx < len(lstm_data):
-                        predicted_returns[i] = lstm_data['Future_Call_Credit_Return'].iloc[data_idx]
+                    if "Future_Call_Credit_Return" in lstm_frame.columns and data_idx < len(lstm_frame):
+                        predicted_returns[i] = float(lstm_frame.loc[data_idx, "Future_Call_Credit_Return"])
                     else:
                         predicted_returns[i] = 0.08  # Default expected return
                 elif predicted_label == 2:  # Put Credit Spread  
-                    if 'Future_Put_Credit_Return' in lstm_data.columns and data_idx < len(lstm_data):
-                        predicted_returns[i] = lstm_data['Future_Put_Credit_Return'].iloc[data_idx]
+                    if "Future_Put_Credit_Return" in lstm_frame.columns and data_idx < len(lstm_frame):
+                        predicted_returns[i] = float(lstm_frame.loc[data_idx, "Future_Put_Credit_Return"])
                     else:
                         predicted_returns[i] = 0.08  # Default expected return
                 else:
@@ -215,8 +220,6 @@ class StockPredictor:
 
 def save_model(lstm_model_obj, hmm_model=None, mode='lstm_poc', symbol='SPY'):
     """Save both LSTM and HMM models to timestamped and latest folders"""
-    import pickle
-    
     # Only use the environment variable, default to a generic relative path if not set
     base_dir = os.environ.get('MODEL_SAVE_BASE_PATH', 'Trained_Models')
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -249,8 +252,6 @@ def save_model(lstm_model_obj, hmm_model=None, mode='lstm_poc', symbol='SPY'):
     
     # Save HMM model if provided
     if hmm_model is not None:
-        import pickle
-        
         # Save HMM model and scaler
         hmm_data = {
             'hmm_model': hmm_model.hmm_model,
@@ -318,13 +319,7 @@ if __name__ == "__main__":
     parser.add_argument('--symbol', type=str, default='SPY', help='Stock symbol to train the model on (default: SPY)')
     parser.add_argument('-s', '--save', action='store_true', help='Save the trained model')
     parser.add_argument('--mode', type=str, default='lstm_poc', help='Mode label for model saving (e.g., lstm_poc)')
-    parser.add_argument('-f', '--free', action='store_true', help='Use free tier rate limiting (13 second timeout between API requests)')
-    parser.add_argument('-q', '--quiet', action='store_true', help='Suppress detailed output during processing for cleaner progress display (default)')
-    parser.add_argument('-v', '--verbose', action='store_true', help='Show detailed output during processing (opposite of --quiet)')
     args = parser.parse_args()
-    
-    # Determine quiet mode: default is True (quiet) unless --verbose is specified
-    quiet_mode = not args.verbose  # If verbose is True, quiet_mode becomes False
     
     print(f"🎯 Training model for symbol: {args.symbol}")
     
@@ -332,8 +327,6 @@ if __name__ == "__main__":
         symbol=args.symbol,
         hmm_start_date='2010-01-01',
         lstm_start_date='2021-06-01',
-        use_free_tier=args.free,
-        quiet_mode=quiet_mode
     )
     
     predictor.prepare_data()

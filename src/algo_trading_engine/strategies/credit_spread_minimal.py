@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import traceback
 from datetime import datetime, date
 from typing import Callable, Optional
 import pandas as pd
@@ -7,7 +8,7 @@ import pandas as pd
 from algo_trading_engine.core.strategy import Strategy
 from algo_trading_engine.vo import Position, create_position
 from algo_trading_engine.common.models import StrategyType
-from algo_trading_engine.common.models import Option, OptionType, TreasuryRates
+from algo_trading_engine.common.models import Option, OptionChain, OptionType, TreasuryRates
 from algo_trading_engine.common.progress_tracker import progress_print
 from algo_trading_engine.dto import ExpirationRangeDTO, StrikeRangeDTO
 from algo_trading_engine.vo import StrikePrice, ExpirationDate
@@ -67,8 +68,6 @@ class CreditSpreadStrategy(Strategy):
             OptionChain: Options chain with calls and puts, or empty chain if error
         """
         try:
-            from algo_trading_engine.common.models import OptionChain, Option
-            
             # Get current price
             current_price = self.data.loc[date]['Close']
             
@@ -114,7 +113,6 @@ class CreditSpreadStrategy(Strategy):
             
         except Exception as e:
             print(f"⚠️  Error getting options chain for {date}: {e}")
-            from algo_trading_engine.common.models import OptionChain
             return OptionChain()
 
     def on_new_date(self, date: datetime, positions: tuple['Position', ...],
@@ -124,7 +122,7 @@ class CreditSpreadStrategy(Strategy):
         On new date, determine if a new position should be opened. 
         We should not open a position if we already have one.
         """
-        super().on_new_date(date, positions)
+        super().on_new_date(date, positions, add_position, remove_position)
 
         has_error = False
 
@@ -173,7 +171,6 @@ class CreditSpreadStrategy(Strategy):
                 if exit_price is None:
                     # Initialize empty option_chain if not already set
                     if option_chain is None:
-                        from algo_trading_engine.common.models import OptionChain
                         option_chain = OptionChain()
                     
                     for option in position.spread_options:
@@ -229,7 +226,6 @@ class CreditSpreadStrategy(Strategy):
                             print(f"    No exit price available for {position.__str__()} on {date}. Skipping.")
                 except Exception as e:
                     print(f"Error closing position {position}: {e}")
-                    import traceback
                     traceback.print_exc()
                     has_error = True
 
@@ -254,7 +250,6 @@ class CreditSpreadStrategy(Strategy):
                 remove_position(date, position, exit_price, current_volumes=current_volumes)
             except Exception as e:
                 print(f"   Error closing position {position}: {e}")
-                import traceback
                 traceback.print_exc()
                 raise e
             
@@ -270,7 +265,7 @@ class CreditSpreadStrategy(Strategy):
         print(f"   🔍 Evaluating spreads for {strategy_type.value} strategy...")
         
         # Get available expirations from options handler using new API
-        if not self.options_handler:
+        if not self._options_handler:
             print("   ⚠️  No options handler available")
             raise Exception("No options handler available")
             

@@ -5,45 +5,40 @@ import pytest
 from datetime import datetime, timedelta
 from unittest.mock import Mock, MagicMock, patch
 import pandas as pd
-
 from algo_trading_engine.core.strategy import IndicatorUpdateError, Strategy
 from algo_trading_engine.core.indicators.indicator import Indicator
 from algo_trading_engine.core.indicators.average_true_return_indicator import ATRIndicator
 from algo_trading_engine.core.indicators.sma_indicator import SMAIndicator
 from algo_trading_engine.enums import BarTimeInterval
 
-
 class ConcreteTestStrategy(Strategy):
     """Concrete implementation of Strategy for testing"""
-    
+
     def __init__(self):
         super().__init__()
         self.on_new_date_called = False
         self.on_new_date_call_count = 0
         self.last_date_processed = None
-    
+
     def on_new_date(self, date, positions, add_position, remove_position):
         """Implementation of abstract on_new_date"""
-        # Call parent to update indicators
         super().on_new_date(date, positions, add_position, remove_position)
-        
         self.on_new_date_called = True
         self.on_new_date_call_count += 1
         self.last_date_processed = date
-    
+
     def on_end(self, positions, remove_position, date):
         """Implementation of abstract on_end"""
         pass
-    
+
     def validate_data(self, data):
         """Implementation of abstract validate_data"""
         return 'Close' in data.columns and len(data) > 0
 
-
 class MockIndicator(Indicator):
     """Mock indicator for testing"""
-    
-    def __init__(self, name="MockIndicator", should_fail=False, mock_warm_up: int = 5):
+
+    def __init__(self, name='MockIndicator', should_fail=False, mock_warm_up: int=5):
         super().__init__(name=name)
         self.update_called = False
         self.update_call_count = 0
@@ -56,72 +51,64 @@ class MockIndicator(Indicator):
     @property
     def warm_up_period(self) -> int:
         return self._mock_warm_up
-    
+
     def update(self, date, data):
         """Mock update implementation"""
         self.update_called = True
         self.update_call_count += 1
         self.last_update_date = date
         self.last_update_data = data
-        
         if self.should_fail:
-            raise ValueError(f"Mock indicator {self.name} intentionally failed")
-        
-        self._value = 42.0  # Mock value
-    
+            raise ValueError(f'Mock indicator {self.name} intentionally failed')
+        self._value = 42.0
+
     def print(self):
         """Mock print implementation"""
-        print(f"{self.name}: value={self._value}, updates={self.update_call_count}")
-    
+        print(f'{self.name}: value={self._value}, updates={self.update_call_count}')
+
     @property
     def value(self):
         return self._value
 
-
 class TestStrategyIndicatorInitialization:
     """Test cases for Strategy initialization with indicators"""
-    
+
     def test_strategy_init_without_indicators(self):
         """Test Strategy initialization without indicators"""
         strategy = ConcreteTestStrategy()
         assert strategy.indicators == []
         assert isinstance(strategy.indicators, list)
-    
+
     def test_strategy_init_with_single_indicator(self):
         """Test Strategy initialization with a single indicator using add_indicator"""
         indicator = MockIndicator()
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(indicator)
-        
         assert len(strategy.indicators) == 1
         assert strategy.indicators[0] == indicator
-    
+
     def test_strategy_init_with_multiple_indicators(self):
         """Test Strategy initialization with multiple indicators using add_indicator"""
-        indicator1 = MockIndicator(name="Indicator1")
-        indicator2 = MockIndicator(name="Indicator2")
+        indicator1 = MockIndicator(name='Indicator1')
+        indicator2 = MockIndicator(name='Indicator2')
         indicator3 = ATRIndicator(period=14)
-        
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(indicator1)
         strategy.add_indicator(indicator2)
         strategy.add_indicator(indicator3)
-        
         assert len(strategy.indicators) == 3
         assert strategy.indicators[0] == indicator1
         assert strategy.indicators[1] == indicator2
         assert strategy.indicators[2] == indicator3
-    
+
     def test_strategy_init_with_atr_indicator(self):
         """Test Strategy initialization with real ATRIndicator"""
         atr = ATRIndicator(period=14, period_unit=BarTimeInterval.DAY)
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(atr)
-        
         assert len(strategy.indicators) == 1
         assert isinstance(strategy.indicators[0], ATRIndicator)
         assert strategy.indicators[0].period == 14
-
 
 class TestStrategyWarmUpPeriod:
     """Test cases for Strategy.warm_up_period property"""
@@ -137,9 +124,9 @@ class TestStrategyWarmUpPeriod:
 
     def test_warm_up_period_returns_max(self):
         strategy = ConcreteTestStrategy()
-        strategy.add_indicator(MockIndicator(name="A", mock_warm_up=5))
-        strategy.add_indicator(MockIndicator(name="B", mock_warm_up=20))
-        strategy.add_indicator(MockIndicator(name="C", mock_warm_up=12))
+        strategy.add_indicator(MockIndicator(name='A', mock_warm_up=5))
+        strategy.add_indicator(MockIndicator(name='B', mock_warm_up=20))
+        strategy.add_indicator(MockIndicator(name='C', mock_warm_up=12))
         assert strategy.warm_up_period == 20
 
     def test_warm_up_period_with_real_indicators(self):
@@ -154,44 +141,34 @@ class TestStrategyWarmUpPeriod:
         strategy.add_indicator(ATRIndicator(period=14))
         assert strategy.warm_up_period == 15
 
-
 class TestStrategyUpdateIndicators:
     """Test cases for _update_indicators method"""
-    
+
     def create_sample_data(self, num_days=20):
         """Helper to create sample OHLCV data"""
         dates = pd.date_range(start='2024-01-01', periods=num_days, freq='D')
-        data = pd.DataFrame({
-            'Open': [100 + i for i in range(num_days)],
-            'High': [105 + i for i in range(num_days)],
-            'Low': [95 + i for i in range(num_days)],
-            'Close': [100 + i for i in range(num_days)],
-            'Volume': [1000000] * num_days
-        }, index=dates)
+        data = pd.DataFrame({'Open': [100 + i for i in range(num_days)], 'High': [105 + i for i in range(num_days)], 'Low': [95 + i for i in range(num_days)], 'Close': [100 + i for i in range(num_days)], 'Volume': [1000000] * num_days}, index=dates)
         return data
-    
+
     def test_update_indicators_success_single_indicator(self):
         """Test _update_indicators succeeds with single indicator"""
         indicator = MockIndicator()
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(indicator)
         strategy.set_data(self.create_sample_data())
-        
         current_date = datetime(2024, 1, 10)
         result = strategy._update_indicators(current_date)
-        
         assert result is True
         assert indicator.update_called is True
         assert indicator.update_call_count == 1
         assert indicator.last_update_date == current_date
         assert indicator.last_update_data is not None
-    
+
     def test_update_indicators_success_multiple_indicators(self):
         """Test _update_indicators succeeds with multiple indicators"""
-        indicator1 = MockIndicator(name="Indicator1")
-        indicator2 = MockIndicator(name="Indicator2")
-        indicator3 = MockIndicator(name="Indicator3")
-        
+        indicator1 = MockIndicator(name='Indicator1')
+        indicator2 = MockIndicator(name='Indicator2')
+        indicator3 = MockIndicator(name='Indicator3')
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(indicator1)
         strategy.add_indicator(indicator2)
@@ -200,10 +177,8 @@ class TestStrategyUpdateIndicators:
         strategy.add_indicator(indicator2)
         strategy.add_indicator(indicator3)
         strategy.set_data(self.create_sample_data())
-        
         current_date = datetime(2024, 1, 10)
         result = strategy._update_indicators(current_date)
-        
         assert result is True
         assert indicator1.update_called is True
         assert indicator2.update_called is True
@@ -211,41 +186,36 @@ class TestStrategyUpdateIndicators:
         assert indicator1.last_update_date == current_date
         assert indicator2.last_update_date == current_date
         assert indicator3.last_update_date == current_date
-    
+
     def test_update_indicators_no_indicators_returns_true(self):
         """Test _update_indicators returns True when no indicators"""
         strategy = ConcreteTestStrategy()
         strategy.set_data(self.create_sample_data())
-        
         result = strategy._update_indicators(datetime(2024, 1, 10))
-        
         assert result is True
-    
+
     def test_update_indicators_failure_returns_false(self):
         """Test _update_indicators returns False when indicator fails"""
-        failing_indicator = MockIndicator(name="FailingIndicator", should_fail=True)
+        failing_indicator = MockIndicator(name='FailingIndicator', should_fail=True)
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(failing_indicator)
         strategy.add_indicator(failing_indicator)
         strategy.set_data(self.create_sample_data())
-        
-        with patch("algo_trading_engine.core.strategy.get_logger") as mock_get_logger:
+        with patch('algo_trading_engine.core.strategy.get_logger') as mock_get_logger:
             mock_logger = MagicMock()
             mock_get_logger.return_value = mock_logger
             result = strategy._update_indicators(datetime(2024, 1, 10))
-        
         assert result is False
         assert failing_indicator.update_called is True
         mock_logger.error.assert_called_once()
         call_args = mock_logger.error.call_args[0][0]
-        assert "Error updating indicator FailingIndicator" in call_args
-    
-    def test_update_indicators_stops_on_first_failure(self, capsys):
+        assert 'Error updating indicator FailingIndicator' in call_args
+
+    def test_update_indicators_stops_on_first_failure(self):
         """Test _update_indicators stops updating after first failure"""
-        indicator1 = MockIndicator(name="Indicator1")
-        failing_indicator = MockIndicator(name="FailingIndicator", should_fail=True)
-        indicator3 = MockIndicator(name="Indicator3")
-        
+        indicator1 = MockIndicator(name='Indicator1')
+        failing_indicator = MockIndicator(name='FailingIndicator', should_fail=True)
+        indicator3 = MockIndicator(name='Indicator3')
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(indicator1)
         strategy.add_indicator(failing_indicator)
@@ -254,47 +224,33 @@ class TestStrategyUpdateIndicators:
         strategy.add_indicator(failing_indicator)
         strategy.add_indicator(indicator3)
         strategy.set_data(self.create_sample_data())
-        
         result = strategy._update_indicators(datetime(2024, 1, 10))
-        
         assert result is False
         assert indicator1.update_called is True
         assert failing_indicator.update_called is True
-        # indicator3 should not be called due to early return
         assert indicator3.update_called is False
-    
+
     def test_update_indicators_passes_strategy_data(self):
         """Test _update_indicators passes strategy's data to indicators"""
         indicator = MockIndicator()
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(indicator)
         strategy.add_indicator(indicator)
-        
         test_data = self.create_sample_data()
         strategy.set_data(test_data)
-        
         strategy._update_indicators(datetime(2024, 1, 10))
-        
-        # Verify the indicator received the strategy's data
         assert indicator.last_update_data is test_data
         pd.testing.assert_frame_equal(indicator.last_update_data, test_data)
 
-
 class TestStrategyWithATRIndicator:
     """Test cases for Strategy with real ATRIndicator"""
-    
+
     def create_sample_data(self, num_days=20):
         """Helper to create sample OHLCV data"""
         dates = pd.date_range(start='2024-01-01', periods=num_days, freq='D')
-        data = pd.DataFrame({
-            'Open': [100 + i for i in range(num_days)],
-            'High': [110 + i for i in range(num_days)],
-            'Low': [90 + i for i in range(num_days)],
-            'Close': [100 + i for i in range(num_days)],
-            'Volume': [1000000] * num_days
-        }, index=dates)
+        data = pd.DataFrame({'Open': [100 + i for i in range(num_days)], 'High': [110 + i for i in range(num_days)], 'Low': [90 + i for i in range(num_days)], 'Close': [100 + i for i in range(num_days)], 'Volume': [1000000] * num_days}, index=dates)
         return data
-    
+
     def test_strategy_updates_atr_indicator(self):
         """Test Strategy successfully updates ATRIndicator"""
         atr = ATRIndicator(period=5)
@@ -302,52 +258,42 @@ class TestStrategyWithATRIndicator:
         strategy.add_indicator(atr)
         strategy.add_indicator(atr)
         strategy.set_data(self.create_sample_data())
-        
-        # ATR should be None before update
         assert atr.value is None
-        
-        # Update indicators (need at least period+1 bars)
         result = strategy._update_indicators(datetime(2024, 1, 6))
-        
         assert result is True
         assert atr.value is not None
         assert atr.value > 0
-    
+
     def test_strategy_atr_insufficient_data_noops_without_error(self):
         """Before period+1 bars exist, ATR update is a no-op; strategy still succeeds."""
         atr = ATRIndicator(period=14)
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(atr)
         strategy.add_indicator(atr)
-        strategy.set_data(self.create_sample_data(num_days=5))  # Not enough data
-
-        with patch("algo_trading_engine.core.strategy.get_logger") as mock_get_logger:
+        strategy.set_data(self.create_sample_data(num_days=5))
+        with patch('algo_trading_engine.core.strategy.get_logger') as mock_get_logger:
             mock_logger = MagicMock()
             mock_get_logger.return_value = mock_logger
             result = strategy._update_indicators(datetime(2024, 1, 5))
-
         assert result is True
         assert atr.value is None
         mock_logger.error.assert_not_called()
-    
+
     def test_strategy_multiple_indicators_including_atr(self):
         """Test Strategy with multiple indicators including ATR"""
-        mock_indicator = MockIndicator(name="MockIndicator")
+        mock_indicator = MockIndicator(name='MockIndicator')
         atr = ATRIndicator(period=5)
-        
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(mock_indicator)
         strategy.add_indicator(atr)
         strategy.add_indicator(mock_indicator)
         strategy.add_indicator(atr)
         strategy.set_data(self.create_sample_data())
-        
         result = strategy._update_indicators(datetime(2024, 1, 6))
-        
         assert result is True
         assert mock_indicator.update_called is True
         assert atr.value is not None
-    
+
     def test_strategy_atr_values_update_progressively(self):
         """Test ATR values update correctly across multiple calls"""
         atr = ATRIndicator(period=3)
@@ -355,587 +301,393 @@ class TestStrategyWithATRIndicator:
         strategy.add_indicator(atr)
         strategy.add_indicator(atr)
         strategy.set_data(self.create_sample_data())
-        
-        # Update for day 4 (initialize ATR)
         strategy._update_indicators(datetime(2024, 1, 4))
         atr_value_day4 = atr.value
         assert atr_value_day4 is not None
-        
-        # Update for day 5 (should use Wilder's smoothing)
         strategy._update_indicators(datetime(2024, 1, 5))
         atr_value_day5 = atr.value
         assert atr_value_day5 is not None
-        
-        # Update for day 6
         strategy._update_indicators(datetime(2024, 1, 6))
         atr_value_day6 = atr.value
         assert atr_value_day6 is not None
-        
-        # All values should be valid
-        assert all(val > 0 for val in [atr_value_day4, atr_value_day5, atr_value_day6])
-
+        assert all((val > 0 for val in [atr_value_day4, atr_value_day5, atr_value_day6]))
 
 class TestStrategyOnNewDateWithIndicators:
     """Test cases for on_new_date integration with indicators"""
-    
+
     def create_sample_data(self, num_days=20):
         """Helper to create sample OHLCV data"""
         dates = pd.date_range(start='2024-01-01', periods=num_days, freq='D')
-        data = pd.DataFrame({
-            'Open': [100 + i for i in range(num_days)],
-            'High': [110 + i for i in range(num_days)],
-            'Low': [90 + i for i in range(num_days)],
-            'Close': [100 + i for i in range(num_days)],
-            'Volume': [1000000] * num_days
-        }, index=dates)
+        data = pd.DataFrame({'Open': [100 + i for i in range(num_days)], 'High': [110 + i for i in range(num_days)], 'Low': [90 + i for i in range(num_days)], 'Close': [100 + i for i in range(num_days)], 'Volume': [1000000] * num_days}, index=dates)
         return data
-    
+
     def test_on_new_date_updates_indicators_before_strategy_logic(self):
         """Test on_new_date updates indicators before executing strategy logic"""
         indicator = MockIndicator()
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(indicator)
         strategy.set_data(self.create_sample_data())
-        
         mock_add_position = Mock()
         mock_remove_position = Mock()
-        
-        strategy.on_new_date(
-            datetime(2024, 1, 10),
-            (),
-            mock_add_position,
-            mock_remove_position
-        )
-        
-        # Indicator should have been updated
+        strategy.on_new_date(datetime(2024, 1, 10), (), mock_add_position, mock_remove_position)
         assert indicator.update_called is True
-        # Strategy logic should have executed
         assert strategy.on_new_date_called is True
-    
+
     def test_on_new_date_aborts_strategy_logic_when_indicators_fail(self):
         """Test on_new_date raises so strategy logic never runs on stale indicators"""
         failing_indicator = MockIndicator(should_fail=True)
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(failing_indicator)
         strategy.set_data(self.create_sample_data())
-        
         mock_add_position = Mock()
         mock_remove_position = Mock()
-        
         with pytest.raises(IndicatorUpdateError) as exc_info:
-            strategy.on_new_date(
-                datetime(2024, 1, 10),
-                (),
-                mock_add_position,
-                mock_remove_position
-            )
-        
-        # Indicator update should have been attempted
+            strategy.on_new_date(datetime(2024, 1, 10), (), mock_add_position, mock_remove_position)
         assert failing_indicator.update_called is True
-        # The failing indicator's name and underlying cause are preserved for the
-        # failure notification sent by the Lambda handler.
-        assert "MockIndicator" in str(exc_info.value)
+        assert 'MockIndicator' in str(exc_info.value)
         assert isinstance(exc_info.value.__cause__, Exception)
-        # Subclass logic must not run with stale indicator values
         assert strategy.on_new_date_called is False
-    
+
     def test_on_new_date_with_atr_indicator(self):
         """Test on_new_date works correctly with ATRIndicator"""
         atr = ATRIndicator(period=5)
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(atr)
         strategy.set_data(self.create_sample_data())
-        
         mock_add_position = Mock()
         mock_remove_position = Mock()
-        
-        # ATR should be None initially
         assert atr.value is None
-        
-        # Call on_new_date (should initialize ATR)
-        strategy.on_new_date(
-            datetime(2024, 1, 6),
-            (),
-            mock_add_position,
-            mock_remove_position
-        )
-        
-        # ATR should now have a value
+        strategy.on_new_date(datetime(2024, 1, 6), (), mock_add_position, mock_remove_position)
         assert atr.value is not None
         assert strategy.on_new_date_called is True
-    
+
     def test_on_new_date_multiple_calls_maintain_indicator_state(self):
         """Test multiple on_new_date calls maintain indicator state"""
         atr = ATRIndicator(period=3)
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(atr)
         strategy.set_data(self.create_sample_data())
-        
         mock_add_position = Mock()
         mock_remove_position = Mock()
-        
-        # First call - initialize ATR
         strategy.on_new_date(datetime(2024, 1, 4), (), mock_add_position, mock_remove_position)
         atr_value_1 = atr.value
-        
-        # Second call - update ATR
         strategy.on_new_date(datetime(2024, 1, 5), (), mock_add_position, mock_remove_position)
         atr_value_2 = atr.value
-        
-        # Third call - update ATR
         strategy.on_new_date(datetime(2024, 1, 6), (), mock_add_position, mock_remove_position)
         atr_value_3 = atr.value
-        
-        # All values should be valid
-        assert all(val is not None for val in [atr_value_1, atr_value_2, atr_value_3])
+        assert all((val is not None for val in [atr_value_1, atr_value_2, atr_value_3]))
         assert strategy.on_new_date_call_count == 3
-
 
 class TestStrategyIndicatorAccessInStrategy:
     """Test cases for accessing indicator values within strategy logic"""
-    
+
     class StrategyUsingIndicator(Strategy):
         """Strategy that uses indicator values in its logic"""
-        
+
         def __init__(self, atr_indicator):
             super().__init__()
             self.add_indicator(atr_indicator)
             self.atr_threshold = 5.0
             self.signal_generated = False
             self.current_atr = None
-        
+
         def on_new_date(self, date, positions, add_position, remove_position):
-            # Call parent to update indicators
             super().on_new_date(date, positions, add_position, remove_position)
-            
-            # Access ATR value
             atr = self.indicators[0]
             self.current_atr = atr.value
-            
-            # Use ATR in strategy logic
             if atr.value is not None and atr.value > self.atr_threshold:
                 self.signal_generated = True
-        
+
         def on_end(self, positions, remove_position, date):
             pass
-        
+
         def validate_data(self, data):
             return True
-    
+
     def create_volatile_data(self):
         """Create data with high volatility"""
         dates = pd.date_range(start='2024-01-01', periods=10, freq='D')
-        data = pd.DataFrame({
-            'Open': [100, 100, 100, 100, 100, 100, 100, 100, 100, 100],
-            'High': [150, 150, 150, 150, 150, 150, 150, 150, 150, 150],
-            'Low': [50, 50, 50, 50, 50, 50, 50, 50, 50, 50],
-            'Close': [100, 100, 100, 100, 100, 100, 100, 100, 100, 100],
-            'Volume': [1000000] * 10
-        }, index=dates)
+        data = pd.DataFrame({'Open': [100, 100, 100, 100, 100, 100, 100, 100, 100, 100], 'High': [150, 150, 150, 150, 150, 150, 150, 150, 150, 150], 'Low': [50, 50, 50, 50, 50, 50, 50, 50, 50, 50], 'Close': [100, 100, 100, 100, 100, 100, 100, 100, 100, 100], 'Volume': [1000000] * 10}, index=dates)
         return data
-    
+
     def test_strategy_can_access_indicator_value(self):
         """Test strategy can access and use indicator values"""
         atr = ATRIndicator(period=3)
         strategy = self.StrategyUsingIndicator(atr)
         strategy.set_data(self.create_volatile_data())
-        
         mock_add_position = Mock()
         mock_remove_position = Mock()
-        
         strategy.on_new_date(datetime(2024, 1, 4), (), mock_add_position, mock_remove_position)
-        
-        # Strategy should have accessed the ATR value
         assert strategy.current_atr is not None
         assert strategy.current_atr == atr.value
-    
+
     def test_strategy_uses_indicator_in_decision_logic(self):
         """Test strategy uses indicator value in trading decisions"""
         atr = ATRIndicator(period=3)
         strategy = self.StrategyUsingIndicator(atr)
         strategy.set_data(self.create_volatile_data())
-        
         mock_add_position = Mock()
         mock_remove_position = Mock()
-        
         strategy.on_new_date(datetime(2024, 1, 4), (), mock_add_position, mock_remove_position)
-        
-        # With high volatility data, ATR should exceed threshold
         assert strategy.signal_generated is True
         assert strategy.current_atr > strategy.atr_threshold
 
-
 class TestStrategySetData:
     """Test cases for set_data method with indicators"""
-    
+
     def test_set_data_stores_data_for_indicators(self):
         """Test set_data makes data available for indicators"""
         indicator = MockIndicator()
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(indicator)
-        
         dates = pd.date_range(start='2024-01-01', periods=10, freq='D')
-        data = pd.DataFrame({
-            'Close': [100 + i for i in range(10)],
-            'High': [105 + i for i in range(10)],
-            'Low': [95 + i for i in range(10)],
-            'Volume': [1000000] * 10
-        }, index=dates)
-        
+        data = pd.DataFrame({'Close': [100 + i for i in range(10)], 'High': [105 + i for i in range(10)], 'Low': [95 + i for i in range(10)], 'Volume': [1000000] * 10}, index=dates)
         strategy.set_data(data)
-        
         assert strategy.data is not None
         pd.testing.assert_frame_equal(strategy.data, data)
-        
-        # Verify indicators can access the data
         strategy._update_indicators(datetime(2024, 1, 5))
         assert indicator.last_update_data is data
 
-
 class TestStrategyIndicatorEdgeCases:
     """Test edge cases and error scenarios"""
-    
+
     def test_update_indicators_with_none_data(self):
         """Test _update_indicators when strategy data is None"""
         indicator = MockIndicator()
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(indicator)
-        # Don't set data
-        
-        # MockIndicator doesn't actually validate data, so it won't fail with None
-        # It will just receive None. This tests that _update_indicators itself doesn't crash
         result = strategy._update_indicators(datetime(2024, 1, 10))
-        
-        # MockIndicator doesn't validate data, so this succeeds
-        # For a real indicator like ATR, it would fail
         assert result is True
         assert indicator.last_update_data is None
-    
+
     def test_indicators_list_is_mutable(self):
         """Test that indicators list can be modified after initialization"""
         strategy = ConcreteTestStrategy()
         assert len(strategy.indicators) == 0
-        
-        # Add indicator after initialization
         new_indicator = MockIndicator()
         strategy.indicators.append(new_indicator)
-        
         assert len(strategy.indicators) == 1
-        
-        # Verify it gets updated
         dates = pd.date_range(start='2024-01-01', periods=10, freq='D')
-        data = pd.DataFrame({
-            'Close': [100 + i for i in range(10)],
-            'High': [105 + i for i in range(10)],
-            'Low': [95 + i for i in range(10)],
-            'Volume': [1000000] * 10
-        }, index=dates)
+        data = pd.DataFrame({'Close': [100 + i for i in range(10)], 'High': [105 + i for i in range(10)], 'Low': [95 + i for i in range(10)], 'Volume': [1000000] * 10}, index=dates)
         strategy.set_data(data)
-        
         strategy._update_indicators(datetime(2024, 1, 5))
         assert new_indicator.update_called is True
 
-
 class TestStrategyGetIndicator:
     """Test cases for get_indicator method"""
-    
+
     def test_get_indicator_returns_correct_indicator(self):
         """Test get_indicator returns the correct indicator by type"""
-        mock_indicator = MockIndicator(name="MockIndicator")
+        mock_indicator = MockIndicator(name='MockIndicator')
         atr = ATRIndicator(period=14)
-        
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(mock_indicator)
         strategy.add_indicator(atr)
-        
-        # Get ATR indicator
         retrieved_atr = strategy.get_indicator(ATRIndicator)
         assert retrieved_atr is atr
         assert retrieved_atr.period == 14
-    
+
     def test_get_indicator_returns_none_when_not_found(self):
         """Test get_indicator returns None when indicator not in list"""
-        mock_indicator = MockIndicator(name="MockIndicator")
+        mock_indicator = MockIndicator(name='MockIndicator')
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(mock_indicator)
-        
-        # Try to get ATRIndicator that doesn't exist
         result = strategy.get_indicator(ATRIndicator)
         assert result is None
-    
+
     def test_get_indicator_returns_first_match_with_multiple_same_type(self):
         """Test get_indicator returns first match when multiple of same type"""
         atr1 = ATRIndicator(period=14)
         atr2 = ATRIndicator(period=20)
-        
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(atr1)
         strategy.add_indicator(atr2)
-        
-        # Should return the first ATRIndicator
         result = strategy.get_indicator(ATRIndicator)
         assert result is atr1
         assert result.period == 14
-    
+
     def test_get_indicator_with_no_indicators(self):
         """Test get_indicator returns None when strategy has no indicators"""
         strategy = ConcreteTestStrategy()
-        
         result = strategy.get_indicator(ATRIndicator)
         assert result is None
-    
+
     def test_get_indicator_usage_in_strategy(self):
         """Test practical usage of get_indicator in strategy logic"""
         atr = ATRIndicator(period=5)
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(atr)
-        
-        # Set up data
         dates = pd.date_range(start='2024-01-01', periods=10, freq='D')
-        data = pd.DataFrame({
-            'Open': [100 + i for i in range(10)],
-            'High': [110 + i for i in range(10)],
-            'Low': [90 + i for i in range(10)],
-            'Close': [100 + i for i in range(10)],
-            'Volume': [1000000] * 10
-        }, index=dates)
+        data = pd.DataFrame({'Open': [100 + i for i in range(10)], 'High': [110 + i for i in range(10)], 'Low': [90 + i for i in range(10)], 'Close': [100 + i for i in range(10)], 'Volume': [1000000] * 10}, index=dates)
         strategy.set_data(data)
-        
-        # Update indicators
         strategy._update_indicators(datetime(2024, 1, 6))
-        
-        # Use get_indicator to access ATR
         retrieved_atr = strategy.get_indicator(ATRIndicator)
         assert retrieved_atr is not None
         assert retrieved_atr.value is not None
         assert retrieved_atr.value > 0
 
-
 class TestStrategyGetIndicatorByName:
     """Test cases for get_indicator_by_name method"""
 
     def test_returns_correct_indicator_by_name(self):
-        mock1 = MockIndicator(name="Alpha")
-        mock2 = MockIndicator(name="Beta")
-
+        mock1 = MockIndicator(name='Alpha')
+        mock2 = MockIndicator(name='Beta')
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(mock1)
         strategy.add_indicator(mock2)
-
-        assert strategy.get_indicator_by_name("Alpha") is mock1
-        assert strategy.get_indicator_by_name("Beta") is mock2
+        assert strategy.get_indicator_by_name('Alpha') is mock1
+        assert strategy.get_indicator_by_name('Beta') is mock2
 
     def test_returns_none_when_name_not_found(self):
         strategy = ConcreteTestStrategy()
-        strategy.add_indicator(MockIndicator(name="Alpha"))
-
-        assert strategy.get_indicator_by_name("NonExistent") is None
+        strategy.add_indicator(MockIndicator(name='Alpha'))
+        assert strategy.get_indicator_by_name('NonExistent') is None
 
     def test_returns_none_when_no_indicators(self):
         strategy = ConcreteTestStrategy()
-        assert strategy.get_indicator_by_name("ATR") is None
+        assert strategy.get_indicator_by_name('ATR') is None
 
     def test_disambiguates_multiple_same_type_indicators(self):
         from algo_trading_engine.core.indicators.sma_indicator import SMAIndicator
-
         sma_20 = SMAIndicator(period=20)
         sma_50 = SMAIndicator(period=50)
-
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(sma_20)
         strategy.add_indicator(sma_50)
-
-        assert strategy.get_indicator_by_name("SMA_20") is sma_20
-        assert strategy.get_indicator_by_name("SMA_50") is sma_50
+        assert strategy.get_indicator_by_name('SMA_20') is sma_20
+        assert strategy.get_indicator_by_name('SMA_50') is sma_50
 
     def test_works_alongside_get_indicator(self):
         atr = ATRIndicator(period=14)
-        mock = MockIndicator(name="Custom")
-
+        mock = MockIndicator(name='Custom')
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(atr)
         strategy.add_indicator(mock)
-
         assert strategy.get_indicator(ATRIndicator) is atr
-        assert strategy.get_indicator_by_name("ATR") is atr
-        assert strategy.get_indicator_by_name("Custom") is mock
-
+        assert strategy.get_indicator_by_name('ATR') is atr
+        assert strategy.get_indicator_by_name('Custom') is mock
 
 class TestStrategyAddIndicator:
     """Test cases for add_indicator method"""
-    
+
     def test_add_indicator_to_empty_list(self):
         """Test adding an indicator to empty indicators list"""
         strategy = ConcreteTestStrategy()
         assert len(strategy.indicators) == 0
-        
         atr = ATRIndicator(period=14)
         strategy.add_indicator(atr)
-        
         assert len(strategy.indicators) == 1
         assert strategy.indicators[0] is atr
-    
+
     def test_add_indicator_to_existing_list(self):
         """Test adding an indicator to existing indicators list"""
-        mock_indicator = MockIndicator(name="MockIndicator")
+        mock_indicator = MockIndicator(name='MockIndicator')
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(mock_indicator)
         assert len(strategy.indicators) == 1
-        
         atr = ATRIndicator(period=14)
         strategy.add_indicator(atr)
-        
         assert len(strategy.indicators) == 2
         assert strategy.indicators[0] is mock_indicator
         assert strategy.indicators[1] is atr
-    
+
     def test_add_multiple_indicators(self):
         """Test adding multiple indicators sequentially"""
         strategy = ConcreteTestStrategy()
-        
         atr1 = ATRIndicator(period=14)
         atr2 = ATRIndicator(period=20)
-        mock_indicator = MockIndicator(name="MockIndicator")
-        
+        mock_indicator = MockIndicator(name='MockIndicator')
         strategy.add_indicator(atr1)
         strategy.add_indicator(atr2)
         strategy.add_indicator(mock_indicator)
-        
         assert len(strategy.indicators) == 3
         assert strategy.indicators[0] is atr1
         assert strategy.indicators[1] is atr2
         assert strategy.indicators[2] is mock_indicator
-    
+
     def test_add_indicator_raises_error_for_non_indicator(self):
         """Test add_indicator raises TypeError for non-Indicator objects"""
         strategy = ConcreteTestStrategy()
-        
-        with pytest.raises(TypeError, match="Expected Indicator instance"):
-            strategy.add_indicator("not an indicator")
-        
-        with pytest.raises(TypeError, match="Expected Indicator instance"):
+        with pytest.raises(TypeError, match='Expected Indicator instance'):
+            strategy.add_indicator('not an indicator')
+        with pytest.raises(TypeError, match='Expected Indicator instance'):
             strategy.add_indicator(42)
-        
-        with pytest.raises(TypeError, match="Expected Indicator instance"):
+        with pytest.raises(TypeError, match='Expected Indicator instance'):
             strategy.add_indicator(None)
-    
+
     def test_add_indicator_then_retrieve_with_get_indicator(self):
         """Test adding indicator and then retrieving it with get_indicator"""
         strategy = ConcreteTestStrategy()
-        
         atr = ATRIndicator(period=14)
         strategy.add_indicator(atr)
-        
-        # Retrieve using get_indicator
         retrieved_atr = strategy.get_indicator(ATRIndicator)
         assert retrieved_atr is atr
         assert retrieved_atr.period == 14
-    
+
     def test_add_indicator_then_update_works(self):
         """Test that added indicator gets updated correctly"""
         strategy = ConcreteTestStrategy()
-        
         atr = ATRIndicator(period=5)
         strategy.add_indicator(atr)
-        
-        # Set up data
         dates = pd.date_range(start='2024-01-01', periods=10, freq='D')
-        data = pd.DataFrame({
-            'Open': [100 + i for i in range(10)],
-            'High': [110 + i for i in range(10)],
-            'Low': [90 + i for i in range(10)],
-            'Close': [100 + i for i in range(10)],
-            'Volume': [1000000] * 10
-        }, index=dates)
+        data = pd.DataFrame({'Open': [100 + i for i in range(10)], 'High': [110 + i for i in range(10)], 'Low': [90 + i for i in range(10)], 'Close': [100 + i for i in range(10)], 'Volume': [1000000] * 10}, index=dates)
         strategy.set_data(data)
-        
-        # ATR should be None before update
         assert atr.value is None
-        
-        # Update indicators
         result = strategy._update_indicators(datetime(2024, 1, 6))
-        
-        # ATR should now have a value
         assert result is True
         assert atr.value is not None
         assert atr.value > 0
-    
+
     def test_add_indicator_in_strategy_init(self):
         """Test adding indicators in strategy __init__ method"""
+
         class StrategyWithDynamicIndicators(Strategy):
+
             def __init__(self):
                 super().__init__()
-                # Add indicators dynamically in init
                 self.add_indicator(ATRIndicator(period=14))
-                self.add_indicator(MockIndicator(name="Mock"))
-            
+                self.add_indicator(MockIndicator(name='Mock'))
+
             def on_new_date(self, date, positions, add_position, remove_position):
                 pass
-            
+
             def on_end(self, positions, remove_position, date):
                 pass
-            
+
             def validate_data(self, data):
                 return True
-        
         strategy = StrategyWithDynamicIndicators()
-        
         assert len(strategy.indicators) == 2
         assert isinstance(strategy.indicators[0], ATRIndicator)
         assert isinstance(strategy.indicators[1], MockIndicator)
 
+def _hourly_ohlcv(n: int=10) -> pd.DataFrame:
+    dates = pd.date_range(start='2026-05-19 09:30:00', periods=n, freq='h')
+    return pd.DataFrame({'Open': [500 + i for i in range(n)], 'High': [510 + i for i in range(n)], 'Low': [490 + i for i in range(n)], 'Close': [500 + i for i in range(n)], 'Volume': [1000000] * n}, index=dates)
 
-# ---------------------------------------------------------------------------
-# warm_up_indicators tests
-# ---------------------------------------------------------------------------
-
-def _hourly_ohlcv(n: int = 10) -> pd.DataFrame:
-    dates = pd.date_range(start="2026-05-19 09:30:00", periods=n, freq="h")
-    return pd.DataFrame(
-        {
-            "Open": [500 + i for i in range(n)],
-            "High": [510 + i for i in range(n)],
-            "Low": [490 + i for i in range(n)],
-            "Close": [500 + i for i in range(n)],
-            "Volume": [1_000_000] * n,
-        },
-        index=dates,
-    )
-
-
-def _daily_ohlcv(n: int = 30) -> pd.DataFrame:
-    dates = pd.date_range(start="2026-04-01", periods=n, freq="D")
-    return pd.DataFrame(
-        {
-            "Open": [500 + i for i in range(n)],
-            "High": [510 + i for i in range(n)],
-            "Low": [490 + i for i in range(n)],
-            "Close": [500 + i for i in range(n)],
-            "Volume": [1_000_000] * n,
-        },
-        index=dates,
-    )
-
+def _daily_ohlcv(n: int=30) -> pd.DataFrame:
+    dates = pd.date_range(start='2026-04-01', periods=n, freq='D')
+    return pd.DataFrame({'Open': [500 + i for i in range(n)], 'High': [510 + i for i in range(n)], 'Low': [490 + i for i in range(n)], 'Close': [500 + i for i in range(n)], 'Volume': [1000000] * n}, index=dates)
 
 class TestStrategyWarmUpIndicators:
     """Tests for Strategy.warm_up_indicators()."""
 
     def test_warm_up_indicators_is_callable(self):
         strategy = ConcreteTestStrategy()
-        assert hasattr(strategy, "warm_up_indicators")
+        assert hasattr(strategy, 'warm_up_indicators')
         assert callable(strategy.warm_up_indicators)
 
     def test_raises_when_no_data(self):
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(ATRIndicator(period=3))
-        with pytest.raises(ValueError, match="Cannot warm up indicators without data"):
+        with pytest.raises(ValueError, match='Cannot warm up indicators without data'):
             strategy.warm_up_indicators()
 
     def test_raises_when_empty_data(self):
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(ATRIndicator(period=3))
         strategy.set_data(pd.DataFrame())
-        with pytest.raises(ValueError, match="Cannot warm up indicators without data"):
+        with pytest.raises(ValueError, match='Cannot warm up indicators without data'):
             strategy.warm_up_indicators()
 
     def test_no_op_when_no_indicators(self):
@@ -950,13 +702,10 @@ class TestStrategyWarmUpIndicators:
         strategy.add_indicator(atr)
         strategy.add_indicator(sma)
         strategy.set_data(_hourly_ohlcv())
-
         strategy.warm_up_indicators()
-
         test_bar = strategy.data.index[6]
         assert atr.get_value_at(test_bar) is not None
         assert sma.get_value_at(test_bar) is not None
-
 
 class TestStrategyWarmUpBacktestParity:
     """Values produced by warm_up_indicators + single on_new_date must match
@@ -964,56 +713,50 @@ class TestStrategyWarmUpBacktestParity:
 
     def test_atr_values_match_backtest_iteration(self):
         data = _hourly_ohlcv()
-
         atr_bt = ATRIndicator(period=3)
         bt = ConcreteTestStrategy()
         bt.add_indicator(atr_bt)
         bt.set_data(data)
         for date in data.index:
             bt.on_new_date(date, (), Mock(), Mock())
-
         atr_pt = ATRIndicator(period=3)
         pt = ConcreteTestStrategy()
         pt.add_indicator(atr_pt)
         pt.set_data(data)
         pt.warm_up_indicators()
         pt.on_new_date(data.index[-1], (), Mock(), Mock())
-
         for bar in data.index[atr_bt.warm_up_period - 1:]:
             assert atr_bt.get_value_at(bar) == pytest.approx(atr_pt.get_value_at(bar))
 
     def test_sma_values_match_backtest_iteration(self):
         data = _hourly_ohlcv()
-
         sma_bt = SMAIndicator(period=5, period_unit=BarTimeInterval.HOUR)
         bt = ConcreteTestStrategy()
         bt.add_indicator(sma_bt)
         bt.set_data(data)
         for date in data.index:
             bt.on_new_date(date, (), Mock(), Mock())
-
         sma_pt = SMAIndicator(period=5, period_unit=BarTimeInterval.HOUR)
         pt = ConcreteTestStrategy()
         pt.add_indicator(sma_pt)
         pt.set_data(data)
         pt.warm_up_indicators()
         pt.on_new_date(data.index[-1], (), Mock(), Mock())
-
         for bar in data.index[sma_bt.warm_up_period - 1:]:
             assert sma_bt.get_value_at(bar) == pytest.approx(sma_pt.get_value_at(bar))
-
 
 class TestStrategyHistoricalLookupWithWarmUp:
     """Strategy that looks up indicator values at historical bar dates
     (e.g. ATR K bars ago) must succeed after warm-up and fail without it."""
 
     class _LookbackStrategy(Strategy):
+
         def __init__(self, atr, lookback_bars=4):
             super().__init__()
             self.add_indicator(atr)
             self.lookback_bars = lookback_bars
-            self.historical_atr_value = "NOT_CHECKED"
-            self.current_atr_value = "NOT_CHECKED"
+            self.historical_atr_value = 'NOT_CHECKED'
+            self.current_atr_value = 'NOT_CHECKED'
 
         def on_new_date(self, date, positions, add_position, remove_position):
             super().on_new_date(date, positions, add_position, remove_position)

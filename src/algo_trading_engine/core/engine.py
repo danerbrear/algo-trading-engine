@@ -155,7 +155,7 @@ class TradingEngine(ABC):
                 if hasattr(self, '_config') and hasattr(self._config, 'use_cache'):
                     use_cache = self._config.use_cache
 
-                data_retriever = DataRetriever(symbol=symbol, use_free_tier=True, quiet_mode=True, use_cache=use_cache)
+                data_retriever = DataRetriever(symbol=symbol, use_cache=use_cache)
                 live_price = data_retriever.get_live_price()
             except Exception as e:
                 raise ValueError(f"Failed to fetch live price from DataRetriever: {e}")
@@ -570,8 +570,6 @@ class PaperTradingEngine(TradingEngine):
         retriever = DataRetriever(
             symbol=config.symbol,
             lstm_start_date=fetch_start_date,
-            quiet_mode=True,
-            use_free_tier=config.use_free_tier,
             bar_interval=config.bar_interval,
             use_cache=config.use_cache
         )

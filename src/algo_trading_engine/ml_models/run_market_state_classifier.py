@@ -14,6 +14,7 @@ import os
 import argparse
 import pandas as pd
 import numpy as np
+import yfinance as yf
 from datetime import datetime
 
 # Add parent directory to path for imports
@@ -26,11 +27,6 @@ from algo_trading_engine.ml_models.market_state_classifier import MarketStateCla
 
 def fetch_vix_data(start_date: str) -> pd.DataFrame:
     """Fetch VIX data using yfinance"""
-    try:
-        import yfinance as yf
-    except ImportError:
-        raise ImportError("yfinance is required. Install with: pip install yfinance")
-    
     print(f"📊 Fetching VIX data from {start_date}...")
     vix_ticker = yf.Ticker('^VIX')
     
@@ -100,11 +96,6 @@ def calculate_features(data: pd.DataFrame, vix_data: pd.DataFrame = None, window
 
 def fetch_market_data(symbol: str, start_date: str) -> pd.DataFrame:
     """Fetch market data using yfinance"""
-    try:
-        import yfinance as yf
-    except ImportError:
-        raise ImportError("yfinance is required. Install with: pip install yfinance")
-    
     print(f"📈 Fetching {symbol} data from {start_date}...")
     ticker = yf.Ticker(symbol)
     

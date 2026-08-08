@@ -168,6 +168,22 @@ class Strategy(ABC):
                 f"{self._indicator_error}"
             ) from self._indicator_error
 
+    def invoke_compute_exit_price(self, position: "Position", date: datetime) -> Optional[float]:
+        """Call the injected ``compute_exit_price`` callback when configured."""
+        callback = self.compute_exit_price
+        if callback is None:
+            return None
+        return callback(position, date)
+
+    def invoke_current_volumes_for_position(
+        self, position: "Position", date: datetime
+    ) -> Optional[List[int]]:
+        """Call the injected ``get_current_volumes_for_position`` callback when configured."""
+        callback = self.get_current_volumes_for_position
+        if callback is None:
+            return None
+        return callback(position, date)
+
     @abstractmethod
     def on_end(
         self,

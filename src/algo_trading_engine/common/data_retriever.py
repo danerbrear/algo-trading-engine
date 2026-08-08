@@ -24,8 +24,6 @@ class DataRetriever:
         symbol='SPY', 
         hmm_start_date='2010-01-01', 
         lstm_start_date='2020-01-01', 
-        use_free_tier=False, 
-        quiet_mode=True,
         bar_interval: BarTimeInterval = BarTimeInterval.DAY,
         use_cache: bool = True
     ):
@@ -35,8 +33,6 @@ class DataRetriever:
             symbol: Stock symbol to analyze
             hmm_start_date: Start date for HMM training data (market state classification)
             lstm_start_date: Start date for LSTM training data (options signal prediction)
-            use_free_tier: Whether to use free tier rate limiting (13 second timeout)
-            quiet_mode: Whether to suppress detailed output for cleaner progress display
             bar_interval: Time interval for market data bars (DAY, HOUR, or MINUTE)
             use_cache: Whether to write fetched data to the local filesystem cache
         """

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from typing import Optional, List
 
@@ -66,7 +67,7 @@ class InteractiveStrategyRecommender:
             nonlocal recommended_position
             recommended_position = position
         
-        def capture_remove_position(date_arg: datetime, position: Position, exit_price: float, 
+        def capture_remove_position(_date_arg: datetime, position: Position, exit_price: float, 
                                    underlying_price: float = None, current_volumes: list = None):
             """Capture the position closure decision from the strategy's on_new_date logic"""
             positions_to_close.append({
@@ -86,7 +87,7 @@ class InteractiveStrategyRecommender:
         
         # Process captured open position (if any)
         if recommended_position is not None:
-            self._process_open_recommendation(date, recommended_position, current_price)
+            self._process_open_recommendation(recommended_position)
         else:
             log_and_echo("No recommendation found for strategy")
         
@@ -141,7 +142,7 @@ class InteractiveStrategyRecommender:
         
         return current_price
     
-    def _process_open_recommendation(self, date: datetime, position: Position, current_price: float) -> Optional[DecisionResponseDTO]:
+    def _process_open_recommendation(self, position: Position) -> Optional[DecisionResponseDTO]:
         """Process a captured open position recommendation."""
         # Extract the recommendation details from the created position
         if not position.spread_options or len(position.spread_options) != 2:
@@ -357,7 +358,6 @@ class InteractiveStrategyRecommender:
         """Get strategy name from class and map to config key."""
         class_name = self.strategy.__class__.__name__.replace("Strategy", "")
         # Convert from CamelCase to snake_case
-        import re
         strategy_name = re.sub(r'(?<!^)(?=[A-Z])', '_', class_name).lower()
         
         # Map class names to config keys
@@ -462,7 +462,7 @@ class InteractiveStrategyRecommender:
         except Exception:
             return None
 
-    def _display_recent_underlying_prices(self, date: datetime) -> None:
+    def _display_recent_underlying_prices(self, _date: datetime) -> None:
         """Display the most recent 5 days of underlying price for velocity_momentum strategy."""
         try:
             if self.strategy.data is None or self.strategy.data.empty:

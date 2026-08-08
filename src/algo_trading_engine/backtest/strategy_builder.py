@@ -8,11 +8,8 @@ trading strategies with flexible parameter selection and validation.
 from abc import ABC, abstractmethod
 from typing import Dict, Type, List, Callable
 
-try:
-    from ..core.strategy import Strategy
-except ImportError:
-    # Fallback for direct execution
-    from algo_trading_engine.core.strategy import Strategy
+from ..common.ml_pipeline import load_credit_spread_models
+from ..core.strategy import Strategy
 
 
 class StrategyBuilder(ABC):
@@ -97,10 +94,9 @@ class CreditSpreadStrategyBuilder(StrategyBuilder):
         return self
     
     def build(self) -> Strategy:
-        try:
-            from ..strategies.credit_spread_minimal import CreditSpreadStrategy
-        except ImportError:
-            from algo_trading_engine.strategies.credit_spread_minimal import CreditSpreadStrategy
+        # Deferred: the strategy module pulls in TensorFlow via LSTMModel.
+        # pylint: disable-next=import-outside-toplevel
+        from ..strategies.credit_spread_minimal import CreditSpreadStrategy
         
         # Symbol is required for CreditSpreadStrategy
         if not self._symbol:
@@ -108,11 +104,6 @@ class CreditSpreadStrategyBuilder(StrategyBuilder):
         
         # Load LSTM model and scaler if not already provided (ML pipeline entry point)
         if self._lstm_model is None or self._lstm_scaler is None:
-            try:
-                from ..common.ml_pipeline import load_credit_spread_models
-            except ImportError:
-                from algo_trading_engine.common.ml_pipeline import load_credit_spread_models
-
             try:
                 self._lstm_model, self._lstm_scaler = load_credit_spread_models(self._symbol)
             except Exception as e:
@@ -173,10 +164,9 @@ class VelocitySignalMomentumStrategyBuilder(StrategyBuilder):
         return self
     
     def build(self) -> Strategy:
-        try:
-            from ..strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
-        except ImportError:
-            from algo_trading_engine.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
+        # Deferred: the strategy module pulls in matplotlib at import time.
+        # pylint: disable-next=import-outside-toplevel
+        from ..strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
         
         strategy = VelocitySignalMomentumStrategy(
             get_contract_list_for_date=self._get_contract_list_for_date,

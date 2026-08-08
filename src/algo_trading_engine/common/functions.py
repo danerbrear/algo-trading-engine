@@ -24,6 +24,8 @@ def load_hmm_model(model_dir):
     if not os.path.exists(hmm_path):
         raise FileNotFoundError(f"HMM model not found at {hmm_path}")
     try:
+        # Deferred: the classifier pulls in hmmlearn/sklearn at import time.
+        # pylint: disable-next=import-outside-toplevel
         from algo_trading_engine.ml_models.market_state_classifier import MarketStateClassifier
 
         with open(hmm_path, 'rb') as f:
@@ -58,6 +60,8 @@ def load_lstm_model(model_dir, return_lstm_instance=False):
     if not os.path.exists(lstm_path):
         raise FileNotFoundError(f"LSTM model not found at {lstm_path}")
     try:
+        # Deferred: keras/TensorFlow ship in the optional [ml] extra.
+        # pylint: disable-next=import-outside-toplevel
         import keras
         keras_model = keras.models.load_model(lstm_path)
         print(f"LSTM model loaded from {lstm_path}")
@@ -70,16 +74,12 @@ def load_lstm_model(model_dir, return_lstm_instance=False):
         else:
             print(f"WARNING: LSTM scaler not found at {scaler_path}")
         if return_lstm_instance:
-            try:
-                from algo_trading_engine.ml_models.lstm_model import LSTMModel
-                lstm_instance = LSTMModel(sequence_length=60, n_features=29)  # Default values
-                lstm_instance.model = keras_model
-                return lstm_instance, scaler
-            except ImportError:
-                from algo_trading_engine.ml_models.lstm_model import LSTMModel
-                lstm_instance = LSTMModel(sequence_length=60, n_features=29)
-                lstm_instance.model = keras_model
-                return lstm_instance, scaler
+            # Deferred: LSTMModel pulls in TensorFlow at import time.
+            # pylint: disable-next=import-outside-toplevel
+            from algo_trading_engine.ml_models.lstm_model import LSTMModel
+            lstm_instance = LSTMModel(sequence_length=60, n_features=29)  # Default values
+            lstm_instance.model = keras_model
+            return lstm_instance, scaler
         return keras_model, scaler
     except Exception as e:
         raise Exception(f"Error loading LSTM model from {lstm_path}: {str(e)}")

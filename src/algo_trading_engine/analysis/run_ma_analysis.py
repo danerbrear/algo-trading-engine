@@ -8,13 +8,8 @@ Usage:
 
 import argparse
 import sys
-import os
 
-# Import from the same directory
-import sys
-import os
-sys.path.insert(0, os.path.dirname(__file__))
-from ma_velocity_analysis import MAVelocityAnalyzer
+from algo_trading_engine.analysis.ma_velocity_analysis import MAVelocityAnalyzer
 
 
 def parse_arguments():

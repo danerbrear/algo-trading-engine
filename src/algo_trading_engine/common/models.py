@@ -215,8 +215,6 @@ class Option:
         Returns:
             Option: Created Option instance
         """
-        from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO
-        
         # Convert contract type from common.models.OptionType to the same module's OptionType
         option_type = OptionType.CALL if contract.contract_type.value == 'call' else OptionType.PUT
         

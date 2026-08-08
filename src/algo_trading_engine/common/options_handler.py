@@ -5,12 +5,14 @@ This module implements the new OptionsHandler following the requirements
 in features/improved_data_fetching.md Phase 2.
 """
 
+import inspect
 import os
 from datetime import datetime, date, timedelta
 from typing import Dict, List, Optional
 from zoneinfo import ZoneInfo
 from decimal import Decimal
 from dotenv import load_dotenv
+from polygon import RESTClient
 
 from .cache.options_cache_manager import OptionsCacheManager
 from algo_trading_engine.dto import (
@@ -61,7 +63,6 @@ class OptionsHandler:
         self.cache_manager = OptionsCacheManager(cache_dir, create_dirs=use_cache)
         
         # Initialize API client and retry handler
-        from polygon import RESTClient
         self.client = RESTClient(self.api_key)
         self.api_retry_handler = APIRetryHandler(use_rate_limit=use_free_tier)
     
@@ -83,7 +84,6 @@ class OptionsHandler:
         # Check if the requested attribute is a private method
         if name in private_methods:
             # Allow access during testing (when called from test files)
-            import inspect
             frame = inspect.currentframe()
             try:
                 # Check the call stack to see if we're in a test
@@ -143,8 +143,7 @@ class OptionsHandler:
         Raises:
             TypeError: If date is not a datetime or date object
         """
-        from datetime import date as date_class
-        if not isinstance(date, (datetime, date_class)):
+        if not isinstance(date, (datetime, _date_class)):
             raise TypeError(f"date must be a datetime or date object, got {type(date).__name__}")
         
         date_obj = date.date() if isinstance(date, datetime) else date
@@ -476,8 +475,7 @@ class OptionsHandler:
         """Fetch option contracts from Polygon.io API."""
         try:
             # Check if date is in the future
-            from datetime import date as date_class
-            today = date_class.today()
+            today = _date_class.today()
             if date_obj > today:
                 progress_print(f"⚠️  Cannot fetch contracts for future date {date_obj} (today is {today})")
                 return []
@@ -547,8 +545,7 @@ class OptionsHandler:
     ) -> Optional[OptionBarDTO]:
         """Fetch option bar data from Polygon.io API. Uses datetime only; formats from/to by interval."""
         try:
-            from datetime import date as date_class
-            today = date_class.today()
+            today = _date_class.today()
             if dt.date() > today:
                 progress_print(f"⚠️  Cannot fetch bar data for future date {dt.date()} (today is {today})")
                 return None

@@ -7,6 +7,10 @@ Internal implementation details - use the public API through the main package:
 
 from __future__ import annotations
 
+# BacktestEngine is resolved by the PEP 562 __getattr__ below, so static analysis
+# cannot see it defined at module level.
+# pylint: disable=undefined-all-variable
+
 from typing import Any
 
 from .config import VolumeConfig, VolumeStats
@@ -20,6 +24,7 @@ __all__ = [
 
 def __getattr__(name: str) -> Any:
     if name == "BacktestEngine":
+        # pylint: disable-next=import-outside-toplevel
         from .main import BacktestEngine
 
         globals()["BacktestEngine"] = BacktestEngine

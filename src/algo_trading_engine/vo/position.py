@@ -13,11 +13,10 @@ from abc import ABC, abstractmethod
 
 if TYPE_CHECKING:
     from algo_trading_engine.dto import OptionBarDTO
-    from algo_trading_engine.common.models import StrategyType
 
 # Import from common models
 from algo_trading_engine.common.logger import get_logger
-from algo_trading_engine.common.models import Option, OptionChain, OptionType
+from algo_trading_engine.common.models import Option, OptionChain, OptionType, StrategyType
 
 _SPREAD_VALUE_TOLERANCE = 0.01
 # Far ITM/OTM substitution caps at 90% of width; 100% is reserved for expiration.
@@ -37,7 +36,7 @@ class Position(ABC):
 
     def __init__(self, symbol: str, expiration_date: datetime, strategy_type: 'StrategyType', 
                  strike_price: float, entry_date: datetime, entry_price: float, 
-                 exit_price: float = None, spread_options: list[Option] = None):
+                 spread_options: list[Option] = None):
         self.symbol = symbol
         self.expiration_date = expiration_date
         self.quantity = None
@@ -116,8 +115,6 @@ class Position(ABC):
         Returns:
             Spread width (difference between strikes), or None if not a spread strategy.
         """
-        # Import here to avoid circular import
-        from algo_trading_engine.common.models import StrategyType
         
         if self.strategy_type not in [
             StrategyType.CALL_CREDIT_SPREAD, StrategyType.PUT_CREDIT_SPREAD,
@@ -161,12 +158,10 @@ class Position(ABC):
             self.entry_date != other.entry_date):
             return False
             
-        # Compare exit dates if both have them
-        if hasattr(self, 'exit_date') and hasattr(other, 'exit_date'):
-            if self.exit_date != other.exit_date:
-                return False
-        elif hasattr(self, 'exit_date') or hasattr(other, 'exit_date'):
-            # One has exit date, other doesn't
+        # Compare exit dates when present on concrete position types
+        self_exit = getattr(self, "exit_date", None)
+        other_exit = getattr(other, "exit_date", None)
+        if self_exit != other_exit:
             return False
             
         # Compare spread options if both have them
@@ -524,8 +519,6 @@ class CreditSpreadPosition(SpreadPosition):
         - Maximum risk is the width of the spread minus the credit received
         - At expiration, we calculate the intrinsic value of our short and long legs
         """
-        # Import here to avoid circular import
-        from algo_trading_engine.common.models import StrategyType
         
         if not self.spread_options or len(self.spread_options) != 2:
             raise ValueError("Spread options are not set")
@@ -620,8 +613,6 @@ class DebitSpreadPosition(SpreadPosition):
         - At expiration, we calculate the intrinsic value of our long and short legs
         - P&L = Intrinsic Value - Debit Paid
         """
-        # Import here to avoid circular import
-        from algo_trading_engine.common.models import StrategyType
         
         if not self.spread_options or len(self.spread_options) != 2:
             raise ValueError("Spread options are not set")
@@ -943,7 +934,7 @@ class ShortPutPosition(Position):
 
 def create_position(symbol: str, expiration_date: datetime, strategy_type: 'StrategyType',
                    strike_price: float, entry_date: datetime, entry_price: float,
-                   exit_price: float = None, spread_options: list[Option] = None) -> Position:
+                   spread_options: list[Option] = None) -> Position:
     """
     Factory function to create appropriate Position subclass based on strategy_type.
     
@@ -954,7 +945,6 @@ def create_position(symbol: str, expiration_date: datetime, strategy_type: 'Stra
         strike_price: Strike price
         entry_date: Date position was entered
         entry_price: Price at entry
-        exit_price: Price at exit (optional)
         spread_options: List of Option objects for the position
         
     Returns:
@@ -963,26 +953,24 @@ def create_position(symbol: str, expiration_date: datetime, strategy_type: 'Stra
     Raises:
         ValueError: If strategy type is unknown
     """
-    # Import here to avoid circular import
-    from algo_trading_engine.common.models import StrategyType
     
     if strategy_type in [StrategyType.CALL_CREDIT_SPREAD, StrategyType.PUT_CREDIT_SPREAD]:
         return CreditSpreadPosition(symbol, expiration_date, strategy_type, strike_price,
-                                   entry_date, entry_price, exit_price, spread_options)
+                                   entry_date, entry_price, spread_options)
     elif strategy_type in [StrategyType.CALL_DEBIT_SPREAD, StrategyType.PUT_DEBIT_SPREAD]:
         return DebitSpreadPosition(symbol, expiration_date, strategy_type, strike_price,
-                                   entry_date, entry_price, exit_price, spread_options)
+                                   entry_date, entry_price, spread_options)
     elif strategy_type == StrategyType.LONG_CALL:
         return LongCallPosition(symbol, expiration_date, strategy_type, strike_price,
-                               entry_date, entry_price, exit_price, spread_options)
+                               entry_date, entry_price, spread_options)
     elif strategy_type == StrategyType.SHORT_CALL:
         return ShortCallPosition(symbol, expiration_date, strategy_type, strike_price,
-                                entry_date, entry_price, exit_price, spread_options)
+                                entry_date, entry_price, spread_options)
     elif strategy_type == StrategyType.LONG_PUT:
         return LongPutPosition(symbol, expiration_date, strategy_type, strike_price,
-                              entry_date, entry_price, exit_price, spread_options)
+                              entry_date, entry_price, spread_options)
     elif strategy_type == StrategyType.SHORT_PUT:
         return ShortPutPosition(symbol, expiration_date, strategy_type, strike_price,
-                               entry_date, entry_price, exit_price, spread_options)
+                               entry_date, entry_price, spread_options)
     else:
         raise ValueError(f"Unknown strategy type: {strategy_type}")

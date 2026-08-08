@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import traceback
 
 from algo_trading_engine.core.engine import PaperTradingEngine
 from algo_trading_engine.models import PaperTradingConfig
@@ -56,7 +57,6 @@ def main():
             sys.exit(1)
     except Exception as e:
         print(f"❌ Error during paper trading: {e}")
-        import traceback
         traceback.print_exc()
         sys.exit(1)
 

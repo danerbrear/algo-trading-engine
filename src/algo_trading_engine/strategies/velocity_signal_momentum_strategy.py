@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import traceback
 from datetime import datetime
 from typing import Callable, Optional
 import pandas as pd
@@ -10,14 +11,13 @@ from algo_trading_engine.core.strategy import Strategy
 from algo_trading_engine.core.indicators.sma_indicator import SMAIndicator
 from algo_trading_engine.vo import Position, create_position
 from algo_trading_engine.common.models import StrategyType
-from algo_trading_engine.common.models import TreasuryRates
+from algo_trading_engine.common.models import Option, TreasuryRates
 from algo_trading_engine.dto import ExpirationRangeDTO, OptionsChainDTO, StrikeRangeDTO
 from algo_trading_engine.vo import StrikePrice
 from algo_trading_engine.common.logger import get_logger
 from algo_trading_engine.common.options_helpers import OptionsRetrieverHelper
 from algo_trading_engine.common.models import OptionType
 from decimal import Decimal
-from typing import Callable
 
 class VelocitySignalMomentumStrategy(Strategy):
     """
@@ -35,6 +35,7 @@ class VelocitySignalMomentumStrategy(Strategy):
         self.get_option_bar = get_option_bar
         self.get_options_chain = get_options_chain
         self.symbol = symbol
+        self.options_data: dict[str, OptionsChainDTO] = {}
         
         # Track position entries for plotting
         self._position_entries = []
@@ -177,7 +178,6 @@ class VelocitySignalMomentumStrategy(Strategy):
             
         except Exception as e:
             get_logger().warning(f"⚠️  Error creating plot: {e}")
-            import traceback
             traceback.print_exc()
 
     def _has_buy_signal(self, date: datetime) -> bool:
@@ -439,8 +439,6 @@ class VelocitySignalMomentumStrategy(Strategy):
             
             if net_credit > 0:  # Only consider if we receive a credit
                 # Convert OptionContractDTO to Option using the new conversion method
-                # Use the same import path as Position to ensure class identity
-                from algo_trading_engine.common.models import Option
                 atm_option = Option.from_contract_and_bar(atm_put, atm_bar)
                 otm_option = Option.from_contract_and_bar(otm_put, otm_bar)
                 
@@ -549,7 +547,6 @@ class VelocitySignalMomentumStrategy(Strategy):
             get_logger().info("🔍 Fetching expirations from options_retriever for 5-10 day window...")
             
             # Use new_options_handler to get available expirations
-            from algo_trading_engine.dto import ExpirationRangeDTO
             expiration_range = ExpirationRangeDTO(min_days=5, max_days=10)
             
             # Get contracts for the date (already filtered by expiration range)
@@ -599,7 +596,12 @@ class VelocitySignalMomentumStrategy(Strategy):
             get_logger().info(f"🔍 Position {position.__str__()} - Days held: {days_held}, Days to exp: {days_to_exp}")
 
             # Compute exit price for stop/holding decisions
-            exit_price = self.compute_exit_price(position, date)
+            exit_price = self.invoke_compute_exit_price(position, date)
+            if exit_price is None and self.compute_exit_price is None:
+                get_logger().warning(
+                    f"⚠️  compute_exit_price not configured; skipping closure checks for {position}"
+                )
+                continue
             if exit_price is not None:
                 exit_price = self._sanitize_exit_price(exit_price)
                 get_logger().info(f"💰 Calculated exit price for {position.__str__()}: {exit_price}")
@@ -608,7 +610,7 @@ class VelocitySignalMomentumStrategy(Strategy):
             if self._should_close_due_to_holding(position, date, self.holding_period):
                 if exit_price is not None:
                     get_logger().info(f"Holding period met for {position.__str__()} at exit {exit_price} (held {days_held} days, target: {self.holding_period})")
-                    current_volumes = self.get_current_volumes_for_position(position, date)
+                    current_volumes = self.invoke_current_volumes_for_position(position, date)
                     remove_position(date, position, exit_price, underlying_price=current_underlying_price, current_volumes=current_volumes)
                 else:
                     get_logger().warning(f"⚠️  No exit price available for {position.__str__()} on {date}. Skipping holding-period close.")

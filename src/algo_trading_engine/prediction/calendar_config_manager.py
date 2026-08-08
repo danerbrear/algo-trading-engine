@@ -7,7 +7,14 @@ Handles loading and validating calendar event dates for CPI and CC features
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Any, Dict, Optional, TypedDict
+
+
+class EventValidationResult(TypedDict):
+    last_event_warning: Optional[str]
+    next_event_warning: Optional[str]
+    last_event_date: Optional[str]
+    next_event_date: Optional[str]
 
 
 class CalendarConfigManager:
@@ -24,7 +31,7 @@ class CalendarConfigManager:
             config_path = Path(__file__).parent / "calendar_config.json"
         
         self.config_path = Path(config_path)
-        self.config = None
+        self.config: Optional[Dict[str, Any]] = None
         self._load_config()
     
     def _load_config(self):
@@ -41,14 +48,14 @@ class CalendarConfigManager:
         except Exception as e:
             raise RuntimeError(f"Error loading calendar config: {e}")
     
-    def validate_dates(self) -> Dict[str, Dict[str, str]]:
+    def validate_dates(self) -> Dict[str, EventValidationResult]:
         """Validate calendar event dates and return warnings
         
         Returns:
             Dictionary with validation results and warnings
         """
         if not self.config:
-            return {"error": "No configuration loaded"}
+            return {}
         
         today = datetime.now().date()
         current_month = today.month
@@ -59,7 +66,7 @@ class CalendarConfigManager:
         last_month_end = today.replace(day=1) - timedelta(days=1)
         this_month_start = today.replace(day=1)
         
-        warnings = {}
+        warnings: Dict[str, EventValidationResult] = {}
         
         for event_type, event_data in self.config.items():
             if event_type in ["last_updated", "update_frequency", "notes"]:
