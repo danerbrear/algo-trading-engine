@@ -1,21 +1,34 @@
 from time import time
 from tqdm import tqdm
-from typing import Dict, Any, Optional
+from typing import TYPE_CHECKING, Dict, Any, Optional
 from datetime import datetime, timedelta
 import sys
 import threading
 
 from algo_trading_engine.common.logger import get_logger
 
+if TYPE_CHECKING:
+    from algo_trading_engine.common.run_observer import RunObserver
+
+
 class ProgressTracker:
-    def __init__(self, total_dates: int, desc: str = "Processing", quiet_mode: bool = True, unit: str = "date"):
+    def __init__(
+        self,
+        total_dates: int,
+        desc: str = "Processing",
+        quiet_mode: bool = True,
+        unit: str = "date",
+        observer: "RunObserver | None" = None,
+    ):
         self.start_time = time()
         self.processed_dates = 0
         self.total_dates = total_dates
         self._lock = threading.Lock()
         self.quiet_mode = quiet_mode
         self.unit = unit  # "date" for daily, "bar" for hourly/minute
-        
+        self.observer = observer
+        self._desc_label = desc
+
         # Initialize progress bar with improved settings
         self.pbar = tqdm(
             total=self.total_dates,
@@ -30,7 +43,8 @@ class ProgressTracker:
             mininterval=0.1,
             ncols=100,  # Fixed width to prevent jumping
             ascii=False,  # Use Unicode characters for better display
-            smoothing=0.1  # Smooth ETA calculations
+            smoothing=0.1,  # Smooth ETA calculations
+            disable=observer is not None,
         )
         
     def _count_trading_days(self, start_date: datetime, end_date: datetime) -> int:
@@ -69,6 +83,9 @@ class ProgressTracker:
                 else:
                     desc = f"Processing {current_date.date()} ({date_progress:.1f}% dates)"
                 self.pbar.set_description(desc)
+
+                if self.observer is not None:
+                    self.observer.progress(self.processed_dates, self.total_dates, desc)
                 
                 # Show summary info in postfix (key strike prices, etc.)
                 if summary_info:

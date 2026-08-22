@@ -110,3 +110,51 @@ class TestLogAndEcho:
         log_and_echo('echo to user')
         captured = capsys.readouterr()
         assert 'echo to user' in captured.out
+
+    def test_log_and_echo_skips_print_when_observer_set(self, tmp_log_dir, capsys):
+        from dataclasses import dataclass, field
+
+        @dataclass
+        class RecordingObserver:
+            logs: list[tuple[str, str]] = field(default_factory=list)
+
+            def log(self, level: str, message: str) -> None:
+                self.logs.append((level, message))
+
+            def progress(self, current: int, total: int, label: str = "") -> None:
+                pass
+
+            def result(self, stats: dict[str, str]) -> None:
+                pass
+
+        tmpdir = tmp_log_dir
+        observer = RecordingObserver()
+        configure_logger('backtest', log_dir=tmpdir, log_level='info', observer=observer)
+        log_and_echo('no duplicate stdout')
+        captured = capsys.readouterr()
+        assert captured.out == ''
+        assert ('INFO', 'no duplicate stdout') in observer.logs
+
+    def test_observer_receives_log_records(self, tmp_log_dir):
+        from dataclasses import dataclass, field
+
+        @dataclass
+        class RecordingObserver:
+            logs: list[tuple[str, str]] = field(default_factory=list)
+
+            def log(self, level: str, message: str) -> None:
+                self.logs.append((level, message))
+
+            def progress(self, current: int, total: int, label: str = "") -> None:
+                pass
+
+            def result(self, stats: dict[str, str]) -> None:
+                pass
+
+        tmpdir = tmp_log_dir
+        observer = RecordingObserver()
+        configure_logger('backtest', log_dir=tmpdir, log_level='info', observer=observer)
+        get_logger().info('forwarded message')
+        assert ('INFO', 'forwarded message') in observer.logs
+        log_file = Path(tmpdir) / 'backtest.log'
+        assert 'forwarded message' in log_file.read_text()

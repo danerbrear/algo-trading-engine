@@ -4,7 +4,7 @@ Configuration DTOs for backtesting and paper trading.
 This module provides immutable configuration objects for engines and strategies.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional, Union, TYPE_CHECKING
 
@@ -12,6 +12,7 @@ from algo_trading_engine.backtest.config import VolumeConfig as BaseVolumeConfig
 from algo_trading_engine.enums import BarTimeInterval
 
 if TYPE_CHECKING:
+    from algo_trading_engine.common.run_observer import RunObserver
     from algo_trading_engine.core.strategy import Strategy
     from algo_trading_engine.prediction.decision_store import DecisionStore
 
@@ -45,7 +46,8 @@ class BacktestConfig:
     stop_loss: Optional[float] = None  # Optional stop loss percentage
     profit_target: Optional[float] = None  # Optional profit target percentage
     benchmark_ticker: Optional[str] = None  # Ticker for buy-and-hold benchmark comparison (defaults to symbol)
-    
+    observer: Optional["RunObserver"] = field(default=None, compare=False, hash=False)
+
     def __post_init__(self):
         """Validate configuration after initialization."""
         if self.initial_capital <= 0:
@@ -97,7 +99,8 @@ class PaperTradingConfig:
     profit_target: Optional[float] = None  # Optional profit target percentage
     decision_store: Optional['DecisionStore'] = None # Database immplementation for storing decisions
     auto_yes: bool = False  # Skip interactive prompts (e.g., for Lambda / headless environments)
-    
+    observer: Optional["RunObserver"] = field(default=None, compare=False, hash=False)
+
     def __post_init__(self):
         """Validate configuration after initialization."""
         if self.max_position_size is not None:

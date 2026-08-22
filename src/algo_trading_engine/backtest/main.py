@@ -20,6 +20,7 @@ from .config import VolumeConfig, VolumeStats
 from algo_trading_engine.models import OverallPerformanceStats, StrategyPerformanceStats
 from algo_trading_engine.common.logger import configure_logger, get_logger, log_and_echo
 from algo_trading_engine.common.progress_tracker import ProgressTracker, set_global_progress_tracker
+from algo_trading_engine.common.run_observer import RunObserver
 from .strategy_builder import StrategyFactory, create_strategy_from_args
 from algo_trading_engine.core.engine import TradingEngine
 from algo_trading_engine.models.config import BacktestConfig as BacktestConfigDTO
@@ -38,7 +39,8 @@ class BacktestEngine(TradingEngine):
                  enable_progress_tracking: bool = True,
                  quiet_mode: bool = True,
                  bar_interval = None,
-                 benchmark_data: pd.DataFrame = None):
+                 benchmark_data: pd.DataFrame = None,
+                 observer: RunObserver | None = None):
         super().__init__(strategy, data, bar_interval=bar_interval)
         self._capital = initial_capital
         self.initial_capital = initial_capital  # Store initial capital for reporting
@@ -60,6 +62,7 @@ class BacktestEngine(TradingEngine):
         self.enable_progress_tracking = enable_progress_tracking
         self.quiet_mode = quiet_mode
         self.progress_tracker = None
+        self.observer = observer
         
         # Position tracking for statistics
         self.closed_positions = []
@@ -102,7 +105,7 @@ class BacktestEngine(TradingEngine):
             ValueError: If configuration is invalid or data fetching fails
         """
         log_level = "info" if config.quiet_mode else "debug"
-        configure_logger("backtest", log_level=log_level)
+        configure_logger("backtest", log_level=log_level, observer=config.observer)
 
         # Internal: Calculate LSTM start date (days before backtest start)
         lstm_start_date = (config.start_date - timedelta(days=config.lstm_start_date_offset))
@@ -205,7 +208,8 @@ class BacktestEngine(TradingEngine):
             enable_progress_tracking=config.enable_progress_tracking,
             quiet_mode=config.quiet_mode,
             bar_interval=config.bar_interval,
-            benchmark_data=benchmark_data
+            benchmark_data=benchmark_data,
+            observer=config.observer,
         )
         
         # Inject engine methods into strategy
@@ -221,7 +225,7 @@ class BacktestEngine(TradingEngine):
         Run the backtest.
         """
         log_level = "info" if self.quiet_mode else "debug"
-        configure_logger("backtest", log_level=log_level)
+        configure_logger("backtest", log_level=log_level, observer=self.observer)
 
         # Validate the data using the strategy's validation method
         if not self.strategy.validate_data(self.data):
@@ -255,7 +259,8 @@ class BacktestEngine(TradingEngine):
                 total_dates=len(date_range),
                 desc="Running Backtest",
                 quiet_mode=self.quiet_mode,
-                unit=unit
+                unit=unit,
+                observer=self.observer,
             )
             set_global_progress_tracker(self.progress_tracker)
 
@@ -342,6 +347,17 @@ class BacktestEngine(TradingEngine):
         log_and_echo(f"   Final capital: ${self.capital:.2f}")
         log_and_echo(f"   Total Return: ${final_return:+,.2f} ({final_return_pct:+.2f}%)")
         log_and_echo(f"   Sharpe Ratio: {sharpe_ratio:.3f}")
+
+        if self.observer is not None:
+            self.observer.result({
+                "benchmark_return_pct": f"{self.benchmark.get_return_percentage():+.2f}%",
+                "benchmark_return_dollars": f"${self.benchmark.get_return_dollars():+.2f}",
+                "trading_days": str(len(self.data.index)),
+                "total_positions": str(self.total_positions),
+                "final_capital": f"${self.capital:.2f}",
+                "total_return": f"${final_return:+,.2f} ({final_return_pct:+.2f}%)",
+                "sharpe_ratio": f"{sharpe_ratio:.3f}",
+            })
     
     def get_performance_metrics(self) -> PerformanceMetrics:
         """

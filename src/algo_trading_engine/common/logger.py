@@ -9,9 +9,12 @@ instead of a file.
 
 import sys
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from loguru import logger
+
+if TYPE_CHECKING:
+    from algo_trading_engine.common.run_observer import RunObserver
 
 RunType = Literal["backtest", "trade"]
 LogLevel = Literal["debug", "info", "warn"]
@@ -27,6 +30,8 @@ _LOGURU_LEVEL: dict[str, str] = {
     "warn": "WARNING",
 }
 _sink_id: int | None = None
+_observer_sink_id: int | None = None
+_active_observer: "RunObserver | None" = None
 
 
 def configure_logger(
@@ -34,6 +39,7 @@ def configure_logger(
     log_dir: str = _LOG_DIR_DEFAULT,
     log_level: LogLevel = "info",
     log_to_stdout: bool = False,
+    observer: "RunObserver | None" = None,
 ) -> None:
     """
     Configure the singleton logger for this run. Only the first call takes
@@ -53,11 +59,13 @@ def configure_logger(
         log_dir: Directory for log files (created if missing). Default "logs".
         log_level: One of "debug", "info", or "warn". Default "info".
         log_to_stdout: If True, log to stdout instead of a file.
+        observer: Optional RunObserver; when set, log records are forwarded
+            to observer.log() in addition to the file/stdout sink.
 
     Raises:
         ValueError: If log_level is not "debug", "info", or "warn".
     """
-    global _sink_id
+    global _sink_id, _observer_sink_id, _active_observer
 
     if _sink_id is not None:
         return
@@ -91,6 +99,15 @@ def configure_logger(
             mode="w",
         )
 
+    if observer is not None:
+        _active_observer = observer
+
+        def _forward_to_observer(message) -> None:
+            record = message.record
+            _active_observer.log(record["level"].name, record["message"])
+
+        _observer_sink_id = logger.add(_forward_to_observer, level=level)
+
 
 def remove_logger_sink() -> None:
     """
@@ -99,7 +116,11 @@ def remove_logger_sink() -> None:
     Call this when the log file must be closed (e.g. in tests before removing
     a temp directory that contains the log file). Idempotent if no sink is set.
     """
-    global _sink_id
+    global _sink_id, _observer_sink_id, _active_observer
+    if _observer_sink_id is not None:
+        logger.remove(_observer_sink_id)
+        _observer_sink_id = None
+        _active_observer = None
     if _sink_id is not None:
         logger.remove(_sink_id)
         _sink_id = None
@@ -124,4 +145,5 @@ def log_and_echo(message: str) -> None:
     the user sees them while the full audit trail remains in trade.log.
     """
     logger.info(message)
-    print(message)
+    if _active_observer is None:
+        print(message)

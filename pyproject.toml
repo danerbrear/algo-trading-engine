@@ -52,6 +52,8 @@ pythonpath = ["src"]
 [tool.pylint.main]
 py-version = "3.10"
 source-roots = ["src"]
+# src-layout: resolve algo_trading_engine from src/ even if cwd is examples/ or pylint's env has no install
+init-hook = "import sys; from pathlib import Path; src = next((p / 'src' for p in [Path.cwd(), *Path.cwd().parents] if (p / 'src' / 'algo_trading_engine').is_dir()), Path('src')); sys.path.insert(0, str(src.resolve()))"
 jobs = 0
 ignore-paths = [
     "^venv/.*$",

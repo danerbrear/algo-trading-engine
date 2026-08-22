@@ -388,7 +388,7 @@ class PaperTradingEngine(TradingEngine):
         from algo_trading_engine.prediction.recommendation_engine import InteractiveStrategyRecommender
         
         # Logger already configured in from_config(); ensure it's set for this run
-        configure_logger("trade", log_level="info")
+        configure_logger("trade", log_level="info", observer=self._config.observer)
 
         # Get options handler
         if self._options_handler is None:
@@ -514,7 +514,7 @@ class PaperTradingEngine(TradingEngine):
             ValueError: If configuration is invalid or data fetching fails
         """
         # Configure logger first so data fetch and all setup log to trade.log (not stdout)
-        configure_logger("trade", log_level="info")
+        configure_logger("trade", log_level="info", observer=config.observer)
 
         from algo_trading_engine.common.data_retriever import DataRetriever
         from algo_trading_engine.common.options_handler import OptionsHandler
