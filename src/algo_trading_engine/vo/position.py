@@ -34,12 +34,12 @@ class Position(ABC):
         spread_options (list[Option]): List of Option objects that make up the spread (e.g., [atm_option, otm_option])
     """
 
-    def __init__(self, symbol: str, expiration_date: datetime, strategy_type: 'StrategyType', 
+    def __init__(self, symbol: str, expiration_date: Optional[datetime], strategy_type: 'StrategyType', 
                  strike_price: float, entry_date: datetime, entry_price: float, 
                  spread_options: list[Option] = None):
         self.symbol = symbol
         self.expiration_date = expiration_date
-        self.quantity = None
+        self.quantity: Optional[float] = None
         self.strategy_type = strategy_type
         self.strike_price = strike_price
         self.entry_date = entry_date
@@ -61,9 +61,23 @@ class Position(ABC):
                 if not (is_option or is_mock):
                     raise TypeError(f"All elements of spread_options must be of type Option, got {opt_class.__name__} from {opt_class.__module__}")
     
-    def set_quantity(self, quantity: int):
-        """Set the quantity for a position."""
+    def set_quantity(self, quantity: float):
+        """Set the quantity for a position (contracts or fractional shares)."""
         self.quantity = quantity
+
+    def contract_multiplier(self) -> int:
+        """Dollar multiplier per unit (100 for options, 1 for shares)."""
+        return 100
+
+    def uses_option_legs(self) -> bool:
+        """True when exit pricing requires option legs."""
+        return bool(self.spread_options)
+
+    def is_expired_for_assignment(self, current_date: datetime) -> bool:
+        """True when the position should close via assignment at expiration."""
+        if self.expiration_date is None:
+            return False
+        return self.get_days_to_expiration(current_date) < 1
     
     def profit_target_hit(self, profit_target: float, exit_price: float) -> bool:
         """Check if the profit target has been hit for a position."""
@@ -179,7 +193,15 @@ class Position(ABC):
         return True
 
     def __str__(self) -> str:
-        return f"{self.strategy_type.value} {self.symbol} {self.strike_price} @ {self.entry_price:.2f} x{self.quantity} (Open, expires {self.expiration_date.strftime('%Y-%m-%d')})"
+        expiry = (
+            self.expiration_date.strftime('%Y-%m-%d')
+            if self.expiration_date is not None
+            else "n/a"
+        )
+        return (
+            f"{self.strategy_type.value} {self.symbol} {self.strike_price} "
+            f"@ {self.entry_price:.2f} x{self.quantity} (Open, expires {expiry})"
+        )
     
     # Strategy-specific methods become abstract
     @abstractmethod
@@ -932,7 +954,64 @@ class ShortPutPosition(Position):
         return None
 
 
-def create_position(symbol: str, expiration_date: datetime, strategy_type: 'StrategyType',
+class LongStockPosition(Position):
+    """Position for long stock (fractional shares allowed)."""
+
+    def contract_multiplier(self) -> int:
+        return 1
+
+    def uses_option_legs(self) -> bool:
+        return False
+
+    def get_return_dollars(self, exit_price: float) -> float:
+        if self.quantity is None:
+            raise ValueError("Quantity is not set")
+        return (exit_price - self.entry_price) * self.quantity
+
+    def _get_return(self, exit_price: float) -> float:
+        if self.quantity is None or exit_price is None:
+            raise ValueError("Quantity is not set")
+        if self.entry_price == 0:
+            raise ValueError("Entry price must be non-zero")
+        return (exit_price - self.entry_price) / self.entry_price
+
+    def calculate_exit_price(
+        self,
+        current_option_chain: OptionChain,
+        underlying_price: Optional[float],
+    ) -> Optional[float]:
+        return underlying_price
+
+    def calculate_exit_price_from_bars(
+        self,
+        atm_bar: Optional['OptionBarDTO'],
+        otm_bar: Optional['OptionBarDTO'],
+        underlying_price: Optional[float],
+    ) -> Optional[float]:
+        return underlying_price
+
+    def get_return_dollars_from_assignment(self, underlying_price: float) -> float:
+        raise RuntimeError("Long stock positions do not close via assignment")
+
+    def max_profit(self) -> Optional[float]:
+        return None
+
+    def max_loss_per_share(self) -> Optional[float]:
+        return self.entry_price
+
+    def max_risk_dollars_per_contract(self) -> float:
+        """Per-share risk equals entry price; total risk = entry_price * quantity."""
+        return self.entry_price
+
+    def __str__(self) -> str:
+        qty = self.quantity if self.quantity is not None else "?"
+        return (
+            f"{self.strategy_type.value} {self.symbol} "
+            f"@ ${self.entry_price:.2f} x{qty} shares (Open)"
+        )
+
+
+def create_position(symbol: str, expiration_date: Optional[datetime], strategy_type: 'StrategyType',
                    strike_price: float, entry_date: datetime, entry_price: float,
                    spread_options: list[Option] = None) -> Position:
     """
@@ -972,5 +1051,8 @@ def create_position(symbol: str, expiration_date: datetime, strategy_type: 'Stra
     elif strategy_type == StrategyType.SHORT_PUT:
         return ShortPutPosition(symbol, expiration_date, strategy_type, strike_price,
                                entry_date, entry_price, spread_options)
+    elif strategy_type == StrategyType.LONG_STOCK:
+        return LongStockPosition(symbol, expiration_date, strategy_type, strike_price,
+                                entry_date, entry_price, spread_options)
     else:
         raise ValueError(f"Unknown strategy type: {strategy_type}")

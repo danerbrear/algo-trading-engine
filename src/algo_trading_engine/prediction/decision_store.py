@@ -78,7 +78,7 @@ class DecisionResponseDTO:
     outcome: DecisionOutcome
     decided_at: str
     rationale: str
-    quantity: Optional[int] = None
+    quantity: Optional[float] = None
     entry_price: Optional[float] = None
     exit_price: Optional[float] = None
     closed_at: Optional[str] = None

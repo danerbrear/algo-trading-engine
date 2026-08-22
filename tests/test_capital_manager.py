@@ -638,3 +638,43 @@ def test_initialize_config_for_strategy_with_existing_file(tmp_path):
     # Should add new strategy with custom defaults
     assert config["strategies"]["new_strategy"]["allocated_capital"] == 15000.0
     assert config["strategies"]["new_strategy"]["max_risk_percentage"] == 0.08
+
+
+def test_remaining_capital_long_stock_uses_share_multiplier(decision_store, allocations_config):
+    """Long stock decisions should not multiply cash flows by 100."""
+    allocations_config["strategies"]["uptrend_swing"] = {
+        "allocated_capital": 2000.0,
+        "max_risk_percentage": 0.15,
+    }
+    manager = CapitalManager(allocations_config, decision_store)
+
+    proposal = ProposedPositionRequestDTO(
+        symbol="SPY",
+        strategy_type=StrategyType.LONG_STOCK,
+        legs=(),
+        credit=100.0,
+        width=0.0,
+        probability_of_profit=0.7,
+        confidence=0.7,
+        expiration_date="",
+        created_at=datetime.now().isoformat(),
+        strategy_name="uptrend_swing",
+    )
+    decided_at = datetime.now().isoformat()
+    open_decision = DecisionResponseDTO(
+        id=generate_decision_id(proposal, decided_at),
+        proposal=proposal,
+        outcome="accepted",
+        decided_at=decided_at,
+        rationale="test",
+        quantity=2.0,
+        entry_price=100.0,
+    )
+    decision_store.append_decision(open_decision)
+
+    remaining_after_open = manager.get_remaining_capital("uptrend_swing")
+    assert remaining_after_open == pytest.approx(1800.0)
+
+    decision_store.mark_closed(open_decision.id, exit_price=110.0, closed_at=datetime.now())
+    remaining_after_close = manager.get_remaining_capital("uptrend_swing")
+    assert remaining_after_close == pytest.approx(2020.0)

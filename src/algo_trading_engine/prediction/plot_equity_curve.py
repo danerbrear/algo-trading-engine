@@ -35,7 +35,7 @@ class ClosedPosition:
     closed_at: datetime
     entry_price: float
     exit_price: float
-    quantity: int
+    quantity: float
     strategy_name: str
     strategy_type: str  # e.g., put_credit_spread, put_debit_spread
     pnl: float
@@ -54,19 +54,20 @@ class ClosedPosition:
         try:
             entry_price = float(decision['entry_price'])
             exit_price = float(decision['exit_price'])
-            quantity = int(decision['quantity'])
+            quantity = float(decision['quantity'])
             
             # Get strategy name from proposal
             strategy_name = decision.get('proposal', {}).get('strategy_name', 'unknown')
             strategy_type = decision.get('proposal', {}).get('strategy_type', 'unknown')
+            multiplier = 1 if strategy_type == 'long_stock' else 100
             
             # Calculate P&L based on strategy type
             # For credit spreads: profit when exit_price < entry_price
-            # For debit spreads: profit when exit_price > entry_price
+            # For debit spreads and long stock: profit when exit_price > entry_price
             if 'credit' in strategy_type:
-                pnl = (entry_price - exit_price) * quantity * 100
-            else:  # debit spreads
-                pnl = (exit_price - entry_price) * quantity * 100
+                pnl = (entry_price - exit_price) * quantity * multiplier
+            else:
+                pnl = (exit_price - entry_price) * quantity * multiplier
             
             closed_at = datetime.fromisoformat(decision['closed_at'].replace('Z', '+00:00'))
             

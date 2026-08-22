@@ -40,6 +40,7 @@ from algo_trading_engine.vo.position import (
     ShortCallPosition,
     LongPutPosition,
     ShortPutPosition,
+    LongStockPosition,
     create_position,
 )
 
@@ -64,6 +65,7 @@ __all__ = [
     "ShortCallPosition",
     "LongPutPosition",
     "ShortPutPosition",
+    "LongStockPosition",
     "create_position",
     # Runtime Objects - Other
     "Option",

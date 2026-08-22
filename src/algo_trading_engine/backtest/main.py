@@ -467,7 +467,7 @@ class BacktestEngine(TradingEngine):
                 self.volume_stats = self.volume_stats.increment_rejected_closures()
 
                 # Skip closing the position for this date due to insufficient volume unless expired
-                if position.get_days_to_expiration(date) > 0:
+                if not position.is_expired_for_assignment(date):
                     get_logger().warning(f"Skipping position closure for {date.date()} due to insufficient volume")
                     return  # Skip closure and keep position open
 
@@ -475,7 +475,7 @@ class BacktestEngine(TradingEngine):
             raise ValueError(f"Could not find position to close within open positions. {position.__str__()}")
 
         # Calculate the return for this position due to assignment
-        if position.get_days_to_expiration(date) < 1:
+        if position.is_expired_for_assignment(date):
             if underlying_price is None:
                 raise ValueError(f"Underlying price not provided for position {position.__str__()}")
 
@@ -496,7 +496,8 @@ class BacktestEngine(TradingEngine):
 
         # Track closed position for statistics
         max_risk = position.max_risk_dollars_per_contract()
-        return_pct = (position_return / max_risk) * 100 if (position.quantity and max_risk is not None) else 0
+        total_risk = max_risk * position.quantity if (position.quantity and max_risk is not None) else None
+        return_pct = (position_return / total_risk) * 100 if total_risk else 0
         closed_position_data = {
             'strategy_type': position.strategy_type,
             'entry_date': position.entry_date,
@@ -520,19 +521,19 @@ class BacktestEngine(TradingEngine):
 
         self.strategy.on_remove_position_success(date, position, exit_price, underlying_price, current_volumes)
     
-    def _get_position_size(self, position: Position) -> int:
+    def _get_position_size(self, position: Position) -> float:
         """
         Default position size calculation for positions that don't have a get_position_size method.
-        Get the number of contracts to buy or sell for a position based on the max position size and the current capital.
+        Get the number of contracts or shares based on max position size and current capital.
         """
         if self.max_position_size is None:
-            return 1
+            return 1.0
         
         max_position_capital = self.capital * self.max_position_size
         max_risk = position.max_risk_dollars_per_contract()
         if max_risk is None or max_risk <= 0:
-            return 1
-        return int(max_position_capital / max_risk)
+            return 1.0
+        return max_position_capital / max_risk
 
     def _calculate_sharpe_ratio(self) -> float:
         """

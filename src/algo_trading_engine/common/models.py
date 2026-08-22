@@ -24,7 +24,7 @@ class MarketStateType(Enum):
     HIGH_VOLATILITY_RALLY = "high_volatility_rally"
 
 class StrategyType(Enum):
-    """Enum for strategy types (options only). Single source of truth."""
+    """Enum for strategy types. Single source of truth."""
     CALL_CREDIT_SPREAD = "call_credit_spread"
     PUT_CREDIT_SPREAD = "put_credit_spread"
     CALL_DEBIT_SPREAD = "call_debit_spread"
@@ -33,6 +33,7 @@ class StrategyType(Enum):
     SHORT_CALL = "short_call"
     LONG_PUT = "long_put"
     SHORT_PUT = "short_put"
+    LONG_STOCK = "long_stock"
 
 class BarTimeInterval(Enum):
     """Enum for bar time intervals"""

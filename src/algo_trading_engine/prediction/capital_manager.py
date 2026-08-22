@@ -297,7 +297,8 @@ class CapitalManager:
                 
             strategy_type = decision.proposal.strategy_type
             is_credit = self.is_credit_strategy(strategy_type)
-            entry_price = float(decision.entry_price) * (decision.quantity or 1) * 100
+            multiplier = 1 if strategy_type == StrategyType.LONG_STOCK else 100
+            entry_price = float(decision.entry_price) * (decision.quantity or 1) * multiplier
             
             if is_credit:
                 # Credit strategy: received premium when opening
@@ -308,7 +309,7 @@ class CapitalManager:
             
             # If position is closed, adjust for closing premium
             if decision.closed_at is not None and decision.exit_price is not None:
-                exit_price = float(decision.exit_price) * (decision.quantity or 1) * 100
+                exit_price = float(decision.exit_price) * (decision.quantity or 1) * multiplier
                 
                 if is_credit:
                     # Credit strategy: paid premium to close

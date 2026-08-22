@@ -236,6 +236,17 @@ class TradingEngine(ABC):
             Exit price or None if unavailable
         """
         try:
+            if not position.uses_option_legs():
+                underlying_price = self.strategy.get_current_underlying_price(
+                    date,
+                    getattr(self.strategy, 'symbol', None),
+                )
+                if underlying_price is None:
+                    get_logger().warning("Underlying price unavailable for stock position exit")
+                    return None
+                exit_price = position.calculate_exit_price_from_bars(None, None, underlying_price)
+                return float(exit_price) if exit_price is not None else None
+
             if not position.spread_options:
                 get_logger().warning("Position has no spread options")
                 return None
@@ -289,7 +300,7 @@ class TradingEngine(ABC):
             exit_price = self.compute_exit_price(position, date)
             
             if self._should_close_due_to_assignment(position, date):
-                get_logger().info(f"Position {position.__str__()} expired or near expiration (days to exp: {position.get_days_to_expiration(date)})")
+                get_logger().info(f"Position {position.__str__()} expired or near expiration")
                 self._remove_position(date, position, 0.0, underlying_price=current_underlying_price, current_volumes=current_volumes)
             elif self._should_close_due_to_profit_target(position, exit_price):
                 get_logger().info(f"Profit target hit for {position.__str__()} at exit {exit_price}")
@@ -302,7 +313,7 @@ class TradingEngine(ABC):
         if UniversalCloseCondition.ASSIGNMENT not in self.strategy.universal_close_conditions:
             return False
         try:
-            return position.get_days_to_expiration(date) < 1
+            return position.is_expired_for_assignment(date)
         except Exception:
             return False
 

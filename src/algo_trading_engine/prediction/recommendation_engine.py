@@ -144,6 +144,9 @@ class InteractiveStrategyRecommender:
     
     def _process_open_recommendation(self, position: Position) -> Optional[DecisionResponseDTO]:
         """Process a captured open position recommendation."""
+        if position.strategy_type == StrategyType.LONG_STOCK:
+            return self._process_open_stock_recommendation(position)
+
         # Extract the recommendation details from the created position
         if not position.spread_options or len(position.spread_options) != 2:
             return None
@@ -213,6 +216,67 @@ class InteractiveStrategyRecommender:
             decided_at=decided_at,
             rationale=f"strategy_confidence={proposal.confidence:.2f}",
             quantity=1,
+            entry_price=proposal.credit,
+        )
+        self.decision_store.append_decision(record)
+        self.strategy.on_add_position_success(position)
+        return record
+
+    def _process_open_stock_recommendation(self, position: Position) -> Optional[DecisionResponseDTO]:
+        """Process a long-stock open recommendation with fractional share sizing."""
+        strategy_name = self._get_strategy_name_from_class()
+        per_share_risk = position.max_risk_dollars_per_contract()
+        if per_share_risk is None or per_share_risk <= 0:
+            get_logger().error("Per-share risk is undefined for long stock position.")
+            return None
+
+        max_allowed = self.capital_manager.get_max_allowed_risk(strategy_name)
+        remaining = self.capital_manager.get_remaining_capital(strategy_name)
+        quantity = min(max_allowed / per_share_risk, remaining / per_share_risk)
+        if quantity <= 0:
+            get_logger().warning("Insufficient capital for long stock position.")
+            return None
+
+        max_risk = per_share_risk * quantity
+        is_allowed, risk_message = self.capital_manager.check_risk_threshold(strategy_name, max_risk)
+        if not is_allowed:
+            get_logger().error(f"Risk check failed: {risk_message}")
+            get_logger().warning("Position rejected due to risk threshold.")
+            return None
+
+        position.set_quantity(quantity)
+        proposal = ProposedPositionRequestDTO(
+            symbol=self.strategy.symbol if hasattr(self.strategy, 'symbol') else position.symbol,
+            strategy_type=position.strategy_type,
+            legs=(),
+            credit=float(position.entry_price),
+            width=0.0,
+            probability_of_profit=0.7,
+            confidence=0.7,
+            expiration_date="",
+            created_at=datetime.now(timezone.utc).isoformat(),
+            strategy_name=strategy_name,
+        )
+
+        summary = (
+            f"Symbol: {proposal.symbol}\n"
+            f"Strategy: {proposal.strategy_type.value}\n"
+            f"Shares: {quantity:.4f} @ ${position.entry_price:.2f}\n"
+            f"Max Risk: ${max_risk:.2f}\n"
+            f"Cost: ${max_risk:.2f}\n"
+            f"✅ {risk_message}"
+        )
+        if not self.prompt(f"Open recommendation:\n{summary}\nOpen this position?"):
+            return None
+
+        decided_at = datetime.now(timezone.utc).isoformat()
+        record = DecisionResponseDTO(
+            id=generate_decision_id(proposal, decided_at),
+            proposal=proposal,
+            outcome="accepted",
+            decided_at=decided_at,
+            rationale=f"strategy_confidence={proposal.confidence:.2f}",
+            quantity=quantity,
             entry_price=proposal.credit,
         )
         self.decision_store.append_decision(record)
@@ -329,14 +393,18 @@ class InteractiveStrategyRecommender:
 
         position = create_position(
             symbol=rec.proposal.symbol,
-            expiration_date=datetime.strptime(rec.proposal.expiration_date, "%Y-%m-%d"),
+            expiration_date=(
+                datetime.strptime(rec.proposal.expiration_date, "%Y-%m-%d")
+                if rec.proposal.expiration_date
+                else None
+            ),
             strategy_type=rec.proposal.strategy_type,
             strike_price=strike,
             entry_date=datetime.fromisoformat(rec.decided_at),
             entry_price=float(rec.entry_price if rec.entry_price is not None else rec.proposal.credit),
             spread_options=list(rec.proposal.legs),
         )
-        position.set_quantity(int(rec.quantity) if rec.quantity is not None else 1)
+        position.set_quantity(float(rec.quantity) if rec.quantity is not None else 1.0)
         return position
 
     def _format_open_summary(self, proposal: ProposedPositionRequestDTO, best: dict, max_risk: float, premium_amount: float, premium_label: str, risk_message: str) -> str:
@@ -364,15 +432,15 @@ class InteractiveStrategyRecommender:
         name_mapping = {
             "credit_spread": "credit_spread",
             "velocity_signal_momentum": "velocity_momentum",
+            "uptrend_swing": "uptrend_swing",
         }
         
         return name_mapping.get(strategy_name, strategy_name)
 
     def _format_close_summary(self, position: Position, exit_price: float, rationale: str) -> str:
-        # Compute P&L
         try:
             pnl_dollars = position.get_return_dollars(exit_price)
-            pnl_pct = ((position.entry_price * position.quantity * 100) - (exit_price * position.quantity * 100)) / (position.entry_price * position.quantity * 100)
+            pnl_pct = position._get_return(exit_price)
         except Exception:
             pnl_dollars = None
             pnl_pct = None
@@ -390,6 +458,13 @@ class InteractiveStrategyRecommender:
     def _get_exit_price_from_user_prompts(self, position: Position, date: datetime) -> Optional[float]:
         """Get exit price by prompting user: with bar data, prompt per-leg with current prices and defaults; without bar data, single prompt for net exit price."""
         try:
+            if not position.uses_option_legs():
+                underlying_price = self.strategy.get_current_underlying_price(date, position.symbol)
+                if underlying_price is not None:
+                    return float(underlying_price)
+                net_input = input("Enter exit price per share: ").strip()
+                return float(net_input) if net_input else None
+
             if not position.spread_options or len(position.spread_options) != 2:
                 get_logger().warning("Position doesn't have valid spread options")
                 return None
@@ -446,6 +521,11 @@ class InteractiveStrategyRecommender:
     def _get_exit_price_for_status(self, position: Position, date: datetime) -> Optional[float]:
         """Get exit price for status display without prompting user."""
         try:
+            if not position.uses_option_legs():
+                underlying_price = self.strategy.get_current_underlying_price(date, position.symbol)
+                exit_price = position.calculate_exit_price_from_bars(None, None, underlying_price)
+                return exit_price
+
             if not position.spread_options or len(position.spread_options) != 2:
                 return None
                 
