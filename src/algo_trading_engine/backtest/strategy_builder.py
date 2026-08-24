@@ -10,6 +10,7 @@ from typing import Dict, Type, List, Callable
 
 from ..common.ml_pipeline import load_credit_spread_models
 from ..core.strategy import Strategy
+from ..strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
 
 
 class StrategyBuilder(ABC):
@@ -164,8 +165,6 @@ class VelocitySignalMomentumStrategyBuilder(StrategyBuilder):
         return self
     
     def build(self) -> Strategy:
-        from ..strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
-        
         strategy = VelocitySignalMomentumStrategy(
             get_contract_list_for_date=self._get_contract_list_for_date,
             get_option_bar=self._get_option_bar,
