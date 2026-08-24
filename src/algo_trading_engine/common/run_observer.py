@@ -14,6 +14,8 @@ import sys
 from datetime import datetime, timezone
 from typing import Any, Protocol, TextIO
 
+import pandas as pd
+
 PROTOCOL_VERSION = 1
 
 
@@ -28,6 +30,14 @@ class RunObserver(Protocol):
 
     def result(self, stats: dict[str, str]) -> None:
         """Emit final result statistics."""
+
+    def dataframe(
+        self,
+        name: str,
+        frame: pd.DataFrame,
+        meta: dict[str, Any] | None = None,
+    ) -> None:
+        """Emit a plot DataFrame for inline GUI charts."""
 
 
 def _utc_now_iso() -> str:
@@ -71,6 +81,31 @@ class JsonLinesRunObserver:
 
     def result(self, stats: dict[str, str]) -> None:
         self._send("result", stats)
+
+    def dataframe(
+        self,
+        name: str,
+        frame: pd.DataFrame,
+        meta: dict[str, Any] | None = None,
+    ) -> None:
+        from algo_trading_engine.plotting.serialize import plot_payload  # pylint: disable=import-outside-toplevel
+        from algo_trading_engine.plotting.spec import build_plot_spec  # pylint: disable=import-outside-toplevel
+
+        meta = meta or {}
+        spec = build_plot_spec(
+            frame,
+            name=name,
+            title=str(meta.get("title", "")),
+            y_label=str(meta.get("y_label", "")),
+            right_axis=meta.get("right_axis"),
+            markers=meta.get("markers"),
+            meta={
+                key: value
+                for key, value in meta.items()
+                if key not in {"title", "y_label", "right_axis", "markers"}
+            },
+        )
+        self._send("dataframe", plot_payload(spec))
 
 
 def observer_from_env() -> JsonLinesRunObserver | None:

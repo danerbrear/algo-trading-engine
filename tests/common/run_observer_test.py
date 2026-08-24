@@ -7,6 +7,7 @@ import json
 import os
 from dataclasses import dataclass, field
 
+import pandas as pd
 import pytest
 
 from algo_trading_engine.common.run_observer import (
@@ -68,6 +69,22 @@ class TestJsonLinesRunObserver:
         message = json.loads(stream.getvalue().strip())
         assert message["type"] == "result"
         assert message["payload"] == stats
+
+    def test_dataframe_emits_plot_payload(self) -> None:
+        stream = io.StringIO()
+        observer = JsonLinesRunObserver("run-abc", stream=stream)
+        frame = pd.DataFrame(
+            {
+                "timestamp": pd.to_datetime(["2024-01-01", "2024-02-01"]),
+                "equity": [3000.0, 3100.0],
+            }
+        )
+        observer.dataframe("equity_curve", frame, meta={"title": "Equity Curve"})
+        message = json.loads(stream.getvalue().strip())
+        assert message["type"] == "dataframe"
+        assert message["payload"]["name"] == "equity_curve"
+        assert message["payload"]["title"] == "Equity Curve"
+        assert message["payload"]["orient"] == "split"
 
 
 class TestObserverFromEnv:

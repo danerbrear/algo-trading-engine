@@ -348,6 +348,11 @@ class BacktestEngine(TradingEngine):
         log_and_echo(f"   Total Return: ${final_return:+,.2f} ({final_return_pct:+.2f}%)")
         log_and_echo(f"   Sharpe Ratio: {sharpe_ratio:.3f}")
 
+        if self.closed_positions:
+            from algo_trading_engine.plotting.equity import emit_equity_curve  # pylint: disable=import-outside-toplevel
+
+            emit_equity_curve(self.closed_positions, self.initial_capital)
+
         if self.observer is not None:
             self.observer.result({
                 "benchmark_return_pct": f"{self.benchmark.get_return_percentage():+.2f}%",

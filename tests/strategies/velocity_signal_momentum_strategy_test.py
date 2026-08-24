@@ -1,7 +1,7 @@
 import pytest
 import pandas as pd
 from datetime import datetime
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 from algo_trading_engine.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
 from algo_trading_engine.vo import Position, create_position
 from algo_trading_engine.common.models import StrategyType
@@ -390,53 +390,37 @@ class TestVelocitySignalMomentumStrategy:
         strategy.set_data(market_data)
         assert len(strategy._position_entries) == 0
 
-    def test_on_end_plotting_with_no_data(self):
-        """Test on_end method when no data is available."""
+    def test_on_end_is_noop_without_plotting(self):
+        """Test on_end does not require matplotlib or data."""
         mock_options_handler = Mock()
         get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
         get_option_bar = mock_options_handler.get_option_bar
         get_options_chain = mock_options_handler.get_options_chain
-        strategy = VelocitySignalMomentumStrategy(get_contract_list_for_date=get_contract_list_for_date, get_option_bar=get_option_bar, get_options_chain=get_options_chain)
-        mock_logger = Mock()
-        with pytest.MonkeyPatch().context() as m:
-            m.setattr('algo_trading_engine.strategies.velocity_signal_momentum_strategy.get_logger', lambda: mock_logger)
-            strategy.on_end((), Mock(), datetime.now())
-            mock_logger.warning.assert_called_with('⚠️  No data available for plotting')
+        strategy = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain,
+        )
+        strategy.on_end((), Mock(), datetime.now())
 
-    def test_on_end_plotting_with_data(self):
-        """Test on_end method with valid data (without actually showing plot)."""
+    def test_on_end_with_data_is_noop(self):
+        """Test on_end with data does not invoke matplotlib."""
         mock_options_handler = Mock()
         get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
         get_option_bar = mock_options_handler.get_option_bar
         get_options_chain = mock_options_handler.get_options_chain
-        strategy = VelocitySignalMomentumStrategy(get_contract_list_for_date=get_contract_list_for_date, get_option_bar=get_option_bar, get_options_chain=get_options_chain)
-        dates = pd.date_range('2024-01-01', '2024-01-10', freq='D')
+        strategy = VelocitySignalMomentumStrategy(
+            get_contract_list_for_date=get_contract_list_for_date,
+            get_option_bar=get_option_bar,
+            get_options_chain=get_options_chain,
+        )
+        dates = pd.date_range("2024-01-01", "2024-01-10", freq="D")
         prices = [100 + i * 0.1 for i in range(len(dates))]
-        market_data = pd.DataFrame({'Close': prices}, index=dates)
+        market_data = pd.DataFrame({"Close": prices}, index=dates)
         strategy.set_data(market_data)
-        strategy._position_entries = [datetime(2024, 1, 5), datetime(2024, 1, 8)]
-        mock_fig = Mock()
-        mock_ax1 = Mock()
-        mock_ax2 = Mock()
-        mock_ax1.get_legend_handles_labels = Mock(return_value=([], []))
-        mock_ax2.get_legend_handles_labels = Mock(return_value=([], []))
-        mock_ax1.twinx = Mock(return_value=mock_ax2)
-        mock_subplots = Mock(return_value=(mock_fig, mock_ax1))
-        mock_show = Mock()
-        mock_savefig = Mock()
-        mock_tight_layout = Mock()
-        mock_logger = Mock()
-        with pytest.MonkeyPatch().context() as m:
-            m.setattr('matplotlib.pyplot.subplots', mock_subplots)
-            m.setattr('matplotlib.pyplot.show', mock_show)
-            m.setattr('matplotlib.pyplot.savefig', mock_savefig)
-            m.setattr('matplotlib.pyplot.tight_layout', mock_tight_layout)
-            m.setattr('algo_trading_engine.strategies.velocity_signal_momentum_strategy.get_logger', lambda: mock_logger)
+        with patch("matplotlib.pyplot.subplots") as mock_subplots:
             strategy.on_end((), Mock(), datetime.now())
-            mock_subplots.assert_called_once()
-            mock_show.assert_called_once()
-            mock_tight_layout.assert_called_once()
-            mock_ax1.twinx.assert_called_once()
+            mock_subplots.assert_not_called()
 
 class TestVelocityStrategyFactory:
     """Test cases for VelocitySignalMomentumStrategy via StrategyFactory"""
@@ -532,22 +516,10 @@ class TestVelocityStrategyMethodSignatures:
 
         def mock_remove_position(_date: datetime, _position: Position, _exit_price: float, _underlying_price: Optional[float]=None, _current_volumes: Optional[list[int]]=None):
             pass
-        mock_fig = Mock()
-        mock_ax1 = Mock()
-        mock_ax2 = Mock()
-        mock_ax1.get_legend_handles_labels = Mock(return_value=([], []))
-        mock_ax2.get_legend_handles_labels = Mock(return_value=([], []))
-        mock_ax1.twinx = Mock(return_value=mock_ax2)
-        mock_logger = Mock()
-        with pytest.MonkeyPatch().context() as m:
-            m.setattr('matplotlib.pyplot.subplots', Mock(return_value=(mock_fig, mock_ax1)))
-            m.setattr('matplotlib.pyplot.show', Mock())
-            m.setattr('matplotlib.pyplot.tight_layout', Mock())
-            m.setattr('algo_trading_engine.strategies.velocity_signal_momentum_strategy.get_logger', lambda: mock_logger)
-            try:
-                strategy.on_end(positions, mock_remove_position, date)
-            except TypeError as e:
-                pytest.fail(f'on_end signature mismatch: {e}')
+        try:
+            strategy.on_end(positions, mock_remove_position, date)
+        except TypeError as e:
+            pytest.fail(f'on_end signature mismatch: {e}')
 
     def test_try_close_positions_signature(self):
         """Test that _try_close_positions uses the correct remove_position signature"""
@@ -608,19 +580,7 @@ class TestVelocityStrategyMethodSignatures:
             strategy.on_new_date(test_date, positions_tuple, engine._add_position, engine._remove_position)
         except TypeError as e:
             pytest.fail(f'Strategy.on_new_date cannot be called by BacktestEngine: {e}')
-        mock_fig = Mock()
-        mock_ax1 = Mock()
-        mock_ax2 = Mock()
-        mock_ax1.get_legend_handles_labels = Mock(return_value=([], []))
-        mock_ax2.get_legend_handles_labels = Mock(return_value=([], []))
-        mock_ax1.twinx = Mock(return_value=mock_ax2)
-        mock_logger = Mock()
-        with pytest.MonkeyPatch().context() as m:
-            m.setattr('matplotlib.pyplot.subplots', Mock(return_value=(mock_fig, mock_ax1)))
-            m.setattr('matplotlib.pyplot.show', Mock())
-            m.setattr('matplotlib.pyplot.tight_layout', Mock())
-            m.setattr('algo_trading_engine.strategies.velocity_signal_momentum_strategy.get_logger', lambda: mock_logger)
-            try:
-                strategy.on_end(positions_tuple, engine._remove_position, test_date)
-            except TypeError as e:
-                pytest.fail(f'Strategy.on_end cannot be called by BacktestEngine: {e}')
+        try:
+            strategy.on_end(positions_tuple, engine._remove_position, test_date)
+        except TypeError as e:
+            pytest.fail(f'Strategy.on_end cannot be called by BacktestEngine: {e}')

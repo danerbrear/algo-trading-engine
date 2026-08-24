@@ -164,8 +164,6 @@ class VelocitySignalMomentumStrategyBuilder(StrategyBuilder):
         return self
     
     def build(self) -> Strategy:
-        # Deferred: the strategy module pulls in matplotlib at import time.
-        # pylint: disable-next=import-outside-toplevel
         from ..strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
         
         strategy = VelocitySignalMomentumStrategy(

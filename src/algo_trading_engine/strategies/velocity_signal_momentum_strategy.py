@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-import traceback
 from datetime import datetime
 from typing import Callable, Optional
 import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 
 from algo_trading_engine.core.strategy import Strategy
 from algo_trading_engine.core.indicators.sma_indicator import SMAIndicator
@@ -83,102 +80,8 @@ class VelocitySignalMomentumStrategy(Strategy):
         self._try_close_positions(date, positions, remove_position)
 
     def on_end(self, positions: tuple['Position', ...], remove_position: Callable[[datetime, 'Position', float, Optional[float], Optional[list[int]]], None], date: datetime):
-        """
-        Create a plot showing SPY price over time with position entry indicators and volatility overlay.
-        """
-        if self.data is None or self.data.empty:
-            get_logger().warning("⚠️  No data available for plotting")
-            return
-        
-        try:
-            # Calculate volatility (20-day rolling standard deviation of returns, annualized)
-            returns = self.data['Close'].pct_change()
-            volatility_window = 20
-            rolling_vol = returns.rolling(window=volatility_window).std() * (252 ** 0.5) * 100  # Annualized in %
-            
-            # Create the plot with dual y-axes
-            fig, ax1 = plt.subplots(figsize=(15, 8))
-            
-            # Plot SPY price on primary y-axis
-            color_price = 'blue'
-            ax1.plot(self.data.index, self.data['Close'], 
-                   label='SPY Close Price', color=color_price, alpha=0.7, linewidth=1.5)
-            ax1.set_xlabel('Date', fontsize=12)
-            ax1.set_ylabel('SPY Price ($)', color=color_price, fontsize=12)
-            ax1.tick_params(axis='y', labelcolor=color_price)
-            
-            # Get position entry dates from the backtest engine
-            # We need to access the backtest engine's closed_positions to get entry dates
-            # Since we don't have direct access, we'll track entries in the strategy itself
-            if hasattr(self, '_position_entries'):
-                entry_dates = self._position_entries
-            else:
-                # Fallback: try to get from the strategy's internal tracking
-                entry_dates = []
-                if hasattr(self, '_entry_dates'):
-                    entry_dates = self._entry_dates
-            
-            # Plot position entry indicators
-            if entry_dates:
-                for entry_date in entry_dates:
-                    if entry_date in self.data.index:
-                        entry_price = self.data.loc[entry_date, 'Close']
-                        ax1.scatter(entry_date, entry_price, 
-                                 color='red', s=100, marker='^', 
-                                 label='Position Entry' if entry_date == entry_dates[0] else "", 
-                                 zorder=5, alpha=0.8)
-            
-            # Add moving averages if they exist
-            if 'SMA_15' in self.data.columns:
-                ax1.plot(self.data.index, self.data['SMA_15'], 
-                       label='SMA 15', color='orange', alpha=0.6, linewidth=1)
-            
-            if 'SMA_30' in self.data.columns:
-                ax1.plot(self.data.index, self.data['SMA_30'], 
-                       label='SMA 30', color='green', alpha=0.6, linewidth=1)
-            
-            # Create secondary y-axis for volatility
-            ax2 = ax1.twinx()
-            color_vol = 'purple'
-            ax2.plot(self.data.index, rolling_vol, 
-                    label=f'{volatility_window}-day Volatility', 
-                    color=color_vol, alpha=0.5, linewidth=1.5, linestyle='--')
-            ax2.set_ylabel('Annualized Volatility (%)', color=color_vol, fontsize=12)
-            ax2.tick_params(axis='y', labelcolor=color_vol)
-            ax2.fill_between(self.data.index, rolling_vol, alpha=0.1, color=color_vol)
-            
-            # Format the plot
-            num_positions = len(entry_dates) if entry_dates else 0
-            title = f'SPY Price with Position Entries & Volatility - Velocity Signal Momentum Strategy\nTotal Positions: {num_positions}'
-            ax1.set_title(title, fontsize=14, fontweight='bold')
-            ax1.grid(True, alpha=0.3)
-            
-            # Combine legends from both axes
-            lines1, labels1 = ax1.get_legend_handles_labels()
-            lines2, labels2 = ax2.get_legend_handles_labels()
-            ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper left')
-            
-            # Add text box with strategy info
-            strategy_info = f'Strategy: Velocity Signal Momentum\nHolding Period: {self.holding_period} days\nMA Periods: 15/30\nVol Window: {volatility_window} days'
-            ax1.text(0.02, 0.98, strategy_info, transform=ax1.transAxes, fontsize=10,
-                   verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
-            
-            # Format x-axis dates
-            ax1.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
-            ax1.xaxis.set_major_locator(mdates.MonthLocator(interval=1))
-            plt.xticks(rotation=45)
-            
-            # Adjust layout
-            plt.tight_layout()
-            
-            # Show the plot
-            plt.show()
-            
-            get_logger().info("📊 Position entry plot with volatility overlay generated successfully")
-            
-        except Exception as e:
-            get_logger().warning(f"⚠️  Error creating plot: {e}")
-            traceback.print_exc()
+        """End-of-run hook; plotting is handled by visualizers / emit_plot callers."""
+        del positions, remove_position, date
 
     def _has_buy_signal(self, date: datetime) -> bool:
         """

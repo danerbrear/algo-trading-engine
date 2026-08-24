@@ -126,6 +126,11 @@ def remove_logger_sink() -> None:
         _sink_id = None
 
 
+def get_active_observer() -> "RunObserver | None":
+    """Return the RunObserver configured via configure_logger, if any."""
+    return _active_observer
+
+
 def get_logger():
     """
     Return the singleton Loguru logger.
