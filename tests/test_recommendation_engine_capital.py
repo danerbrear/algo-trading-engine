@@ -67,7 +67,6 @@ def test_recommender_with_capital_manager_risk_check_pass(strategy_mock, decisio
     recommender.run(date)
     opens = decision_store.get_open_positions()
     assert len(opens) == 1
-    assert opens[0].outcome == 'accepted'
 
 def test_recommender_with_capital_manager_risk_check_fail(strategy_mock, decision_store, capital_manager):
     """Test recommendation with capital manager when risk check fails."""

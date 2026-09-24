@@ -130,7 +130,6 @@ def test_get_max_allowed_risk_with_open_position(allocations_config, decision_st
     record = DecisionResponseDTO(
         id=generate_decision_id(proposal, datetime.now().isoformat()),
         proposal=proposal,
-        outcome='accepted',
         decided_at=datetime.now().isoformat(),
         rationale='test',
         quantity=1,
@@ -212,7 +211,6 @@ def test_get_remaining_capital_with_credit_position(allocations_config, decision
     record = DecisionResponseDTO(
         id=generate_decision_id(proposal, datetime.now().isoformat()),
         proposal=proposal,
-        outcome='accepted',
         decided_at=datetime.now().isoformat(),
         rationale='test',
         quantity=1,
@@ -249,7 +247,6 @@ def test_get_remaining_capital_with_debit_position(allocations_config, decision_
     record = DecisionResponseDTO(
         id=generate_decision_id(proposal, datetime.now().isoformat()),
         proposal=proposal,
-        outcome='accepted',
         decided_at=datetime.now().isoformat(),
         rationale='test',
         quantity=1,
@@ -286,7 +283,6 @@ def test_get_remaining_capital_with_closed_credit_position(allocations_config, d
     record = DecisionResponseDTO(
         id=generate_decision_id(proposal, datetime.now().isoformat()),
         proposal=proposal,
-        outcome='accepted',
         decided_at=datetime.now().isoformat(),
         rationale='test',
         quantity=1,
@@ -328,7 +324,6 @@ def test_get_remaining_capital_with_closed_debit_position(allocations_config, de
     record = DecisionResponseDTO(
         id=generate_decision_id(proposal, datetime.now().isoformat()),
         proposal=proposal,
-        outcome='accepted',
         decided_at=datetime.now().isoformat(),
         rationale='test',
         quantity=1,
@@ -374,7 +369,6 @@ def test_get_remaining_capital_multiple_positions(allocations_config, decision_s
         record = DecisionResponseDTO(
             id=generate_decision_id(proposal, decided_at),
             proposal=proposal,
-            outcome='accepted',
             decided_at=decided_at,
             rationale='test',
             quantity=1,
@@ -420,7 +414,6 @@ def test_check_risk_threshold_insufficient_capital(allocations_config, decision_
     record = DecisionResponseDTO(
         id=generate_decision_id(proposal, datetime.now().isoformat()),
         proposal=proposal,
-        outcome='accepted',
         decided_at=datetime.now().isoformat(),
         rationale='test',
         quantity=1,

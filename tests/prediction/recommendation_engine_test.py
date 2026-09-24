@@ -16,7 +16,7 @@ def test_store_append_and_read(tmp_path):
     legs = (_make_option('OPT1', 500, '2025-09-06', 'call', 2.0), _make_option('OPT2', 505, '2025-09-06', 'call', 1.0))
     proposal = ProposedPositionRequestDTO(symbol='SPY', strategy_type=StrategyType.CALL_CREDIT_SPREAD, legs=legs, credit=1.1, width=5.0, probability_of_profit=0.6, confidence=0.65, expiration_date='2025-09-06', created_at=date.isoformat())
     rec_id = generate_decision_id(proposal, date.isoformat())
-    record = DecisionResponseDTO(id=rec_id, proposal=proposal, outcome='accepted', decided_at=date.isoformat(), rationale='test', quantity=1, entry_price=proposal.credit)
+    record = DecisionResponseDTO(id=rec_id, proposal=proposal, decided_at=date.isoformat(), rationale='test', quantity=1, entry_price=proposal.credit)
     store.append_decision(record)
     open_positions = store.get_open_positions(symbol='SPY', strategy_type=StrategyType.CALL_CREDIT_SPREAD)
     assert len(open_positions) == 1
@@ -33,8 +33,8 @@ def test_different_strategies_produce_distinct_decision_ids(tmp_path):
     id_b = generate_decision_id(proposal_b, date.isoformat())
     assert id_a != id_b, 'IDs must differ when strategy_name differs'
     store = JsonDecisionStore(base_dir=str(tmp_path))
-    store.append_decision(DecisionResponseDTO(id=id_a, proposal=proposal_a, outcome='accepted', decided_at=date.isoformat(), rationale='a', quantity=1, entry_price=1.0))
-    store.append_decision(DecisionResponseDTO(id=id_b, proposal=proposal_b, outcome='accepted', decided_at=date.isoformat(), rationale='b', quantity=1, entry_price=1.0))
+    store.append_decision(DecisionResponseDTO(id=id_a, proposal=proposal_a, decided_at=date.isoformat(), rationale='a', quantity=1, entry_price=1.0))
+    store.append_decision(DecisionResponseDTO(id=id_b, proposal=proposal_b, decided_at=date.isoformat(), rationale='b', quantity=1, entry_price=1.0))
     assert len(store.get_open_positions()) == 2
 
 def test_recommender_open_accept(tmp_path):
@@ -68,7 +68,7 @@ def test_recommender_close_accept(tmp_path):
     proposal = ProposedPositionRequestDTO(symbol='SPY', strategy_type=StrategyType.CALL_CREDIT_SPREAD, legs=legs, credit=1.0, width=5.0, probability_of_profit=0.6, confidence=0.6, expiration_date='2025-09-06', created_at=datetime(2025, 7, 1).isoformat(), strategy_name='credit_spread')
     decided_at = datetime(2025, 7, 1).isoformat()
     rec_id = generate_decision_id(proposal, decided_at)
-    record = DecisionResponseDTO(id=rec_id, proposal=proposal, outcome='accepted', decided_at=decided_at, rationale='init', quantity=1, entry_price=1.0)
+    record = DecisionResponseDTO(id=rec_id, proposal=proposal, decided_at=decided_at, rationale='init', quantity=1, entry_price=1.0)
     store = JsonDecisionStore(base_dir=str(tmp_path))
     store.append_decision(record)
     strategy = MagicMock()
@@ -122,7 +122,7 @@ def test_recommender_close_calls_on_remove_position_success(tmp_path):
     proposal = ProposedPositionRequestDTO(symbol='SPY', strategy_type=StrategyType.CALL_CREDIT_SPREAD, legs=legs, credit=1.0, width=5.0, probability_of_profit=0.6, confidence=0.6, expiration_date='2025-09-06', created_at=datetime(2025, 7, 1).isoformat(), strategy_name='credit_spread')
     decided_at = datetime(2025, 7, 1).isoformat()
     rec_id = generate_decision_id(proposal, decided_at)
-    record = DecisionResponseDTO(id=rec_id, proposal=proposal, outcome='accepted', decided_at=decided_at, rationale='init', quantity=1, entry_price=1.0)
+    record = DecisionResponseDTO(id=rec_id, proposal=proposal, decided_at=decided_at, rationale='init', quantity=1, entry_price=1.0)
     store = JsonDecisionStore(base_dir=str(tmp_path))
     store.append_decision(record)
     strategy = MagicMock()
@@ -158,7 +158,7 @@ def test_strategy_b_ignores_strategy_a_open_position(tmp_path):
     legs_a = (_make_option('A_ATM', 500, '2025-09-06', 'put', 2.0), _make_option('A_OTM', 495, '2025-09-06', 'put', 1.0))
     proposal_a = ProposedPositionRequestDTO(symbol='SPY', strategy_type=StrategyType.PUT_CREDIT_SPREAD, legs=legs_a, credit=1.0, width=5.0, probability_of_profit=0.7, confidence=0.7, expiration_date='2025-09-06', created_at=datetime(2025, 7, 1).isoformat(), strategy_name='credit_spread')
     decided_at_a = datetime(2025, 7, 1).isoformat()
-    record_a = DecisionResponseDTO(id=generate_decision_id(proposal_a, decided_at_a), proposal=proposal_a, outcome='accepted', decided_at=decided_at_a, rationale='strategy_a_open', quantity=1, entry_price=1.0)
+    record_a = DecisionResponseDTO(id=generate_decision_id(proposal_a, decided_at_a), proposal=proposal_a, decided_at=decided_at_a, rationale='strategy_a_open', quantity=1, entry_price=1.0)
     store = JsonDecisionStore(base_dir=str(tmp_path))
     store.append_decision(record_a)
     assert len(store.get_open_positions()) == 1
@@ -184,7 +184,7 @@ def test_strategy_sees_its_own_open_position(tmp_path):
     legs = (_make_option('A_ATM', 500, '2025-09-06', 'put', 2.0), _make_option('A_OTM', 495, '2025-09-06', 'put', 1.0))
     proposal = ProposedPositionRequestDTO(symbol='SPY', strategy_type=StrategyType.PUT_CREDIT_SPREAD, legs=legs, credit=1.0, width=5.0, probability_of_profit=0.7, confidence=0.7, expiration_date='2025-09-06', created_at=datetime(2025, 7, 1).isoformat(), strategy_name='credit_spread')
     decided_at = datetime(2025, 7, 1).isoformat()
-    record = DecisionResponseDTO(id=generate_decision_id(proposal, decided_at), proposal=proposal, outcome='accepted', decided_at=decided_at, rationale='own_position', quantity=1, entry_price=1.0)
+    record = DecisionResponseDTO(id=generate_decision_id(proposal, decided_at), proposal=proposal, decided_at=decided_at, rationale='own_position', quantity=1, entry_price=1.0)
     store = JsonDecisionStore(base_dir=str(tmp_path))
     store.append_decision(record)
     strategy_a = MagicMock()

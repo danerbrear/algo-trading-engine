@@ -47,10 +47,6 @@ class ClosedPosition:
         if decision.get('closed_at') is None:
             return None
         
-        # Only process accepted decisions
-        if decision.get('outcome') != 'accepted':
-            return None
-        
         try:
             entry_price = float(decision['entry_price'])
             exit_price = float(decision['exit_price'])

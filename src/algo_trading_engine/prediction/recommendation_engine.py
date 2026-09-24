@@ -209,7 +209,6 @@ class InteractiveStrategyRecommender:
         record = DecisionResponseDTO(
             id=generate_decision_id(proposal, decided_at),
             proposal=proposal,
-            outcome="accepted",
             decided_at=decided_at,
             rationale=f"strategy_confidence={proposal.confidence:.2f}",
             quantity=1,
@@ -255,7 +254,6 @@ class InteractiveStrategyRecommender:
                     updated = DecisionResponseDTO(
                         id=rec.id,
                         proposal=rec.proposal,
-                        outcome=rec.outcome,
                         decided_at=rec.decided_at,
                         rationale=recommendation.get("rationale", "strategy_decision"),
                         quantity=rec.quantity,

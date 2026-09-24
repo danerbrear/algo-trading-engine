@@ -95,7 +95,7 @@ def test_paper_trading_engine_run_with_open_positions(mock_strategy, mock_option
     proposal = ProposedPositionRequestDTO(symbol='SPY', strategy_type=StrategyType.PUT_CREDIT_SPREAD, legs=legs, credit=1.0, width=5.0, probability_of_profit=0.68, confidence=0.7, expiration_date='2025-09-06', created_at=datetime(2025, 7, 1).isoformat(), strategy_name='credit_spread')
     decided_at = datetime(2025, 7, 1).isoformat()
     rec_id = generate_decision_id(proposal, decided_at)
-    record = DecisionResponseDTO(id=rec_id, proposal=proposal, outcome='accepted', decided_at=decided_at, rationale='test position', quantity=1, entry_price=1.0)
+    record = DecisionResponseDTO(id=rec_id, proposal=proposal, decided_at=decided_at, rationale='test position', quantity=1, entry_price=1.0)
     default_store.append_decision(record)
     open_positions = default_store.get_open_positions(symbol='SPY')
     assert len(open_positions) == 1, 'Should have one open position'
@@ -368,7 +368,7 @@ class TestStrategyCallbacksFromPaperTradingEngine:
         proposal = ProposedPositionRequestDTO(symbol='SPY', strategy_type=StrategyType.CALL_CREDIT_SPREAD, legs=legs, credit=1.0, width=5.0, probability_of_profit=0.6, confidence=0.6, expiration_date='2025-09-06', created_at=datetime(2025, 7, 1).isoformat(), strategy_name='credit_spread')
         decided_at = datetime(2025, 7, 1).isoformat()
         rec_id = generate_decision_id(proposal, decided_at)
-        record = DecisionResponseDTO(id=rec_id, proposal=proposal, outcome='accepted', decided_at=decided_at, rationale='init', quantity=1, entry_price=1.0)
+        record = DecisionResponseDTO(id=rec_id, proposal=proposal, decided_at=decided_at, rationale='init', quantity=1, entry_price=1.0)
         store.append_decision(record)
         strategy = self._make_strategy_mock()
 

@@ -3,16 +3,13 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal, Optional, Tuple, List
+from typing import Optional, Tuple, List
 import hashlib
 import json
 import os
 
 from algo_trading_engine.common.models import Option
 from algo_trading_engine.common.models import StrategyType
-
-
-DecisionOutcome = Literal["accepted", "rejected"]
 
 
 @dataclass(frozen=True)
@@ -67,15 +64,10 @@ class ProposedPositionRequestDTO:
 
 @dataclass(frozen=True)
 class DecisionResponseDTO:
-    """Immutable record of a decision outcome for a proposal.
-
-    When outcome is "accepted" for an open decision, the record represents an
-    open position until it is marked closed by setting exit_price and closed_at.
-    """
+    """Immutable record of an accepted decision for a proposal."""
 
     id: str
     proposal: ProposedPositionRequestDTO
-    outcome: DecisionOutcome
     decided_at: str
     rationale: str
     quantity: Optional[int] = None
@@ -87,7 +79,6 @@ class DecisionResponseDTO:
         return {
             "id": self.id,
             "proposal": self.proposal.to_dict(),
-            "outcome": self.outcome,
             "decided_at": self.decided_at,
             "rationale": self.rationale,
             "quantity": self.quantity,
@@ -101,7 +92,6 @@ class DecisionResponseDTO:
         return DecisionResponseDTO(
             id=str(data["id"]),
             proposal=ProposedPositionRequestDTO.from_dict(data["proposal"]),
-            outcome=data["outcome"],
             decided_at=str(data["decided_at"]),
             rationale=str(data["rationale"]),
             quantity=data.get("quantity"),
@@ -221,7 +211,7 @@ class JsonDecisionStore(DecisionStore):
                     record = DecisionResponseDTO.from_dict(rec)
                 except Exception:
                     continue
-                if record.outcome != "accepted" or record.closed_at is not None:
+                if record.closed_at is not None:
                     continue
                 if symbol and record.proposal.symbol != symbol:
                     continue
@@ -247,8 +237,6 @@ class JsonDecisionStore(DecisionStore):
                 try:
                     record = DecisionResponseDTO.from_dict(rec)
                 except Exception:
-                    continue
-                if record.outcome != "accepted":
                     continue
                 if strategy_name and record.proposal.strategy_name != strategy_name:
                     continue

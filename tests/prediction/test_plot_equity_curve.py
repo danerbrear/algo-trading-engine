@@ -11,7 +11,7 @@ class TestClosedPosition:
 
     def test_from_decision_dict_credit_spread(self):
         """Test creating ClosedPosition from credit spread decision"""
-        decision = {'closed_at': '2025-11-01T15:30:00+00:00', 'outcome': 'accepted', 'entry_price': 2.5, 'exit_price': 1.0, 'quantity': 1, 'proposal': {'strategy_name': 'velocity_signal_momentum', 'strategy_type': 'put_credit_spread'}}
+        decision = {'closed_at': '2025-11-01T15:30:00+00:00', 'entry_price': 2.5, 'exit_price': 1.0, 'quantity': 1, 'proposal': {'strategy_name': 'velocity_signal_momentum', 'strategy_type': 'put_credit_spread'}}
         position = ClosedPosition.from_decision_dict(decision)
         assert position is not None
         assert position.entry_price == 2.5
@@ -24,7 +24,7 @@ class TestClosedPosition:
 
     def test_from_decision_dict_debit_spread(self):
         """Test creating ClosedPosition from debit spread decision"""
-        decision = {'closed_at': '2025-11-01T15:30:00+00:00', 'outcome': 'accepted', 'entry_price': 1.0, 'exit_price': 2.0, 'quantity': 2, 'proposal': {'strategy_name': 'test_strategy', 'strategy_type': 'put_debit_spread'}}
+        decision = {'closed_at': '2025-11-01T15:30:00+00:00', 'entry_price': 1.0, 'exit_price': 2.0, 'quantity': 2, 'proposal': {'strategy_name': 'test_strategy', 'strategy_type': 'put_debit_spread'}}
         position = ClosedPosition.from_decision_dict(decision)
         assert position is not None
         assert position.pnl == (2.0 - 1.0) * 2 * 100
@@ -32,13 +32,7 @@ class TestClosedPosition:
 
     def test_from_decision_dict_not_closed(self):
         """Test that open positions return None"""
-        decision = {'closed_at': None, 'outcome': 'accepted', 'entry_price': 2.5, 'exit_price': None, 'quantity': 1, 'proposal': {'strategy_name': 'test', 'strategy_type': 'put_credit_spread'}}
-        position = ClosedPosition.from_decision_dict(decision)
-        assert position is None
-
-    def test_from_decision_dict_rejected(self):
-        """Test that rejected positions return None"""
-        decision = {'closed_at': '2025-11-01T15:30:00+00:00', 'outcome': 'rejected', 'entry_price': 2.5, 'exit_price': 1.0, 'quantity': 1, 'proposal': {'strategy_name': 'test', 'strategy_type': 'put_credit_spread'}}
+        decision = {'closed_at': None, 'entry_price': 2.5, 'exit_price': None, 'quantity': 1, 'proposal': {'strategy_name': 'test', 'strategy_type': 'put_credit_spread'}}
         position = ClosedPosition.from_decision_dict(decision)
         assert position is None
 
