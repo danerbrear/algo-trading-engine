@@ -5,7 +5,7 @@ This module contains static utility methods for common options operations
 as specified in features/improved_data_fetching.md Phase 4.
 """
 
-from typing import Callable, List, Tuple, Optional, Dict, Any
+from typing import Callable, List, Sequence, Tuple, Optional, Dict, Any
 from decimal import Decimal
 from datetime import date, datetime
 
@@ -579,42 +579,39 @@ class OptionsRetrieverHelper:
     
     @staticmethod
     def calculate_implied_volatility_rank(
-        contracts: List[OptionContractDTO],
-    ) -> Dict[str, float]:
+        iv_series: Sequence[float],
+        window: Optional[int] = None,
+    ) -> Optional[float]:
         """
-        Calculate implied volatility rank for contracts.
-        
-        Note: This is a simplified implementation. In practice, you would
-        need historical IV data to calculate proper IV rank.
-        
+        Calculate implied volatility rank over a rolling window.
+
+        IV Rank = (IV_today - IV_min) / (IV_max - IV_min). The last value in
+        the series is IV_today, and min and max are taken from the trailing
+        window, which includes today. This is min-max normalization, not a
+        percentile rank.
+
         Args:
-            contracts: List of option contracts
-            
+            iv_series: IV observations ordered oldest to newest.
+            window: Number of trailing observations to include. Defaults to
+                the full length of iv_series.
+
         Returns:
-            Dict mapping contract ticker to IV rank (0-100)
+            Rank in [0, 1], or None when the window is not filled or the
+            window IV range is zero.
         """
-        # This is a placeholder implementation
-        # In practice, you would need historical IV data
-        iv_ranks = {}
-        
-        for contract in contracts:
-            # Simplified IV rank calculation
-            # In practice, you would compare current IV to historical IV range
-            days_to_exp = contract.days_to_expiration()
-            
-            # Placeholder logic: shorter DTE = higher IV rank
-            if days_to_exp <= 7:
-                iv_rank = 80.0
-            elif days_to_exp <= 14:
-                iv_rank = 60.0
-            elif days_to_exp <= 30:
-                iv_rank = 40.0
-            else:
-                iv_rank = 20.0
-            
-            iv_ranks[contract.ticker] = iv_rank
-        
-        return iv_ranks
+        if window is None:
+            window = len(iv_series)
+        if window < 1 or len(iv_series) < window:
+            return None
+
+        window_ivs = iv_series[-window:]
+        iv_today = window_ivs[-1]
+        iv_min = min(window_ivs)
+        iv_max = max(window_ivs)
+        if iv_max == iv_min:
+            return None
+
+        return (iv_today - iv_min) / (iv_max - iv_min)
     
     @staticmethod
     def find_high_volume_contracts(

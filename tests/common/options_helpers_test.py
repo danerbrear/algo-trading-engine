@@ -93,13 +93,63 @@ class TestOptionsRetrieverHelperPhase4:
         optimal_exp = OptionsRetrieverHelper.find_optimal_expiration(sample_contracts, min_days=min_days, max_days=max_days)
         assert optimal_exp is None
 
-    def test_calculate_implied_volatility_rank(self, sample_contracts):
-        """Test calculating implied volatility rank."""
-        iv_ranks = OptionsRetrieverHelper.calculate_implied_volatility_rank(sample_contracts)
-        assert len(iv_ranks) == len(sample_contracts)
-        for ticker, rank in iv_ranks.items():
-            assert 0.0 <= rank <= 100.0
-            assert ticker in [c.ticker for c in sample_contracts]
+    def test_calculate_implied_volatility_rank(self):
+        """Test min-max IV rank over the trailing window."""
+        rank = OptionsRetrieverHelper.calculate_implied_volatility_rank(
+            [0.10, 0.20, 0.30, 0.40, 0.25],
+            window=5,
+        )
+        assert rank == pytest.approx(0.5)
+
+    def test_calculate_implied_volatility_rank_at_window_high(self):
+        """Test IV rank when today is the window high."""
+        rank = OptionsRetrieverHelper.calculate_implied_volatility_rank(
+            [0.10, 0.20, 0.40],
+            window=3,
+        )
+        assert rank == pytest.approx(1.0)
+
+    def test_calculate_implied_volatility_rank_at_window_low(self):
+        """Test IV rank when today is the window low."""
+        rank = OptionsRetrieverHelper.calculate_implied_volatility_rank(
+            [0.40, 0.20, 0.10],
+            window=3,
+        )
+        assert rank == pytest.approx(0.0)
+
+    def test_calculate_implied_volatility_rank_defaults_to_full_series(self):
+        """Test that an omitted window uses every observation."""
+        rank = OptionsRetrieverHelper.calculate_implied_volatility_rank(
+            [0.90, 0.10, 0.20, 0.30],
+        )
+        assert rank == pytest.approx(0.25)
+
+    def test_calculate_implied_volatility_rank_uses_trailing_window(self):
+        """Test that observations before the window are ignored."""
+        rank = OptionsRetrieverHelper.calculate_implied_volatility_rank(
+            [0.90, 0.10, 0.20, 0.30],
+            window=3,
+        )
+        assert rank == pytest.approx(1.0)
+
+    def test_calculate_implied_volatility_rank_undefined(self):
+        """Test None when the window is unfilled, non-positive, or flat."""
+        assert OptionsRetrieverHelper.calculate_implied_volatility_rank(
+            [0.10, 0.20],
+            window=5,
+        ) is None
+        assert OptionsRetrieverHelper.calculate_implied_volatility_rank(
+            [0.20, 0.20, 0.20],
+            window=3,
+        ) is None
+        assert OptionsRetrieverHelper.calculate_implied_volatility_rank(
+            [0.20],
+            window=1,
+        ) is None
+        assert OptionsRetrieverHelper.calculate_implied_volatility_rank(
+            [0.10, 0.20],
+            window=0,
+        ) is None
 
     def test_find_high_volume_contracts(self, sample_contracts, sample_bars):
         """Test finding high volume contracts."""
