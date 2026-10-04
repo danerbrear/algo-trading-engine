@@ -5,6 +5,7 @@ This module tests the new strategy-specific helper methods added in Phase 4
 of the OptionsHandler refactoring.
 """
 import pytest
+import pandas as pd
 from datetime import datetime, date, timedelta
 from decimal import Decimal
 from typing import List, Dict
@@ -95,61 +96,82 @@ class TestOptionsRetrieverHelperPhase4:
 
     def test_calculate_implied_volatility_rank(self):
         """Test min-max IV rank over the trailing window."""
-        rank = OptionsRetrieverHelper.calculate_implied_volatility_rank(
-            [0.10, 0.20, 0.30, 0.40, 0.25],
-            window=5,
+        data = pd.DataFrame({"implied_volatility": [0.10, 0.20, 0.30, 0.40, 0.25]})
+        result = OptionsRetrieverHelper.calculate_implied_volatility_rank(data, window=5)
+        assert result["implied_volatility_rank"].tolist() == pytest.approx(
+            [float("nan"), float("nan"), 1.0, 1.0, 0.5],
+            nan_ok=True,
         )
-        assert rank == pytest.approx(0.5)
+        assert list(result.columns) == ["implied_volatility", "implied_volatility_rank"]
 
     def test_calculate_implied_volatility_rank_at_window_high(self):
-        """Test IV rank when today is the window high."""
-        rank = OptionsRetrieverHelper.calculate_implied_volatility_rank(
-            [0.10, 0.20, 0.40],
-            window=3,
-        )
-        assert rank == pytest.approx(1.0)
+        """Test IV rank when the latest IV is the window high."""
+        data = pd.DataFrame({"implied_volatility": [0.10, 0.20, 0.40]})
+        result = OptionsRetrieverHelper.calculate_implied_volatility_rank(data, window=3)
+        assert result["implied_volatility_rank"].iloc[-1] == pytest.approx(1.0)
 
     def test_calculate_implied_volatility_rank_at_window_low(self):
-        """Test IV rank when today is the window low."""
-        rank = OptionsRetrieverHelper.calculate_implied_volatility_rank(
-            [0.40, 0.20, 0.10],
-            window=3,
-        )
-        assert rank == pytest.approx(0.0)
-
-    def test_calculate_implied_volatility_rank_defaults_to_full_series(self):
-        """Test that an omitted window uses every observation."""
-        rank = OptionsRetrieverHelper.calculate_implied_volatility_rank(
-            [0.90, 0.10, 0.20, 0.30],
-        )
-        assert rank == pytest.approx(0.25)
+        """Test IV rank when the latest IV is the window low."""
+        data = pd.DataFrame({"implied_volatility": [0.40, 0.20, 0.10]})
+        result = OptionsRetrieverHelper.calculate_implied_volatility_rank(data, window=3)
+        assert result["implied_volatility_rank"].iloc[-1] == pytest.approx(0.0)
 
     def test_calculate_implied_volatility_rank_uses_trailing_window(self):
         """Test that observations before the window are ignored."""
-        rank = OptionsRetrieverHelper.calculate_implied_volatility_rank(
-            [0.90, 0.10, 0.20, 0.30],
+        data = pd.DataFrame({"implied_volatility": [0.90, 0.10, 0.20, 0.30]})
+        result = OptionsRetrieverHelper.calculate_implied_volatility_rank(data, window=3)
+        assert result["implied_volatility_rank"].tolist() == pytest.approx(
+            [float("nan"), 0.0, 0.125, 1.0],
+            nan_ok=True,
+        )
+
+    def test_calculate_implied_volatility_rank_returns_new_frame(self):
+        """Test that the input frame is not modified."""
+        data = pd.DataFrame(
+            {"implied_volatility": [0.10, 0.30], "close": [100.0, 101.0]},
+            index=pd.to_datetime(["2026-01-02", "2026-01-05"]),
+        )
+        original = data.copy()
+        result = OptionsRetrieverHelper.calculate_implied_volatility_rank(data, window=2)
+        pd.testing.assert_frame_equal(data, original)
+        assert result["close"].tolist() == [100.0, 101.0]
+        assert result.index.equals(data.index)
+        assert result["implied_volatility_rank"].tolist() == pytest.approx(
+            [float("nan"), 1.0],
+            nan_ok=True,
+        )
+
+    def test_calculate_implied_volatility_rank_undefined_when_range_is_zero(self):
+        """Test NaN when every IV in the window is the same."""
+        flat = OptionsRetrieverHelper.calculate_implied_volatility_rank(
+            pd.DataFrame({"implied_volatility": [0.20, 0.20, 0.20]}),
             window=3,
         )
-        assert rank == pytest.approx(1.0)
+        assert flat["implied_volatility_rank"].isna().all()
 
-    def test_calculate_implied_volatility_rank_undefined(self):
-        """Test None when the window is unfilled, non-positive, or flat."""
-        assert OptionsRetrieverHelper.calculate_implied_volatility_rank(
-            [0.10, 0.20],
-            window=5,
-        ) is None
-        assert OptionsRetrieverHelper.calculate_implied_volatility_rank(
-            [0.20, 0.20, 0.20],
-            window=3,
-        ) is None
-        assert OptionsRetrieverHelper.calculate_implied_volatility_rank(
-            [0.20],
-            window=1,
-        ) is None
-        assert OptionsRetrieverHelper.calculate_implied_volatility_rank(
-            [0.10, 0.20],
-            window=0,
-        ) is None
+    def test_calculate_implied_volatility_rank_half_null_window(self):
+        """Test NaN when half the window is null, and a rank when fewer are null."""
+        half_null = OptionsRetrieverHelper.calculate_implied_volatility_rank(
+            pd.DataFrame({"implied_volatility": [0.10, float("nan"), float("nan"), 0.40]}),
+            window=4,
+        )
+        assert half_null["implied_volatility_rank"].isna().all()
+
+        ranked = OptionsRetrieverHelper.calculate_implied_volatility_rank(
+            pd.DataFrame({"implied_volatility": [0.10, 0.20, float("nan"), 0.40]}),
+            window=4,
+        )
+        assert ranked["implied_volatility_rank"].tolist() == pytest.approx(
+            [float("nan"), float("nan"), float("nan"), 1.0],
+            nan_ok=True,
+        )
+
+    def test_calculate_implied_volatility_rank_missing_column(self):
+        """Test that a frame without implied volatility is rejected."""
+        with pytest.raises(ValueError, match="implied_volatility"):
+            OptionsRetrieverHelper.calculate_implied_volatility_rank(
+                pd.DataFrame({"close": [1.0]}),
+            )
 
     def test_find_high_volume_contracts(self, sample_contracts, sample_bars):
         """Test finding high volume contracts."""

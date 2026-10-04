@@ -5,9 +5,11 @@ This module contains static utility methods for common options operations
 as specified in features/improved_data_fetching.md Phase 4.
 """
 
-from typing import Callable, List, Sequence, Tuple, Optional, Dict, Any
+from typing import Callable, List, Tuple, Optional, Dict, Any
 from decimal import Decimal
 from datetime import date, datetime
+
+import pandas as pd
 
 from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO
 from algo_trading_engine.enums import BarTimeInterval
@@ -578,40 +580,42 @@ class OptionsRetrieverHelper:
         return best_expiration
     
     @staticmethod
-    def calculate_implied_volatility_rank(
-        iv_series: Sequence[float],
-        window: Optional[int] = None,
-    ) -> Optional[float]:
+    def calculate_implied_volatility_rank(data: pd.DataFrame, window: int = 100) -> pd.DataFrame:
         """
-        Calculate implied volatility rank over a rolling window.
+        Add implied volatility rank to a copy of a time series.
 
-        IV Rank = (IV_today - IV_min) / (IV_max - IV_min). The last value in
-        the series is IV_today, and min and max are taken from the trailing
-        window, which includes today. This is min-max normalization, not a
-        percentile rank.
+        IV Rank = (IV - IV_min) / (IV_max - IV_min) over the trailing
+        ``window``. Min and max ignore null IV values. This is min-max
+        normalization, not a percentile rank.
 
         Args:
-            iv_series: IV observations ordered oldest to newest.
-            window: Number of trailing observations to include. Defaults to
-                the full length of iv_series.
+            data: Observations ordered oldest to newest. Must include an
+                ``implied_volatility`` column.
+            window: Number of trailing observations in the rolling window.
 
         Returns:
-            Rank in [0, 1], or None when the window is not filled or the
-            window IV range is zero.
+            A new DataFrame with an ``implied_volatility_rank`` column in
+            [0, 1]. The rank is NaN when the window IV range is zero, or when
+            half or more of the values in the window are null.
+
+        Raises:
+            ValueError: If ``implied_volatility`` is missing.
         """
-        if window is None:
-            window = len(iv_series)
-        if window < 1 or len(iv_series) < window:
-            return None
+        if "implied_volatility" not in data.columns:
+            raise ValueError(
+                "Column 'implied_volatility' not found in data. "
+                f"Available columns: {list(data.columns)}"
+            )
 
-        window_ivs = iv_series[-window:]
-        iv_today = window_ivs[-1]
-        iv_min = min(window_ivs)
-        iv_max = max(window_ivs)
-        if iv_max == iv_min:
-            return None
-
-        return (iv_today - iv_min) / (iv_max - iv_min)
+        result = data.copy()
+        iv = result["implied_volatility"]
+        # More than half of the window must be present. Exactly half null is NaN.
+        minimum_observations = window // 2 + 1
+        iv_min = iv.rolling(window, min_periods=minimum_observations).min()
+        iv_max = iv.rolling(window, min_periods=minimum_observations).max()
+        iv_range = iv_max - iv_min
+        result["implied_volatility_rank"] = (iv - iv_min) / iv_range.where(iv_range != 0)
+        return result
     
     @staticmethod
     def find_high_volume_contracts(
