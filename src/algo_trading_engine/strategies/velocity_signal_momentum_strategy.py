@@ -80,7 +80,7 @@ class VelocitySignalMomentumStrategy(Strategy):
         self._try_close_positions(date, positions, remove_position)
 
     def on_end(self, positions: tuple['Position', ...], remove_position: Callable[[datetime, 'Position', float, Optional[float], Optional[list[int]]], None], date: datetime):
-        """End-of-run hook; plotting is handled by visualizers / emit_plot callers."""
+        """End-of-run hook; plotting is handled by the engine / show_plot callers."""
         del positions, remove_position, date
 
     def _has_buy_signal(self, date: datetime) -> bool:

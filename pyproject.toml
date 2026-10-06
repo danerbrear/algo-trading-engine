@@ -33,7 +33,6 @@ dev = [
 ]
 ml = [
     "tensorflow>=2.15.0",
-    "seaborn>=0.13.0",
 ]
 
 [project.scripts]

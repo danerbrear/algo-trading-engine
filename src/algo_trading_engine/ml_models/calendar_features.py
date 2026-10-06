@@ -373,7 +373,14 @@ class CalendarFeatureProcessor:
         """
         return self.get_event_summary("Fed Funds Rate")
     
-    def plot_features(self, data, feature_prefix=None, event_type=None, save_path=None):
+    def plot_features(
+        self,
+        data,
+        feature_prefix=None,
+        event_type=None,
+        save_path=None,
+        plot_config=None,
+    ):
         """Create a plot showing the calendar features over time
         
         Args:
@@ -381,7 +388,11 @@ class CalendarFeatureProcessor:
             feature_prefix: Prefix for feature column names (e.g., 'CPI', 'CC')
             event_type: Specific event type to plot
             save_path: Optional path to save the plot
+            plot_config: Optional PlotConfig for rendering
         """
+        from algo_trading_engine.plotting import PlotConfig, build_plot_spec, show_plot  # pylint: disable=import-outside-toplevel
+
+        config = plot_config or PlotConfig()
         if event_type is None:
             event_type = self.event_types[0]
         
@@ -398,55 +409,37 @@ class CalendarFeatureProcessor:
         
         days_since_col = f'Days_Since_Last_{feature_prefix}'
         days_until_col = f'Days_Until_Next_{feature_prefix}'
-        
-        try:
-            # Deferred: plotting libraries ship in the optional [ml] extra.
-            # pylint: disable=import-outside-toplevel
-            import matplotlib.pyplot as plt
-            import seaborn as sns
-            
-            # Set up the plot
-            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(15, 10))
-            
-            # Plot days since last event
-            ax1.plot(data['Date'], data[days_since_col], 
-                    color='blue', alpha=0.7, linewidth=1)
-            ax1.set_title(f'Days Since Last {event_type} Event', fontsize=14, fontweight='bold')
-            ax1.set_ylabel('Days', fontsize=12)
-            ax1.grid(True, alpha=0.3)
-            
-            # Add event markers
-            events = self.events_data[event_type]
-            event_dates = events['Date']
-            ax1.scatter(event_dates, [0] * len(event_dates), 
-                       color='red', s=50, alpha=0.7, marker='|', label=f'{event_type} Events')
-            ax1.legend()
-            
-            # Plot days until next event
-            ax2.plot(data['Date'], data[days_until_col], 
-                    color='green', alpha=0.7, linewidth=1)
-            ax2.set_title(f'Days Until Next {event_type} Event', fontsize=14, fontweight='bold')
-            ax2.set_ylabel('Days', fontsize=12)
-            ax2.set_xlabel('Date', fontsize=12)
-            ax2.grid(True, alpha=0.3)
-            
-            # Add event markers
-            ax2.scatter(event_dates, [0] * len(event_dates), 
-                       color='red', s=50, alpha=0.7, marker='|', label=f'{event_type} Events')
-            ax2.legend()
-            
-            plt.tight_layout()
-            
-            if save_path:
-                plt.savefig(save_path, dpi=300, bbox_inches='tight')
-                print(f"📊 {event_type} features plot saved to {save_path}")
-            
-            plt.show()
-            
-        except ImportError:
-            print("⚠️  matplotlib not available. Skipping plot generation.")
-        except Exception as e:
-            print(f"⚠️  Error creating plot: {e}")
+
+        events = self.events_data[event_type]
+        event_dates = events["Date"]
+        event_markers = {
+            f"{event_type} Events": pd.DataFrame(
+                {"Date": pd.to_datetime(event_dates), f"{event_type} Events": [0.0] * len(event_dates)}
+            )
+        }
+
+        since_frame = pd.DataFrame({"Date": data["Date"], days_since_col: data[days_since_col]})
+        until_frame = pd.DataFrame({"Date": data["Date"], days_until_col: data[days_until_col]})
+        since_spec = build_plot_spec(
+            since_frame,
+            name=f"{feature_prefix}_days_since",
+            x="Date",
+            title=f"Days Since Last {event_type} Event",
+            y_label="Days",
+            markers=event_markers,
+        )
+        until_spec = build_plot_spec(
+            until_frame,
+            name=f"{feature_prefix}_days_until",
+            x="Date",
+            title=f"Days Until Next {event_type} Event",
+            y_label="Days",
+            markers=event_markers,
+        )
+        show_plot([since_spec, until_spec], config=config, save_path=save_path, ncols=1)
+        if save_path:
+            print(f"📊 {event_type} features plot saved to {save_path}")
+
     
 
 

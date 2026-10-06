@@ -195,67 +195,82 @@ class TestFetchTreasuryRates:
 class TestPlotEquityCurve:
     """Test cases for plot_equity_curve function"""
 
-    @patch('algo_trading_engine.prediction.plot_equity_curve.plt')
-    def test_plot_equity_curve_no_positions(self, mock_plt):
-        """Test plotting with no positions"""
-        plot_equity_curve([], show_plot=False)
-        mock_plt.subplots.assert_not_called()
+    @patch("algo_trading_engine.prediction.plot_equity_curve.show_plot")
+    def test_plot_equity_curve_no_positions(self, mock_show_plot):
+        plot_equity_curve([], display=False)
+        mock_show_plot.assert_not_called()
 
-    @patch('algo_trading_engine.prediction.plot_equity_curve.plt')
-    @patch('algo_trading_engine.prediction.plot_equity_curve.fetch_spy_data')
-    @patch('algo_trading_engine.prediction.plot_equity_curve.fetch_treasury_rates')
-    def test_plot_equity_curve_with_spy_overlay(self, _mock_fetch_treasury, mock_fetch_spy, mock_plt):
-        """Test plotting with SPY overlay"""
-        positions = [ClosedPosition(closed_at=datetime(2025, 11, 1, 15, 0, 0), entry_price=2.5, exit_price=1.0, quantity=1, strategy_name='test', strategy_type='put_credit_spread', pnl=150.0)]
-        spy_data = pd.DataFrame({'Close': [450.0, 452.0]}, index=pd.date_range('2025-11-01', periods=2))
+    @patch("algo_trading_engine.prediction.plot_equity_curve.show_plot")
+    @patch("algo_trading_engine.prediction.plot_equity_curve.fetch_spy_data")
+    @patch("algo_trading_engine.prediction.plot_equity_curve.fetch_treasury_rates")
+    def test_plot_equity_curve_with_spy_overlay(
+        self, _mock_fetch_treasury, mock_fetch_spy, mock_show_plot
+    ):
+        positions = [
+            ClosedPosition(
+                closed_at=datetime(2025, 11, 1, 15, 0, 0),
+                entry_price=2.5,
+                exit_price=1.0,
+                quantity=1,
+                strategy_name="test",
+                strategy_type="put_credit_spread",
+                pnl=150.0,
+            )
+        ]
+        spy_data = pd.DataFrame({"Close": [450.0, 452.0]}, index=pd.date_range("2025-11-01", periods=2))
         mock_fetch_spy.return_value = spy_data
-        fig, ax1 = (MagicMock(), MagicMock())
-        ax2 = MagicMock()
-        mock_plt.subplots.return_value = (fig, ax1)
-        ax1.twinx.return_value = ax2
-        ax1.get_legend_handles_labels.return_value = ([], [])
-        ax2.get_legend_handles_labels.return_value = ([], [])
-        plot_equity_curve(positions, show_plot=False, overlay_spy=True)
+        plot_equity_curve(positions, display=False, overlay_spy=True)
         mock_fetch_spy.assert_called_once()
-        ax1.twinx.assert_called()
-        mock_plt.subplots.assert_called_once()
+        spec = mock_show_plot.call_args.args[0]
+        assert "SPY Price ($)" in spec.right_axis
 
-    @patch('algo_trading_engine.prediction.plot_equity_curve.plt')
-    @patch('algo_trading_engine.prediction.plot_equity_curve.fetch_spy_data')
-    @patch('algo_trading_engine.prediction.plot_equity_curve.fetch_treasury_rates')
-    def test_plot_equity_curve_with_rates_overlay(self, mock_fetch_rates, _mock_fetch_spy, mock_plt):
-        """Test plotting with treasury rates overlay"""
-        positions = [ClosedPosition(closed_at=datetime(2025, 11, 1, 15, 0, 0), entry_price=2.5, exit_price=1.0, quantity=1, strategy_name='test', strategy_type='put_credit_spread', pnl=150.0)]
-        rates_data = pd.DataFrame({'10Y_Rate': [4.25, 4.3]}, index=pd.date_range('2025-11-01', periods=2))
+    @patch("algo_trading_engine.prediction.plot_equity_curve.show_plot")
+    @patch("algo_trading_engine.prediction.plot_equity_curve.fetch_spy_data")
+    @patch("algo_trading_engine.prediction.plot_equity_curve.fetch_treasury_rates")
+    def test_plot_equity_curve_with_rates_overlay(
+        self, mock_fetch_rates, _mock_fetch_spy, mock_show_plot
+    ):
+        positions = [
+            ClosedPosition(
+                closed_at=datetime(2025, 11, 1, 15, 0, 0),
+                entry_price=2.5,
+                exit_price=1.0,
+                quantity=1,
+                strategy_name="test",
+                strategy_type="put_credit_spread",
+                pnl=150.0,
+            )
+        ]
+        rates_data = pd.DataFrame({"10Y_Rate": [4.25, 4.3]}, index=pd.date_range("2025-11-01", periods=2))
         mock_fetch_rates.return_value = rates_data
-        fig, ax1 = (MagicMock(), MagicMock())
-        ax3 = MagicMock()
-        mock_plt.subplots.return_value = (fig, ax1)
-        ax1.twinx.return_value = ax3
-        ax1.get_legend_handles_labels.return_value = ([], [])
-        ax3.get_legend_handles_labels.return_value = ([], [])
-        plot_equity_curve(positions, show_plot=False, overlay_rates=True)
+        plot_equity_curve(positions, display=False, overlay_rates=True)
         mock_fetch_rates.assert_called_once()
-        ax1.twinx.assert_called()
+        spec = mock_show_plot.call_args.args[0]
+        assert "10Y Treasury Rate (%)" in spec.right_axis
 
-    @patch('algo_trading_engine.prediction.plot_equity_curve.plt')
-    @patch('algo_trading_engine.prediction.plot_equity_curve.fetch_spy_data')
-    @patch('algo_trading_engine.prediction.plot_equity_curve.fetch_treasury_rates')
-    def test_plot_equity_curve_with_both_overlays(self, mock_fetch_rates, mock_fetch_spy, mock_plt):
-        """Test plotting with both SPY and rates overlays"""
-        positions = [ClosedPosition(closed_at=datetime(2025, 11, 1, 15, 0, 0), entry_price=2.5, exit_price=1.0, quantity=1, strategy_name='test', strategy_type='put_credit_spread', pnl=150.0)]
-        spy_data = pd.DataFrame({'Close': [450.0, 452.0]}, index=pd.date_range('2025-11-01', periods=2))
-        rates_data = pd.DataFrame({'10Y_Rate': [4.25, 4.3]}, index=pd.date_range('2025-11-01', periods=2))
+    @patch("algo_trading_engine.prediction.plot_equity_curve.show_plot")
+    @patch("algo_trading_engine.prediction.plot_equity_curve.fetch_spy_data")
+    @patch("algo_trading_engine.prediction.plot_equity_curve.fetch_treasury_rates")
+    def test_plot_equity_curve_with_both_overlays(
+        self, mock_fetch_rates, mock_fetch_spy, mock_show_plot
+    ):
+        positions = [
+            ClosedPosition(
+                closed_at=datetime(2025, 11, 1, 15, 0, 0),
+                entry_price=2.5,
+                exit_price=1.0,
+                quantity=1,
+                strategy_name="test",
+                strategy_type="put_credit_spread",
+                pnl=150.0,
+            )
+        ]
+        spy_data = pd.DataFrame({"Close": [450.0, 452.0]}, index=pd.date_range("2025-11-01", periods=2))
+        rates_data = pd.DataFrame({"10Y_Rate": [4.25, 4.3]}, index=pd.date_range("2025-11-01", periods=2))
         mock_fetch_spy.return_value = spy_data
         mock_fetch_rates.return_value = rates_data
-        fig, ax1 = (MagicMock(), MagicMock())
-        ax2, ax3 = (MagicMock(), MagicMock())
-        mock_plt.subplots.return_value = (fig, ax1)
-        ax1.twinx.side_effect = [ax2, ax3]
-        ax1.get_legend_handles_labels.return_value = ([], [])
-        ax2.get_legend_handles_labels.return_value = ([], [])
-        ax3.get_legend_handles_labels.return_value = ([], [])
-        plot_equity_curve(positions, show_plot=False, overlay_spy=True, overlay_rates=True)
+        plot_equity_curve(positions, display=False, overlay_spy=True, overlay_rates=True)
         mock_fetch_spy.assert_called_once()
         mock_fetch_rates.assert_called_once()
-        assert ax1.twinx.call_count == 2
+        spec = mock_show_plot.call_args.args[0]
+        assert spec.right_axis == ("SPY Price ($)", "10Y Treasury Rate (%)")

@@ -87,10 +87,11 @@ __all__ = [
     "vo",
     "enums",
     "indicators",
+    "plotting",
     "database",
 ]
 
-_LAZY_SUBMODULES = frozenset({"dto", "vo", "enums", "indicators", "database"})
+_LAZY_SUBMODULES = frozenset({"dto", "vo", "enums", "indicators", "plotting", "database"})
 
 # module_path, attribute_name
 _LAZY_EXPORTS: dict[str, tuple[str, str]] = {

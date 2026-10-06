@@ -14,6 +14,7 @@ from algo_trading_engine.enums import BarTimeInterval
 if TYPE_CHECKING:
     from algo_trading_engine.common.run_observer import RunObserver
     from algo_trading_engine.core.strategy import Strategy
+    from algo_trading_engine.plotting.config import PlotConfig
     from algo_trading_engine.prediction.decision_store import DecisionStore
 
 
@@ -46,6 +47,7 @@ class BacktestConfig:
     stop_loss: Optional[float] = None  # Optional stop loss percentage
     profit_target: Optional[float] = None  # Optional profit target percentage
     benchmark_ticker: Optional[str] = None  # Ticker for buy-and-hold benchmark comparison (defaults to symbol)
+    plot_config: Optional["PlotConfig"] = None  # None disables local plotting and matplotlib import
     observer: Optional["RunObserver"] = field(default=None, compare=False, hash=False)
 
     def __post_init__(self):

@@ -12,11 +12,10 @@ import pandas as pd
 import numpy as np
 from typing import Dict, List, Tuple, Optional
 from datetime import datetime, timedelta
-import matplotlib.pyplot as plt
 from dataclasses import dataclass
 
-# Import data retrieval classes
 from algo_trading_engine.common.data_retriever import DataRetriever
+from algo_trading_engine.plotting import PlotConfig, build_plot_spec, show_plot
 
 
 @dataclass
@@ -422,101 +421,125 @@ class MAVelocityAnalyzer:
         
         return "\n".join(report)
     
-    def plot_results(self, optimal_combinations: Dict[str, MAVelocityResult], 
-                    save_path: Optional[str] = None):
+    def _ensure_ma_columns(self, short_ma: int, long_ma: int) -> tuple[str, str]:
+        short_ma_col = f"SMA_{short_ma}"
+        long_ma_col = f"SMA_{long_ma}"
+        if short_ma_col not in self.data.columns:
+            self.data[short_ma_col] = (
+                self.data["Close"].rolling(window=short_ma, min_periods=short_ma).mean()
+            )
+        if long_ma_col not in self.data.columns:
+            self.data[long_ma_col] = (
+                self.data["Close"].rolling(window=long_ma, min_periods=long_ma).mean()
+            )
+        return short_ma_col, long_ma_col
+
+    def _price_ma_spec(
+        self,
+        result: MAVelocityResult,
+        *,
+        name: str,
+        title: str,
+    ):
+        short_ma_col, long_ma_col = self._ensure_ma_columns(result.short_ma, result.long_ma)
+        frame = pd.DataFrame(
+            {
+                "timestamp": pd.to_datetime(self.data.index),
+                f"{self.symbol} Close": self.data["Close"].values,
+                f"SMA {result.short_ma}": self.data[short_ma_col].values,
+                f"SMA {result.long_ma}": self.data[long_ma_col].values,
+            }
+        )
+        return build_plot_spec(frame, name=name, title=title, y_label="Price")
+
+    def _signal_marker_frames(self, signals: List[TrendSignal]) -> dict[str, pd.DataFrame]:
+        markers: dict[str, pd.DataFrame] = {}
+        for signal_type, label in (("up", "Up signals"), ("down", "Down signals")):
+            subset = [signal for signal in signals if signal.signal_type == signal_type]
+            if not subset:
+                continue
+            markers[label] = pd.DataFrame(
+                {
+                    "timestamp": pd.to_datetime([signal.signal_date for signal in subset]),
+                    label: [self.data.loc[signal.signal_date, "Close"] for signal in subset],
+                }
+            )
+        return markers
+
+    def _signal_spec(self, signals: List[TrendSignal], *, name: str, title: str):
+        frame = pd.DataFrame(
+            {
+                "timestamp": pd.to_datetime(self.data.index),
+                f"{self.symbol} Close": self.data["Close"].values,
+            }
+        )
+        return build_plot_spec(
+            frame,
+            name=name,
+            title=title,
+            y_label="Price",
+            markers=self._signal_marker_frames(signals),
+        )
+
+    def plot_results(
+        self,
+        optimal_combinations: Dict[str, MAVelocityResult],
+        save_path: Optional[str] = None,
+        plot_config: Optional[PlotConfig] = None,
+    ):
         """
         Create visualization plots for the analysis results.
-        
+
         Args:
             optimal_combinations: Dictionary with optimal MA combinations
             save_path: Optional path to save the plot
+            plot_config: Plotting configuration (defaults to enabled interactive plots)
         """
-        fig, axes = plt.subplots(2, 2, figsize=(15, 12))
-        fig.suptitle(f'Moving Average Velocity Analysis - {self.symbol}', fontsize=16)
-        
-        # Plot 1: Price and optimal MAs for upward trends
-        if 'up' in optimal_combinations:
-            ax1 = axes[0, 0]
-            up_result = optimal_combinations['up']
-            ax1.plot(self.data.index, self.data['Close'], label=f'{self.symbol} Close', alpha=0.7)
-            
-            # Check if MA columns exist, if not calculate them
-            short_ma_col = f'SMA_{up_result.short_ma}'
-            long_ma_col = f'SMA_{up_result.long_ma}'
-            
-            if short_ma_col not in self.data.columns:
-                self.data[short_ma_col] = self.data['Close'].rolling(window=up_result.short_ma, min_periods=up_result.short_ma).mean()
-            if long_ma_col not in self.data.columns:
-                self.data[long_ma_col] = self.data['Close'].rolling(window=up_result.long_ma, min_periods=up_result.long_ma).mean()
-            
-            ax1.plot(self.data.index, self.data[short_ma_col], 
-                    label=f'SMA {up_result.short_ma}', alpha=0.8)
-            ax1.plot(self.data.index, self.data[long_ma_col], 
-                    label=f'SMA {up_result.long_ma}', alpha=0.8)
-            ax1.set_title(f'Optimal MAs for Upward Trends\nSuccess Rate: {up_result.success_rate:.1%}')
-            ax1.legend()
-            ax1.grid(True, alpha=0.3)
-        
-        # Plot 2: Price and optimal MAs for downward trends
-        if 'down' in optimal_combinations:
-            ax2 = axes[0, 1]
-            down_result = optimal_combinations['down']
-            ax2.plot(self.data.index, self.data['Close'], label=f'{self.symbol} Close', alpha=0.7)
-            
-            # Check if MA columns exist, if not calculate them
-            short_ma_col = f'SMA_{down_result.short_ma}'
-            long_ma_col = f'SMA_{down_result.long_ma}'
-            
-            if short_ma_col not in self.data.columns:
-                self.data[short_ma_col] = self.data['Close'].rolling(window=down_result.short_ma, min_periods=down_result.short_ma).mean()
-            if long_ma_col not in self.data.columns:
-                self.data[long_ma_col] = self.data['Close'].rolling(window=down_result.long_ma, min_periods=down_result.long_ma).mean()
-            
-            ax2.plot(self.data.index, self.data[short_ma_col], 
-                    label=f'SMA {down_result.short_ma}', alpha=0.8)
-            ax2.plot(self.data.index, self.data[long_ma_col], 
-                    label=f'SMA {down_result.long_ma}', alpha=0.8)
-            ax2.set_title(f'Optimal MAs for Downward Trends\nSuccess Rate: {down_result.success_rate:.1%}')
-            ax2.legend()
-            ax2.grid(True, alpha=0.3)
-        
-        # Plot 3: Signal points on price chart
-        ax3 = axes[1, 0]
-        ax3.plot(self.data.index, self.data['Close'], label=f'{self.symbol} Close', alpha=0.7)
-        
-        # Plot successful signals
-        successful_signals = [s for s in self.trend_signals if s.success]
-        for signal in successful_signals:
-            color = 'green' if signal.signal_type == 'up' else 'red'
-            ax3.scatter(signal.signal_date, self.data.loc[signal.signal_date, 'Close'], 
-                       color=color, s=50, alpha=0.7)
-        
-        ax3.set_title('Successful Trend Signals')
-        ax3.legend()
-        ax3.grid(True, alpha=0.3)
-        
-        # Plot 4: Failed Trend Signals
-        ax4 = axes[1, 1]
-        ax4.plot(self.data.index, self.data['Close'], label=f'{self.symbol} Close', alpha=0.7)
-        
-        # Plot failed signals
-        failed_signals = [s for s in self.trend_signals if not s.success]
-        for signal in failed_signals:
-            color = 'green' if signal.signal_type == 'up' else 'red'
-            ax4.scatter(signal.signal_date, self.data.loc[signal.signal_date, 'Close'], 
-                       color=color, s=50, alpha=0.7)
-        
-        ax4.set_title('Failed Trend Signals')
-        ax4.legend()
-        ax4.grid(True, alpha=0.3)
-        
-        plt.tight_layout()
-        
+        config = plot_config or PlotConfig()
+        specs = []
+        if "up" in optimal_combinations:
+            up_result = optimal_combinations["up"]
+            specs.append(
+                self._price_ma_spec(
+                    up_result,
+                    name="ma_velocity_up",
+                    title=f"Optimal MAs for Upward Trends (Success Rate: {up_result.success_rate:.1%})",
+                )
+            )
+        if "down" in optimal_combinations:
+            down_result = optimal_combinations["down"]
+            specs.append(
+                self._price_ma_spec(
+                    down_result,
+                    name="ma_velocity_down",
+                    title=f"Optimal MAs for Downward Trends (Success Rate: {down_result.success_rate:.1%})",
+                )
+            )
+        successful_signals = [signal for signal in self.trend_signals if signal.success]
+        failed_signals = [signal for signal in self.trend_signals if not signal.success]
+        specs.append(
+            self._signal_spec(
+                successful_signals,
+                name="ma_velocity_successful_signals",
+                title="Successful Trend Signals",
+            )
+        )
+        specs.append(
+            self._signal_spec(
+                failed_signals,
+                name="ma_velocity_failed_signals",
+                title="Failed Trend Signals",
+            )
+        )
+        show_plot(
+            specs,
+            config=config,
+            save_path=save_path,
+            ncols=2,
+            grid_title=f"Moving Average Velocity Analysis - {self.symbol}",
+        )
         if save_path:
-            plt.savefig(save_path, dpi=300, bbox_inches='tight')
             print(f"📊 Plot saved to {save_path}")
-        
-        plt.show()
 
 
 def main():
@@ -540,7 +563,11 @@ def main():
     print(report)
     
     # Create plots
-    analyzer.plot_results(optimal_combinations, save_path='ma_velocity_analysis.png')
+    analyzer.plot_results(
+        optimal_combinations,
+        save_path="ma_velocity_analysis.png",
+        plot_config=PlotConfig(),
+    )
     
     print("\n✅ Analysis complete!")
     
