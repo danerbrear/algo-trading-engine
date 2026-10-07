@@ -22,11 +22,13 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 from dataclasses import dataclass
 from pathlib import Path
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
+from functools import reduce
+
 import numpy as np
 import pandas as pd
 import yfinance as yf
+
+from algo_trading_engine.plotting import PlotConfig, build_plot_spec, show_plot
 
 
 @dataclass
@@ -266,7 +268,7 @@ def plot_equity_curve(
     positions: List[ClosedPosition],
     strategy_filter: Optional[str] = None,
     output_file: Optional[str] = None,
-    show_plot: bool = True,
+    display: bool = True,
     capital_allocations: Optional[Dict[str, float]] = None,
     overlay_spy: bool = False,
     overlay_rates: bool = False
@@ -278,7 +280,7 @@ def plot_equity_curve(
         positions: List of closed positions
         strategy_filter: If provided, only plot this strategy
         output_file: If provided, save plot to this file
-        show_plot: Whether to display the plot interactively
+        display: Whether to display the plot interactively
         capital_allocations: Dictionary mapping strategy names to allocated capital
         overlay_spy: Whether to overlay SPY price on the plot
         overlay_rates: Whether to overlay treasury interest rates on the plot
@@ -318,96 +320,68 @@ def plot_equity_curve(
     
     if overlay_rates:
         rates_data = fetch_treasury_rates(overlay_start_date, max_date)
-    
-    # Create figure with appropriate number of y-axes
-    fig, ax1 = plt.subplots(figsize=(14, 8))
-    
-    # Plot each strategy's equity curve on primary axis
-    colors = plt.colormaps["tab10"](np.linspace(0, 1, max(len(strategy_groups), 1)))[: len(strategy_groups)]
-    
-    for (strategy_name, strategy_positions), color in zip(strategy_groups.items(), colors):
-        # Map strategy name to config key
+
+    strategy_frames: list[pd.DataFrame] = []
+    reference_capital: float | None = None
+    for strategy_name, strategy_positions in strategy_groups.items():
         config_key = _map_strategy_name(strategy_name)
-        # Get initial capital from allocations or default to 0
         initial_capital = capital_allocations.get(config_key, 0.0) if capital_allocations else 0.0
         dates, capital = calculate_equity_curve(strategy_positions, initial_capital)
-        
         if not dates:
             continue
-        
-        # Calculate statistics
+
         final_capital = capital[-1] if capital else initial_capital
         total_pnl = final_capital - initial_capital
         num_positions = len(strategy_positions)
         wins = sum(1 for p in strategy_positions if p.pnl > 0)
         win_rate = (wins / num_positions * 100) if num_positions > 0 else 0
-        
-        # Plot line
-        label = (f"{strategy_name.replace('_', ' ').title()}\n"
-                f"Capital: ${final_capital:,.0f} | "
-                f"P&L: ${total_pnl:+,.0f} | "
-                f"Trades: {num_positions} | "
-                f"Win Rate: {win_rate:.1f}%")
-        
-        ax1.plot(dates, capital, marker='o', linestyle='-', linewidth=2,
-                markersize=6, label=label, color=color, alpha=0.8, zorder=10)
-        
-        # Add initial capital line for reference
-        if initial_capital > 0:
-            ax1.axhline(y=initial_capital, color='gray', linestyle='--', linewidth=1, alpha=0.5, 
-                       label='Initial Capital' if strategy_name == list(strategy_groups.keys())[0] else "", zorder=5)
-    
-    # Format primary y-axis (equity curve)
-    ax1.set_xlabel('Date', fontsize=12, fontweight='bold')
-    ax1.set_ylabel('Capital Remaining ($)', fontsize=12, fontweight='bold', color='black')
-    ax1.tick_params(axis='y', labelcolor='black')
-    ax1.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'${x:,.0f}'))
-    
-    # Add SPY overlay if requested
-    ax2 = None
+        column = (
+            f"{strategy_name.replace('_', ' ').title()} | "
+            f"Capital: ${final_capital:,.0f} | P&L: ${total_pnl:+,.0f} | "
+            f"Trades: {num_positions} | Win Rate: {win_rate:.1f}%"
+        )
+        strategy_frames.append(
+            pd.DataFrame({"timestamp": pd.to_datetime(dates), column: capital})
+        )
+        if reference_capital is None and initial_capital > 0:
+            reference_capital = initial_capital
+
+    if not strategy_frames:
+        print("No equity data to plot")
+        return
+
+    merged = reduce(
+        lambda left, right: pd.merge(left, right, on="timestamp", how="outer"),
+        strategy_frames,
+    )
+    merged = merged.sort_values("timestamp")
+    if reference_capital is not None:
+        merged["Initial Capital"] = reference_capital
+
+    right_axis: list[str] = []
     if overlay_spy and spy_data is not None:
-        ax2 = ax1.twinx()
-        
-        # Normalize SPY to fit the date range
-        spy_dates = spy_data.index.to_pydatetime()
-        spy_prices = spy_data['Close'].values
-        
-        # Plot SPY as subtle background context
-        ax2.plot(spy_dates, spy_prices, color='green', linestyle='--', linewidth=1,
-                label='SPY Price', alpha=0.25, zorder=1)
-        
-        ax2.set_ylabel('SPY Price ($)', fontsize=12, fontweight='bold', color='green')
-        ax2.tick_params(axis='y', labelcolor='green')
-        ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'${x:,.0f}'))
-    
-    # Add interest rates overlay if requested
-    ax3 = None
+        spy_frame = pd.DataFrame(
+            {"timestamp": pd.to_datetime(spy_data.index), "SPY Price ($)": spy_data["Close"].values}
+        )
+        merged = merged.merge(spy_frame, on="timestamp", how="outer")
+        merged = merged.sort_values("timestamp")
+        right_axis.append("SPY Price ($)")
+
     if overlay_rates and rates_data is not None:
-        # If we already have a second axis (SPY), create a third axis
-        if ax2 is not None:
-            ax3 = ax1.twinx()
-            # Offset the right spine of ax3
-            ax3.spines['right'].set_position(('outward', 60))
-        else:
-            ax3 = ax1.twinx()
-        
-        # Plot interest rates
-        rates_dates = rates_data.index.to_pydatetime()
-        rates_values = rates_data['10Y_Rate'].values
-        
-        ax3.plot(rates_dates, rates_values, color='orange', linestyle='-.', linewidth=1,
-                label='10Y Treasury Rate', alpha=0.25, zorder=1)
-        
-        ax3.set_ylabel('10Y Treasury Rate (%)', fontsize=12, fontweight='bold', color='orange')
-        ax3.tick_params(axis='y', labelcolor='orange')
-        ax3.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x:.2f}%'))
-    
-    # Title
+        rates_frame = pd.DataFrame(
+            {
+                "timestamp": pd.to_datetime(rates_data.index),
+                "10Y Treasury Rate (%)": rates_data["10Y_Rate"].values,
+            }
+        )
+        merged = merged.merge(rates_frame, on="timestamp", how="outer")
+        merged = merged.sort_values("timestamp")
+        right_axis.append("10Y Treasury Rate (%)")
+
     if strategy_filter:
         title = f'Equity Curve - {strategy_filter.replace("_", " ").title()}'
     else:
-        title = 'Equity Curves - All Strategies'
-    
+        title = "Equity Curves - All Strategies"
     if overlay_spy or overlay_rates:
         overlays = []
         if overlay_spy:
@@ -415,50 +389,18 @@ def plot_equity_curve(
         if overlay_rates:
             overlays.append("Interest Rates")
         title += f' (with {" & ".join(overlays)})'
-    
-    ax1.set_title(title, fontsize=14, fontweight='bold', pad=20)
-    
-    # Format x-axis dates
-    ax1.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
-    ax1.xaxis.set_major_locator(mdates.AutoDateLocator())
-    plt.xticks(rotation=45, ha='right')
-    
-    # Add grid only on primary axis
-    ax1.grid(True, alpha=0.3, linestyle='--', zorder=0)
-    
-    # Combine legends from all axes
-    lines1, labels1 = ax1.get_legend_handles_labels()
-    lines_all = lines1
-    labels_all = labels1
-    
-    if ax2 is not None:
-        lines2, labels2 = ax2.get_legend_handles_labels()
-        lines_all += lines2
-        labels_all += labels2
-    
-    if ax3 is not None:
-        lines3, labels3 = ax3.get_legend_handles_labels()
-        lines_all += lines3
-        labels_all += labels3
-    
-    # Place legend
-    ax1.legend(lines_all, labels_all, loc='best', fontsize=9, framealpha=0.9)
-    
-    # Tight layout
-    plt.tight_layout()
-    
-    # Save if requested
+
+    spec = build_plot_spec(
+        merged,
+        name="equity_curves",
+        title=title,
+        y_label="Capital Remaining ($)",
+        right_axis=right_axis,
+    )
+    plot_config = PlotConfig(enabled=True, show=display)
+    show_plot(spec, config=plot_config, save_path=output_file)
     if output_file:
-        output_path = Path(output_file)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        plt.savefig(output_file, dpi=300, bbox_inches='tight')
         print(f"✅ Plot saved to: {output_file}")
-    
-    # Show if requested
-    if show_plot:
-        plt.show()
-    
-    plt.close()
 
 
 def calculate_drawdowns(capital_values: List[float]) -> List[float]:
@@ -704,7 +646,7 @@ Examples:
             positions,
             strategy_filter=args.strategy,
             output_file=args.output,
-            show_plot=not args.no_show,
+            display=not args.no_show,
             capital_allocations=capital_allocations,
             overlay_spy=args.overlay_spy,
             overlay_rates=args.overlay_rates

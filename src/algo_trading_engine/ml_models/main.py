@@ -13,6 +13,8 @@ from dotenv import load_dotenv
 from sklearn.metrics import classification_report, confusion_matrix
 
 from .config import BATCH_SIZE, EPOCHS, SEQUENCE_LENGTH
+from algo_trading_engine.plotting import PlotConfig
+
 from .plots import create_plotter
 
 # Load environment variables from .env
@@ -203,7 +205,7 @@ class StockPredictor:
     def plot_results(self, results, history=None):
         """Plot the results using the new plotting module"""
         # Create plotter instance
-        plotter = create_plotter(self.data_retriever.symbol)
+        plotter = create_plotter(self.data_retriever.symbol, plot_config=PlotConfig())
         
         # Get predicted strategy returns and actual returns for comparison
         predicted_returns, actual_returns = self.get_strategy_returns_comparison()

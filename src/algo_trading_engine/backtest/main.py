@@ -40,7 +40,8 @@ class BacktestEngine(TradingEngine):
                  quiet_mode: bool = True,
                  bar_interval = None,
                  benchmark_data: pd.DataFrame = None,
-                 observer: RunObserver | None = None):
+                 observer: RunObserver | None = None,
+                 plot_config=None):
         super().__init__(strategy, data, bar_interval=bar_interval)
         self._capital = initial_capital
         self.initial_capital = initial_capital  # Store initial capital for reporting
@@ -63,6 +64,7 @@ class BacktestEngine(TradingEngine):
         self.quiet_mode = quiet_mode
         self.progress_tracker = None
         self.observer = observer
+        self.plot_config = plot_config
         
         # Position tracking for statistics
         self.closed_positions = []
@@ -170,6 +172,7 @@ class BacktestEngine(TradingEngine):
 
         # Internal: Set data on strategy
         strategy.set_data(data, retriever.treasury_rates)
+        strategy.set_plot_config(config.plot_config)
 
         get_logger().info(f"Data describe:\n{data.describe().to_string()}")
         get_logger().info(f"Data head:\n{data.head(5).to_string()}")
@@ -210,6 +213,7 @@ class BacktestEngine(TradingEngine):
             bar_interval=config.bar_interval,
             benchmark_data=benchmark_data,
             observer=config.observer,
+            plot_config=config.plot_config,
         )
         
         # Inject engine methods into strategy
@@ -349,9 +353,19 @@ class BacktestEngine(TradingEngine):
         log_and_echo(f"   Sharpe Ratio: {sharpe_ratio:.3f}")
 
         if self.closed_positions:
-            from algo_trading_engine.plotting.equity import emit_equity_curve  # pylint: disable=import-outside-toplevel
+            from algo_trading_engine.backtest.equity import build_equity_curve_dataframe  # pylint: disable=import-outside-toplevel
+            from algo_trading_engine.plotting import build_plot_spec, show_plot  # pylint: disable=import-outside-toplevel
+            from algo_trading_engine.plotting.spec import EQUITY_CURVE_NAME  # pylint: disable=import-outside-toplevel
 
-            emit_equity_curve(self.closed_positions, self.initial_capital)
+            frame = build_equity_curve_dataframe(self.closed_positions, self.initial_capital)
+            if not frame.empty:
+                spec = build_plot_spec(
+                    frame,
+                    name=EQUITY_CURVE_NAME,
+                    title="Equity Curve",
+                    y_label="Equity ($)",
+                )
+                show_plot(spec, config=self.plot_config)
 
         if self.observer is not None:
             self.observer.result({

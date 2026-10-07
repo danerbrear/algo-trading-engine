@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 
 # Import from the public API
 from algo_trading_engine import BacktestEngine, BacktestConfig
+from algo_trading_engine.plotting import PlotConfig
 
 # Load environment variables from .env file
 load_dotenv()
@@ -30,7 +31,8 @@ def main():
         max_position_size=0.20,
         symbol="SPY",
         strategy_type="velocity_momentum",  # Built-in strategy name
-        api_key=polygon_api_key
+        api_key=polygon_api_key,
+        plot_config=PlotConfig(),
     )
 
     # Create and run engine - all data fetching and setup is handled internally

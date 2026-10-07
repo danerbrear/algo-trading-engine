@@ -16,6 +16,7 @@ from algo_trading_engine.core.indicators.indicator import Indicator
 from algo_trading_engine.enums import BarTimeInterval, UniversalCloseCondition
 
 if TYPE_CHECKING:
+    from algo_trading_engine.plotting.config import PlotConfig
     from algo_trading_engine.vo import Position
     from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO, OptionsChainDTO, ExpirationRangeDTO, StrikeRangeDTO
 
@@ -82,6 +83,7 @@ class Strategy(ABC):
             self.universal_close_conditions = frozenset(universal_close_conditions)
         self.data: Optional[pd.DataFrame] = None
         self.treasury_data: Optional[TreasuryRates] = None
+        self.plot_config: Optional["PlotConfig"] = None
         self.indicators: List[Indicator] = []
         self._indicator_error: Optional[Exception] = None
         self._failed_indicator_name: Optional[str] = None
@@ -312,6 +314,10 @@ class Strategy(ABC):
         """
         self.data = data
         self.treasury_data = treasury_data
+
+    def set_plot_config(self, plot_config: Optional["PlotConfig"]) -> None:
+        """Set plotting configuration for strategy-driven charts."""
+        self.plot_config = plot_config
 
     def set_profit_target(self, profit_target: float):
         """Set the profit target for the strategy."""

@@ -10,6 +10,7 @@ import argparse
 import sys
 
 from algo_trading_engine.analysis.ma_velocity_analysis import MAVelocityAnalyzer
+from algo_trading_engine.plotting import PlotConfig
 
 
 def parse_arguments():
@@ -108,10 +109,15 @@ def main():
         print(report)
         
         # Create plots
+        plot_config = PlotConfig()
         if args.save_plot:
-            analyzer.plot_results(optimal_combinations, save_path=args.save_plot)
+            analyzer.plot_results(
+                optimal_combinations,
+                save_path=args.save_plot,
+                plot_config=plot_config,
+            )
         else:
-            analyzer.plot_results(optimal_combinations)
+            analyzer.plot_results(optimal_combinations, plot_config=plot_config)
         
         print("\n✅ Analysis complete!")
         
