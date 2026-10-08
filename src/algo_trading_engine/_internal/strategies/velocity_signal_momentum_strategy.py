@@ -499,8 +499,8 @@ class VelocitySignalMomentumStrategy(Strategy):
             get_logger().info(f"🔍 Position {position.__str__()} - Days held: {days_held}, Days to exp: {days_to_exp}")
 
             # Compute exit price for stop/holding decisions
-            exit_price = self.invoke_compute_exit_price(position, date)
-            if exit_price is None and self.compute_exit_price is None:
+            exit_price = self.compute_exit_price(position, date)
+            if exit_price is None:
                 get_logger().warning(
                     f"⚠️  compute_exit_price not configured; skipping closure checks for {position}"
                 )
@@ -513,7 +513,7 @@ class VelocitySignalMomentumStrategy(Strategy):
             if self._should_close_due_to_holding(position, date, self.holding_period):
                 if exit_price is not None:
                     get_logger().info(f"Holding period met for {position.__str__()} at exit {exit_price} (held {days_held} days, target: {self.holding_period})")
-                    current_volumes = self.invoke_current_volumes_for_position(position, date)
+                    current_volumes = self.get_current_volumes_for_position(position, date)
                     remove_position(date, position, exit_price, underlying_price=current_underlying_price, current_volumes=current_volumes)
                 else:
                     get_logger().warning(f"⚠️  No exit price available for {position.__str__()} on {date}. Skipping holding-period close.")

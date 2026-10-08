@@ -21,6 +21,16 @@ if TYPE_CHECKING:
     from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO, OptionsChainDTO, ExpirationRangeDTO, StrikeRangeDTO
 
 
+class _NotImplementedCallback:  # pylint: disable=too-few-public-methods
+    """Callable stub that is not a function, so instance access does not bind it."""
+
+    def __call__(self, *_args, **_kwargs):
+        raise NotImplementedError("This logic must be overridden.")
+
+
+_raise_not_implemented = _NotImplementedCallback()
+
+
 class IndicatorUpdateError(RuntimeError):
     """Raised when an indicator fails to update for the current date.
 
@@ -37,34 +47,36 @@ class Strategy(ABC):
     the required abstract methods.
     
     Options Trading Callables:
-        Strategies that trade options can expect the following callables to be available
-        as instance attributes (set via strategy builder):
+        Strategies that trade options can expect the following callables as instance
+        attributes. Each defaults to a raising stub until the strategy builder or engine
+        replaces it:
         
         - get_contract_list_for_date: Get list of option contracts for a specific date and symbol
         - get_option_bar: Get historical bar data for an option contract on a specific date (/aggs)
         - get_rt_option_bar: Get near-real-time bar data for an option contract via Polygon
-          snapshot. Only set during live/paper execution; None during backtesting. Use the
-          ``is_live`` property to branch between live and historical pricing.
+          snapshot. Injected for paper trading. Use ``use_snapshot_for_current_bar`` to choose
+          snapshot pricing instead of historical pricing.
         - get_options_chain: Get the full options chain for a symbol on a specific date
         - get_current_volumes_for_position: Get current volumes for an open position (position, date)
         - compute_exit_price: Compute the exit price for a position on a specific date
+        - get_position_size: Size a position from available capital
     """
     
-    # Optional callables for options trading strategies
-    # These are set via the strategy builder and available for use in concrete strategies
-    get_contract_list_for_date: Optional[Callable[[datetime, str], List['OptionContractDTO']]] = None
-    get_option_bar: Optional[Callable[['OptionContractDTO', datetime], Optional['OptionBarDTO']]] = None
-    get_rt_option_bar: Optional[Callable[['OptionContractDTO'], Optional['OptionBarDTO']]] = None
-    get_options_chain: Optional[Callable[[str, datetime, Optional['ExpirationRangeDTO'], Optional['StrikeRangeDTO'], Optional[BarTimeInterval], Optional[int]], 'OptionsChainDTO']] = None
-    get_current_volumes_for_position: Optional[Callable[['Position', datetime], Optional[List[int]]]] = None
-    compute_exit_price: Optional[Callable[['Position', datetime], Optional[float]]] = None
-    get_position_size: Optional[Callable[['Position', float], int]] = None
+    # Callables for options trading strategies. Default to a raising stub until injected.
+    get_contract_list_for_date: Callable[[datetime, str], List['OptionContractDTO']] = _raise_not_implemented
+    get_option_bar: Callable[['OptionContractDTO', datetime], Optional['OptionBarDTO']] = _raise_not_implemented
+    get_rt_option_bar: Callable[['OptionContractDTO'], Optional['OptionBarDTO']] = _raise_not_implemented
+    get_options_chain: Callable[[str, datetime, Optional['ExpirationRangeDTO'], Optional['StrikeRangeDTO'], Optional[BarTimeInterval], Optional[int]], 'OptionsChainDTO'] = _raise_not_implemented
+    get_current_volumes_for_position: Callable[['Position', datetime], Optional[List[int]]] = _raise_not_implemented
+    compute_exit_price: Callable[['Position', datetime], Optional[float]] = _raise_not_implemented
+    get_position_size: Callable[['Position', float], int] = _raise_not_implemented
 
     def __init__(
         self,
         profit_target: float = None,
         stop_loss: float = None,
         universal_close_conditions: Optional[Iterable[UniversalCloseCondition]] = None,
+        use_snapshot_for_current_bar: bool = False,
     ):
         """
         Initialize the strategy.
@@ -74,9 +86,13 @@ class Strategy(ABC):
             stop_loss: Optional stop loss percentage (e.g., 0.6 for 60%)
             universal_close_conditions: Engine-level close conditions to apply after
                 on_new_date. Defaults to all members when omitted.
+            use_snapshot_for_current_bar: When True, current option bars come from the
+                Polygon snapshot. BacktestConfig sets this False and PaperTradingConfig
+                sets this True when a strategy instance is supplied.
         """
         self.profit_target = profit_target
         self.stop_loss = stop_loss
+        self.use_snapshot_for_current_bar = use_snapshot_for_current_bar
         if universal_close_conditions is None:
             self.universal_close_conditions = frozenset(UniversalCloseCondition)
         else:
@@ -88,17 +104,6 @@ class Strategy(ABC):
         self._indicator_error: Optional[Exception] = None
         self._failed_indicator_name: Optional[str] = None
 
-    @property
-    def is_live(self) -> bool:
-        """
-        True when running under live/paper execution (real-time option data available).
-
-        Determined by the presence of the ``get_rt_option_bar`` callable, which is injected
-        by ``PaperTradingEngine`` and left None by ``BacktestEngine``. Use this to branch
-        between near-real-time snapshot pricing and historical (/aggs) pricing.
-        """
-        return self.get_rt_option_bar is not None
-
     def get_current_option_bar(
         self,
         contract: 'OptionContractDTO',
@@ -108,13 +113,12 @@ class Strategy(ABC):
         """
         Fetch an option bar for current valuation.
 
-        When live (paper), use the near-real-time Polygon snapshot (dateless). Otherwise use
-        the historical /aggs bar for ``date`` at the given ``timespan``. Centralizes the
-        live-vs-historical decision so call sites don't reimplement it.
+        When ``use_snapshot_for_current_bar`` is set, use the near-real-time Polygon snapshot
+        (dateless). Otherwise use the historical /aggs bar for ``date`` at the given ``timespan``.
         """
-        if self.is_live and self.get_rt_option_bar is not None:
+        if self.use_snapshot_for_current_bar:
             return self.get_rt_option_bar(contract)
-        return self.get_option_bar(contract, date, timespan=timespan)
+        return self.get_option_bar(contract, date, timespan)
 
     @property
     def warm_up_period(self) -> int:
@@ -170,22 +174,6 @@ class Strategy(ABC):
                 f"{self._indicator_error}"
             ) from self._indicator_error
 
-    def invoke_compute_exit_price(self, position: "Position", date: datetime) -> Optional[float]:
-        """Call the injected ``compute_exit_price`` callback when configured."""
-        callback = self.compute_exit_price
-        if callback is None:
-            return None
-        return callback(position, date)
-
-    def invoke_current_volumes_for_position(
-        self, position: "Position", date: datetime
-    ) -> Optional[List[int]]:
-        """Call the injected ``get_current_volumes_for_position`` callback when configured."""
-        callback = self.get_current_volumes_for_position
-        if callback is None:
-            return None
-        return callback(position, date)
-
     @abstractmethod
     def on_end(
         self,
@@ -201,7 +189,6 @@ class Strategy(ABC):
             remove_position: Callback function to remove/close a position
             date: Final date
         """
-        pass
 
     @abstractmethod
     def validate_data(self, data: pd.DataFrame) -> bool:
@@ -214,7 +201,6 @@ class Strategy(ABC):
         Returns:
             True if data is valid, False otherwise
         """
-        pass
 
     def add_indicator(self, indicator: Indicator) -> None:
         """

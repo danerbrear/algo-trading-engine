@@ -55,8 +55,9 @@ class PaperTradingEngine(TradingEngine):
         if strategy_data is None:
             import pandas as pd
             strategy_data = pd.DataFrame()
-        super().__init__(strategy, strategy_data, bar_interval=config.bar_interval)
-        self._config = config
+
+        super().__init__(strategy, strategy_data, config, bar_interval=config.bar_interval)
+
         self._positions: List['Position'] = []
         self._closed_positions: List[dict] = []
         self._running = False
@@ -265,6 +266,8 @@ class PaperTradingEngine(TradingEngine):
             elif hasattr(strategy, 'options_handler'):
                 strategy.options_handler = options_handler
 
+        strategy.use_snapshot_for_current_bar = True
+
         fetch_start_date = compute_paper_trading_fetch_start_date(
             today, strategy, config.bar_interval
         )
@@ -304,8 +307,6 @@ class PaperTradingEngine(TradingEngine):
         if hasattr(strategy, 'get_current_volumes_for_position'):
             strategy.get_current_volumes_for_position = engine.get_current_volumes_for_position
 
-        # Live-only: enable near-real-time option pricing via Polygon snapshot. Left None by
-        # BacktestEngine so Strategy.is_live is False during backtests.
         strategy.get_rt_option_bar = make_rt_option_bar(options_handler)
 
         return engine

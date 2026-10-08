@@ -6,6 +6,7 @@ This module provides immutable configuration objects for engines and strategies.
 
 from __future__ import annotations
 
+from abc import ABC
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional, Union, TYPE_CHECKING
@@ -88,8 +89,12 @@ class VolumeStats:
         }
 
 
+class EngineConfig(ABC):
+    """Config superclass"""
+
+
 @dataclass(frozen=True)
-class BacktestConfig:
+class BacktestConfig(EngineConfig):
     """
     Configuration for backtesting engine.
     
@@ -147,7 +152,7 @@ class BacktestConfig:
 
 
 @dataclass(frozen=True)
-class PaperTradingConfig:
+class PaperTradingConfig(EngineConfig):
     """
     Configuration for paper trading engine.
     
@@ -173,10 +178,10 @@ class PaperTradingConfig:
         if self.max_position_size is not None:
             if not 0 < self.max_position_size <= 1:
                 raise ValueError("Max position size must be between 0 and 1")
+        if not isinstance(self.strategy_type, str):
+            self.strategy_type.use_snapshot_for_current_bar = True
 
 
 # Placeholder for future slippage model
 class SlippageModel:
     """Placeholder for slippage model implementation."""
-    pass
-

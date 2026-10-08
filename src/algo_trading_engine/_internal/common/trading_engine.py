@@ -5,17 +5,17 @@ This module provides the abstract base class for trading engines
 and concrete implementations for backtesting and paper trading.
 """
 
-from abc import ABC, abstractmethod, abstractclassmethod
-from typing import Callable, List, Optional, Union, TYPE_CHECKING
+from abc import ABC, abstractmethod
+from typing import Callable, List, Optional, Union
 from datetime import datetime, timedelta
 import pandas as pd
 
-from algo_trading_engine.strategy import IndicatorUpdateError, Strategy
-from algo_trading_engine._internal.common.logger import configure_logger, get_logger, log_and_echo
+from algo_trading_engine import DataRetriever, Strategy
+from algo_trading_engine._internal.common.logger import get_logger
 from algo_trading_engine.enums import BarTimeInterval, UniversalCloseCondition
+from algo_trading_engine.models import EngineConfig
 from algo_trading_engine.models.config import PaperTradingConfig
-from algo_trading_engine.dto import OptionBarDTO
-from algo_trading_engine.dto import OptionContractDTO
+from algo_trading_engine.dto import OptionBarDTO, OptionContractDTO
 
 # Minimum calendar lookback for LSTM / feature history in paper trading (aligned with prior default).
 DEFAULT_PAPER_TRADING_LSTM_LOOKBACK_DAYS = 120
@@ -49,20 +49,14 @@ def make_rt_option_bar(
 
     The returned callable fetches current prices via the Polygon snapshot endpoint, which is
     inherently "now" and takes no date. It returns None when no snapshot price is available
-    (no historical /aggs fallback) - callers should branch on Strategy.is_live and use the
-    historical get_option_bar for any non-live valuation.
+    (no historical /aggs fallback). Callers branch on Strategy.use_snapshot_for_current_bar,
+    which BacktestConfig sets False and PaperTradingConfig sets True.
     """
 
     def _get_rt_option_bar(contract: 'OptionContractDTO') -> Optional[OptionBarDTO]:
         return options_handler.get_option_snapshot(contract)
 
     return _get_rt_option_bar
-
-
-if TYPE_CHECKING:
-    from algo_trading_engine.vo import Position
-    from algo_trading_engine.vo import OptionChain
-    from algo_trading_engine.models.config import BacktestConfig
 
 
 class TradingEngine(ABC):
@@ -73,10 +67,12 @@ class TradingEngine(ABC):
     allowing for unified usage patterns.
     """
 
-    def __init__(self, strategy: Strategy, data: pd.DataFrame, bar_interval: 'BarTimeInterval' = None):
+    def __init__(self, strategy: Strategy, data: pd.DataFrame, config: EngineConfig, bar_interval: 'BarTimeInterval' = None):
         self._strategy = strategy
         self._data = data
+        self._config = config
         self.bar_interval = bar_interval
+        
         strategy.get_current_underlying_price = self._get_current_underlying_price
     
     @abstractmethod
@@ -87,7 +83,6 @@ class TradingEngine(ABC):
         Returns:
             True if execution completed successfully, False otherwise
         """
-        pass
     
     @abstractmethod
     def get_positions(self) -> List['Position']:
@@ -97,7 +92,6 @@ class TradingEngine(ABC):
         Returns:
             List of currently open Position objects
         """
-        pass
     
     @property
     def data(self) -> pd.DataFrame:
@@ -108,9 +102,9 @@ class TradingEngine(ABC):
     @abstractmethod
     def strategy(self) -> Strategy:
         """Get the strategy being used by this engine."""
-        pass
     
-    @abstractclassmethod
+    @classmethod
+    @abstractmethod
     def from_config(cls, config: Union['BacktestConfig', PaperTradingConfig]) -> 'TradingEngine':
         """
         Create trading engine from configuration.
@@ -127,7 +121,6 @@ class TradingEngine(ABC):
         Raises:
             ValueError: If configuration is invalid or data fetching fails
         """
-        pass
 
     def _get_current_underlying_price(self, date: datetime, symbol: str) -> Optional[float]:
         """
@@ -149,8 +142,6 @@ class TradingEngine(ABC):
         current_date = datetime.now().date()
         if date.date() == current_date:
             try:
-                from algo_trading_engine.data_retriever import DataRetriever
-
                 use_cache = True
                 if hasattr(self, '_config') and hasattr(self._config, 'use_cache'):
                     use_cache = self._config.use_cache
@@ -158,7 +149,7 @@ class TradingEngine(ABC):
                 data_retriever = DataRetriever(symbol=symbol, use_cache=use_cache)
                 live_price = data_retriever.get_live_price()
             except Exception as e:
-                raise ValueError(f"Failed to fetch live price from DataRetriever: {e}")
+                raise ValueError(f'Failed to fetch live price from DataRetriever: {e}') from e
 
             if live_price is not None:
                 return live_price
@@ -172,8 +163,8 @@ class TradingEngine(ABC):
                 # If exact date not found, try to get closest available date
                 try:
                     return float(self.data.loc[self.data.index <= date]['Close'].iloc[-1])
-                except (IndexError, KeyError):
-                    raise ValueError(f"Could not find price data for date {date.date()}")
+                except (IndexError, KeyError) as e:
+                    raise ValueError(f"Could not find price data for date {date.date()}") from e
     
         
     def get_current_volumes_for_position(self, position: 'Position', date: Optional[datetime] = None) -> list[int]:
@@ -189,16 +180,14 @@ class TradingEngine(ABC):
         if not hasattr(position, 'spread_options') or position.spread_options is None:
             return current_volumes
 
-        # Resolve strategy and current-bar callable (may be called with self=engine or self=strategy after injection)
-        strategy_ref = getattr(self, 'strategy', self) if hasattr(self, 'strategy') else self
-        get_current_option_bar = getattr(strategy_ref, 'get_current_option_bar', None) if strategy_ref is not None else None
+        get_current_option_bar = self._strategy.get_current_option_bar
 
         for option in position.spread_options:
             try:
                 # Real-time snapshot when live, historical /aggs otherwise (handled by the strategy helper)
-                if get_current_option_bar is not None and callable(get_current_option_bar):
-                    bar_data = get_current_option_bar(option, date)
-                else:
+                bar_data = get_current_option_bar(option, date)
+
+                if bar_data is None:
                     get_logger().warning(f"No option bar data available for {option.ticker} on {date.date()}")
                     current_volumes.append(None)
                     continue
@@ -239,9 +228,6 @@ class TradingEngine(ABC):
             if not position.spread_options:
                 get_logger().warning("Position has no spread options")
                 return None
-            if not hasattr(self.strategy, 'get_option_bar') or not callable(self.strategy.get_option_bar):
-                get_logger().warning("get_option_bar is not callable")
-                return None
 
             underlying_price = self.strategy.get_current_underlying_price(
                 date,
@@ -274,9 +260,18 @@ class TradingEngine(ABC):
             get_logger().warning(f"Error computing exit price: {e}")
             return None
     
-    def check_univeral_close_conditions(self, date: datetime):
+    def check_univeral_close_conditions(
+        self,
+        date: datetime,
+        remove_position: Optional[
+            Callable[[datetime, "Position", float, Optional[float], Optional[list[int]]], None]
+        ] = None,
+    ) -> None:
         """
         Check if the position should be closed due to universal close conditions.
+
+        ``remove_position`` closes the position when a condition is met. When omitted, a met
+        condition is logged and the position is left open.
         """
         # Get symbol from strategy if available, otherwise default to 'SPY'
         symbol = getattr(self.strategy, 'symbol', 'SPY')
@@ -284,19 +279,32 @@ class TradingEngine(ABC):
         for position in self.get_positions():
             # Get current volumes for this specific position
             current_volumes = self.get_current_volumes_for_position(position, date)
-            
+
             # Compute exit price for profit target and stop loss checks
             exit_price = self.compute_exit_price(position, date)
-            
+
+            def close_position(
+                close_price: float,
+                underlying_price: Optional[float] = None,
+                position: "Position" = position,
+                current_volumes: Optional[list[int]] = current_volumes,
+            ) -> None:
+                if remove_position is None:
+                    get_logger().warning(
+                        f"Close condition met for {position} but no remove_position callable was provided"
+                    )
+                    return
+                remove_position(date, position, close_price, underlying_price, current_volumes)
+
             if self._should_close_due_to_assignment(position, date):
                 get_logger().info(f"Position {position.__str__()} expired or near expiration (days to exp: {position.get_days_to_expiration(date)})")
-                self._remove_position(date, position, 0.0, underlying_price=current_underlying_price, current_volumes=current_volumes)
+                close_position(0.0, current_underlying_price)
             elif self._should_close_due_to_profit_target(position, exit_price):
                 get_logger().info(f"Profit target hit for {position.__str__()} at exit {exit_price}")
-                self._remove_position(date, position, exit_price if exit_price is not None else 0.0, current_volumes=current_volumes)
+                close_position(exit_price if exit_price is not None else 0.0)
             elif self._should_close_due_to_stop(position, exit_price):
                 get_logger().info(f"Stop loss hit for {position.__str__()} at exit {exit_price}")
-                self._remove_position(date, position, exit_price if exit_price is not None else 0.0, current_volumes=current_volumes)
+                close_position(exit_price if exit_price is not None else 0.0)
     
     def _should_close_due_to_assignment(self, position: 'Position', date: datetime) -> bool:
         if UniversalCloseCondition.ASSIGNMENT not in self.strategy.universal_close_conditions:

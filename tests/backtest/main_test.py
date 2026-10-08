@@ -25,6 +25,9 @@ class MockStrategy(Strategy):
         dates = pd.date_range('2024-01-01', periods=3)
         self.data = pd.DataFrame({'Open': [99.0, 100.0, 101.0], 'High': [102.0, 103.0, 104.0], 'Low': [98.0, 99.0, 100.0], 'Close': [100.0, 101.0, 102.0], 'Volume': [1000000, 1100000, 1200000], 'Returns': [0.01, 0.01, 0.01], 'Log_Returns': [0.00995, 0.00995, 0.00995], 'Volatility': [0.15, 0.15, 0.15], 'RSI': [50.0, 50.0, 50.0], 'MACD_Hist': [0.0, 0.0, 0.0], 'Volume_Ratio': [1.0, 1.0, 1.0], 'Market_State': [0, 0, 0], 'Put_Call_Ratio': [0.5, 0.5, 0.5], 'Option_Volume_Ratio': [1.0, 1.0, 1.0], 'Days_Until_Next_CPI': [30, 29, 28], 'Days_Since_Last_CPI': [15, 16, 17], 'Days_Until_Next_CC': [45, 44, 43], 'Days_Since_Last_CC': [10, 11, 12], 'Days_Until_Next_FFR': [60, 59, 58], 'Days_Since_Last_FFR': [5, 6, 7]}, index=dates)
 
+    def get_position_size(self, _position, _capital):
+        return 1
+
     def on_new_date(self, date, positions, add_position, remove_position):
         """Mock strategy that creates positions with volume validation."""
         if len(positions) == 0:
