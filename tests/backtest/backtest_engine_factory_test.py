@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch, MagicMock
 import pandas as pd
 from algo_trading_engine.backtest.main import BacktestEngine
 from algo_trading_engine.models.config import BacktestConfig
-from algo_trading_engine.backtest.config import VolumeConfig
+from algo_trading_engine.models.config import VolumeConfig
 
 def _passthrough_credit_spread_ml_prep(data, _retriever, _symbol):
     """Avoid calendar/HMM I/O when unit-testing BacktestEngine.from_config."""

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from algo_trading_engine.common.progress_tracker import ProgressTracker
+from algo_trading_engine._internal.common.progress_tracker import ProgressTracker
 
 
 @dataclass

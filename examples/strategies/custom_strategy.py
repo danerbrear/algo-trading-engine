@@ -2,8 +2,8 @@ from datetime import datetime
 from decimal import Decimal
 
 from algo_trading_engine import OptionsRetrieverHelper, Strategy
-from algo_trading_engine.common.logger import get_logger
-from algo_trading_engine.common.models import Option, StrategyType
+from algo_trading_engine._internal.common.logger import get_logger
+from algo_trading_engine.vo import Option, StrategyType
 from algo_trading_engine.dto import ExpirationRangeDTO, StrikeRangeDTO
 from algo_trading_engine.indicators import ATRIndicator
 from algo_trading_engine.enums import BarTimeInterval

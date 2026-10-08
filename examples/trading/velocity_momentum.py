@@ -11,8 +11,8 @@ import os
 from dotenv import load_dotenv
 
 # Import from the public API
-from algo_trading_engine import PaperTradingEngine, PaperTradingConfig
-from algo_trading_engine.common.logger import get_logger
+from algo_trading_engine.trade import PaperTradingEngine, PaperTradingConfig
+from algo_trading_engine._internal.common.logger import get_logger
 
 # Load environment variables from .env file
 load_dotenv()

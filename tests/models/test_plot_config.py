@@ -4,7 +4,7 @@ from datetime import datetime
 
 from algo_trading_engine.models.config import BacktestConfig
 from algo_trading_engine.plotting import PlotConfig
-from algo_trading_engine.core.strategy import Strategy
+from algo_trading_engine.strategy import Strategy
 
 
 class _MinimalStrategy(Strategy):

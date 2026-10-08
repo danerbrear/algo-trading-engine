@@ -20,6 +20,15 @@ alwaysApply: true
 - Do **not** lazy-import stdlib or already-light project modules (`traceback`, `re`, `datetime`, shared `common` types, etc.). Do not claim “circular import” without verifying; fix structure when possible instead of scattering deferred imports.
 - When hoisting imports, **patch mocks at the consumer** (where the name is bound), e.g. `algo_trading_engine.backtest.main.prepare_credit_spread_backtest_data`, not only at the defining module.
 
+### Public surface and project code
+
+- **Public packages** live directly under `algo_trading_engine/` (`dto`, `vo`, `enums`, `indicators`, `plotting`, `database`, `backtest`, `models`, plus top-level modules such as `strategy`, `trade`, `options_helpers`, `data_retriever`, and `options_handler`). They contain the modules that define their exported names.
+- **Project code** lives under `algo_trading_engine._internal/` (`common`, `trade`, `strategies`, `ml_models`, `analysis`). The `_internal` prefix marks modules that ship with the wheel but are not part of the supported import surface for child repos.
+- A public package `__init__.py` re-exports only names defined in modules inside that same package (no facades from `_internal` or sibling packages).
+- `algo_trading_engine/__init__.py` is the only cross-package aggregator for lazy top-level exports; `_LAZY_EXPORTS` and `_LAZY_SUBMODULES` must not reference `_internal`.
+- `_internal` may import public packages. Public modules may call into `_internal` for work, but must not bind those names into `__all__`.
+- Helpers used by a single public package stay as underscore modules beside it (e.g. `backtest/_volume_validator.py`).
+
 ### Tests vs production code
 
 - Structure production code so it is testable (clear dependencies, real types at boundaries, seams for injection where appropriate).
@@ -299,7 +308,7 @@ alwaysApply: true
 - **Location Rules**:
   - Public VOs go in `vo/value_objects.py` and are exported via `vo/__init__.py`
   - Public enums go in `enums/__init__.py` (imported from their source modules)
-  - Internal VOs remain in their module (e.g., `Option`, `OptionChain`, `TreasuryRates` in `common/models.py` if they're runtime objects, not pure VOs)
+  - Runtime types such as `Option`, `OptionChain`, and `TreasuryRates` live in `algo_trading_engine.vo` (see `vo/option.py`, `vo/treasury_rates.py`). Project-only types stay under `_internal` or in underscore modules of the public package that uses them.
 
 #### 8. **Package Organization**
 ```python

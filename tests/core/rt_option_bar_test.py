@@ -7,8 +7,8 @@ from unittest.mock import Mock
 import pandas as pd
 import pytest
 
-from algo_trading_engine.core.engine import make_rt_option_bar
-from algo_trading_engine.core.strategy import Strategy
+from algo_trading_engine._internal.common.trading_engine import make_rt_option_bar
+from algo_trading_engine.strategy import Strategy
 from algo_trading_engine.dto import OptionBarDTO
 from algo_trading_engine.enums import BarTimeInterval
 

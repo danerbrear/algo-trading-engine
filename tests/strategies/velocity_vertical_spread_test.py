@@ -6,8 +6,8 @@ import pytest
 from datetime import datetime, timedelta
 from decimal import Decimal
 from unittest.mock import Mock, MagicMock, patch
-from algo_trading_engine.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
-from algo_trading_engine.common.models import OptionType
+from algo_trading_engine._internal.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
+from algo_trading_engine.enums import OptionType
 from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO, ExpirationRangeDTO, StrikeRangeDTO
 from algo_trading_engine.vo import StrikePrice, ExpirationDate
 

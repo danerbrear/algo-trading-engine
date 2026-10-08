@@ -2,11 +2,11 @@
 import pytest
 from datetime import datetime
 from unittest.mock import MagicMock, patch
-from algo_trading_engine.prediction.decision_store import JsonDecisionStore
-from algo_trading_engine.prediction.recommendation_engine import InteractiveStrategyRecommender
-from algo_trading_engine.prediction.capital_manager import CapitalManager
-from algo_trading_engine.common.models import StrategyType
-from algo_trading_engine.common.models import Option
+from algo_trading_engine.database.decision_store import JsonDecisionStore
+from algo_trading_engine._internal.trade.recommendation_engine import InteractiveStrategyRecommender
+from algo_trading_engine._internal.trade.capital_manager import CapitalManager
+from algo_trading_engine.enums import StrategyType
+from algo_trading_engine.vo import Option
 
 def _make_option(symbol: str, strike: float, expiration: str, opt_type: str, last: float) -> Option:
     """Helper to create Option objects for testing."""
@@ -55,7 +55,7 @@ def test_recommender_with_capital_manager_risk_check_pass(strategy_mock, decisio
     atm_option = _make_option('A', 500, '2025-09-06', 'put', 2.0)
     otm_option = _make_option('B', 495, '2025-09-06', 'put', 1.0)
     from algo_trading_engine.vo import create_position
-    from algo_trading_engine.common.models import StrategyType
+    from algo_trading_engine.enums import StrategyType
 
     def mock_on_new_date(date_arg, positions, add_position, _remove_position):
         if len(positions) == 0:
@@ -76,7 +76,7 @@ def test_recommender_with_capital_manager_risk_check_fail(strategy_mock, decisio
     atm_option = _make_option('A', 500, '2025-09-06', 'put', 2.0)
     otm_option = _make_option('B', 490, '2025-09-06', 'put', 1.0)
     from algo_trading_engine.vo import create_position
-    from algo_trading_engine.common.models import StrategyType
+    from algo_trading_engine.enums import StrategyType
 
     def mock_on_new_date(date_arg, positions, add_position, _remove_position):
         if len(positions) == 0:
@@ -97,7 +97,7 @@ def test_recommender_calculates_max_risk_correctly(strategy_mock, decision_store
     atm_option = _make_option('A', 500, '2025-09-06', 'put', 2.0)
     otm_option = _make_option('B', 495, '2025-09-06', 'put', 1.0)
     from algo_trading_engine.vo import create_position
-    from algo_trading_engine.common.models import StrategyType
+    from algo_trading_engine.enums import StrategyType
 
     def mock_on_new_date(date_arg, positions, add_position, _remove_position):
         if len(positions) == 0:
@@ -121,7 +121,7 @@ def test_recommender_displays_premium_info(strategy_mock, decision_store, capita
     atm_option = _make_option('A', 500, '2025-09-06', 'put', 2.0)
     otm_option = _make_option('B', 495, '2025-09-06', 'put', 1.0)
     from algo_trading_engine.vo import create_position
-    from algo_trading_engine.common.models import StrategyType
+    from algo_trading_engine.enums import StrategyType
 
     def mock_on_new_date(date_arg, positions, add_position, _remove_position):
         if len(positions) == 0:
@@ -148,7 +148,7 @@ def test_recommender_strategy_name_mapping(decision_store, allocations_config):
     atm_option = _make_option('A', 500, '2025-09-06', 'put', 2.0)
     otm_option = _make_option('B', 495, '2025-09-06', 'put', 1.0)
     from algo_trading_engine.vo import create_position
-    from algo_trading_engine.common.models import StrategyType
+    from algo_trading_engine.enums import StrategyType
 
     def mock_on_new_date(date_arg, positions, add_position, _remove_position):
         if len(positions) == 0:

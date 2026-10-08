@@ -8,11 +8,12 @@ from datetime import datetime
 from unittest.mock import Mock
 import pandas as pd
 from algo_trading_engine.backtest.main import BacktestEngine
-from algo_trading_engine.backtest.config import VolumeConfig
-from algo_trading_engine.core.strategy import Strategy
+from algo_trading_engine.models.config import VolumeConfig
+from algo_trading_engine.strategy import Strategy
 from algo_trading_engine.vo import Position, create_position
-from algo_trading_engine.common.models import StrategyType
-from algo_trading_engine.common.models import Option, OptionType
+from algo_trading_engine.enums import StrategyType
+from algo_trading_engine.vo import Option
+from algo_trading_engine.enums import OptionType
 
 class MockStrategy(Strategy):
     """Mock strategy for testing volume validation integration."""

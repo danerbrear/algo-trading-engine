@@ -32,7 +32,7 @@ def test_package_import_does_not_load_backtest_or_sklearn():
         "import algo_trading_engine\n"
         "print('sklearn', 'sklearn' in sys.modules)\n"
         "print('backtest_main', 'algo_trading_engine.backtest.main' in sys.modules)\n"
-        "print('data_retriever', 'algo_trading_engine.common.data_retriever' in sys.modules)\n"
+        "print('data_retriever', 'algo_trading_engine.data_retriever' in sys.modules)\n"
     )
     assert "sklearn False" in out
     assert "backtest_main False" in out
@@ -74,7 +74,7 @@ def test_backtest_config_lazy_load_does_not_load_backtest_main():
 def test_backtest_package_config_import_does_not_load_main():
     out = _run_isolated_import_check(
         "import sys\n"
-        "from algo_trading_engine.backtest.config import VolumeConfig\n"
+        "from algo_trading_engine.models.config import VolumeConfig\n"
         "assert VolumeConfig is not None\n"
         "print('backtest_main', 'algo_trading_engine.backtest.main' in sys.modules)\n"
     )

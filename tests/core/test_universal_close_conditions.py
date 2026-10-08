@@ -2,7 +2,7 @@ import unittest
 from datetime import datetime
 from unittest.mock import Mock
 
-from algo_trading_engine.core.strategy import Strategy
+from algo_trading_engine.strategy import Strategy
 from algo_trading_engine.enums import UniversalCloseCondition
 
 
@@ -46,7 +46,7 @@ class TestUniversalCloseConditionsConfig(unittest.TestCase):
 
 class TestUniversalCloseConditionsGating(unittest.TestCase):
     def setUp(self):
-        from algo_trading_engine.core.engine import TradingEngine
+        from algo_trading_engine._internal.common.trading_engine import TradingEngine
 
         self.engine_cls = TradingEngine
 

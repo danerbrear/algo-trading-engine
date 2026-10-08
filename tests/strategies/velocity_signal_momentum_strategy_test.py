@@ -2,10 +2,11 @@ import pytest
 import pandas as pd
 from datetime import datetime
 from unittest.mock import Mock, patch
-from algo_trading_engine.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
+from algo_trading_engine._internal.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
 from algo_trading_engine.vo import Position, create_position
-from algo_trading_engine.common.models import StrategyType
-from algo_trading_engine.common.models import TreasuryRates, Option, OptionChain, OptionType
+from algo_trading_engine.enums import StrategyType
+from algo_trading_engine.vo import TreasuryRates, Option, OptionChain
+from algo_trading_engine.enums import OptionType
 
 class TestVelocitySignalMomentumStrategy:
     """Test cases for VelocitySignalMomentumStrategy"""
@@ -78,7 +79,7 @@ class TestVelocitySignalMomentumStrategy:
         strategy = VelocitySignalMomentumStrategy(get_contract_list_for_date=get_contract_list_for_date, get_option_bar=get_option_bar, get_options_chain=get_options_chain)
         from algo_trading_engine.dto import OptionContractDTO
         from algo_trading_engine.vo import StrikePrice, ExpirationDate
-        from algo_trading_engine.common.models import OptionType as CommonOptionType
+        from algo_trading_engine.enums import OptionType as CommonOptionType
         from decimal import Decimal
         contracts = [OptionContractDTO(ticker='O:SPY240103P100', underlying_ticker='SPY', contract_type=CommonOptionType.PUT, strike_price=StrikePrice(Decimal('100.0')), expiration_date=ExpirationDate(datetime(2024, 1, 3).date()), exercise_style='american', shares_per_contract=100), OptionContractDTO(ticker='O:SPY240108P100', underlying_ticker='SPY', contract_type=CommonOptionType.PUT, strike_price=StrikePrice(Decimal('100.0')), expiration_date=ExpirationDate(datetime(2024, 1, 8).date()), exercise_style='american', shares_per_contract=100), OptionContractDTO(ticker='O:SPY240120P100', underlying_ticker='SPY', contract_type=CommonOptionType.PUT, strike_price=StrikePrice(Decimal('100.0')), expiration_date=ExpirationDate(datetime(2024, 1, 20).date()), exercise_style='american', shares_per_contract=100)]
         strategy.get_contract_list_for_date = Mock(return_value=contracts)
@@ -174,7 +175,7 @@ class TestVelocitySignalMomentumStrategy:
         strategy = VelocitySignalMomentumStrategy(get_contract_list_for_date=get_contract_list_for_date, get_option_bar=get_option_bar, get_options_chain=get_options_chain)
         from algo_trading_engine.dto import OptionContractDTO
         from algo_trading_engine.vo import StrikePrice, ExpirationDate
-        from algo_trading_engine.common.models import OptionType
+        from algo_trading_engine.enums import OptionType
         from datetime import date as date_type
         from decimal import Decimal
         atm_contract = OptionContractDTO(ticker='O:SPY240115P100', underlying_ticker='SPY', contract_type=OptionType.PUT, strike_price=StrikePrice(Decimal('100.0')), expiration_date=ExpirationDate(date_type(2024, 1, 15)), exercise_style='american', shares_per_contract=100)
@@ -427,7 +428,7 @@ class TestVelocityStrategyFactory:
 
     def test_factory_passes_profit_target_and_stop_loss(self):
         """Test that StrategyFactory properly passes profit_target and stop_loss to the strategy"""
-        from algo_trading_engine.backtest.strategy_builder import StrategyFactory
+        from algo_trading_engine.backtest._strategy_builder import StrategyFactory
         mock_options_handler = Mock()
         get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
         get_option_bar = mock_options_handler.get_option_bar
@@ -438,7 +439,7 @@ class TestVelocityStrategyFactory:
 
     def test_factory_handles_none_parameters(self):
         """Test that StrategyFactory handles None parameters correctly"""
-        from algo_trading_engine.backtest.strategy_builder import StrategyFactory
+        from algo_trading_engine.backtest._strategy_builder import StrategyFactory
         mock_options_handler = Mock()
         get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
         get_option_bar = mock_options_handler.get_option_bar
@@ -453,7 +454,7 @@ class TestVelocityStrategyMethodSignatures:
     def test_on_new_date_signature_matches_base_class(self):
         """Test that on_new_date can be called with the correct signature from base class"""
         from typing import Callable, Optional
-        from algo_trading_engine.core.strategy import Strategy as BaseStrategy
+        from algo_trading_engine.strategy import Strategy as BaseStrategy
         mock_options_handler = Mock()
         get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
         get_option_bar = mock_options_handler.get_option_bar
@@ -492,7 +493,7 @@ class TestVelocityStrategyMethodSignatures:
     def test_on_end_signature_matches_base_class(self):
         """Test that on_end can be called with the correct signature from base class"""
         from typing import Callable, Optional
-        from algo_trading_engine.core.strategy import Strategy as BaseStrategy
+        from algo_trading_engine.strategy import Strategy as BaseStrategy
         mock_options_handler = Mock()
         get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
         get_option_bar = mock_options_handler.get_option_bar

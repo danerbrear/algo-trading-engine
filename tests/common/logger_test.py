@@ -4,7 +4,7 @@ Unit tests for the singleton logger (Loguru) in common.logger.
 import pytest
 import tempfile
 from pathlib import Path
-from algo_trading_engine.common.logger import configure_logger, get_logger, log_and_echo, remove_logger_sink
+from algo_trading_engine._internal.common.logger import configure_logger, get_logger, log_and_echo, remove_logger_sink
 
 @pytest.fixture
 def tmp_log_dir():

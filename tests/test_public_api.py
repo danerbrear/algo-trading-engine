@@ -24,6 +24,8 @@ def test_public_api_imports():
         Strategy,
         PerformanceMetrics,
         PositionStats,
+        DataRetriever,
+        OptionsHandler,
     )
     
     # Verify that all imports succeeded
@@ -36,6 +38,12 @@ def test_public_api_imports():
     assert Strategy is not None
     assert PerformanceMetrics is not None
     assert PositionStats is not None
+
+    from algo_trading_engine import OptionsRetrieverHelper
+
+    assert OptionsRetrieverHelper is not None
+    assert DataRetriever is not None
+    assert OptionsHandler is not None
 
 
 def test_backtest_config_creation():

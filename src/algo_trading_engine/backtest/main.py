@@ -8,21 +8,21 @@ from typing import List
 import numpy as np
 import pandas as pd
 
-from algo_trading_engine.common.options_handler import OptionsHandler
+from algo_trading_engine.options_handler import OptionsHandler
 
-from algo_trading_engine.core.strategy import Strategy
-from .models import Benchmark
+from algo_trading_engine.strategy import Strategy
+from ._models import Benchmark
 from algo_trading_engine.vo import Position
-from algo_trading_engine.common.data_retriever import DataRetriever
-from algo_trading_engine.common.ml_pipeline import is_credit_spread_strategy, prepare_credit_spread_backtest_data
+from algo_trading_engine.data_retriever import DataRetriever
+from algo_trading_engine._internal.common.ml_pipeline import is_credit_spread_strategy, prepare_credit_spread_backtest_data
 from algo_trading_engine.enums import BarTimeInterval
-from .config import VolumeConfig, VolumeStats
+from algo_trading_engine.models.config import VolumeConfig, VolumeStats
 from algo_trading_engine.models import OverallPerformanceStats, StrategyPerformanceStats
-from algo_trading_engine.common.logger import configure_logger, get_logger, log_and_echo
-from algo_trading_engine.common.progress_tracker import ProgressTracker, set_global_progress_tracker
-from algo_trading_engine.common.run_observer import RunObserver
-from .strategy_builder import StrategyFactory, create_strategy_from_args
-from algo_trading_engine.core.engine import TradingEngine
+from algo_trading_engine._internal.common.logger import configure_logger, get_logger, log_and_echo
+from algo_trading_engine._internal.common.progress_tracker import ProgressTracker, set_global_progress_tracker
+from algo_trading_engine._internal.common.run_observer import RunObserver
+from ._strategy_builder import StrategyFactory, create_strategy_from_args
+from algo_trading_engine._internal.common.trading_engine import TradingEngine
 from algo_trading_engine.models.config import BacktestConfig as BacktestConfigDTO
 from algo_trading_engine.models.metrics import PerformanceMetrics, PositionStats
 
@@ -353,7 +353,7 @@ class BacktestEngine(TradingEngine):
         log_and_echo(f"   Sharpe Ratio: {sharpe_ratio:.3f}")
 
         if self.closed_positions:
-            from algo_trading_engine.backtest.equity import build_equity_curve_dataframe  # pylint: disable=import-outside-toplevel
+            from algo_trading_engine.backtest._equity import build_equity_curve_dataframe  # pylint: disable=import-outside-toplevel
             from algo_trading_engine.plotting import build_plot_spec, show_plot  # pylint: disable=import-outside-toplevel
             from algo_trading_engine.plotting.spec import EQUITY_CURVE_NAME  # pylint: disable=import-outside-toplevel
 

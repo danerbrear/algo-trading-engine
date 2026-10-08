@@ -5,10 +5,10 @@ import pytest
 from datetime import datetime, timedelta
 from unittest.mock import Mock, MagicMock, patch
 import pandas as pd
-from algo_trading_engine.core.strategy import IndicatorUpdateError, Strategy
-from algo_trading_engine.core.indicators.indicator import Indicator
-from algo_trading_engine.core.indicators.average_true_return_indicator import ATRIndicator
-from algo_trading_engine.core.indicators.sma_indicator import SMAIndicator
+from algo_trading_engine.strategy import IndicatorUpdateError, Strategy
+from algo_trading_engine.indicators.indicator import Indicator
+from algo_trading_engine.indicators.average_true_return_indicator import ATRIndicator
+from algo_trading_engine.indicators.sma_indicator import SMAIndicator
 from algo_trading_engine.enums import BarTimeInterval
 
 class ConcreteTestStrategy(Strategy):
@@ -130,7 +130,7 @@ class TestStrategyWarmUpPeriod:
         assert strategy.warm_up_period == 20
 
     def test_warm_up_period_with_real_indicators(self):
-        from algo_trading_engine.core.indicators.sma_indicator import SMAIndicator
+        from algo_trading_engine.indicators.sma_indicator import SMAIndicator
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(SMAIndicator(period=15))
         strategy.add_indicator(SMAIndicator(period=30))
@@ -201,7 +201,7 @@ class TestStrategyUpdateIndicators:
         strategy.add_indicator(failing_indicator)
         strategy.add_indicator(failing_indicator)
         strategy.set_data(self.create_sample_data())
-        with patch('algo_trading_engine.core.strategy.get_logger') as mock_get_logger:
+        with patch('algo_trading_engine.strategy.get_logger') as mock_get_logger:
             mock_logger = MagicMock()
             mock_get_logger.return_value = mock_logger
             result = strategy._update_indicators(datetime(2024, 1, 10))
@@ -271,7 +271,7 @@ class TestStrategyWithATRIndicator:
         strategy.add_indicator(atr)
         strategy.add_indicator(atr)
         strategy.set_data(self.create_sample_data(num_days=5))
-        with patch('algo_trading_engine.core.strategy.get_logger') as mock_get_logger:
+        with patch('algo_trading_engine.strategy.get_logger') as mock_get_logger:
             mock_logger = MagicMock()
             mock_get_logger.return_value = mock_logger
             result = strategy._update_indicators(datetime(2024, 1, 5))
@@ -548,7 +548,7 @@ class TestStrategyGetIndicatorByName:
         assert strategy.get_indicator_by_name('ATR') is None
 
     def test_disambiguates_multiple_same_type_indicators(self):
-        from algo_trading_engine.core.indicators.sma_indicator import SMAIndicator
+        from algo_trading_engine.indicators.sma_indicator import SMAIndicator
         sma_20 = SMAIndicator(period=20)
         sma_50 = SMAIndicator(period=50)
         strategy = ConcreteTestStrategy()

@@ -27,6 +27,8 @@ Metrics:
 
 Helpers:
     - OptionsRetrieverHelper: Static utility methods for filtering, finding, and calculating options data
+    - DataRetriever: Market and treasury data fetching for strategies and engines
+    - OptionsHandler: Options chain and bar retrieval (Polygon / cache)
 
 Sub-packages:
     - dto: Data Transfer Objects for API communication
@@ -64,9 +66,11 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from algo_trading_engine.backtest.main import BacktestEngine
-    from algo_trading_engine.common.options_helpers import OptionsRetrieverHelper
-    from algo_trading_engine.core.engine import PaperTradingEngine
-    from algo_trading_engine.core.strategy import Strategy
+    from algo_trading_engine.data_retriever import DataRetriever
+    from algo_trading_engine.options_handler import OptionsHandler
+    from algo_trading_engine.options_helpers import OptionsRetrieverHelper
+    from algo_trading_engine.trade import PaperTradingEngine
+    from algo_trading_engine.strategy import Strategy
     from algo_trading_engine.models.config import (
         BacktestConfig,
         PaperTradingConfig,
@@ -93,6 +97,8 @@ __all__ = [
     "PositionStats",
     # Helpers
     "OptionsRetrieverHelper",
+    "DataRetriever",
+    "OptionsHandler",
     # Sub-packages (for strategy development)
     "dto",
     "vo",
@@ -107,8 +113,8 @@ _LAZY_SUBMODULES = frozenset({"dto", "vo", "enums", "indicators", "plotting", "d
 # module_path, attribute_name
 _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
     "BacktestEngine": ("algo_trading_engine.backtest.main", "BacktestEngine"),
-    "PaperTradingEngine": ("algo_trading_engine.core.engine", "PaperTradingEngine"),
-    "Strategy": ("algo_trading_engine.core.strategy", "Strategy"),
+    "PaperTradingEngine": ("algo_trading_engine.trade", "PaperTradingEngine"),
+    "Strategy": ("algo_trading_engine.strategy", "Strategy"),
     "BacktestConfig": ("algo_trading_engine.models.config", "BacktestConfig"),
     "PaperTradingConfig": ("algo_trading_engine.models.config", "PaperTradingConfig"),
     "VolumeConfig": ("algo_trading_engine.models.config", "VolumeConfig"),
@@ -116,9 +122,11 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
     "PerformanceMetrics": ("algo_trading_engine.models.metrics", "PerformanceMetrics"),
     "PositionStats": ("algo_trading_engine.models.metrics", "PositionStats"),
     "OptionsRetrieverHelper": (
-        "algo_trading_engine.common.options_helpers",
+        "algo_trading_engine.options_helpers",
         "OptionsRetrieverHelper",
     ),
+    "DataRetriever": ("algo_trading_engine.data_retriever", "DataRetriever"),
+    "OptionsHandler": ("algo_trading_engine.options_handler", "OptionsHandler"),
 }
 
 

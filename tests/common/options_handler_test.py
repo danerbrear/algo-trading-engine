@@ -11,12 +11,12 @@ from decimal import Decimal
 from pathlib import Path
 from unittest.mock import Mock, patch
 from zoneinfo import ZoneInfo
-from algo_trading_engine.common.options_handler import OptionsHandler
-from algo_trading_engine.common.cache.options_cache_manager import OptionsCacheManager
-from algo_trading_engine.common.options_helpers import OptionsRetrieverHelper
+from algo_trading_engine.options_handler import OptionsHandler
+from algo_trading_engine._internal.common.cache.options_cache_manager import OptionsCacheManager
+from algo_trading_engine.options_helpers import OptionsRetrieverHelper
 from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO
 from algo_trading_engine.vo import StrikePrice, ExpirationDate
-from algo_trading_engine.common.models import OptionType, StrategyType
+from algo_trading_engine.enums import OptionType, StrategyType
 
 class TestOptionsCacheManager:
     """Test cases for OptionsCacheManager."""
@@ -398,11 +398,11 @@ from datetime import datetime, date, timedelta, time
 from decimal import Decimal
 from unittest.mock import Mock, patch, MagicMock
 from pathlib import Path
-from algo_trading_engine.common.options_handler import OptionsHandler
-from algo_trading_engine.common.cache.options_cache_manager import OptionsCacheManager
+from algo_trading_engine.options_handler import OptionsHandler
+from algo_trading_engine._internal.common.cache.options_cache_manager import OptionsCacheManager
 from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO, StrikeRangeDTO, ExpirationRangeDTO
 from algo_trading_engine.vo import StrikePrice, ExpirationDate
-from algo_trading_engine.common.models import OptionType
+from algo_trading_engine.enums import OptionType
 
 class TestOptionsHandlerPhase3:
     """Integration tests for Phase 3 OptionsHandler API."""
@@ -418,7 +418,7 @@ class TestOptionsHandlerPhase3:
         if skip_mocking:
             yield
             return
-        with patch('algo_trading_engine.common.options_handler.OptionsHandler._fetch_bar_from_api', return_value=None), patch('algo_trading_engine.common.options_handler.OptionsHandler._fetch_contracts_from_api', return_value=[]):
+        with patch('algo_trading_engine.options_handler.OptionsHandler._fetch_bar_from_api', return_value=None), patch('algo_trading_engine.options_handler.OptionsHandler._fetch_contracts_from_api', return_value=[]):
             yield
 
     @pytest.fixture
@@ -631,10 +631,10 @@ import shutil
 from datetime import datetime, date, timedelta, time
 from decimal import Decimal
 from unittest.mock import Mock, patch
-from algo_trading_engine.common.options_handler import OptionsHandler
+from algo_trading_engine.options_handler import OptionsHandler
 from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO, StrikeRangeDTO, ExpirationRangeDTO
 from algo_trading_engine.vo import StrikePrice, ExpirationDate
-from algo_trading_engine.common.models import OptionType
+from algo_trading_engine.enums import OptionType
 
 class TestOptionsHandlerPhase5Simple:
     """Simple validation tests for Phase 5 OptionsHandler."""
@@ -828,12 +828,12 @@ from unittest.mock import Mock, patch, MagicMock
 from typing import List, Dict, Any
 import time
 import os
-from algo_trading_engine.common.options_handler import OptionsHandler
+from algo_trading_engine.options_handler import OptionsHandler
 from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO, StrikeRangeDTO, ExpirationRangeDTO, OptionsChainDTO
 from algo_trading_engine.vo import StrikePrice, ExpirationDate
-from algo_trading_engine.common.options_helpers import OptionsRetrieverHelper
-from algo_trading_engine.common.models import OptionType
-from algo_trading_engine.common.cache.options_cache_manager import OptionsCacheManager
+from algo_trading_engine.options_helpers import OptionsRetrieverHelper
+from algo_trading_engine.enums import OptionType
+from algo_trading_engine._internal.common.cache.options_cache_manager import OptionsCacheManager
 
 class TestOptionsHandlerPhase5Integration:
     """Comprehensive integration tests for the complete OptionsHandler API."""
@@ -847,7 +847,7 @@ class TestOptionsHandlerPhase5Integration:
         if 'rate_limiting' in request.node.name:
             yield
             return
-        with patch('algo_trading_engine.common.options_handler.OptionsHandler._fetch_bar_from_api', return_value=None), patch('algo_trading_engine.common.options_handler.OptionsHandler._fetch_contracts_from_api', return_value=[]):
+        with patch('algo_trading_engine.options_handler.OptionsHandler._fetch_bar_from_api', return_value=None), patch('algo_trading_engine.options_handler.OptionsHandler._fetch_contracts_from_api', return_value=[]):
             yield
 
     @pytest.fixture
@@ -1104,7 +1104,7 @@ class TestOptionsHandlerErrorHandling:
         if skip_mocking:
             yield
             return
-        with patch('algo_trading_engine.common.options_handler.OptionsHandler._fetch_bar_from_api', return_value=None), patch('algo_trading_engine.common.options_handler.OptionsHandler._fetch_contracts_from_api', return_value=[]):
+        with patch('algo_trading_engine.options_handler.OptionsHandler._fetch_bar_from_api', return_value=None), patch('algo_trading_engine.options_handler.OptionsHandler._fetch_contracts_from_api', return_value=[]):
             yield
 
     @pytest.fixture
@@ -1139,7 +1139,7 @@ class TestOptionsHandlerErrorHandling:
     def test_invalid_contract_parameters(self, options_handler):
         """Test error handling for invalid contract parameters."""
         from algo_trading_engine.dto import OptionContractDTO
-        from algo_trading_engine.common.models import OptionType
+        from algo_trading_engine.enums import OptionType
         from algo_trading_engine.vo import StrikePrice, ExpirationDate
         valid_contract = OptionContractDTO(ticker='O:SPY250115C00600000', underlying_ticker='SPY', contract_type=OptionType.CALL, strike_price=StrikePrice(Decimal('600.0')), expiration_date=ExpirationDate(date(2025, 1, 15)), exercise_style='american', shares_per_contract=100)
         result = options_handler.get_option_bar('invalid_contract', datetime.now())

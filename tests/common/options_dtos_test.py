@@ -14,7 +14,7 @@ from algo_trading_engine.dto import (
     OptionContractDTO, OptionBarDTO, StrikeRangeDTO, ExpirationRangeDTO,
     OptionsChainDTO
 )
-from algo_trading_engine.common.models import OptionType
+from algo_trading_engine.enums import OptionType
 
 
 class TestStrikePrice:

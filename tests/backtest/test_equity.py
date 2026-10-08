@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from algo_trading_engine.backtest.equity import build_equity_curve_dataframe
+from algo_trading_engine.backtest._equity import build_equity_curve_dataframe
 
 
 def test_build_equity_curve_dataframe():
