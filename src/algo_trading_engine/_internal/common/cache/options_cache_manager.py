@@ -107,23 +107,32 @@ class OptionsCacheManager(CacheManager):
         return self.get_cache_dir('options', symbol, date.strftime('%Y-%m-%d'), 'bars', interval_dir)
     
     def load_contracts(self, symbol: str, date: date) -> Optional[List[OptionContractDTO]]:
-        """Load contracts from cache."""
+        """Load contracts from cache.
+
+        The file holds plain dicts (see save_contracts); each is rebuilt into a DTO.
+        """
         cache_path = self.get_contracts_cache_path(symbol, date)
         if cache_path.exists():
             try:
                 with open(cache_path, 'rb') as f:
-                    return pickle.load(f)
+                    records = pickle.load(f)
+                return [OptionContractDTO.from_dict(record) for record in records]
             except Exception as e:
                 print(f"Error loading contracts cache: {e}")
         return None
     
     def save_contracts(self, symbol: str, date: date, contracts: List[OptionContractDTO]) -> None:
-        """Save contracts to cache."""
+        """Save contracts to cache as plain dicts.
+
+        Pickling DTO instances would embed the module path of every class they
+        reference (e.g. OptionType), which breaks the cache whenever a class moves.
+        Dicts of str/float/int/None carry no class references.
+        """
         cache_path = self.get_contracts_cache_path(symbol, date)
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         
         with open(cache_path, 'wb') as f:
-            pickle.dump(contracts, f)
+            pickle.dump([contract.to_dict() for contract in contracts], f)
     
     def load_bar(
         self,

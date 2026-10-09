@@ -273,7 +273,6 @@ class Strategy(ABC):
             underlying_price: Price of the underlying at the time of exit
             current_volumes: List of current volume data for each option in position.spread_options
         """
-        pass
 
     def on_add_position_success(self, position: 'Position'):
         """
@@ -282,7 +281,6 @@ class Strategy(ABC):
         Args:
             position: Position to add
         """
-        pass
 
     def get_current_underlying_price(self, date: datetime, symbol: str) -> Optional[float]:
         """

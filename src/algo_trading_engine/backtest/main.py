@@ -457,10 +457,15 @@ class BacktestEngine(TradingEngine):
                     self.volume_stats = self.volume_stats.increment_rejected_positions()
                     return  # Reject the position
 
-        position_size = self.strategy.get_position_size(position, self.capital)
-        if position_size == 0:
-            get_logger().info("Not enough capital to add position. Position size is 0.")
-            return
+            try:
+                position_size = self.strategy.get_position_size(position, self.capital) 
+            except NotImplementedError:
+                # Intentional default capability
+                position_size = self._get_position_size(position)  
+            
+            if position_size == 0:
+                get_logger().info("Not enough capital to add position. Position size is 0.")
+                return
         
         position.set_quantity(position_size)
 
@@ -559,6 +564,20 @@ class BacktestEngine(TradingEngine):
         get_logger().info(f"     Return: ${position_return:+.2f} | Capital: ${self.capital:.2f}")
 
         self.strategy.on_remove_position_success(date, position, exit_price, underlying_price, current_volumes)
+
+    def _get_position_size(self, position: Position) -> int:
+        """
+        Default position size calculation for positions that don't have a get_position_size method.
+        Get the number of contracts to buy or sell for a position based on the max position size and the current capital.
+        """
+        if self.max_position_size is None:
+            return 1
+        
+        max_position_capital = self.capital * self.max_position_size
+        max_risk = position.max_risk_dollars_per_contract()
+        if max_risk is None or max_risk <= 0:
+            return 1
+        return int(max_position_capital / max_risk)
     
     def _calculate_sharpe_ratio(self) -> float:
         """

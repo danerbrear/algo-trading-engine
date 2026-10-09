@@ -22,27 +22,22 @@ class StrategyBuilder(ABC):
     @abstractmethod
     def reset(self):
         """Reset the builder to initial state"""
-        pass
 
     @abstractmethod
     def set_options_callables(self, get_contract_list_for_date: Callable, get_option_bar: Callable, get_options_chain: Callable, get_current_volumes_for_position: Callable, options_handler=None):
         """Set the options callables (methods from OptionsHandler as callables)"""
-        pass
     
     @abstractmethod
     def set_stop_loss(self, stop_loss: float):
         """Set the stop loss"""
-        pass
     
     @abstractmethod
     def set_profit_target(self, profit_target: float):
         """Set the profit target"""
-        pass
     
     @abstractmethod
     def build(self) -> Strategy:
         """Build and return the strategy"""
-        pass
 
 
 class CreditSpreadStrategyBuilder(StrategyBuilder):

@@ -3,6 +3,7 @@ Unit tests for Phase 2 OptionsHandler refactoring.
 
 Tests the new caching infrastructure, migration utility, and helper classes.
 """
+import pickle
 import pytest
 import tempfile
 import shutil
@@ -150,6 +151,19 @@ class TestOptionsCacheManager:
         assert loaded_bar.ticker == ticker
         assert loaded_bar.close_price == Decimal('5.60')
         assert loaded_bar.volume == 1000
+
+    def test_saved_contracts_contain_no_class_references(self, cache_manager, sample_contracts):
+        """The contracts pickle must hold only builtins so moving a class never breaks the cache."""
+        class _NoClassUnpickler(pickle.Unpickler):
+            def find_class(self, module, name):
+                raise AssertionError(f"contracts cache references {module}.{name}")
+
+        test_date = date(2021, 11, 19)
+        cache_manager.save_contracts('SPY', test_date, sample_contracts)
+        with open(cache_manager.get_contracts_cache_path('SPY', test_date), 'rb') as f:
+            records = _NoClassUnpickler(f).load()
+        assert records[0]['contract_type'] == 'call'
+        assert records[1]['contract_type'] == 'put'
 
     def test_load_nonexistent_contracts(self, cache_manager):
         """Test loading non-existent contracts."""
