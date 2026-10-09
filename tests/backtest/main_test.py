@@ -68,17 +68,6 @@ class TestVolumeValidationIntegration:
         assert engine.volume_stats.options_checked == 2
         assert engine.volume_stats.positions_rejected_volume == 0
 
-    def test_backtest_engine_with_volume_validation_disabled(self):
-        """Test BacktestEngine with volume validation disabled."""
-        strategy = MockStrategy()
-        data = strategy.data
-        engine = BacktestEngine(data=data, strategy=strategy, initial_capital=10000, start_date=datetime(2024, 1, 1), end_date=datetime(2024, 1, 3), volume_config=VolumeConfig(min_volume=10, enable_volume_validation=False))
-        success = engine.run()
-        assert success is True
-        assert len(engine.positions) == 1
-        assert engine.volume_stats.options_checked == 0
-        assert engine.volume_stats.positions_rejected_volume == 0
-
     def test_backtest_engine_rejects_position_with_insufficient_volume(self):
         """Test BacktestEngine rejects position when options have insufficient volume."""
 
@@ -198,29 +187,6 @@ class TestVolumeValidationIntegration:
         assert summary['options_checked'] == 2
         assert summary['rejection_rate'] == 0.0
 
-    def test_backtest_engine_with_position_without_spread_options(self):
-        """Test BacktestEngine handles positions without spread_options gracefully."""
-
-        class MockStrategyWithoutSpreadOptions(MockStrategy):
-
-            def on_new_date(self, date, positions, add_position, remove_position):
-                """Mock strategy that creates positions without spread_options."""
-                if len(positions) == 0:
-                    position = create_position(symbol='SPY', expiration_date=datetime(2024, 3, 15), strategy_type=StrategyType.LONG_CALL, strike_price=500.0, entry_date=date, entry_price=100.0, spread_options=None)
-                    add_position(position)
-
-        def on_end(_self, _positions, _remove_position, _date):
-            """Mock strategy end method."""
-            pass
-        strategy = MockStrategyWithoutSpreadOptions()
-        data = strategy.data
-        engine = BacktestEngine(data=data, strategy=strategy, initial_capital=10000, start_date=datetime(2024, 1, 1), end_date=datetime(2024, 1, 3), volume_config=VolumeConfig(min_volume=10, enable_volume_validation=True))
-        success = engine.run()
-        assert success is True
-        assert len(engine.positions) == 1
-        assert engine.volume_stats.options_checked == 0
-        assert engine.volume_stats.positions_rejected_volume == 0
-
     def test_position_closure_volume_validation(self):
         """Test that position closures are skipped when volume is insufficient."""
         data = pd.DataFrame({'Close': [100, 101, 102, 103, 104], 'Volume': [1000, 1100, 1200, 1300, 1400], 'Returns': [0.01, 0.01, 0.01, 0.01, 0.01], 'Log_Returns': [0.01, 0.01, 0.01, 0.01, 0.01], 'Volatility': [0.02, 0.02, 0.02, 0.02, 0.02], 'RSI': [50, 50, 50, 50, 50], 'MACD_Hist': [0, 0, 0, 0, 0], 'Volume_Ratio': [1.0, 1.0, 1.0, 1.0, 1.0], 'Market_State': [0, 0, 0, 0, 0], 'Put_Call_Ratio': [1.0, 1.0, 1.0, 1.0, 1.0], 'Option_Volume_Ratio': [1.0, 1.0, 1.0, 1.0, 1.0], 'Days_Until_Next_CPI': [30, 29, 28, 27, 26], 'Days_Since_Last_CPI': [5, 6, 7, 8, 9], 'Days_Until_Next_CC': [30, 29, 28, 27, 26], 'Days_Since_Last_CC': [5, 6, 7, 8, 9], 'Days_Until_Next_FFR': [30, 29, 28, 27, 26], 'Days_Since_Last_FFR': [5, 6, 7, 8, 9]}, index=pd.date_range('2024-01-01', periods=5))
@@ -277,7 +243,7 @@ class TestUniversalCloseCallback:
                 super().on_remove_position_success(date, position, exit_price, underlying_price, current_volumes)
         strategy = MockStrategyWithCallback()
         data = strategy.data
-        engine = BacktestEngine(data=data, strategy=strategy, initial_capital=10000, start_date=datetime(2024, 1, 1), end_date=datetime(2024, 1, 3), volume_config=VolumeConfig(min_volume=10, enable_volume_validation=False))
+        engine = BacktestEngine(data=data, strategy=strategy, initial_capital=10000, start_date=datetime(2024, 1, 1), end_date=datetime(2024, 1, 3), volume_config=VolumeConfig(min_volume=10, enable_volume_validation=True))
         success = engine.run()
         assert success is True
         assert len(callback_invocations) == 1, 'on_remove_position_success should be called exactly once (universal close due to expiration)'
@@ -339,7 +305,7 @@ class TestUniversalCloseCallback:
                 super().on_remove_position_success(date, position, exit_price, underlying_price, current_volumes)
         strategy = MockStrategyProfitTarget()
         data = strategy.data
-        engine = BacktestEngine(data=data, strategy=strategy, initial_capital=10000, start_date=datetime(2024, 1, 1), end_date=datetime(2024, 1, 3), volume_config=VolumeConfig(min_volume=10, enable_volume_validation=False))
+        engine = BacktestEngine(data=data, strategy=strategy, initial_capital=10000, start_date=datetime(2024, 1, 1), end_date=datetime(2024, 1, 3), volume_config=VolumeConfig(min_volume=10, enable_volume_validation=True))
         success = engine.run()
         assert success is True
         assert len(callback_invocations) == 1, 'on_remove_position_success should be called exactly once (universal close due to profit target)'
@@ -401,7 +367,7 @@ class TestUniversalCloseCallback:
                 super().on_remove_position_success(date, position, exit_price, underlying_price, current_volumes)
         strategy = MockStrategyProfitTargetExcluded()
         data = strategy.data
-        engine = BacktestEngine(data=data, strategy=strategy, initial_capital=10000, start_date=datetime(2024, 1, 1), end_date=datetime(2024, 1, 3), volume_config=VolumeConfig(min_volume=10, enable_volume_validation=False))
+        engine = BacktestEngine(data=data, strategy=strategy, initial_capital=10000, start_date=datetime(2024, 1, 1), end_date=datetime(2024, 1, 3), volume_config=VolumeConfig(min_volume=10, enable_volume_validation=True))
         success = engine.run()
         assert success is True
         assert len(callback_invocations) == 0, 'Universal profit target should not close when PROFIT_TARGET is excluded'

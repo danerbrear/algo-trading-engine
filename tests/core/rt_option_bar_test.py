@@ -82,7 +82,8 @@ class TestUseSnapshotForCurrentBar:
         strategy = _MinimalStrategy(use_snapshot_for_current_bar=True)
         assert strategy.use_snapshot_for_current_bar is True
 
-    def test_backtest_config_sets_false(self):
+    def test_backtest_config_leaves_flag_unchanged(self):
+        """BacktestConfig construction does not mutate the strategy flag; engines set it in from_config."""
         strategy = _MinimalStrategy(use_snapshot_for_current_bar=True)
         BacktestConfig(
             initial_capital=100000,
@@ -91,7 +92,7 @@ class TestUseSnapshotForCurrentBar:
             symbol="SPY",
             strategy_type=strategy,
         )
-        assert strategy.use_snapshot_for_current_bar is False
+        assert strategy.use_snapshot_for_current_bar is True
 
     def test_paper_trading_config_sets_true(self):
         strategy = _MinimalStrategy()
