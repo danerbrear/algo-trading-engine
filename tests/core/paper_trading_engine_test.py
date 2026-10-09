@@ -71,7 +71,7 @@ def test_paper_trading_engine_run_no_open_positions(mock_strategy, mock_options_
     store, config_file = decision_store_with_allocations
     monkeypatch.chdir(tmp_path)
     engine = PaperTradingEngine(strategy=mock_strategy, config=paper_trading_config, options_handler=mock_options_handler)
-    with patch.object(mock_strategy, 'get_current_underlying_price', return_value=500.0), patch('algo_trading_engine.data_retriever.DataRetriever.get_live_price', return_value=500.0), patch('algo_trading_engine._internal.trade.recommendation_engine.InteractiveStrategyRecommender') as mock_recommender_class:
+    with patch.object(mock_strategy, 'get_current_underlying_price', return_value=500.0), patch('algo_trading_engine.data_retriever.DataRetriever.get_live_price', return_value=500.0), patch('algo_trading_engine.trade.InteractiveStrategyRecommender') as mock_recommender_class:
         mock_recommender = Mock()
         mock_recommender.get_open_positions_status.return_value = []
         mock_recommender.run.return_value = None
@@ -100,7 +100,7 @@ def test_paper_trading_engine_run_with_open_positions(mock_strategy, mock_option
     open_positions = default_store.get_open_positions(symbol='SPY')
     assert len(open_positions) == 1, 'Should have one open position'
     engine = PaperTradingEngine(strategy=mock_strategy, config=paper_trading_config, options_handler=mock_options_handler)
-    with patch.object(mock_strategy, 'get_current_underlying_price', return_value=500.0), patch('algo_trading_engine.data_retriever.DataRetriever.get_live_price', return_value=500.0), patch('algo_trading_engine._internal.trade.recommendation_engine.InteractiveStrategyRecommender') as mock_recommender_class:
+    with patch.object(mock_strategy, 'get_current_underlying_price', return_value=500.0), patch('algo_trading_engine.data_retriever.DataRetriever.get_live_price', return_value=500.0), patch('algo_trading_engine.trade.InteractiveStrategyRecommender') as mock_recommender_class:
         mock_recommender = Mock()
         mock_recommender.get_open_positions_status.return_value = [{'symbol': 'SPY', 'strategy_type': 'PUT_CREDIT_SPREAD', 'quantity': 1, 'entry_price': 1.0, 'exit_price': 0.5, 'pnl_dollars': 50.0, 'pnl_percent': 0.5, 'days_held': 38, 'dte': 29}]
         mock_recommender.run.return_value = None
@@ -116,7 +116,7 @@ def test_paper_trading_engine_run_with_recommendation_engine_failure(mock_strate
     store, config_file = decision_store_with_allocations
     monkeypatch.chdir(tmp_path)
     engine = PaperTradingEngine(strategy=mock_strategy, config=paper_trading_config, options_handler=mock_options_handler)
-    with patch.object(mock_strategy, 'get_current_underlying_price', return_value=500.0), patch('algo_trading_engine.data_retriever.DataRetriever.get_live_price', return_value=500.0), patch('algo_trading_engine._internal.trade.recommendation_engine.InteractiveStrategyRecommender') as mock_recommender_class:
+    with patch.object(mock_strategy, 'get_current_underlying_price', return_value=500.0), patch('algo_trading_engine.data_retriever.DataRetriever.get_live_price', return_value=500.0), patch('algo_trading_engine.trade.InteractiveStrategyRecommender') as mock_recommender_class:
         mock_recommender = Mock()
         mock_recommender.run.side_effect = Exception('Test error')
         mock_recommender_class.return_value = mock_recommender
@@ -138,7 +138,7 @@ def test_paper_trading_engine_run_missing_capital_config(mock_strategy, mock_opt
     store = JsonDecisionStore(base_dir=str(tmp_path))
     monkeypatch.chdir(tmp_path)
     engine = PaperTradingEngine(strategy=mock_strategy, config=paper_trading_config, options_handler=mock_options_handler)
-    with patch.object(mock_strategy, 'get_current_underlying_price', return_value=500.0), patch('algo_trading_engine.data_retriever.DataRetriever.get_live_price', return_value=500.0), patch('algo_trading_engine._internal.trade.recommendation_engine.InteractiveStrategyRecommender') as mock_recommender_class:
+    with patch.object(mock_strategy, 'get_current_underlying_price', return_value=500.0), patch('algo_trading_engine.data_retriever.DataRetriever.get_live_price', return_value=500.0), patch('algo_trading_engine.trade.InteractiveStrategyRecommender') as mock_recommender_class:
         mock_recommender = Mock()
         mock_recommender.get_open_positions_status.return_value = []
         mock_recommender.run.return_value = None
@@ -192,8 +192,8 @@ class TestComputePaperTradingFetchStartDate:
 class TestPaperTradingEngineFromConfig:
     """Test PaperTradingEngine.from_config() factory method."""
 
-    @patch('algo_trading_engine.options_handler.OptionsHandler')
-    @patch('algo_trading_engine.data_retriever.DataRetriever')
+    @patch('algo_trading_engine.trade.OptionsHandler')
+    @patch('algo_trading_engine.trade.DataRetriever')
     def test_from_config_sets_symbol_on_strategy_instance(self, mock_data_retriever, _mock_options_handler):
         """Test that symbol is set on strategy when strategy instance is provided."""
         mock_strategy = MagicMock()
@@ -211,8 +211,8 @@ class TestPaperTradingEngineFromConfig:
         assert mock_strategy.symbol == 'QQQ'
 
     @patch('algo_trading_engine.trade.compute_paper_trading_fetch_start_date', return_value='2024-06-01')
-    @patch('algo_trading_engine.options_handler.OptionsHandler')
-    @patch('algo_trading_engine.data_retriever.DataRetriever')
+    @patch('algo_trading_engine.trade.OptionsHandler')
+    @patch('algo_trading_engine.trade.DataRetriever')
     def test_from_config_passes_computed_fetch_start_to_retriever_and_fetch(self, mock_data_retriever, _mock_options_handler, mock_compute_start):
         """Fetch window uses the same warm-up + LSTM logic as compute_paper_trading_fetch_start_date."""
         mock_strategy = MagicMock()
@@ -231,8 +231,8 @@ class TestPaperTradingEngineFromConfig:
         assert mock_data_retriever.call_args[1]['lstm_start_date'] == '2024-06-01'
         mock_retriever_instance.fetch_data_for_period.assert_called_once_with('2024-06-01')
 
-    @patch('algo_trading_engine.options_handler.OptionsHandler')
-    @patch('algo_trading_engine.data_retriever.DataRetriever')
+    @patch('algo_trading_engine.trade.OptionsHandler')
+    @patch('algo_trading_engine.trade.DataRetriever')
     def test_from_config_calls_warm_up_indicators(self, mock_data_retriever, _mock_options_handler):
         """from_config must call strategy.warm_up_indicators() after set_data."""
         mock_strategy = MagicMock()
@@ -261,7 +261,7 @@ class TestCustomDecisionStore:
         custom_store.get_open_positions.return_value = []
         config = PaperTradingConfig(symbol='SPY', strategy_type='credit_spread', api_key='test_api_key', use_free_tier=True, decision_store=custom_store)
         engine = PaperTradingEngine(strategy=mock_strategy, config=config, options_handler=mock_options_handler)
-        with patch.object(mock_strategy, 'get_current_underlying_price', return_value=500.0), patch('algo_trading_engine.data_retriever.DataRetriever.get_live_price', return_value=500.0), patch('algo_trading_engine._internal.trade.recommendation_engine.InteractiveStrategyRecommender') as mock_rec_cls:
+        with patch.object(mock_strategy, 'get_current_underlying_price', return_value=500.0), patch('algo_trading_engine.data_retriever.DataRetriever.get_live_price', return_value=500.0), patch('algo_trading_engine.trade.InteractiveStrategyRecommender') as mock_rec_cls:
             mock_recommender = Mock()
             mock_recommender.run.return_value = None
             mock_rec_cls.return_value = mock_recommender
@@ -282,7 +282,7 @@ class TestCustomDecisionStore:
         monkeypatch.chdir(tmp_path)
         config = PaperTradingConfig(symbol='SPY', strategy_type='credit_spread', api_key='test_api_key', use_free_tier=True, decision_store=None)
         engine = PaperTradingEngine(strategy=mock_strategy, config=config, options_handler=mock_options_handler)
-        with patch.object(mock_strategy, 'get_current_underlying_price', return_value=500.0), patch('algo_trading_engine.data_retriever.DataRetriever.get_live_price', return_value=500.0), patch('algo_trading_engine._internal.trade.recommendation_engine.InteractiveStrategyRecommender') as mock_rec_cls:
+        with patch.object(mock_strategy, 'get_current_underlying_price', return_value=500.0), patch('algo_trading_engine.data_retriever.DataRetriever.get_live_price', return_value=500.0), patch('algo_trading_engine.trade.InteractiveStrategyRecommender') as mock_rec_cls:
             mock_recommender = Mock()
             mock_recommender.run.return_value = None
             mock_rec_cls.return_value = mock_recommender
@@ -301,7 +301,7 @@ class TestAutoYesPassthrough:
         custom_store.get_open_positions.return_value = []
         config = PaperTradingConfig(symbol='SPY', strategy_type='credit_spread', api_key='test_api_key', use_free_tier=True, decision_store=custom_store, auto_yes=auto_yes_value)
         engine = PaperTradingEngine(strategy=mock_strategy, config=config, options_handler=mock_options_handler)
-        with patch.object(mock_strategy, 'get_current_underlying_price', return_value=500.0), patch('algo_trading_engine.data_retriever.DataRetriever.get_live_price', return_value=500.0), patch('algo_trading_engine._internal.trade.recommendation_engine.InteractiveStrategyRecommender') as mock_rec_cls:
+        with patch.object(mock_strategy, 'get_current_underlying_price', return_value=500.0), patch('algo_trading_engine.data_retriever.DataRetriever.get_live_price', return_value=500.0), patch('algo_trading_engine.trade.InteractiveStrategyRecommender') as mock_rec_cls:
             mock_recommender = Mock()
             mock_recommender.run.return_value = None
             mock_rec_cls.return_value = mock_recommender

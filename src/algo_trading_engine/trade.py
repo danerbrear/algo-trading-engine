@@ -4,25 +4,34 @@ Paper trading engine (public API).
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import List, TYPE_CHECKING
 
+import pandas as pd
+
 from algo_trading_engine._internal.common.logger import configure_logger, get_logger, log_and_echo
+from algo_trading_engine._internal.common.ml_pipeline import is_credit_spread_strategy, prepare_credit_spread_backtest_data
 from algo_trading_engine._internal.common.trading_engine import (
     DEFAULT_PAPER_TRADING_LSTM_LOOKBACK_DAYS,
     TradingEngine,
     compute_paper_trading_fetch_start_date,
     make_rt_option_bar,
 )
+from algo_trading_engine._internal.trade.capital_manager import CapitalManager
+from algo_trading_engine._internal.trade.recommendation_engine import InteractiveStrategyRecommender
+from algo_trading_engine.backtest._strategy_builder import create_strategy_from_args
+from algo_trading_engine.data_retriever import DataRetriever
+from algo_trading_engine.database.decision_store import JsonDecisionStore
+from algo_trading_engine.models.config import PaperTradingConfig
+from algo_trading_engine.options_handler import OptionsHandler
+from algo_trading_engine.strategy import IndicatorUpdateError, Strategy
 
 __all__ = [
     "DEFAULT_PAPER_TRADING_LSTM_LOOKBACK_DAYS",
     "PaperTradingEngine",
     "compute_paper_trading_fetch_start_date",
 ]
-
-from algo_trading_engine.models.config import PaperTradingConfig
-from algo_trading_engine.strategy import IndicatorUpdateError, Strategy
 
 if TYPE_CHECKING:
     from algo_trading_engine.vo import Position
@@ -53,7 +62,6 @@ class PaperTradingEngine(TradingEngine):
         # If strategy doesn't have data yet, create empty DataFrame
         strategy_data = getattr(strategy, 'data', None)
         if strategy_data is None:
-            import pandas as pd
             strategy_data = pd.DataFrame()
 
         super().__init__(strategy, strategy_data, config, bar_interval=config.bar_interval)
@@ -85,11 +93,6 @@ class PaperTradingEngine(TradingEngine):
         Returns:
             True if execution completed successfully, False otherwise
         """
-        from datetime import datetime
-        from algo_trading_engine.database.decision_store import JsonDecisionStore
-        from algo_trading_engine._internal.trade.capital_manager import CapitalManager
-        from algo_trading_engine._internal.trade.recommendation_engine import InteractiveStrategyRecommender
-        
         # Logger already configured in from_config(); ensure it's set for this run
         configure_logger("trade", log_level="info", observer=self._config.observer)
 
@@ -181,8 +184,6 @@ class PaperTradingEngine(TradingEngine):
         Returns:
             Strategy name string (e.g., 'credit_spread', 'velocity_momentum', 'my_custom')
         """
-        import re
-        
         # Remove "Strategy" suffix and convert CamelCase to snake_case
         class_name = self._strategy.__class__.__name__.replace("Strategy", "")
         strategy_name = re.sub(r'(?<!^)(?=[A-Z])', '_', class_name).lower()
@@ -218,10 +219,6 @@ class PaperTradingEngine(TradingEngine):
         """
         # Configure logger first so data fetch and all setup log to trade.log (not stdout)
         configure_logger("trade", log_level="info", observer=config.observer)
-
-        from algo_trading_engine.data_retriever import DataRetriever
-        from algo_trading_engine.options_handler import OptionsHandler
-        from algo_trading_engine.backtest._strategy_builder import create_strategy_from_args
 
         today = datetime.now()
 
@@ -283,11 +280,6 @@ class PaperTradingEngine(TradingEngine):
         if data is None or len(data) == 0:
             raise ValueError(f"Failed to fetch data for {config.symbol}")
         get_logger().info(f"Fetched {len(data)} data points for {config.symbol} from {data.index[0]} to {data.index[-1]}")
-
-        from algo_trading_engine._internal.common.ml_pipeline import (
-            is_credit_spread_strategy,
-            prepare_credit_spread_backtest_data,
-        )
 
         if is_credit_spread_strategy(config.strategy_type):
             data = prepare_credit_spread_backtest_data(data, retriever, config.symbol)
