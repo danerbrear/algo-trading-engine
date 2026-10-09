@@ -118,7 +118,7 @@ class Strategy(ABC):
         """
         if self.use_snapshot_for_current_bar:
             return self.get_rt_option_bar(contract)
-        return self.get_option_bar(contract, date, timespan)
+        return self.get_option_bar(contract, date, timespan=timespan)
 
     @property
     def warm_up_period(self) -> int:
@@ -381,7 +381,7 @@ class Strategy(ABC):
         self._failed_indicator_name = None
         for indicator in self.indicators:
             try:
-                if date in indicator._values.index:
+                if date in indicator.get_values().index:
                     continue
                 indicator.update(date, self.data)
             except Exception as e:
