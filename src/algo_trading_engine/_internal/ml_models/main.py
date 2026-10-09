@@ -1,4 +1,3 @@
-from ..common.data_retriever import DataRetriever
 from ..common.ml_pipeline import prepare_training_data
 from .lstm_model import LSTMModel
 import argparse
@@ -14,6 +13,7 @@ from sklearn.metrics import classification_report, confusion_matrix
 
 from .config import BATCH_SIZE, EPOCHS, SEQUENCE_LENGTH
 from algo_trading_engine.plotting import PlotConfig
+from algo_trading_engine import DataRetriever
 
 from .plots import create_plotter
 

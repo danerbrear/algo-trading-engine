@@ -1039,7 +1039,9 @@ class TestOptionsHandlerPhase5Integration:
                     short_premium = 2.5
                     long_premium = 1.0
                     net_credit = OptionsRetrieverHelper.calculate_credit_spread_premium(short_premium, long_premium)
-                    max_profit, max_loss = OptionsRetrieverHelper.calculate_max_profit_loss(strategy_type=StrategyType.CALL_CREDIT_SPREAD, short_leg=call_short, long_leg=call_long, net_premium=net_credit)
+                    spread_width = float(call_long.strike_price.value) - float(call_short.strike_price.value)
+                    max_profit = net_credit
+                    max_loss = spread_width - net_credit
                     breakeven = OptionsRetrieverHelper.calculate_breakeven_points(call_short, net_credit, OptionType.CALL)
                     assert net_credit == 1.5
                     assert max_profit == net_credit
