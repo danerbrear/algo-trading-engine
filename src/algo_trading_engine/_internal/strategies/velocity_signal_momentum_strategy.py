@@ -11,7 +11,7 @@ from algo_trading_engine.enums import StrategyType
 from algo_trading_engine.vo import Option, TreasuryRates
 from algo_trading_engine.dto import ExpirationRangeDTO, OptionsChainDTO, StrikeRangeDTO
 from algo_trading_engine.vo import StrikePrice
-from algo_trading_engine._internal.common.logger import get_logger
+from algo_trading_engine.logging import get_logger
 from algo_trading_engine.options_helpers import OptionsRetrieverHelper
 from algo_trading_engine.enums import OptionType
 from decimal import Decimal

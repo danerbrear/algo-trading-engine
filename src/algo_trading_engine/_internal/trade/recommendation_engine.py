@@ -14,7 +14,8 @@ from algo_trading_engine.database.decision_store import (
     generate_decision_id,
 )
 from algo_trading_engine._internal.trade.capital_manager import CapitalManager
-from algo_trading_engine._internal.common.logger import get_logger, log_and_echo
+from algo_trading_engine.logging import get_logger
+from algo_trading_engine.logging.logger import log_and_echo
 
 class InteractiveStrategyRecommender:
     """Produce open/close recommendations and capture user decisions.

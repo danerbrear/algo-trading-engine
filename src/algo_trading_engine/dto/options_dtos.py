@@ -14,7 +14,7 @@ from decimal import Decimal
 from typing import Optional, List, Dict, Any
 import re
 
-from algo_trading_engine._internal.common.logger import get_logger
+from algo_trading_engine.logging import get_logger
 from algo_trading_engine.vo import StrikePrice, ExpirationDate
 from algo_trading_engine.enums import OptionType
 

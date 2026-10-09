@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any, Optional, Tuple
 
 import pandas as pd
 
-from algo_trading_engine._internal.common.logger import get_logger
+from algo_trading_engine.logging import get_logger
 
 if TYPE_CHECKING:
     from algo_trading_engine.data_retriever import DataRetriever

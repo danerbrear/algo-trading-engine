@@ -10,7 +10,7 @@ import math
 from typing import Callable, Optional, List, Iterable, TYPE_CHECKING
 import pandas as pd
 
-from algo_trading_engine._internal.common.logger import get_logger
+from algo_trading_engine.logging import get_logger
 from algo_trading_engine.vo import TreasuryRates
 from algo_trading_engine.indicators.indicator import Indicator
 from algo_trading_engine.enums import BarTimeInterval, UniversalCloseCondition

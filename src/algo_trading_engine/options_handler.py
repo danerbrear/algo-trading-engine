@@ -24,7 +24,7 @@ from algo_trading_engine.enums import BarTimeInterval
 from algo_trading_engine.enums import OptionType
 from algo_trading_engine._internal.ml_models.api_retry_handler import APIRetryHandler
 from algo_trading_engine._internal.common.progress_tracker import progress_print
-from algo_trading_engine._internal.common.logger import get_logger
+from algo_trading_engine.logging import get_logger
 
 # Load environment variables
 load_dotenv()

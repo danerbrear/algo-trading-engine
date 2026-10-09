@@ -18,7 +18,8 @@ from algo_trading_engine._internal.common.ml_pipeline import is_credit_spread_st
 from algo_trading_engine.enums import BarTimeInterval
 from algo_trading_engine.models.config import VolumeConfig, VolumeStats
 from algo_trading_engine.models import EngineConfig, OverallPerformanceStats, StrategyPerformanceStats
-from algo_trading_engine._internal.common.logger import configure_logger, get_logger, log_and_echo
+from algo_trading_engine.logging import configure_logger, get_logger
+from algo_trading_engine.logging.logger import log_and_echo
 from algo_trading_engine._internal.common.progress_tracker import ProgressTracker, set_global_progress_tracker
 from algo_trading_engine._internal.common.run_observer import RunObserver
 from ._strategy_builder import StrategyFactory, create_strategy_from_args

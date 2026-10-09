@@ -12,7 +12,7 @@ import pandas as pd
 import pytest
 
 import algo_trading_engine.plotting as plotting_pkg
-from algo_trading_engine._internal.common.logger import configure_logger, remove_logger_sink
+from algo_trading_engine.logging import configure_logger, remove_logger_sink
 from algo_trading_engine._internal.common.run_observer import JsonLinesRunObserver
 from algo_trading_engine.plotting import (
     HeatmapSpec,

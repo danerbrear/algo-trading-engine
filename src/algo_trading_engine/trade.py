@@ -10,7 +10,8 @@ from typing import List, TYPE_CHECKING
 
 import pandas as pd
 
-from algo_trading_engine._internal.common.logger import configure_logger, get_logger, log_and_echo
+from algo_trading_engine.logging import configure_logger, get_logger
+from algo_trading_engine.logging.logger import log_and_echo
 from algo_trading_engine._internal.common.ml_pipeline import is_credit_spread_strategy, prepare_credit_spread_backtest_data
 from algo_trading_engine._internal.common.trading_engine import (
     DEFAULT_PAPER_TRADING_LSTM_LOOKBACK_DAYS,

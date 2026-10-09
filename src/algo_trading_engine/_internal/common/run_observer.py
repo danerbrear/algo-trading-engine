@@ -9,7 +9,6 @@ ProcessRunner to consume.
 from __future__ import annotations
 
 import json
-import os
 import sys
 from datetime import datetime, timezone
 from typing import Any, Protocol, TextIO
@@ -106,11 +105,3 @@ class JsonLinesRunObserver:
             },
         )
         self._send("dataframe", plot_payload(spec))
-
-
-def observer_from_env() -> JsonLinesRunObserver | None:
-    """Return a JsonLinesRunObserver when ALGO_GUI_RUN_ID is set, else None."""
-    run_id = os.environ.get("ALGO_GUI_RUN_ID", "").strip()
-    if not run_id:
-        return None
-    return JsonLinesRunObserver(run_id)

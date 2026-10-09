@@ -35,6 +35,7 @@ Sub-packages:
     - vo: Value Objects and runtime types
     - enums: Public enums
     - indicators: Technical indicators (Indicator, ATRIndicator, etc.)
+    - logging: Logger configuration and GUI observer helpers
 
 Example Usage:
 --------------
@@ -79,7 +80,7 @@ if TYPE_CHECKING:
     )
     from algo_trading_engine.models.metrics import PerformanceMetrics, PositionStats
 
-    from . import database, dto, enums, indicators, plotting, vo
+    from . import database, dto, enums, indicators, logging, plotting, vo
 
 __all__ = [
     # Engines
@@ -106,9 +107,10 @@ __all__ = [
     "indicators",
     "plotting",
     "database",
+    "logging",
 ]
 
-_LAZY_SUBMODULES = frozenset({"dto", "vo", "enums", "indicators", "plotting", "database"})
+_LAZY_SUBMODULES = frozenset({"dto", "vo", "enums", "indicators", "plotting", "database", "logging"})
 
 # module_path, attribute_name
 _LAZY_EXPORTS: dict[str, tuple[str, str]] = {

@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import sys
 import threading
 
-from algo_trading_engine._internal.common.logger import get_logger
+from algo_trading_engine.logging import get_logger
 
 if TYPE_CHECKING:
     from algo_trading_engine._internal.common.run_observer import RunObserver

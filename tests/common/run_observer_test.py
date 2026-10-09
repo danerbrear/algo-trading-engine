@@ -10,10 +10,8 @@ from dataclasses import dataclass, field
 import pandas as pd
 import pytest
 
-from algo_trading_engine._internal.common.run_observer import (
-    JsonLinesRunObserver,
-    observer_from_env,
-)
+from algo_trading_engine._internal.common.run_observer import JsonLinesRunObserver
+from algo_trading_engine.logging import observer_from_env
 
 
 @dataclass

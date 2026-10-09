@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Union
 
-from algo_trading_engine._internal.common.logger import get_active_observer
+from algo_trading_engine.logging.logger import get_active_observer
 from algo_trading_engine.plotting.config import PlotConfig
 from algo_trading_engine.plotting.spec import (
     BarSpec,

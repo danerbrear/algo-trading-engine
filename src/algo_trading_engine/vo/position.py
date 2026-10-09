@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from algo_trading_engine.dto import OptionBarDTO
 
 # Import from common models
-from algo_trading_engine._internal.common.logger import get_logger
+from algo_trading_engine.logging import get_logger
 from algo_trading_engine.vo import Option, OptionChain
 from algo_trading_engine.enums import OptionType, StrategyType
 

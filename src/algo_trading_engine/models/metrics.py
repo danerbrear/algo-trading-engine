@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Optional
 
-from algo_trading_engine._internal.common.logger import log_and_echo
+from algo_trading_engine.logging.logger import log_and_echo
 
 # StrategyType is not imported here to avoid circular imports
 # With __future__.annotations, all type hints are strings, so no runtime import needed

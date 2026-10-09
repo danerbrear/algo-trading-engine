@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import ClassVar, Dict, Optional
 
 from algo_trading_engine._internal.common.cache.cache_manager import CacheManager
-from algo_trading_engine._internal.common.logger import get_logger
+from algo_trading_engine.logging import get_logger
 from algo_trading_engine.vo import TreasuryRates
 from algo_trading_engine.enums import BarTimeInterval
 

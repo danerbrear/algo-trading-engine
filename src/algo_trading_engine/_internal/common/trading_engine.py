@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 
 from algo_trading_engine import DataRetriever, Strategy
-from algo_trading_engine._internal.common.logger import get_logger
+from algo_trading_engine.logging import get_logger
 from algo_trading_engine.enums import BarTimeInterval, UniversalCloseCondition
 from algo_trading_engine.models import EngineConfig
 from algo_trading_engine.models.config import PaperTradingConfig

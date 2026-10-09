@@ -1,4 +1,4 @@
-from algo_trading_engine._internal.common.logger import get_logger
+from algo_trading_engine.logging import get_logger
 from algo_trading_engine.indicators.indicator import Indicator
 from datetime import datetime
 import pandas as pd
