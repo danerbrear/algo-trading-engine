@@ -13,7 +13,8 @@ import pandas as pd
 from algo_trading_engine.trade import PaperTradingEngine, compute_paper_trading_fetch_start_date, DEFAULT_PAPER_TRADING_LSTM_LOOKBACK_DAYS
 from algo_trading_engine.enums import BarTimeInterval
 from algo_trading_engine.models.config import PaperTradingConfig
-from algo_trading_engine.database.decision_store import DecisionStore, JsonDecisionStore, ProposedPositionRequestDTO, DecisionResponseDTO, generate_decision_id
+from algo_trading_engine.database.decision_store import DecisionStore, JsonDecisionStore, generate_decision_id
+from algo_trading_engine.dto import DecisionResponseDTO, ProposedPositionRequestDTO
 from algo_trading_engine.enums import StrategyType
 from algo_trading_engine.vo import Option
 

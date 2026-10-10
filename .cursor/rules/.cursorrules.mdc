@@ -622,7 +622,7 @@ def test_market_state_validation():
 - Suffix with purpose: `Request`, `Response`, `Command`, `Query` (all must end with DTO)
 - **Location Rules**:
   - **Public DTOs**: Must be in `algo_trading_engine.dto` package (e.g., `OptionContractDTO`, `OptionBarDTO`)
-  - **Internal DTOs**: Stay in their respective modules (e.g., `ProposedPositionRequestDTO` in `prediction/decision_store.py`)
+  - **Internal DTOs**: Stay in their respective modules when they are not part of the public API. Public trade and decision DTOs live in `dto.trade` and `dto.decisions` (`ProposedPositionRequestDTO`, `DecisionResponseDTO`).
 
 #### 5. **Clear Intent**
 - Request DTOs: `CreateUserRequest`, `UpdateUserRequest`

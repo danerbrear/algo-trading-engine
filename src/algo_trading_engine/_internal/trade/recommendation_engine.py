@@ -7,12 +7,8 @@ from typing import Optional, List
 from algo_trading_engine.strategy import Strategy
 from algo_trading_engine.vo import Position, create_position
 from algo_trading_engine.enums import StrategyType
-from algo_trading_engine.database.decision_store import (
-    DecisionStore,
-    ProposedPositionRequestDTO,
-    DecisionResponseDTO,
-    generate_decision_id,
-)
+from algo_trading_engine.database.decision_store import DecisionStore, generate_decision_id
+from algo_trading_engine.dto import DecisionResponseDTO, ProposedPositionRequestDTO
 from algo_trading_engine._internal.trade.capital_manager import CapitalManager
 from algo_trading_engine.logging import get_logger
 from algo_trading_engine.logging.logger import log_and_echo

@@ -7,12 +7,12 @@ for multiple strategies with independent capital allocations.
 
 from __future__ import annotations
 
-from typing import Dict, Optional, Tuple
+from typing import Dict, Tuple
 from pathlib import Path
 import json
 
 from algo_trading_engine.enums import StrategyType
-from algo_trading_engine.database.decision_store import DecisionStore, DecisionResponseDTO
+from algo_trading_engine.database.decision_store import DecisionStore
 
 
 class CapitalManager:

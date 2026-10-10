@@ -1,6 +1,7 @@
 from datetime import datetime
 from unittest.mock import MagicMock, patch
-from algo_trading_engine.database.decision_store import JsonDecisionStore, ProposedPositionRequestDTO, DecisionResponseDTO, generate_decision_id
+from algo_trading_engine.database.decision_store import JsonDecisionStore, generate_decision_id
+from algo_trading_engine.dto import DecisionResponseDTO, ProposedPositionRequestDTO
 from algo_trading_engine._internal.trade.recommendation_engine import InteractiveStrategyRecommender
 from algo_trading_engine._internal.trade.capital_manager import CapitalManager
 from algo_trading_engine.enums import StrategyType
