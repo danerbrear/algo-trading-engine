@@ -6,7 +6,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Union
 
-from algo_trading_engine.common.logger import get_active_observer
+from algo_trading_engine.logging import get_logger
+from algo_trading_engine.logging.logger import get_active_observer
 from algo_trading_engine.plotting.config import PlotConfig
 from algo_trading_engine.plotting.spec import (
     BarSpec,
@@ -48,8 +49,8 @@ def show_plot(
     Display or emit plot data.
 
     1. Single wire-compatible PlotSpec + active observer → JSON to GUI (config ignored).
-    2. Else if config is None or not enabled → no-op (no matplotlib import).
-    3. Else render locally via matplotlib.
+    2. Else if config is set and disabled → no-op (no matplotlib import).
+    3. Else build the figure with matplotlib and show it. A missing config still shows.
     """
     if isinstance(spec_or_specs, (PlotSpec, HeatmapSpec, BarSpec)):
         _show_single(spec_or_specs, config=config, save_path=save_path)
@@ -58,18 +59,17 @@ def show_plot(
     specs = list(spec_or_specs)
     if not specs:
         return
-    if config is None or not config.enabled:
+    if config is not None and not config.enabled:
+        get_logger().info("Plotting is disabled and will not show.")
         return
     resolved = save_path
-    if resolved is None and config.save_dir is not None:
+    if resolved is None and config is not None and config.save_dir is not None:
         resolved = config.save_dir / "grid.png"
-    show_window = config.show
     render_spec_grid(
         specs,
         ncols=ncols,
         title=grid_title,
         save_path=resolved,
-        show=show_window,
     )
 
 
@@ -85,9 +85,9 @@ def _show_single(
             observer.dataframe(spec.name, spec.frame, meta=spec.wire_meta())
             return
 
-    if config is None or not config.enabled:
+    if config is not None and not config.enabled:
+        get_logger().info("Plotting is disabled and will not show.")
         return
 
     resolved = _resolve_save_path(config, spec, save_path)
-    show_window = config.show
-    spec.render(save_path=resolved, show=show_window)
+    spec.render(save_path=resolved)

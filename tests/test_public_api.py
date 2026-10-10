@@ -24,6 +24,8 @@ def test_public_api_imports():
         Strategy,
         PerformanceMetrics,
         PositionStats,
+        DataRetriever,
+        OptionsHandler,
     )
     
     # Verify that all imports succeeded
@@ -36,6 +38,12 @@ def test_public_api_imports():
     assert Strategy is not None
     assert PerformanceMetrics is not None
     assert PositionStats is not None
+
+    from algo_trading_engine import OptionsRetrieverHelper
+
+    assert OptionsRetrieverHelper is not None
+    assert DataRetriever is not None
+    assert OptionsHandler is not None
 
 
 def test_backtest_config_creation():
@@ -141,11 +149,11 @@ def test_volume_config_validation():
 
 def test_strategy_base_class():
     """Test that Strategy base class is abstract."""
-    from algo_trading_engine import Strategy
+    from algo_trading_engine.strategy import Strategy
     
     # Should not be able to instantiate Strategy directly
     with pytest.raises(TypeError):
-        Strategy()
+        Strategy()  # pylint: disable=abstract-class-instantiated
 
 
 def test_backtest_engine_class_exists():
@@ -244,40 +252,34 @@ def test_paper_trading_config_cli_parameters():
 
 def test_performance_metrics_structure():
     """Test that PerformanceMetrics has expected attributes."""
-    from algo_trading_engine import PerformanceMetrics
+    from dataclasses import fields as dataclass_fields
+    from algo_trading_engine.models.metrics import PerformanceMetrics
     
-    # Check that the class has the expected attributes (without instantiating)
-    assert hasattr(PerformanceMetrics, '__dataclass_fields__')
-    
-    # Verify key fields exist
-    fields = PerformanceMetrics.__dataclass_fields__
-    assert 'total_return' in fields
-    assert 'total_return_pct' in fields
-    assert 'sharpe_ratio' in fields
-    assert 'max_drawdown' in fields
-    assert 'win_rate' in fields
-    assert 'total_positions' in fields
-    assert 'closed_positions' in fields
-    assert 'strategy_stats' in fields
+    field_names = {field.name for field in dataclass_fields(PerformanceMetrics)}
+    assert 'total_return' in field_names
+    assert 'total_return_pct' in field_names
+    assert 'sharpe_ratio' in field_names
+    assert 'max_drawdown' in field_names
+    assert 'win_rate' in field_names
+    assert 'total_positions' in field_names
+    assert 'closed_positions' in field_names
+    assert 'strategy_stats' in field_names
 
 
 def test_position_stats_structure():
     """Test that PositionStats has expected attributes."""
-    from algo_trading_engine import PositionStats
+    from dataclasses import fields as dataclass_fields
+    from algo_trading_engine.models.metrics import PositionStats
     
-    # Check that the class has the expected attributes
-    assert hasattr(PositionStats, '__dataclass_fields__')
-    
-    # Verify key fields exist
-    fields = PositionStats.__dataclass_fields__
-    assert 'strategy_type' in fields
-    assert 'entry_date' in fields
-    assert 'exit_date' in fields
-    assert 'entry_price' in fields
-    assert 'exit_price' in fields
-    assert 'return_dollars' in fields
-    assert 'return_percentage' in fields
-    assert 'days_held' in fields
+    field_names = {field.name for field in dataclass_fields(PositionStats)}
+    assert 'strategy_type' in field_names
+    assert 'entry_date' in field_names
+    assert 'exit_date' in field_names
+    assert 'entry_price' in field_names
+    assert 'exit_price' in field_names
+    assert 'return_dollars' in field_names
+    assert 'return_percentage' in field_names
+    assert 'days_held' in field_names
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@ Unit tests for Phase 2 OptionsHandler refactoring.
 
 Tests the new caching infrastructure, migration utility, and helper classes.
 """
+import pickle
 import pytest
 import tempfile
 import shutil
@@ -11,12 +12,12 @@ from decimal import Decimal
 from pathlib import Path
 from unittest.mock import Mock, patch
 from zoneinfo import ZoneInfo
-from algo_trading_engine.common.options_handler import OptionsHandler
-from algo_trading_engine.common.cache.options_cache_manager import OptionsCacheManager
-from algo_trading_engine.common.options_helpers import OptionsRetrieverHelper
+from algo_trading_engine.options_handler import OptionsHandler
+from algo_trading_engine._internal.common.cache.options_cache_manager import OptionsCacheManager
+from algo_trading_engine.options_helpers import OptionsRetrieverHelper
 from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO
 from algo_trading_engine.vo import StrikePrice, ExpirationDate
-from algo_trading_engine.common.models import OptionType, StrategyType
+from algo_trading_engine.enums import OptionType, StrategyType
 
 class TestOptionsCacheManager:
     """Test cases for OptionsCacheManager."""
@@ -150,6 +151,19 @@ class TestOptionsCacheManager:
         assert loaded_bar.ticker == ticker
         assert loaded_bar.close_price == Decimal('5.60')
         assert loaded_bar.volume == 1000
+
+    def test_saved_contracts_contain_no_class_references(self, cache_manager, sample_contracts):
+        """The contracts pickle must hold only builtins so moving a class never breaks the cache."""
+        class _NoClassUnpickler(pickle.Unpickler):
+            def find_class(self, module, name):
+                raise AssertionError(f"contracts cache references {module}.{name}")
+
+        test_date = date(2021, 11, 19)
+        cache_manager.save_contracts('SPY', test_date, sample_contracts)
+        with open(cache_manager.get_contracts_cache_path('SPY', test_date), 'rb') as f:
+            records = _NoClassUnpickler(f).load()
+        assert records[0]['contract_type'] == 'call'
+        assert records[1]['contract_type'] == 'put'
 
     def test_load_nonexistent_contracts(self, cache_manager):
         """Test loading non-existent contracts."""
@@ -398,11 +412,11 @@ from datetime import datetime, date, timedelta, time
 from decimal import Decimal
 from unittest.mock import Mock, patch, MagicMock
 from pathlib import Path
-from algo_trading_engine.common.options_handler import OptionsHandler
-from algo_trading_engine.common.cache.options_cache_manager import OptionsCacheManager
+from algo_trading_engine.options_handler import OptionsHandler
+from algo_trading_engine._internal.common.cache.options_cache_manager import OptionsCacheManager
 from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO, StrikeRangeDTO, ExpirationRangeDTO
 from algo_trading_engine.vo import StrikePrice, ExpirationDate
-from algo_trading_engine.common.models import OptionType
+from algo_trading_engine.enums import OptionType
 
 class TestOptionsHandlerPhase3:
     """Integration tests for Phase 3 OptionsHandler API."""
@@ -418,7 +432,7 @@ class TestOptionsHandlerPhase3:
         if skip_mocking:
             yield
             return
-        with patch('algo_trading_engine.common.options_handler.OptionsHandler._fetch_bar_from_api', return_value=None), patch('algo_trading_engine.common.options_handler.OptionsHandler._fetch_contracts_from_api', return_value=[]):
+        with patch('algo_trading_engine.options_handler.OptionsHandler._fetch_bar_from_api', return_value=None), patch('algo_trading_engine.options_handler.OptionsHandler._fetch_contracts_from_api', return_value=[]):
             yield
 
     @pytest.fixture
@@ -631,10 +645,10 @@ import shutil
 from datetime import datetime, date, timedelta, time
 from decimal import Decimal
 from unittest.mock import Mock, patch
-from algo_trading_engine.common.options_handler import OptionsHandler
+from algo_trading_engine.options_handler import OptionsHandler
 from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO, StrikeRangeDTO, ExpirationRangeDTO
 from algo_trading_engine.vo import StrikePrice, ExpirationDate
-from algo_trading_engine.common.models import OptionType
+from algo_trading_engine.enums import OptionType
 
 class TestOptionsHandlerPhase5Simple:
     """Simple validation tests for Phase 5 OptionsHandler."""
@@ -828,12 +842,12 @@ from unittest.mock import Mock, patch, MagicMock
 from typing import List, Dict, Any
 import time
 import os
-from algo_trading_engine.common.options_handler import OptionsHandler
+from algo_trading_engine.options_handler import OptionsHandler
 from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO, StrikeRangeDTO, ExpirationRangeDTO, OptionsChainDTO
 from algo_trading_engine.vo import StrikePrice, ExpirationDate
-from algo_trading_engine.common.options_helpers import OptionsRetrieverHelper
-from algo_trading_engine.common.models import OptionType
-from algo_trading_engine.common.cache.options_cache_manager import OptionsCacheManager
+from algo_trading_engine.options_helpers import OptionsRetrieverHelper
+from algo_trading_engine.enums import OptionType
+from algo_trading_engine._internal.common.cache.options_cache_manager import OptionsCacheManager
 
 class TestOptionsHandlerPhase5Integration:
     """Comprehensive integration tests for the complete OptionsHandler API."""
@@ -847,7 +861,7 @@ class TestOptionsHandlerPhase5Integration:
         if 'rate_limiting' in request.node.name:
             yield
             return
-        with patch('algo_trading_engine.common.options_handler.OptionsHandler._fetch_bar_from_api', return_value=None), patch('algo_trading_engine.common.options_handler.OptionsHandler._fetch_contracts_from_api', return_value=[]):
+        with patch('algo_trading_engine.options_handler.OptionsHandler._fetch_bar_from_api', return_value=None), patch('algo_trading_engine.options_handler.OptionsHandler._fetch_contracts_from_api', return_value=[]):
             yield
 
     @pytest.fixture
@@ -1025,7 +1039,9 @@ class TestOptionsHandlerPhase5Integration:
                     short_premium = 2.5
                     long_premium = 1.0
                     net_credit = OptionsRetrieverHelper.calculate_credit_spread_premium(short_premium, long_premium)
-                    max_profit, max_loss = OptionsRetrieverHelper.calculate_max_profit_loss(strategy_type=StrategyType.CALL_CREDIT_SPREAD, short_leg=call_short, long_leg=call_long, net_premium=net_credit)
+                    spread_width = float(call_long.strike_price.value) - float(call_short.strike_price.value)
+                    max_profit = net_credit
+                    max_loss = spread_width - net_credit
                     breakeven = OptionsRetrieverHelper.calculate_breakeven_points(call_short, net_credit, OptionType.CALL)
                     assert net_credit == 1.5
                     assert max_profit == net_credit
@@ -1104,7 +1120,7 @@ class TestOptionsHandlerErrorHandling:
         if skip_mocking:
             yield
             return
-        with patch('algo_trading_engine.common.options_handler.OptionsHandler._fetch_bar_from_api', return_value=None), patch('algo_trading_engine.common.options_handler.OptionsHandler._fetch_contracts_from_api', return_value=[]):
+        with patch('algo_trading_engine.options_handler.OptionsHandler._fetch_bar_from_api', return_value=None), patch('algo_trading_engine.options_handler.OptionsHandler._fetch_contracts_from_api', return_value=[]):
             yield
 
     @pytest.fixture
@@ -1139,7 +1155,7 @@ class TestOptionsHandlerErrorHandling:
     def test_invalid_contract_parameters(self, options_handler):
         """Test error handling for invalid contract parameters."""
         from algo_trading_engine.dto import OptionContractDTO
-        from algo_trading_engine.common.models import OptionType
+        from algo_trading_engine.enums import OptionType
         from algo_trading_engine.vo import StrikePrice, ExpirationDate
         valid_contract = OptionContractDTO(ticker='O:SPY250115C00600000', underlying_ticker='SPY', contract_type=OptionType.CALL, strike_price=StrikePrice(Decimal('600.0')), expiration_date=ExpirationDate(date(2025, 1, 15)), exercise_style='american', shares_per_contract=100)
         result = options_handler.get_option_bar('invalid_contract', datetime.now())

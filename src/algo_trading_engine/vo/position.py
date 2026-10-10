@@ -15,8 +15,9 @@ if TYPE_CHECKING:
     from algo_trading_engine.dto import OptionBarDTO
 
 # Import from common models
-from algo_trading_engine.common.logger import get_logger
-from algo_trading_engine.common.models import Option, OptionChain, OptionType, StrategyType
+from algo_trading_engine.logging import get_logger
+from algo_trading_engine.vo import Option, OptionChain
+from algo_trading_engine.enums import OptionType, StrategyType
 
 _SPREAD_VALUE_TOLERANCE = 0.01
 # Far ITM/OTM substitution caps at 90% of width; 100% is reserved for expiration.
@@ -57,7 +58,7 @@ class Position(ABC):
                 # Allow Mock objects (used in tests) - Mock(spec=Option) should pass isinstance, but handle edge cases
                 is_mock = opt_class.__name__ == 'Mock'
                 # Check if it's an Option by class name and module
-                is_option = (opt_class.__name__ == 'Option' and 'algo_trading_engine.common.models' in str(opt_class.__module__))
+                is_option = (opt_class.__name__ == 'Option' and 'algo_trading_engine.vo.option' in str(opt_class.__module__))
                 if not (is_option or is_mock):
                     raise TypeError(f"All elements of spread_options must be of type Option, got {opt_class.__name__} from {opt_class.__module__}")
     

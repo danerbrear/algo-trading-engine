@@ -78,7 +78,7 @@ def test_backtest_main_function_exists():
 
 def test_paper_trading_cli_main_function_exists():
     """Test that paper trading CLI main function exists."""
-    from algo_trading_engine.prediction import recommend_cli
+    from algo_trading_engine._internal.trade import recommend_cli
     
     # Verify main function exists
     assert hasattr(recommend_cli, 'main')
@@ -269,7 +269,7 @@ def test_cli_entrypoint_definitions():
         
         # Verify paper trading entrypoint
         assert 'algo-paper-trade' in scripts
-        assert 'algo_trading_engine.prediction.recommend_cli:main' in scripts['algo-paper-trade']
+        assert 'algo_trading_engine._internal.trade.recommend_cli:main' in scripts['algo-paper-trade']
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ import pytest
 from datetime import datetime
 import pandas as pd
 
-from algo_trading_engine.core.indicators.sma_indicator import SMAIndicator
+from algo_trading_engine.indicators.sma_indicator import SMAIndicator
 from algo_trading_engine.enums import BarTimeInterval
 
 

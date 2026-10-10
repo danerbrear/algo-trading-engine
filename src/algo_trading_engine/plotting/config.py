@@ -9,8 +9,7 @@ from typing import Optional
 
 @dataclass(frozen=True)
 class PlotConfig:
-    """Controls whether and how plots are rendered locally."""
+    """Controls whether plots are built and shown locally with matplotlib."""
 
     enabled: bool = True
-    show: bool = True
     save_dir: Optional[Path] = None

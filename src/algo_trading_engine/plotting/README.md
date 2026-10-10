@@ -29,14 +29,14 @@ from algo_trading_engine.plotting import PlotConfig
 
 config = BacktestConfig(
     ...,
-    plot_config=PlotConfig(enabled=True, show=True),
+    plot_config=PlotConfig(enabled=True),
 )
 ```
 
 - `plot_config=None` (default): no local matplotlib import and no windows.
-- `PlotConfig.enabled=False`: build specs in your code, but skip local rendering.
-- `PlotConfig.show=False`: save only (use `save_path` on `show_plot` or `save_dir` on the config).
-- `PlotConfig.save_dir`: when set, each spec saves to `<save_dir>/<name>.png`.
+- `PlotConfig.enabled=False`: build specs in your code, but do not build or show a matplotlib figure.
+- `PlotConfig.enabled=True`: build the figure and show it.
+- `PlotConfig.save_dir`: when set, each spec also saves to `<save_dir>/<name>.png`.
 
 The engine calls `strategy.set_plot_config(config.plot_config)` so strategies can use `self.plot_config`.
 

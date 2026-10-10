@@ -12,8 +12,8 @@ import pandas as pd
 import pytest
 
 import algo_trading_engine.plotting as plotting_pkg
-from algo_trading_engine.common.logger import configure_logger, remove_logger_sink
-from algo_trading_engine.common.run_observer import JsonLinesRunObserver
+from algo_trading_engine.logging import configure_logger, remove_logger_sink
+from algo_trading_engine.gui import JsonLinesRunObserver
 from algo_trading_engine.plotting import (
     HeatmapSpec,
     PlotConfig,
@@ -83,6 +83,38 @@ def test_show_plot_routes_to_observer(tmp_path):
     assert payload["payload"]["name"] == EQUITY_CURVE_NAME
 
 
+def test_show_plot_renders_single_spec_when_config_is_none():
+    spec = build_plot_spec(
+        pd.DataFrame({"index": [0, 1], "Close": [1.0, 2.0]}),
+        name="price",
+        x="index",
+    )
+    with patch(
+        "algo_trading_engine.plotting.matplotlib_backend.render_lines_figure"
+    ) as mock_render:
+        show_plot(spec, config=None)
+        mock_render.assert_called_once()
+
+
+def test_show_plot_renders_grid_when_config_is_none():
+    specs = [
+        build_plot_spec(
+            pd.DataFrame({"index": [0, 1], "Close": [1.0, 2.0]}),
+            name="price",
+            x="index",
+        ),
+        build_plot_spec(
+            pd.DataFrame({"index": [0, 1], "Close": [2.0, 3.0]}),
+            name="other",
+            x="index",
+        ),
+    ]
+    with patch("algo_trading_engine.plotting.show.render_spec_grid") as mock_grid:
+        show_plot(specs, config=None)
+        mock_grid.assert_called_once()
+        assert mock_grid.call_args.kwargs["save_path"] is None
+
+
 def test_show_plot_skips_when_disabled():
     spec = build_plot_spec(
         pd.DataFrame({"index": [0, 1], "Close": [1.0, 2.0]}),
@@ -105,7 +137,7 @@ def test_show_plot_renders_when_enabled():
     with patch(
         "algo_trading_engine.plotting.matplotlib_backend.render_lines_figure"
     ) as mock_render:
-        show_plot(spec, config=PlotConfig(enabled=True, show=False))
+        show_plot(spec, config=PlotConfig(enabled=True))
         mock_render.assert_called_once()
 
 
@@ -119,7 +151,7 @@ def test_show_plot_heatmap_when_enabled():
     with patch(
         "algo_trading_engine.plotting.matplotlib_backend.render_heatmap_figure"
     ) as mock_render:
-        show_plot(spec, config=PlotConfig(enabled=True, show=False))
+        show_plot(spec, config=PlotConfig(enabled=True))
         mock_render.assert_called_once()
 
 
@@ -156,7 +188,7 @@ def test_backend_smoke_render_lines(tmp_path, backend):
         name="smoke_lines",
     )
     output = tmp_path / "lines.png"
-    show_plot(spec, config=PlotConfig(enabled=True, show=False), save_path=output)
+    show_plot(spec, config=PlotConfig(enabled=True), save_path=output)
     assert output.exists()
 
 
@@ -178,7 +210,7 @@ def test_backend_smoke_render_grid(tmp_path, backend):
         ),
     ]
     output = tmp_path / "grid.png"
-    show_plot(specs, config=PlotConfig(enabled=True, show=False), save_path=output, ncols=2)
+    show_plot(specs, config=PlotConfig(enabled=True), save_path=output, ncols=2)
     assert output.exists()
 
 
@@ -192,5 +224,5 @@ def test_backend_smoke_render_heatmap(tmp_path, backend):
         name="smoke_heatmap",
     )
     output = tmp_path / "heatmap.png"
-    show_plot(spec, config=PlotConfig(enabled=True, show=False), save_path=output)
+    show_plot(spec, config=PlotConfig(enabled=True), save_path=output)
     assert output.exists()

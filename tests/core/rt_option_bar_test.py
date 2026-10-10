@@ -1,4 +1,4 @@
-"""Unit tests for near-real-time option pricing wiring (make_rt_option_bar + Strategy.is_live)."""
+"""Unit tests for near-real-time option pricing wiring (make_rt_option_bar + snapshot flag)."""
 
 from datetime import datetime
 from decimal import Decimal
@@ -7,8 +7,9 @@ from unittest.mock import Mock
 import pandas as pd
 import pytest
 
-from algo_trading_engine.core.engine import make_rt_option_bar
-from algo_trading_engine.core.strategy import Strategy
+from algo_trading_engine._internal.common.trading_engine import make_rt_option_bar
+from algo_trading_engine.models.config import BacktestConfig, PaperTradingConfig
+from algo_trading_engine.strategy import Strategy
 from algo_trading_engine.dto import OptionBarDTO
 from algo_trading_engine.enums import BarTimeInterval
 
@@ -72,20 +73,36 @@ class TestMakeRtOptionBar:
         handler.get_option_bar.assert_not_called()
 
 
-class TestStrategyIsLive:
-    def test_is_live_false_by_default(self):
+class TestUseSnapshotForCurrentBar:
+    def test_false_by_default(self):
         strategy = _MinimalStrategy()
-        assert strategy.is_live is False
+        assert strategy.use_snapshot_for_current_bar is False
 
-    def test_is_live_true_when_rt_set(self):
+    def test_true_when_passed_to_init(self):
+        strategy = _MinimalStrategy(use_snapshot_for_current_bar=True)
+        assert strategy.use_snapshot_for_current_bar is True
+
+    def test_backtest_config_leaves_flag_unchanged(self):
+        """BacktestConfig construction does not mutate the strategy flag; engines set it in from_config."""
+        strategy = _MinimalStrategy(use_snapshot_for_current_bar=True)
+        BacktestConfig(
+            initial_capital=100000,
+            start_date=datetime(2024, 1, 1),
+            end_date=datetime(2024, 1, 31),
+            symbol="SPY",
+            strategy_type=strategy,
+        )
+        assert strategy.use_snapshot_for_current_bar is True
+
+    def test_paper_trading_config_sets_true(self):
         strategy = _MinimalStrategy()
-        strategy.get_rt_option_bar = lambda contract: _sample_bar()
-        assert strategy.is_live is True
+        PaperTradingConfig(symbol="SPY", strategy_type=strategy)
+        assert strategy.use_snapshot_for_current_bar is True
 
 
 class TestStrategyGetCurrentOptionBar:
     def test_live_uses_rt_snapshot(self, contract):
-        strategy = _MinimalStrategy()
+        strategy = _MinimalStrategy(use_snapshot_for_current_bar=True)
         rt_bar = _sample_bar()
         strategy.get_rt_option_bar = Mock(return_value=rt_bar)
         strategy.get_option_bar = Mock(return_value=_sample_bar("other"))
@@ -99,7 +116,6 @@ class TestStrategyGetCurrentOptionBar:
     def test_backtest_uses_historical_aggs(self, contract):
         strategy = _MinimalStrategy()
         hist_bar = _sample_bar()
-        strategy.get_rt_option_bar = None
         strategy.get_option_bar = Mock(return_value=hist_bar)
         date = datetime(2025, 1, 2)
 

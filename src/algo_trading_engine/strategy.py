@@ -1,0 +1,392 @@
+"""
+Strategy interface for trading strategies.
+
+This module provides the abstract base class that all trading strategies must implement.
+"""
+
+from abc import ABC, abstractmethod
+from datetime import datetime, timedelta
+import math
+from typing import Callable, Optional, List, Iterable, TYPE_CHECKING
+import pandas as pd
+
+from algo_trading_engine.logging import get_logger
+from algo_trading_engine.vo import TreasuryRates
+from algo_trading_engine.indicators.indicator import Indicator
+from algo_trading_engine.enums import BarTimeInterval, UniversalCloseCondition
+
+if TYPE_CHECKING:
+    from algo_trading_engine.plotting.config import PlotConfig
+    from algo_trading_engine.vo import Position
+    from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO, OptionsChainDTO, ExpirationRangeDTO, StrikeRangeDTO
+
+
+class _NotImplementedCallback:  # pylint: disable=too-few-public-methods
+    """Callable stub that is not a function, so instance access does not bind it."""
+
+    def __call__(self, *_args, **_kwargs):
+        raise NotImplementedError("This logic must be overridden.")
+
+
+_raise_not_implemented = _NotImplementedCallback()
+
+
+class IndicatorUpdateError(RuntimeError):
+    """Raised when an indicator fails to update for the current date.
+
+    Strategy signals derived from a stale indicator are not trustworthy, so this
+    aborts the run rather than letting it report success with stale values.
+    """
+
+
+class Strategy(ABC):
+    """
+    Abstract base class for trading strategies.
+    
+    All trading strategies must inherit from this class and implement
+    the required abstract methods.
+    
+    Options Trading Callables:
+        Strategies that trade options can expect the following callables as instance
+        attributes. Each defaults to a raising stub until the strategy builder or engine
+        replaces it:
+        
+        - get_contract_list_for_date: Get list of option contracts for a specific date and symbol
+        - get_option_bar: Get historical bar data for an option contract on a specific date (/aggs)
+        - get_rt_option_bar: Get near-real-time bar data for an option contract via Polygon
+          snapshot. Injected for paper trading. Use ``use_snapshot_for_current_bar`` to choose
+          snapshot pricing instead of historical pricing.
+        - get_options_chain: Get the full options chain for a symbol on a specific date
+        - get_current_volumes_for_position: Get current volumes for an open position (position, date)
+        - compute_exit_price: Compute the exit price for a position on a specific date
+        - get_position_size: Size a position from available capital
+    """
+    
+    # Callables for options trading strategies. Default to a raising stub until injected.
+    get_contract_list_for_date: Callable[[datetime, str], List['OptionContractDTO']] = _raise_not_implemented
+    get_option_bar: Callable[['OptionContractDTO', datetime], Optional['OptionBarDTO']] = _raise_not_implemented
+    get_rt_option_bar: Callable[['OptionContractDTO'], Optional['OptionBarDTO']] = _raise_not_implemented
+    get_options_chain: Callable[[str, datetime, Optional['ExpirationRangeDTO'], Optional['StrikeRangeDTO'], Optional[BarTimeInterval], Optional[int]], 'OptionsChainDTO'] = _raise_not_implemented
+    get_current_volumes_for_position: Callable[['Position', datetime], Optional[List[int]]] = _raise_not_implemented
+    compute_exit_price: Callable[['Position', datetime], Optional[float]] = _raise_not_implemented
+    get_position_size: Callable[['Position', float], int] = _raise_not_implemented
+
+    def __init__(
+        self,
+        profit_target: float = None,
+        stop_loss: float = None,
+        universal_close_conditions: Optional[Iterable[UniversalCloseCondition]] = None,
+        use_snapshot_for_current_bar: bool = False,
+    ):
+        """
+        Initialize the strategy.
+        
+        Args:
+            profit_target: Optional profit target percentage (e.g., 0.5 for 50%)
+            stop_loss: Optional stop loss percentage (e.g., 0.6 for 60%)
+            universal_close_conditions: Engine-level close conditions to apply after
+                on_new_date. Defaults to all members when omitted.
+            use_snapshot_for_current_bar: When True, current option bars come from the
+                Polygon snapshot. BacktestConfig sets this False and PaperTradingConfig
+                sets this True when a strategy instance is supplied.
+        """
+        self.profit_target = profit_target
+        self.stop_loss = stop_loss
+        self.use_snapshot_for_current_bar = use_snapshot_for_current_bar
+        if universal_close_conditions is None:
+            self.universal_close_conditions = frozenset(UniversalCloseCondition)
+        else:
+            self.universal_close_conditions = frozenset(universal_close_conditions)
+        self.data: Optional[pd.DataFrame] = None
+        self.treasury_data: Optional[TreasuryRates] = None
+        self.plot_config: Optional["PlotConfig"] = None
+        self.indicators: List[Indicator] = []
+        self._indicator_error: Optional[Exception] = None
+        self._failed_indicator_name: Optional[str] = None
+
+    def get_current_option_bar(
+        self,
+        contract: 'OptionContractDTO',
+        date: datetime,
+        timespan: BarTimeInterval = BarTimeInterval.DAY,
+    ) -> Optional['OptionBarDTO']:
+        """
+        Fetch an option bar for current valuation.
+
+        When ``use_snapshot_for_current_bar`` is set, use the near-real-time Polygon snapshot
+        (dateless). Otherwise use the historical /aggs bar for ``date`` at the given ``timespan``.
+        """
+        if self.use_snapshot_for_current_bar:
+            return self.get_rt_option_bar(contract)
+        return self.get_option_bar(contract, date, timespan=timespan)
+
+    @property
+    def warm_up_period(self) -> int:
+        """
+        Number of initial bars used only to update indicators; the backtest engine does
+        not call on_new_date until bar index ``warm_up_period`` (the first bar after
+        this warm-up window). Derived from the most demanding indicator attached to the
+        strategy.
+        """
+        if not self.indicators:
+            return 0
+        return max(indicator.warm_up_period for indicator in self.indicators)
+
+    def get_warm_up_period_timedelta(self, bar_interval: BarTimeInterval) -> timedelta:
+        """
+        Time delta representing the warm-up period.
+        """
+        warm_up_period = self.warm_up_period * 2.0 # 2.0 is a factor to account for the fact that the warm-up period is a bar count, not a wall-clock time
+        if bar_interval == BarTimeInterval.DAY:
+            return timedelta(days=warm_up_period)
+        elif bar_interval == BarTimeInterval.HOUR:
+            if warm_up_period <= 0:
+                return timedelta(0)
+            trading_days = math.ceil(
+                warm_up_period / 7
+            )
+            return timedelta(days=trading_days)
+        else:
+            raise ValueError(f"Unsupported bar interval: {bar_interval}")
+        
+    @abstractmethod
+    def on_new_date(
+        self,
+        date: datetime,
+        positions: tuple['Position', ...],
+        add_position: Callable[['Position'], None],
+        remove_position: Callable[[datetime, 'Position', float, Optional[float], Optional[list[int]]], None]
+    ) -> None:
+        """
+        Called for each trading day to execute strategy logic.
+        
+        Args:
+            date: Current trading date
+            positions: Tuple of currently open positions
+            add_position: Callback function to add a new position
+            remove_position: Callback function to remove/close a position
+                Signature: (date, position, exit_price, underlying_price=None, current_volumes=None)
+        """
+        if not self._update_indicators(date):
+            get_logger().error(f"Error updating indicators for date {date}, aborting execution")
+            raise IndicatorUpdateError(
+                f"Indicator {self._failed_indicator_name} failed to update for {date}: "
+                f"{self._indicator_error}"
+            ) from self._indicator_error
+
+    @abstractmethod
+    def on_end(
+        self,
+        positions: tuple['Position', ...],
+        remove_position: Callable[[datetime, 'Position', float, Optional[float], Optional[list[int]]], None],
+        date: datetime
+    ) -> None:
+        """
+        Called at the end of backtest/paper trading to close remaining positions.
+        
+        Args:
+            positions: Tuple of currently open positions
+            remove_position: Callback function to remove/close a position
+            date: Final date
+        """
+
+    @abstractmethod
+    def validate_data(self, data: pd.DataFrame) -> bool:
+        """
+        Validate that the provided data meets the strategy's requirements.
+        
+        Args:
+            data: DataFrame with market data and features
+            
+        Returns:
+            True if data is valid, False otherwise
+        """
+
+    def add_indicator(self, indicator: Indicator) -> None:
+        """
+        Add an indicator to the strategy.
+        
+        This allows indicators to be added after strategy initialization,
+        which is useful for dynamic indicator configuration.
+        
+        Args:
+            indicator: Indicator instance to add
+            
+        Example:
+            strategy = MyStrategy()
+            atr = ATRIndicator(period=14)
+            strategy.add_indicator(atr)
+        """
+        if not isinstance(indicator, Indicator):
+            raise TypeError(f"Expected Indicator instance, got {type(indicator).__name__}")
+        self.indicators.append(indicator)
+
+    def get_indicator(self, indicator_class: type) -> Optional[Indicator]:
+        """
+        Get an indicator by class type.
+        
+        Args:
+            indicator_class: The indicator class to search for (e.g., ATRIndicator)
+            
+        Returns:
+            Indicator instance if found, None otherwise
+            
+        Example:
+            atr = self.get_indicator(ATRIndicator)
+            if atr:
+                current_atr = atr.value
+        """
+        for indicator in self.indicators:
+            if isinstance(indicator, indicator_class):
+                return indicator
+        return None
+
+    def get_indicator_by_name(self, name: str) -> Optional[Indicator]:
+        """
+        Get an indicator by its name.
+
+        Useful when multiple indicators of the same type exist (e.g. SMA_20 and SMA_50).
+
+        Args:
+            name: The indicator name to search for (e.g., "SMA_20", "ATR")
+
+        Returns:
+            Indicator instance if found, None otherwise
+
+        Example:
+            sma_20 = self.get_indicator_by_name("SMA_20")
+            sma_50 = self.get_indicator_by_name("SMA_50")
+        """
+        for indicator in self.indicators:
+            if indicator.name == name:
+                return indicator
+        return None
+
+    def on_remove_position_success(self, date: datetime, position: 'Position', exit_price: float, underlying_price: float = None, current_volumes: list[int] = None):
+        """
+        Callback function for when a position is removed successfully via the TradingEngine.
+
+        Args:
+            date: Date at which the position is being closed
+            position: Position to remove
+            exit_price: Price at which the position is being closed
+            underlying_price: Price of the underlying at the time of exit
+            current_volumes: List of current volume data for each option in position.spread_options
+        """
+
+    def on_add_position_success(self, position: 'Position'):
+        """
+        Callback function for when a position is added successfully via the TradingEngine.
+
+        Args:
+            position: Position to add
+        """
+
+    def get_current_underlying_price(self, date: datetime, symbol: str) -> Optional[float]:
+        """
+        Get the current underlying price for a given date and symbol. Assigned via the TradingEngine.
+        """
+        raise NotImplementedError("get_current_underlying_price is not implemented in the base Strategy class.")
+
+    def set_data(self, data: pd.DataFrame, treasury_data: Optional[TreasuryRates] = None):
+        """
+        Set the market data for the strategy.
+        
+        Args:
+            data: DataFrame with market data
+            treasury_data: Optional treasury rates data
+        """
+        self.data = data
+        self.treasury_data = treasury_data
+
+    def set_plot_config(self, plot_config: Optional["PlotConfig"]) -> None:
+        """Set plotting configuration for strategy-driven charts."""
+        self.plot_config = plot_config
+
+    def set_profit_target(self, profit_target: float):
+        """Set the profit target for the strategy."""
+        self.profit_target = profit_target
+
+    def set_stop_loss(self, stop_loss: float):
+        """Set the stop loss for the strategy."""
+        self.stop_loss = stop_loss
+
+    def _profit_target_hit(self, position: 'Position', exit_price: float) -> bool:
+        """
+        Check if the profit target has been hit for a position.
+        
+        Args:
+            position: Position to check
+            exit_price: Current exit price
+            
+        Returns:
+            True if profit target hit, False otherwise
+        """
+        if self.profit_target is None:
+            return False
+        return position.profit_target_hit(self.profit_target, exit_price)
+
+    def _stop_loss_hit(self, position: 'Position', exit_price: float) -> bool:
+        """
+        Check if the stop loss has been hit for a position.
+        
+        Args:
+            position: Position to check
+            exit_price: Current exit price
+            
+        Returns:
+            True if stop loss hit, False otherwise
+        """
+        if self.stop_loss is None:
+            return False
+        return position.stop_loss_hit(self.stop_loss, exit_price)
+
+    def warm_up_indicators(self) -> None:
+        """Replay historical bars through all indicators so they have values
+        at every datetime, matching backtest behavior.
+
+        Should be called after set_data() and before the first on_new_date() in
+        contexts where the engine does not iterate through every bar (e.g. paper
+        trading, Lambda).
+
+        Raises:
+            ValueError: If indicators are registered but no data is available.
+        """
+        if not self.indicators:
+            return
+        if self.data is None or self.data.empty:
+            raise ValueError(
+                "Cannot warm up indicators without data. "
+                "Call set_data() before warm_up_indicators()."
+            )
+        for date in self.data.index:
+            for indicator in self.indicators:
+                indicator.update(date, self.data)
+        get_logger().info(
+            f"Indicator warm-up complete: {len(self.indicators)} indicator(s), "
+            f"{len(self.data)} bar(s)"
+        )
+
+    def _update_indicators(self, date: datetime) -> bool:
+        """
+        Update the indicators for the strategy.
+        
+        Args:
+            date: Current date
+
+        Returns:
+            True if indicators were updated, False otherwise
+        """
+        self._indicator_error = None
+        self._failed_indicator_name = None
+        for indicator in self.indicators:
+            try:
+                if date in indicator.get_values().index:
+                    continue
+                indicator.update(date, self.data)
+            except Exception as e:
+                get_logger().error(f"Error updating indicator {indicator.name}: {e}")
+                self._failed_indicator_name = indicator.name
+                self._indicator_error = e
+                return False
+        return True

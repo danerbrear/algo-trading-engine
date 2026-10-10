@@ -1,10 +1,11 @@
 from datetime import datetime
 from unittest.mock import MagicMock, patch
-from algo_trading_engine.prediction.decision_store import JsonDecisionStore, ProposedPositionRequestDTO, DecisionResponseDTO, generate_decision_id
-from algo_trading_engine.prediction.recommendation_engine import InteractiveStrategyRecommender
-from algo_trading_engine.prediction.capital_manager import CapitalManager
-from algo_trading_engine.common.models import StrategyType
-from algo_trading_engine.common.models import Option
+from algo_trading_engine.database.decision_store import JsonDecisionStore, generate_decision_id
+from algo_trading_engine.dto import DecisionResponseDTO, ProposedPositionRequestDTO
+from algo_trading_engine._internal.trade.recommendation_engine import InteractiveStrategyRecommender
+from algo_trading_engine._internal.trade.capital_manager import CapitalManager
+from algo_trading_engine.enums import StrategyType
+from algo_trading_engine.vo import Option
 from algo_trading_engine.vo import create_position
 
 def _make_option(symbol: str, strike: float, expiration: str, opt_type: str, last: float, volume: int=100) -> Option:
@@ -221,7 +222,7 @@ def test_get_exit_price_from_user_prompts_with_bar_data_uses_defaults(tmp_path):
     allocations_config = {'strategies': {'credit_spread': {'allocated_capital': 10000.0, 'max_risk_percentage': 0.05}}}
     capital_manager = CapitalManager(allocations_config, store)
     recommender = InteractiveStrategyRecommender(strategy, store, capital_manager, auto_yes=False)
-    with patch('algo_trading_engine.prediction.recommendation_engine.input', side_effect=['', '']):
+    with patch('algo_trading_engine._internal.trade.recommendation_engine.input', side_effect=['', '']):
         result = recommender._get_exit_price_from_user_prompts(position, datetime(2025, 8, 8))
     assert result is not None
     assert abs(result - 0.9) < 1e-06
@@ -240,7 +241,7 @@ def test_get_exit_price_from_user_prompts_without_bar_data_prompts_without_defau
     allocations_config = {'strategies': {'credit_spread': {'allocated_capital': 10000.0, 'max_risk_percentage': 0.05}}}
     capital_manager = CapitalManager(allocations_config, store)
     recommender = InteractiveStrategyRecommender(strategy, store, capital_manager, auto_yes=False)
-    with patch('algo_trading_engine.prediction.recommendation_engine.input', return_value='0.75'):
+    with patch('algo_trading_engine._internal.trade.recommendation_engine.input', return_value='0.75'):
         result = recommender._get_exit_price_from_user_prompts(position, datetime(2025, 8, 8))
     assert result is not None
     assert abs(result - 0.75) < 1e-06

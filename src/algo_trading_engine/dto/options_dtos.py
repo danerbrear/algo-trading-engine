@@ -14,9 +14,9 @@ from decimal import Decimal
 from typing import Optional, List, Dict, Any
 import re
 
-from algo_trading_engine.common.logger import get_logger
+from algo_trading_engine.logging import get_logger
 from algo_trading_engine.vo import StrikePrice, ExpirationDate
-from algo_trading_engine.common.models import OptionType
+from algo_trading_engine.enums import OptionType
 
 _SNAPSHOT_INTRINSIC_TOLERANCE = 0.01
 

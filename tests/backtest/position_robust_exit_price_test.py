@@ -11,7 +11,8 @@ from decimal import Decimal
 
 import pytest
 
-from algo_trading_engine.common.models import Option, OptionChain, OptionType, StrategyType
+from algo_trading_engine.vo import Option, OptionChain
+from algo_trading_engine.enums import OptionType, StrategyType
 from algo_trading_engine.dto import OptionBarDTO
 from algo_trading_engine.vo import create_position
 

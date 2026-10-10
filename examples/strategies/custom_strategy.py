@@ -2,11 +2,11 @@ from datetime import datetime
 from decimal import Decimal
 
 from algo_trading_engine import OptionsRetrieverHelper, Strategy
-from algo_trading_engine.common.logger import get_logger
-from algo_trading_engine.common.models import Option, StrategyType
+from algo_trading_engine.logging import get_logger
+from algo_trading_engine.vo import Option
 from algo_trading_engine.dto import ExpirationRangeDTO, StrikeRangeDTO
 from algo_trading_engine.indicators import ATRIndicator
-from algo_trading_engine.enums import BarTimeInterval
+from algo_trading_engine.enums import BarTimeInterval, StrategyType
 from algo_trading_engine.vo import StrikePrice, create_position
 
 class MyCustomStrategy(Strategy):
@@ -48,7 +48,7 @@ class MyCustomStrategy(Strategy):
         Called at the end of backtest to close remaining positions.
         """
         for position in positions:
-            exit_price = self.compute_exit_price(position, date) if hasattr(self, 'compute_exit_price') else None
+            exit_price = self.compute_exit_price(position, date)
             symbol = getattr(position, 'symbol', getattr(self, 'symbol', 'SPY'))
             underlying = self.get_current_underlying_price(date, symbol) if hasattr(self, 'get_current_underlying_price') else None
             remove_position(date, position, exit_price if exit_price is not None else 0.0, underlying_price=underlying)

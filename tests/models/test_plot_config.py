@@ -4,7 +4,7 @@ from datetime import datetime
 
 from algo_trading_engine.models.config import BacktestConfig
 from algo_trading_engine.plotting import PlotConfig
-from algo_trading_engine.core.strategy import Strategy
+from algo_trading_engine.strategy import Strategy
 
 
 class _MinimalStrategy(Strategy):
@@ -32,6 +32,6 @@ def test_backtest_config_plot_config_default_is_none():
 def test_strategy_set_plot_config():
     strategy = _MinimalStrategy()
     assert strategy.plot_config is None
-    plot_config = PlotConfig(enabled=True, show=False)
+    plot_config = PlotConfig(enabled=True)
     strategy.set_plot_config(plot_config)
     assert strategy.plot_config == plot_config
