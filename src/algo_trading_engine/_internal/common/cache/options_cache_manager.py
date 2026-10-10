@@ -15,8 +15,11 @@ from pathlib import Path
 from typing import List, Dict, Optional, Union, Tuple
 from datetime import date, datetime, time, timedelta
 
-from .cache_manager import CacheManager
 from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO
+from algo_trading_engine.logging import get_logger
+
+from algo_trading_engine._internal.common.cache.cache_manager import CacheManager
+
 
 # Map API/enum timespan ("day"|"hour"|"minute") to cache dir name, matching stocks cache layout
 _TIMESPAN_TO_INTERVAL_DIR: Dict[str, str] = {
@@ -118,7 +121,7 @@ class OptionsCacheManager(CacheManager):
                     records = pickle.load(f)
                 return [OptionContractDTO.from_dict(record) for record in records]
             except Exception as e:
-                print(f"Error loading contracts cache: {e}")
+                get_logger().warning(f"Error loading contracts cache: {e}")
         return None
     
     def save_contracts(self, symbol: str, date: date, contracts: List[OptionContractDTO]) -> None:
@@ -149,7 +152,7 @@ class OptionsCacheManager(CacheManager):
                 with open(cache_path, 'rb') as f:
                     return pickle.load(f)
             except Exception as e:
-                print(f"Error loading bar cache: {e}")
+                get_logger().warning(f"Error loading bar cache: {e}")
         return None
     
     def save_bar(
