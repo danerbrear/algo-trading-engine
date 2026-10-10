@@ -458,15 +458,15 @@ class BacktestEngine(TradingEngine):
                     self.volume_stats = self.volume_stats.increment_rejected_positions()
                     return  # Reject the position
 
-            try:
-                position_size = self.strategy.get_position_size(position, self.capital) 
-            except NotImplementedError:
-                # Intentional default capability
-                position_size = self._get_position_size(position)  
-            
-            if position_size == 0:
-                get_logger().info("Not enough capital to add position. Position size is 0.")
-                return
+        try:
+            position_size = self.strategy.get_position_size(position, self.capital) 
+        except NotImplementedError:
+            # Intentional default capability
+            position_size = self._get_position_size(position)
+        
+        if position_size == 0:
+            get_logger().info("Not enough capital to add position. Position size is 0.")
+            return
         
         position.set_quantity(position_size)
 
