@@ -14,7 +14,7 @@ from typing import Optional, Union, TYPE_CHECKING
 from algo_trading_engine.enums import BarTimeInterval
 
 if TYPE_CHECKING:
-    from algo_trading_engine._internal.common.run_observer import RunObserver
+    from algo_trading_engine.gui import RunObserver
     from algo_trading_engine.database.decision_store import DecisionStore
     from algo_trading_engine.plotting.config import PlotConfig
     from algo_trading_engine.strategy import Strategy

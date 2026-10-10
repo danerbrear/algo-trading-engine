@@ -21,7 +21,7 @@ from algo_trading_engine.models import EngineConfig, OverallPerformanceStats, St
 from algo_trading_engine.logging import configure_logger, get_logger
 from algo_trading_engine.logging.logger import log_and_echo
 from algo_trading_engine._internal.common.progress_tracker import ProgressTracker, set_global_progress_tracker
-from algo_trading_engine._internal.common.run_observer import RunObserver
+from algo_trading_engine.gui import RunObserver
 from ._strategy_builder import StrategyFactory, create_strategy_from_args
 from algo_trading_engine._internal.common.trading_engine import TradingEngine
 from algo_trading_engine.models.config import BacktestConfig as BacktestConfigDTO

@@ -6,7 +6,7 @@ from pathlib import Path
 import algo_trading_engine
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
-_PUBLIC_PACKAGES = ("dto", "vo", "enums", "indicators", "plotting", "database", "logging")
+_PUBLIC_PACKAGES = ("dto", "vo", "enums", "indicators", "plotting", "database", "logging", "gui")
 
 
 def _imported_modules(source: str) -> set[str]:

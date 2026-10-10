@@ -8,7 +8,7 @@ import threading
 from algo_trading_engine.logging import get_logger
 
 if TYPE_CHECKING:
-    from algo_trading_engine._internal.common.run_observer import RunObserver
+    from algo_trading_engine.gui import RunObserver
 
 
 class ProgressTracker:

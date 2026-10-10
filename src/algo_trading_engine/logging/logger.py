@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Literal
 from loguru import logger
 
 if TYPE_CHECKING:
-    from algo_trading_engine._internal.common.run_observer import RunObserver
+    from algo_trading_engine.gui import RunObserver
 
 RunType = Literal["backtest", "trade"]
 LogLevel = Literal["debug", "info", "warn"]

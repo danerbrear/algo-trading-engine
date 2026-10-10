@@ -100,17 +100,19 @@ def test_lazy_backtest_engine_export_resolves():
 
 
 def test_lazy_submodule_exports_resolve():
-    from algo_trading_engine import vo, enums, logging
+    from algo_trading_engine import vo, enums, logging, gui
 
     assert vo is importlib.import_module("algo_trading_engine.vo")
     assert enums is importlib.import_module("algo_trading_engine.enums")
     assert logging is importlib.import_module("algo_trading_engine.logging")
+    assert gui is importlib.import_module("algo_trading_engine.gui")
 
     import algo_trading_engine as pkg
 
     assert pkg.vo is vo
     assert pkg.enums is enums
     assert pkg.logging is logging
+    assert pkg.gui is gui
 
 
 def test_dir_includes_public_api_names():
@@ -121,3 +123,4 @@ def test_dir_includes_public_api_names():
     assert "dto" in names
     assert "enums" in names
     assert "logging" in names
+    assert "gui" in names
