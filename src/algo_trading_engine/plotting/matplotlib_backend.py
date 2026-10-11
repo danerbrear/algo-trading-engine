@@ -37,7 +37,7 @@ def _interactive_show_requested(show: bool) -> bool:
     return True
 
 
-def _finish(fig, *, save_path: Path | str | None, show: bool) -> None:
+def _finish(fig, *, save_path: Path | str | None, show: bool, close: bool = True) -> None:
     plt = _import_pyplot()
     if save_path is not None:
         path = Path(save_path)
@@ -45,7 +45,19 @@ def _finish(fig, *, save_path: Path | str | None, show: bool) -> None:
         fig.savefig(path, dpi=300, bbox_inches="tight")
     if _interactive_show_requested(show):
         plt.show()
-    plt.close(fig)
+    if close:
+        plt.close(fig)
+
+
+def show_open_figures() -> None:
+    """Block on every figure already created, then close any that remain.
+
+    Each figure is its own window. Closing one leaves the others open.
+    """
+    plt = _import_pyplot()
+    if _interactive_show_requested(True):
+        plt.show()
+    plt.close("all")
 
 
 def render_lines_on_axes(spec: PlotSpec, ax) -> None:
@@ -122,6 +134,7 @@ def render_lines_figure(
     *,
     save_path: Path | str | None = None,
     show: bool = True,
+    close: bool = True,
 ) -> None:
     plt = _import_pyplot()
     fig, ax = plt.subplots(figsize=(14, 7))
@@ -129,7 +142,7 @@ def render_lines_figure(
     if spec.title and not ax.get_title():
         ax.set_title(spec.title, fontsize=14, fontweight="bold")
     fig.tight_layout()
-    _finish(fig, save_path=save_path, show=show)
+    _finish(fig, save_path=save_path, show=show, close=close)
 
 
 def render_heatmap_figure(
@@ -137,6 +150,7 @@ def render_heatmap_figure(
     *,
     save_path: Path | str | None = None,
     show: bool = True,
+    close: bool = True,
 ) -> None:
     plt = _import_pyplot()
     fig, ax = plt.subplots(figsize=(10, 8))
@@ -162,7 +176,7 @@ def render_heatmap_figure(
             ax.text(col, row, text, ha="center", va="center", color="black")
     fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
     fig.tight_layout()
-    _finish(fig, save_path=save_path, show=show)
+    _finish(fig, save_path=save_path, show=show, close=close)
 
 
 def render_bar_figure(
@@ -170,6 +184,7 @@ def render_bar_figure(
     *,
     save_path: Path | str | None = None,
     show: bool = True,
+    close: bool = True,
 ) -> None:
     plt = _import_pyplot()
     fig, ax = plt.subplots(figsize=(12, 8))
@@ -184,7 +199,7 @@ def render_bar_figure(
         ax.set_xlabel(spec.x_label)
     ax.grid(True, alpha=0.3, axis="x")
     fig.tight_layout()
-    _finish(fig, save_path=save_path, show=show)
+    _finish(fig, save_path=save_path, show=show, close=close)
 
 
 def render_grid(

@@ -19,7 +19,7 @@ show_plot(spec, config=self.plot_config)
 - `build_plot_spec` is pure (no matplotlib, no observer).
 - `show_plot` is the only display entry point.
 
-Pass a sequence of specs to `show_plot` for a multi-panel figure (`ncols` controls layout).
+Pass a sequence of specs to `show_plot` to open one window per spec. Closing one window leaves the others open.
 
 ## Enabling plots in backtests
 

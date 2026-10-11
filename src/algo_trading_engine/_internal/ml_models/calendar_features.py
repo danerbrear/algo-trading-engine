@@ -436,7 +436,7 @@ class CalendarFeatureProcessor:
             y_label="Days",
             markers=event_markers,
         )
-        show_plot([since_spec, until_spec], config=config, save_path=save_path, ncols=1)
+        show_plot([since_spec, until_spec], config=config, save_path=save_path)
         if save_path:
             print(f"📊 {event_type} features plot saved to {save_path}")
 

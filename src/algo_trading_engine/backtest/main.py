@@ -371,7 +371,8 @@ class BacktestEngine(TradingEngine):
                     title="Equity Curve",
                     y_label="Equity ($)",
                 )
-                show_plot(spec, config=self.plot_config)
+                strategy_specs = list(self.plot_config.specs or []) if self.plot_config is not None else []
+                show_plot([*strategy_specs, spec], config=self.plot_config)
 
         if self.observer is not None:
             self.observer.result({

@@ -531,13 +531,7 @@ class MAVelocityAnalyzer:
                 title="Failed Trend Signals",
             )
         )
-        show_plot(
-            specs,
-            config=config,
-            save_path=save_path,
-            ncols=2,
-            grid_title=f"Moving Average Velocity Analysis - {self.symbol}",
-        )
+        show_plot(specs, config=config, save_path=save_path)
         if save_path:
             print(f"📊 Plot saved to {save_path}")
 

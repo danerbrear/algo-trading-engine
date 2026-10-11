@@ -73,9 +73,11 @@ def test_show_plot_routes_to_observer(tmp_path):
 
     frame = pd.DataFrame({"timestamp": pd.to_datetime(["2024-01-01"]), "equity": [3000.0]})
     spec = build_plot_spec(frame, name=EQUITY_CURVE_NAME)
-    with patch("algo_trading_engine.plotting.show.render_spec_grid") as mock_grid:
+    with patch(
+        "algo_trading_engine.plotting.matplotlib_backend.render_lines_figure"
+    ) as mock_render:
         show_plot(spec, config=None)
-        mock_grid.assert_not_called()
+        mock_render.assert_not_called()
 
     payload_line = stream.getvalue().strip().splitlines()[-1]
     payload = __import__("json").loads(payload_line)
@@ -96,7 +98,7 @@ def test_show_plot_renders_single_spec_when_config_is_none():
         mock_render.assert_called_once()
 
 
-def test_show_plot_renders_grid_when_config_is_none():
+def test_show_plot_opens_one_figure_per_spec_when_config_is_none():
     specs = [
         build_plot_spec(
             pd.DataFrame({"index": [0, 1], "Close": [1.0, 2.0]}),
@@ -109,10 +111,15 @@ def test_show_plot_renders_grid_when_config_is_none():
             x="index",
         ),
     ]
-    with patch("algo_trading_engine.plotting.show.render_spec_grid") as mock_grid:
+    with patch(
+        "algo_trading_engine.plotting.matplotlib_backend.render_lines_figure"
+    ) as mock_render, patch(
+        "algo_trading_engine.plotting.matplotlib_backend.show_open_figures"
+    ) as mock_show:
         show_plot(specs, config=None)
-        mock_grid.assert_called_once()
-        assert mock_grid.call_args.kwargs["save_path"] is None
+        assert mock_render.call_count == 2
+        assert all(call.kwargs["close"] is False for call in mock_render.call_args_list)
+        mock_show.assert_called_once()
 
 
 def test_show_plot_skips_when_disabled():
@@ -210,8 +217,9 @@ def test_backend_smoke_render_grid(tmp_path, backend):
         ),
     ]
     output = tmp_path / "grid.png"
-    show_plot(specs, config=PlotConfig(enabled=True), save_path=output, ncols=2)
-    assert output.exists()
+    show_plot(specs, config=PlotConfig(enabled=True), save_path=output)
+    assert (tmp_path / "grid_loss.png").exists()
+    assert (tmp_path / "grid_accuracy.png").exists()
 
 
 @pytest.mark.parametrize("backend", ["agg"])

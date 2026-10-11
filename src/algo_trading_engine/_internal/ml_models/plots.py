@@ -98,7 +98,7 @@ class ModelPlotter:
             title=f"Model Accuracy - {self.symbol}",
             y_label="Accuracy",
         )
-        show_plot([loss_spec, accuracy_spec], config=self.plot_config, ncols=2)
+        show_plot([loss_spec, accuracy_spec], config=self.plot_config)
 
     def plot_feature_importance(self, feature_names, importance_scores):
         sorted_indices = np.argsort(importance_scores)[::-1]
