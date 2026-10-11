@@ -6,10 +6,10 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from algo_trading_engine.common.options_handler import OptionsHandler
+from algo_trading_engine.options_handler import OptionsHandler
 from algo_trading_engine.dto import OptionBarDTO, OptionContractDTO
 from algo_trading_engine.vo import ExpirationDate, StrikePrice
-from algo_trading_engine.common.models import OptionType
+from algo_trading_engine.enums import OptionType
 
 
 @pytest.fixture

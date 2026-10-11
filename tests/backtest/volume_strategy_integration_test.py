@@ -4,10 +4,11 @@ Tests for enhanced current date volume validation in strategy.
 from datetime import datetime, date
 from decimal import Decimal
 from unittest.mock import Mock
-from algo_trading_engine.strategies.credit_spread_minimal import CreditSpreadStrategy
+from algo_trading_engine._internal.strategies.credit_spread_minimal import CreditSpreadStrategy
 from algo_trading_engine.vo import Position, create_position
-from algo_trading_engine.common.models import StrategyType
-from algo_trading_engine.common.models import Option, OptionType
+from algo_trading_engine.enums import StrategyType
+from algo_trading_engine.vo import Option
+from algo_trading_engine.enums import OptionType
 from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO
 from algo_trading_engine.vo import StrikePrice, ExpirationDate
 

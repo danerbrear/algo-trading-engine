@@ -12,15 +12,15 @@ import pandas as pd
 import pytest
 
 import algo_trading_engine.plotting as plotting_pkg
-from algo_trading_engine.common.logger import configure_logger, remove_logger_sink
-from algo_trading_engine.common.run_observer import JsonLinesRunObserver
+from algo_trading_engine.logging import configure_logger, remove_logger_sink
+from algo_trading_engine.gui import JsonLinesRunObserver
 from algo_trading_engine.plotting import (
     HeatmapSpec,
     PlotConfig,
     build_plot_spec,
     show_plot,
 )
-from algo_trading_engine.plotting.serialize import payload_to_plot_frame, plot_payload
+from algo_trading_engine.plotting._serialize import payload_to_plot_frame, plot_payload
 from algo_trading_engine.plotting.spec import EQUITY_CURVE_NAME
 
 
@@ -73,14 +73,53 @@ def test_show_plot_routes_to_observer(tmp_path):
 
     frame = pd.DataFrame({"timestamp": pd.to_datetime(["2024-01-01"]), "equity": [3000.0]})
     spec = build_plot_spec(frame, name=EQUITY_CURVE_NAME)
-    with patch("algo_trading_engine.plotting.show.render_spec_grid") as mock_grid:
+    with patch(
+        "algo_trading_engine.plotting._matplotlib_backend.render_lines_figure"
+    ) as mock_render:
         show_plot(spec, config=None)
-        mock_grid.assert_not_called()
+        mock_render.assert_not_called()
 
     payload_line = stream.getvalue().strip().splitlines()[-1]
     payload = __import__("json").loads(payload_line)
     assert payload["type"] == "dataframe"
     assert payload["payload"]["name"] == EQUITY_CURVE_NAME
+
+
+def test_show_plot_renders_single_spec_when_config_is_none():
+    spec = build_plot_spec(
+        pd.DataFrame({"index": [0, 1], "Close": [1.0, 2.0]}),
+        name="price",
+        x="index",
+    )
+    with patch(
+        "algo_trading_engine.plotting._matplotlib_backend.render_lines_figure"
+    ) as mock_render:
+        show_plot(spec, config=None)
+        mock_render.assert_called_once()
+
+
+def test_show_plot_opens_one_figure_per_spec_when_config_is_none():
+    specs = [
+        build_plot_spec(
+            pd.DataFrame({"index": [0, 1], "Close": [1.0, 2.0]}),
+            name="price",
+            x="index",
+        ),
+        build_plot_spec(
+            pd.DataFrame({"index": [0, 1], "Close": [2.0, 3.0]}),
+            name="other",
+            x="index",
+        ),
+    ]
+    with patch(
+        "algo_trading_engine.plotting._matplotlib_backend.render_lines_figure"
+    ) as mock_render, patch(
+        "algo_trading_engine.plotting._matplotlib_backend.show_open_figures"
+    ) as mock_show:
+        show_plot(specs, config=None)
+        assert mock_render.call_count == 2
+        assert all(call.kwargs["close"] is False for call in mock_render.call_args_list)
+        mock_show.assert_called_once()
 
 
 def test_show_plot_skips_when_disabled():
@@ -90,7 +129,7 @@ def test_show_plot_skips_when_disabled():
         x="index",
     )
     with patch(
-        "algo_trading_engine.plotting.matplotlib_backend.render_lines_figure"
+        "algo_trading_engine.plotting._matplotlib_backend.render_lines_figure"
     ) as mock_render:
         show_plot(spec, config=PlotConfig(enabled=False))
         mock_render.assert_not_called()
@@ -103,9 +142,9 @@ def test_show_plot_renders_when_enabled():
         x="index",
     )
     with patch(
-        "algo_trading_engine.plotting.matplotlib_backend.render_lines_figure"
+        "algo_trading_engine.plotting._matplotlib_backend.render_lines_figure"
     ) as mock_render:
-        show_plot(spec, config=PlotConfig(enabled=True, show=False))
+        show_plot(spec, config=PlotConfig(enabled=True))
         mock_render.assert_called_once()
 
 
@@ -117,9 +156,9 @@ def test_show_plot_heatmap_when_enabled():
         name="heatmap",
     )
     with patch(
-        "algo_trading_engine.plotting.matplotlib_backend.render_heatmap_figure"
+        "algo_trading_engine.plotting._matplotlib_backend.render_heatmap_figure"
     ) as mock_render:
-        show_plot(spec, config=PlotConfig(enabled=True, show=False))
+        show_plot(spec, config=PlotConfig(enabled=True))
         mock_render.assert_called_once()
 
 
@@ -136,7 +175,7 @@ def test_show_plot_import_error_hint():
         )
 
     with patch(
-        "algo_trading_engine.plotting.matplotlib_backend._import_pyplot",
+        "algo_trading_engine.plotting._matplotlib_backend._import_pyplot",
         side_effect=_raise_plot_install_error,
     ):
         with pytest.raises(ImportError, match="algo-trading-engine\\[plot\\]"):
@@ -156,7 +195,7 @@ def test_backend_smoke_render_lines(tmp_path, backend):
         name="smoke_lines",
     )
     output = tmp_path / "lines.png"
-    show_plot(spec, config=PlotConfig(enabled=True, show=False), save_path=output)
+    show_plot(spec, config=PlotConfig(enabled=True), save_path=output)
     assert output.exists()
 
 
@@ -178,8 +217,9 @@ def test_backend_smoke_render_grid(tmp_path, backend):
         ),
     ]
     output = tmp_path / "grid.png"
-    show_plot(specs, config=PlotConfig(enabled=True, show=False), save_path=output, ncols=2)
-    assert output.exists()
+    show_plot(specs, config=PlotConfig(enabled=True), save_path=output)
+    assert (tmp_path / "grid_loss.png").exists()
+    assert (tmp_path / "grid_accuracy.png").exists()
 
 
 @pytest.mark.parametrize("backend", ["agg"])
@@ -192,5 +232,5 @@ def test_backend_smoke_render_heatmap(tmp_path, backend):
         name="smoke_heatmap",
     )
     output = tmp_path / "heatmap.png"
-    show_plot(spec, config=PlotConfig(enabled=True, show=False), save_path=output)
+    show_plot(spec, config=PlotConfig(enabled=True), save_path=output)
     assert output.exists()

@@ -7,12 +7,13 @@ from unittest.mock import Mock, patch, MagicMock, call
 from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
-from algo_trading_engine.prediction.recommend_cli import main
-from algo_trading_engine.prediction.decision_store import JsonDecisionStore
+from algo_trading_engine._internal.trade.recommend_cli import main
+from algo_trading_engine.database.decision_store import JsonDecisionStore
 from algo_trading_engine.vo import Position, create_position
-from algo_trading_engine.common.models import StrategyType
-from algo_trading_engine.common.models import Option, OptionType
-from algo_trading_engine.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
+from algo_trading_engine.enums import StrategyType
+from algo_trading_engine.vo import Option
+from algo_trading_engine.enums import OptionType
+from algo_trading_engine._internal.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
 
 class TestVelocityLivePrice(unittest.TestCase):
     """Test cases for velocity calculation using live SPY price when market is open."""

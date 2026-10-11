@@ -32,7 +32,7 @@ def test_package_import_does_not_load_backtest_or_sklearn():
         "import algo_trading_engine\n"
         "print('sklearn', 'sklearn' in sys.modules)\n"
         "print('backtest_main', 'algo_trading_engine.backtest.main' in sys.modules)\n"
-        "print('data_retriever', 'algo_trading_engine.common.data_retriever' in sys.modules)\n"
+        "print('data_retriever', 'algo_trading_engine.data_retriever' in sys.modules)\n"
     )
     assert "sklearn False" in out
     assert "backtest_main False" in out
@@ -74,7 +74,7 @@ def test_backtest_config_lazy_load_does_not_load_backtest_main():
 def test_backtest_package_config_import_does_not_load_main():
     out = _run_isolated_import_check(
         "import sys\n"
-        "from algo_trading_engine.backtest.config import VolumeConfig\n"
+        "from algo_trading_engine.models.config import VolumeConfig\n"
         "assert VolumeConfig is not None\n"
         "print('backtest_main', 'algo_trading_engine.backtest.main' in sys.modules)\n"
     )
@@ -100,15 +100,19 @@ def test_lazy_backtest_engine_export_resolves():
 
 
 def test_lazy_submodule_exports_resolve():
-    from algo_trading_engine import vo, enums
+    from algo_trading_engine import vo, enums, logging, gui
 
     assert vo is importlib.import_module("algo_trading_engine.vo")
     assert enums is importlib.import_module("algo_trading_engine.enums")
+    assert logging is importlib.import_module("algo_trading_engine.logging")
+    assert gui is importlib.import_module("algo_trading_engine.gui")
 
     import algo_trading_engine as pkg
 
     assert pkg.vo is vo
     assert pkg.enums is enums
+    assert pkg.logging is logging
+    assert pkg.gui is gui
 
 
 def test_dir_includes_public_api_names():
@@ -118,3 +122,5 @@ def test_dir_includes_public_api_names():
     assert "BacktestEngine" in names
     assert "dto" in names
     assert "enums" in names
+    assert "logging" in names
+    assert "gui" in names

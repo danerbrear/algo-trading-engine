@@ -10,7 +10,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 
-from algo_trading_engine.analysis.ma_velocity_analysis import MAVelocityAnalyzer, TrendSignal, MAVelocityResult
+from algo_trading_engine._internal.analysis.ma_velocity_analysis import MAVelocityAnalyzer, TrendSignal, MAVelocityResult
 
 
 class TestMAVelocityAnalysis:

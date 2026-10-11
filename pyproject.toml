@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "algo-trading-engine"
 version = "0.11.0"
-description = "Options trading backtesting and prediction framework"
+description = "Options trading backtesting and trading framework"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -24,20 +24,16 @@ dependencies = [
 plot = [
     "matplotlib>=3.8.0",
 ]
-dev = [
-    "pytest>=7.0.0",
-    "psutil>=5.9.0",
-    "matplotlib>=3.8.0",
-    "pylint~=3.3",
-    "algo_trading_engine[ml]"
-]
 ml = [
     "tensorflow>=2.15.0",
 ]
-
-[project.scripts]
-algo-backtest = "algo_trading_engine.backtest.main:main"
-algo-paper-trade = "algo_trading_engine.prediction.recommend_cli:main"
+dev = [
+    "pytest>=7.0.0",
+    "psutil>=5.9.0",
+    "pylint~=3.3",
+    "algo_trading_engine[ml]",
+    "algo_trading_engine[plot]",
+]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -54,7 +50,6 @@ pythonpath = ["src"]
 [tool.pylint.main]
 py-version = "3.10"
 source-roots = ["src"]
-# src-layout: resolve algo_trading_engine from src/ even if cwd is examples/ or pylint's env has no install
 init-hook = "import sys; from pathlib import Path; src = next((p / 'src' for p in [Path.cwd(), *Path.cwd().parents] if (p / 'src' / 'algo_trading_engine').is_dir()), Path('src')); sys.path.insert(0, str(src.resolve()))"
 jobs = 0
 ignore-paths = [

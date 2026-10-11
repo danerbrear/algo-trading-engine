@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 import tempfile
 import shutil
-from algo_trading_engine.common.data_retriever import DataRetriever
+from algo_trading_engine.data_retriever import DataRetriever
 from algo_trading_engine.enums import BarTimeInterval
 
 @pytest.fixture
@@ -27,7 +27,7 @@ def mock_cache_manager(temp_cache_dir):
         cache_dir = temp_cache_dir.joinpath(*subdirs)
         cache_dir.mkdir(parents=True, exist_ok=True)
         return cache_dir
-    with patch('algo_trading_engine.common.cache.cache_manager.CacheManager.get_cache_dir', _mock_get_cache_dir):
+    with patch('algo_trading_engine._internal.common.cache.cache_manager.CacheManager.get_cache_dir', _mock_get_cache_dir):
         yield temp_cache_dir
 
 class TestDataRetrieverBarInterval:
@@ -92,7 +92,7 @@ class TestDataRetrieverFetchWithInterval:
         data = pd.DataFrame({'Open': [100 + i for i in range(num_bars)], 'High': [105 + i for i in range(num_bars)], 'Low': [95 + i for i in range(num_bars)], 'Close': [100 + i for i in range(num_bars)], 'Volume': [1000000] * num_bars}, index=dates)
         return data
 
-    @patch('algo_trading_engine.common.data_retriever.DataRetriever._load_cached_data_range')
+    @patch('algo_trading_engine.data_retriever.DataRetriever._load_cached_data_range')
     @patch('yfinance.Ticker')
     def test_fetch_data_daily_interval(self, mock_ticker_class, mock_load_cache):
         """Test fetching data with daily interval."""
@@ -108,7 +108,7 @@ class TestDataRetrieverFetchWithInterval:
         assert call_kwargs['interval'] == '1d'
         assert len(data) > 0
 
-    @patch('algo_trading_engine.common.data_retriever.DataRetriever._load_cached_data_range')
+    @patch('algo_trading_engine.data_retriever.DataRetriever._load_cached_data_range')
     @patch('yfinance.Ticker')
     def test_fetch_data_hourly_interval(self, mock_ticker_class, mock_load_cache):
         """Test fetching data with hourly interval."""
@@ -124,7 +124,7 @@ class TestDataRetrieverFetchWithInterval:
         assert call_kwargs['interval'] == '1h'
         assert len(data) > 0
 
-    @patch('algo_trading_engine.common.data_retriever.DataRetriever._load_cached_data_range')
+    @patch('algo_trading_engine.data_retriever.DataRetriever._load_cached_data_range')
     @patch('yfinance.Ticker')
     def test_fetch_data_minute_interval(self, mock_ticker_class, mock_load_cache):
         """Test fetching data with minute interval."""
@@ -140,7 +140,7 @@ class TestDataRetrieverFetchWithInterval:
         assert call_kwargs['interval'] == '1m'
         assert len(data) > 0
 
-    @patch('algo_trading_engine.common.data_retriever.DataRetriever._load_cached_data_range')
+    @patch('algo_trading_engine.data_retriever.DataRetriever._load_cached_data_range')
     @patch('yfinance.Ticker')
     def test_fetch_data_no_data_type_parameter(self, mock_ticker_class, mock_load_cache):
         """Test that fetch_data_for_period doesn't accept data_type parameter."""
@@ -155,7 +155,7 @@ class TestDataRetrieverFetchWithInterval:
         call_kwargs = mock_ticker.history.call_args.kwargs
         assert 'data_type' not in call_kwargs
 
-    @patch('algo_trading_engine.common.data_retriever.DataRetriever._load_cached_data_range')
+    @patch('algo_trading_engine.data_retriever.DataRetriever._load_cached_data_range')
     @patch('yfinance.Ticker')
     def test_fetch_data_error_includes_interval(self, mock_ticker_class, mock_load_cache):
         """Test that error messages include interval information."""
@@ -211,7 +211,7 @@ class TestDailyCachePerformance:
 
     def test_daily_bars_saved_as_single_file(self):
         """Test that daily bars are saved as one file per start_date, not per day."""
-        with patch('algo_trading_engine.common.data_retriever.DataRetriever._load_cached_data_range') as mock_load_cache, patch('yfinance.Ticker') as mock_ticker_class:
+        with patch('algo_trading_engine.data_retriever.DataRetriever._load_cached_data_range') as mock_load_cache, patch('yfinance.Ticker') as mock_ticker_class:
             mock_load_cache.return_value = None
             retriever = DataRetriever(symbol='SPY', bar_interval=BarTimeInterval.DAY)
             dates = pd.date_range(start='2024-01-01', periods=100, freq='D')
@@ -265,7 +265,7 @@ class TestDataRetrieverUseCache:
         retriever = DataRetriever(symbol='SPY', use_cache=False)
         assert retriever.use_cache is False
 
-    @patch('algo_trading_engine.common.data_retriever.DataRetriever._load_cached_data_range')
+    @patch('algo_trading_engine.data_retriever.DataRetriever._load_cached_data_range')
     @patch('yfinance.Ticker')
     def test_fetch_data_does_not_write_cache_when_disabled(self, mock_ticker_class, mock_load_cache):
         """Test that no cache files are written when use_cache=False."""
@@ -282,7 +282,7 @@ class TestDataRetrieverUseCache:
         cache_dir = retriever.cache_manager.get_cache_dir('stocks', 'ZZZ_NO_CACHE') / 'daily'
         assert not cache_dir.exists() or not any(cache_dir.iterdir()), 'No cache files should be written when use_cache=False'
 
-    @patch('algo_trading_engine.common.data_retriever.DataRetriever._load_cached_data_range')
+    @patch('algo_trading_engine.data_retriever.DataRetriever._load_cached_data_range')
     @patch('yfinance.Ticker')
     def test_fetch_data_writes_cache_when_enabled(self, mock_ticker_class, mock_load_cache):
         """Test that cache files are written when use_cache=True."""

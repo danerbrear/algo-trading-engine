@@ -75,10 +75,11 @@ class PlotSpec:
         *,
         save_path: Path | str | None = None,
         show: bool = True,
+        close: bool = True,
     ) -> None:
-        from algo_trading_engine.plotting import matplotlib_backend  # pylint: disable=import-outside-toplevel
+        from algo_trading_engine.plotting import _matplotlib_backend  # pylint: disable=import-outside-toplevel
 
-        matplotlib_backend.render_lines_figure(self, save_path=save_path, show=show)
+        _matplotlib_backend.render_lines_figure(self, save_path=save_path, show=show, close=close)
 
 
 @dataclass(frozen=True)
@@ -99,10 +100,11 @@ class HeatmapSpec:
         *,
         save_path: Path | str | None = None,
         show: bool = True,
+        close: bool = True,
     ) -> None:
-        from algo_trading_engine.plotting import matplotlib_backend  # pylint: disable=import-outside-toplevel
+        from algo_trading_engine.plotting import _matplotlib_backend  # pylint: disable=import-outside-toplevel
 
-        matplotlib_backend.render_heatmap_figure(self, save_path=save_path, show=show)
+        _matplotlib_backend.render_heatmap_figure(self, save_path=save_path, show=show, close=close)
 
 
 @dataclass(frozen=True)
@@ -120,10 +122,14 @@ class BarSpec:
         *,
         save_path: Path | str | None = None,
         show: bool = True,
+        close: bool = True,
     ) -> None:
-        from algo_trading_engine.plotting import matplotlib_backend  # pylint: disable=import-outside-toplevel
+        from algo_trading_engine.plotting import _matplotlib_backend  # pylint: disable=import-outside-toplevel
 
-        matplotlib_backend.render_bar_figure(self, save_path=save_path, show=show)
+        _matplotlib_backend.render_bar_figure(self, save_path=save_path, show=show, close=close)
+
+
+RenderableSpec = PlotSpec | HeatmapSpec | BarSpec
 
 
 def build_plot_spec(
@@ -172,9 +178,9 @@ def render_spec_grid(
     save_path: Path | str | None = None,
     show: bool = True,
 ) -> None:
-    from algo_trading_engine.plotting import matplotlib_backend  # pylint: disable=import-outside-toplevel
+    from algo_trading_engine.plotting import _matplotlib_backend  # pylint: disable=import-outside-toplevel
 
-    matplotlib_backend.render_grid(
+    _matplotlib_backend.render_grid(
         specs,
         ncols=ncols,
         title=title,

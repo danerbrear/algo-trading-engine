@@ -6,6 +6,7 @@ for configuration, performance metrics, and trading data.
 """
 
 from .config import (
+    EngineConfig,
     BacktestConfig,
     PaperTradingConfig,
     VolumeConfig,
@@ -19,6 +20,7 @@ from .metrics import (
 )
 
 __all__ = [
+    'EngineConfig',
     'BacktestConfig',
     'PaperTradingConfig',
     'VolumeConfig',

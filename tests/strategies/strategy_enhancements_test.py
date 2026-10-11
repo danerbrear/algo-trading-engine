@@ -8,11 +8,12 @@ import tempfile
 import shutil
 from pathlib import Path
 import pytest
-from algo_trading_engine.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
-from algo_trading_engine.strategies.credit_spread_minimal import CreditSpreadStrategy
-from algo_trading_engine.common.models import Option, OptionType
+from algo_trading_engine._internal.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
+from algo_trading_engine._internal.strategies.credit_spread_minimal import CreditSpreadStrategy
+from algo_trading_engine.vo import Option
+from algo_trading_engine.enums import OptionType
 from algo_trading_engine.vo import Position, create_position
-from algo_trading_engine.common.models import StrategyType
+from algo_trading_engine.enums import StrategyType
 
 @pytest.fixture
 def temp_cache_dir():
@@ -30,7 +31,7 @@ def mock_cache_manager(temp_cache_dir):
         cache_dir = temp_cache_dir.joinpath(*subdirs)
         cache_dir.mkdir(parents=True, exist_ok=True)
         return cache_dir
-    with patch('algo_trading_engine.common.cache.cache_manager.CacheManager.get_cache_dir', _mock_get_cache_dir):
+    with patch('algo_trading_engine._internal.common.cache.cache_manager.CacheManager.get_cache_dir', _mock_get_cache_dir):
         yield temp_cache_dir
 
 class TestVelocitySignalMomentumStrategyEnhancements:
@@ -168,7 +169,7 @@ class TestCreditSpreadStrategyEnhancements:
     def test_get_current_volumes_for_position_success(self):
         """Test get_current_volumes_for_position with successful API calls"""
         from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO
-        from algo_trading_engine.common.models import OptionType as CommonOptionType
+        from algo_trading_engine.enums import OptionType as CommonOptionType
         from decimal import Decimal
         option1 = Option(ticker='SPY', symbol='SPY240119C00450000', strike=450.0, expiration='2024-01-19', option_type=OptionType.CALL, last_price=5.0, volume=100)
         option2 = Option(ticker='SPY', symbol='SPY240119C00455000', strike=455.0, expiration='2024-01-19', option_type=OptionType.CALL, last_price=3.0, volume=150)
@@ -203,7 +204,7 @@ class TestCreditSpreadStrategyEnhancements:
     def test_get_current_volumes_for_position_no_volume_data(self):
         """Test get_current_volumes_for_position when fresh option has no volume"""
         from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO
-        from algo_trading_engine.common.models import OptionType as CommonOptionType
+        from algo_trading_engine.enums import OptionType as CommonOptionType
         from decimal import Decimal
         option1 = Option(ticker='SPY', symbol='SPY240119C00450000', strike=450.0, expiration='2024-01-19', option_type=OptionType.CALL, last_price=5.0, volume=100)
         position = create_position(symbol='SPY', expiration_date=datetime(2024, 1, 19), strategy_type=StrategyType.CALL_CREDIT_SPREAD, strike_price=450.0, entry_date=datetime(2024, 1, 15), entry_price=2.0, spread_options=[option1])
@@ -220,13 +221,13 @@ class TestDataRetrieverLivePrice:
 
     def setup_method(self):
         """Set up test fixtures"""
-        from algo_trading_engine.common.data_retriever import DataRetriever
+        from algo_trading_engine.data_retriever import DataRetriever
         DataRetriever.clear_live_price_cache()
 
-    @patch('algo_trading_engine.common.data_retriever.yf.Ticker')
+    @patch('algo_trading_engine.data_retriever.yf.Ticker')
     def test_get_live_price_yfinance_fallback(self, mock_ticker):
         """Test get_live_price with yfinance fallback"""
-        from algo_trading_engine.common.data_retriever import DataRetriever
+        from algo_trading_engine.data_retriever import DataRetriever
         data_retriever = DataRetriever(symbol='SPY')
         mock_ticker_instance = Mock()
         mock_ticker_instance.info = {'currentPrice': 450.0, 'regularMarketPrice': 450.0, 'previousClose': 445.0}
@@ -235,10 +236,10 @@ class TestDataRetrieverLivePrice:
         assert price == 450.0
         mock_ticker.assert_called_once_with('SPY')
 
-    @patch('algo_trading_engine.common.data_retriever.yf.Ticker')
+    @patch('algo_trading_engine.data_retriever.yf.Ticker')
     def test_get_live_price_yfinance_no_current_price(self, mock_ticker):
         """Test get_live_price with yfinance when currentPrice is None"""
-        from algo_trading_engine.common.data_retriever import DataRetriever
+        from algo_trading_engine.data_retriever import DataRetriever
         data_retriever = DataRetriever(symbol='SPY')
         mock_ticker_instance = Mock()
         mock_ticker_instance.info = {'currentPrice': None, 'regularMarketPrice': 450.0, 'previousClose': 445.0}
@@ -246,10 +247,10 @@ class TestDataRetrieverLivePrice:
         price = data_retriever.get_live_price('SPY')
         assert price == 450.0
 
-    @patch('algo_trading_engine.common.data_retriever.yf.Ticker')
+    @patch('algo_trading_engine.data_retriever.yf.Ticker')
     def test_get_live_price_yfinance_fallback_to_previous_close(self, mock_ticker):
         """Test get_live_price with yfinance falling back to previousClose"""
-        from algo_trading_engine.common.data_retriever import DataRetriever
+        from algo_trading_engine.data_retriever import DataRetriever
         data_retriever = DataRetriever(symbol='SPY')
         mock_ticker_instance = Mock()
         mock_ticker_instance.info = {'currentPrice': None, 'regularMarketPrice': None, 'previousClose': 445.0}
@@ -257,10 +258,10 @@ class TestDataRetrieverLivePrice:
         price = data_retriever.get_live_price('SPY')
         assert price == 445.0
 
-    @patch('algo_trading_engine.common.data_retriever.yf.Ticker')
+    @patch('algo_trading_engine.data_retriever.yf.Ticker')
     def test_get_live_price_yfinance_no_data(self, mock_ticker):
         """Test get_live_price with yfinance when no price data is available"""
-        from algo_trading_engine.common.data_retriever import DataRetriever
+        from algo_trading_engine.data_retriever import DataRetriever
         data_retriever = DataRetriever(symbol='SPY')
         mock_ticker_instance = Mock()
         mock_ticker_instance.info = {'currentPrice': None, 'regularMarketPrice': None, 'previousClose': None}
@@ -268,10 +269,10 @@ class TestDataRetrieverLivePrice:
         price = data_retriever.get_live_price('SPY')
         assert price is None
 
-    @patch('algo_trading_engine.common.data_retriever.yf.Ticker')
+    @patch('algo_trading_engine.data_retriever.yf.Ticker')
     def test_get_live_price_caches_by_symbol_across_instances(self, mock_ticker):
         """Second get_live_price call for the same symbol uses class-level cache."""
-        from algo_trading_engine.common.data_retriever import DataRetriever
+        from algo_trading_engine.data_retriever import DataRetriever
         mock_ticker_instance = Mock()
         mock_ticker_instance.info = {'currentPrice': 450.0, 'regularMarketPrice': 450.0, 'previousClose': 445.0}
         mock_ticker.return_value = mock_ticker_instance
@@ -281,10 +282,10 @@ class TestDataRetrieverLivePrice:
         assert retriever_two.get_live_price('SPY') == 450.0
         mock_ticker.assert_called_once_with('SPY')
 
-    @patch('algo_trading_engine.common.data_retriever.yf.Ticker')
+    @patch('algo_trading_engine.data_retriever.yf.Ticker')
     def test_get_live_price_cache_is_symbol_specific(self, mock_ticker):
         """Cached live prices are stored separately per symbol."""
-        from algo_trading_engine.common.data_retriever import DataRetriever
+        from algo_trading_engine.data_retriever import DataRetriever
 
         def ticker_side_effect(symbol):
             mock_instance = Mock()
@@ -299,10 +300,10 @@ class TestDataRetrieverLivePrice:
         assert retriever.get_live_price('QQQ') == 380.0
         assert mock_ticker.call_count == 2
 
-    @patch('algo_trading_engine.common.data_retriever.yf.Ticker')
+    @patch('algo_trading_engine.data_retriever.yf.Ticker')
     def test_get_live_price_yfinance_exception(self, mock_ticker):
         """Test get_live_price with yfinance exception"""
-        from algo_trading_engine.common.data_retriever import DataRetriever
+        from algo_trading_engine.data_retriever import DataRetriever
         data_retriever = DataRetriever(symbol='SPY')
         mock_ticker.side_effect = Exception('Network error')
         price = data_retriever.get_live_price('SPY')

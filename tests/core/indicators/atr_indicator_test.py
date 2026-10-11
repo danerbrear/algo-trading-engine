@@ -5,7 +5,7 @@ import pytest
 from datetime import datetime, timedelta
 import pandas as pd
 
-from algo_trading_engine.core.indicators.average_true_return_indicator import ATRIndicator
+from algo_trading_engine.indicators.average_true_return_indicator import ATRIndicator
 from algo_trading_engine.enums import BarTimeInterval
 
 

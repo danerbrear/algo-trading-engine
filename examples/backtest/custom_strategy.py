@@ -9,6 +9,7 @@ Strategy base class and using it with the BacktestEngine.
 import os
 from datetime import datetime
 import sys
+import traceback
 from dotenv import load_dotenv
 from pathlib import Path
 import importlib.util
@@ -16,7 +17,6 @@ import importlib.util
 # Import from the public API
 from algo_trading_engine import BacktestEngine, BacktestConfig
 from algo_trading_engine.enums import BarTimeInterval
-from algo_trading_engine.plotting import PlotConfig
 
 # Import custom strategy using absolute path
 strategy_path = Path(__file__).parent.parent / "strategies" / "custom_strategy.py"
@@ -51,7 +51,6 @@ def main():
         strategy_type=custom_strategy,  # Pass strategy instance
         api_key=polygon_api_key,
         bar_interval=BarTimeInterval.HOUR,
-        plot_config=PlotConfig(),
     )
 
     # Create and run engine - all data fetching and setup is handled internally
@@ -78,7 +77,6 @@ def main():
         sys.exit(1)
     except Exception as e:
         print(f"Error during backtest: {e}")
-        import traceback
         traceback.print_exc()
         sys.exit(1)
 

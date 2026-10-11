@@ -8,13 +8,13 @@ import unittest
 from unittest.mock import Mock, patch
 import os
 
-from algo_trading_engine.prediction.recommend_cli import main
+from algo_trading_engine._internal.trade.recommend_cli import main
 
 
 class TestRecommendCli(unittest.TestCase):
     """Test cases for the recommend CLI using the new public API."""
     
-    @patch('algo_trading_engine.prediction.recommend_cli.PaperTradingEngine')
+    @patch('algo_trading_engine._internal.trade.recommend_cli.PaperTradingEngine')
     @patch('os.getenv')
     def test_paper_trading_cli_creates_config_and_engine(self, mock_getenv, mock_engine_class):
         """Test that CLI creates correct config and engine."""
@@ -41,7 +41,7 @@ class TestRecommendCli(unittest.TestCase):
         # Verify engine.run was called
         mock_engine.run.assert_called_once()
 
-    @patch('algo_trading_engine.prediction.recommend_cli.PaperTradingEngine')
+    @patch('algo_trading_engine._internal.trade.recommend_cli.PaperTradingEngine')
     @patch('os.getenv')
     def test_paper_trading_cli_with_all_parameters(self, mock_getenv, mock_engine_class):
         """Test CLI with all parameters."""
@@ -76,7 +76,7 @@ class TestRecommendCli(unittest.TestCase):
         self.assertEqual(config.profit_target, 0.5)
         self.assertEqual(config.use_free_tier, True)
 
-    @patch('algo_trading_engine.prediction.recommend_cli.PaperTradingEngine')
+    @patch('algo_trading_engine._internal.trade.recommend_cli.PaperTradingEngine')
     @patch('os.getenv')
     def test_paper_trading_cli_with_defaults(self, mock_getenv, mock_engine_class):
         """Test CLI uses correct defaults."""
@@ -103,7 +103,7 @@ class TestRecommendCli(unittest.TestCase):
         self.assertIsNone(config.profit_target)
         self.assertEqual(config.use_free_tier, False)
 
-    @patch('algo_trading_engine.prediction.recommend_cli.PaperTradingEngine')
+    @patch('algo_trading_engine._internal.trade.recommend_cli.PaperTradingEngine')
     @patch('os.getenv')
     def test_paper_trading_cli_engine_success(self, mock_getenv, mock_engine_class):
         """Test CLI handles successful engine execution."""
@@ -122,7 +122,7 @@ class TestRecommendCli(unittest.TestCase):
                 if mock_exit.called:
                     self.assertEqual(mock_exit.call_args[0][0], 0)
 
-    @patch('algo_trading_engine.prediction.recommend_cli.PaperTradingEngine')
+    @patch('algo_trading_engine._internal.trade.recommend_cli.PaperTradingEngine')
     @patch('os.getenv')
     def test_paper_trading_cli_engine_failure(self, mock_getenv, mock_engine_class):
         """Test CLI handles engine execution failure."""
@@ -140,7 +140,7 @@ class TestRecommendCli(unittest.TestCase):
                 # Should exit with 1
                 mock_exit.assert_called_once_with(1)
 
-    @patch('algo_trading_engine.prediction.recommend_cli.PaperTradingEngine')
+    @patch('algo_trading_engine._internal.trade.recommend_cli.PaperTradingEngine')
     @patch('os.getenv')
     def test_paper_trading_cli_engine_exception(self, mock_getenv, mock_engine_class):
         """Test CLI handles engine exceptions."""
@@ -156,7 +156,7 @@ class TestRecommendCli(unittest.TestCase):
                 # Should exit with 1
                 mock_exit.assert_called_once_with(1)
 
-    @patch('algo_trading_engine.prediction.recommend_cli.PaperTradingEngine')
+    @patch('algo_trading_engine._internal.trade.recommend_cli.PaperTradingEngine')
     @patch('os.getenv')
     def test_argument_parsing(self, mock_getenv, mock_engine_class):
         """Test that CLI parses arguments correctly."""

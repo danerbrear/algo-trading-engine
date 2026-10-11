@@ -7,18 +7,13 @@ Internal implementation details - use the public API through the main package:
 
 from __future__ import annotations
 
-# BacktestEngine is resolved by the PEP 562 __getattr__ below, so static analysis
-# cannot see it defined at module level.
-# pylint: disable=undefined-all-variable
+from typing import TYPE_CHECKING, Any
 
-from typing import Any
-
-from .config import VolumeConfig, VolumeStats
+if TYPE_CHECKING:
+    from algo_trading_engine.backtest.main import BacktestEngine
 
 __all__ = [
     "BacktestEngine",
-    "VolumeConfig",
-    "VolumeStats",
 ]
 
 

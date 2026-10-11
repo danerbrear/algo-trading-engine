@@ -227,7 +227,7 @@ position = types.Position(...)
 option_dto = dto.OptionContractDTO(...)
 
 # ❌ Avoid: Internal imports
-from algo_trading_engine.common.models import Option  # Internal detail
+from algo_trading_engine.vo import Option
 from algo_trading_engine.backtest.models import Position  # Internal detail
 ```
 

@@ -13,7 +13,7 @@ from unittest.mock import Mock, patch
 from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
-from algo_trading_engine.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
+from algo_trading_engine._internal.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
 
 class TestVelocityLiveVsCloseConsistency(unittest.TestCase):
     """Test signal consistency between live price and close price scenarios."""
@@ -21,7 +21,7 @@ class TestVelocityLiveVsCloseConsistency(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Set up class-level mocks to prevent real API calls."""
-        cls.data_retriever_patcher = patch('algo_trading_engine.common.data_retriever.DataRetriever')
+        cls.data_retriever_patcher = patch('algo_trading_engine.data_retriever.DataRetriever')
         cls.mock_data_retriever_class = cls.data_retriever_patcher.start()
         cls.mock_data_retriever_instance = Mock()
         cls.mock_data_retriever_instance.get_live_price.return_value = None
