@@ -88,7 +88,7 @@ class JsonLinesRunObserver:
         frame: pd.DataFrame,
         meta: dict[str, Any] | None = None,
     ) -> None:
-        from algo_trading_engine.plotting.serialize import plot_payload  # pylint: disable=import-outside-toplevel
+        from algo_trading_engine.plotting._serialize import plot_payload  # pylint: disable=import-outside-toplevel
         from algo_trading_engine.plotting.spec import build_plot_spec  # pylint: disable=import-outside-toplevel
 
         meta = meta or {}

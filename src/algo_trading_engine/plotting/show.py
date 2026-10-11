@@ -84,9 +84,9 @@ def show_plot(
         )
         opened = opened or rendered
     if opened:
-        from algo_trading_engine.plotting import matplotlib_backend  # pylint: disable=import-outside-toplevel
+        from algo_trading_engine.plotting import _matplotlib_backend  # pylint: disable=import-outside-toplevel
 
-        matplotlib_backend.show_open_figures()
+        _matplotlib_backend.show_open_figures()
 
 
 def _show_single(

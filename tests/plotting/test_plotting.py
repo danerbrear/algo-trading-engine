@@ -20,7 +20,7 @@ from algo_trading_engine.plotting import (
     build_plot_spec,
     show_plot,
 )
-from algo_trading_engine.plotting.serialize import payload_to_plot_frame, plot_payload
+from algo_trading_engine.plotting._serialize import payload_to_plot_frame, plot_payload
 from algo_trading_engine.plotting.spec import EQUITY_CURVE_NAME
 
 
@@ -74,7 +74,7 @@ def test_show_plot_routes_to_observer(tmp_path):
     frame = pd.DataFrame({"timestamp": pd.to_datetime(["2024-01-01"]), "equity": [3000.0]})
     spec = build_plot_spec(frame, name=EQUITY_CURVE_NAME)
     with patch(
-        "algo_trading_engine.plotting.matplotlib_backend.render_lines_figure"
+        "algo_trading_engine.plotting._matplotlib_backend.render_lines_figure"
     ) as mock_render:
         show_plot(spec, config=None)
         mock_render.assert_not_called()
@@ -92,7 +92,7 @@ def test_show_plot_renders_single_spec_when_config_is_none():
         x="index",
     )
     with patch(
-        "algo_trading_engine.plotting.matplotlib_backend.render_lines_figure"
+        "algo_trading_engine.plotting._matplotlib_backend.render_lines_figure"
     ) as mock_render:
         show_plot(spec, config=None)
         mock_render.assert_called_once()
@@ -112,9 +112,9 @@ def test_show_plot_opens_one_figure_per_spec_when_config_is_none():
         ),
     ]
     with patch(
-        "algo_trading_engine.plotting.matplotlib_backend.render_lines_figure"
+        "algo_trading_engine.plotting._matplotlib_backend.render_lines_figure"
     ) as mock_render, patch(
-        "algo_trading_engine.plotting.matplotlib_backend.show_open_figures"
+        "algo_trading_engine.plotting._matplotlib_backend.show_open_figures"
     ) as mock_show:
         show_plot(specs, config=None)
         assert mock_render.call_count == 2
@@ -129,7 +129,7 @@ def test_show_plot_skips_when_disabled():
         x="index",
     )
     with patch(
-        "algo_trading_engine.plotting.matplotlib_backend.render_lines_figure"
+        "algo_trading_engine.plotting._matplotlib_backend.render_lines_figure"
     ) as mock_render:
         show_plot(spec, config=PlotConfig(enabled=False))
         mock_render.assert_not_called()
@@ -142,7 +142,7 @@ def test_show_plot_renders_when_enabled():
         x="index",
     )
     with patch(
-        "algo_trading_engine.plotting.matplotlib_backend.render_lines_figure"
+        "algo_trading_engine.plotting._matplotlib_backend.render_lines_figure"
     ) as mock_render:
         show_plot(spec, config=PlotConfig(enabled=True))
         mock_render.assert_called_once()
@@ -156,7 +156,7 @@ def test_show_plot_heatmap_when_enabled():
         name="heatmap",
     )
     with patch(
-        "algo_trading_engine.plotting.matplotlib_backend.render_heatmap_figure"
+        "algo_trading_engine.plotting._matplotlib_backend.render_heatmap_figure"
     ) as mock_render:
         show_plot(spec, config=PlotConfig(enabled=True))
         mock_render.assert_called_once()
@@ -175,7 +175,7 @@ def test_show_plot_import_error_hint():
         )
 
     with patch(
-        "algo_trading_engine.plotting.matplotlib_backend._import_pyplot",
+        "algo_trading_engine.plotting._matplotlib_backend._import_pyplot",
         side_effect=_raise_plot_install_error,
     ):
         with pytest.raises(ImportError, match="algo-trading-engine\\[plot\\]"):
