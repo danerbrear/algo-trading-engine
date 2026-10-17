@@ -215,7 +215,7 @@ class TestPaperTradingEngineFromConfig:
     @patch('algo_trading_engine.trade.OptionsHandler')
     @patch('algo_trading_engine.trade.DataRetriever')
     def test_from_config_passes_computed_fetch_start_to_retriever_and_fetch(self, mock_data_retriever, _mock_options_handler, mock_compute_start):
-        """Fetch window uses the same warm-up + LSTM logic as compute_paper_trading_fetch_start_date."""
+        """Fetch window uses the date from compute_paper_trading_fetch_start_date."""
         mock_strategy = MagicMock()
         mock_strategy.set_data = Mock()
         mock_strategy.options_handler = None
@@ -229,7 +229,7 @@ class TestPaperTradingEngineFromConfig:
         PaperTradingEngine.from_config(config)
         mock_compute_start.assert_called_once()
         mock_data_retriever.assert_called_once()
-        assert mock_data_retriever.call_args[1]['lstm_start_date'] == '2024-06-01'
+        assert 'lstm_start_date' not in mock_data_retriever.call_args[1]
         mock_retriever_instance.fetch_data_for_period.assert_called_once_with('2024-06-01')
 
     @patch('algo_trading_engine.trade.OptionsHandler')

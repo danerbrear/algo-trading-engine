@@ -64,7 +64,7 @@ class MAVelocityAnalyzer:
         six_months_ago = today - timedelta(days=180)
         self.start_date = six_months_ago.strftime('%Y-%m-%d')
         self.symbol = symbol
-        self.data_retriever = DataRetriever(symbol=symbol, lstm_start_date=self.start_date)
+        self.data_retriever = DataRetriever(symbol=symbol)
         self.data = None
         self.trend_signals = []
         

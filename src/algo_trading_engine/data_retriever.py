@@ -22,24 +22,17 @@ class DataRetriever:
     def __init__(
         self, 
         symbol='SPY', 
-        hmm_start_date='2010-01-01', 
-        lstm_start_date='2020-01-01', 
         bar_interval: BarTimeInterval = BarTimeInterval.DAY,
         use_cache: bool = True
     ):
-        """Initialize DataRetriever with separate date ranges for HMM and LSTM
-        
+        """Initialize DataRetriever.
+
         Args:
             symbol: Stock symbol to analyze
-            hmm_start_date: Start date for HMM training data (market state classification)
-            lstm_start_date: Start date for LSTM training data (options signal prediction)
             bar_interval: Time interval for market data bars (DAY, HOUR, or MINUTE)
             use_cache: Whether to write fetched data to the local filesystem cache
         """
         self.symbol = symbol
-        self.hmm_start_date = hmm_start_date
-        self.lstm_start_date = lstm_start_date
-        self.start_date = lstm_start_date  # Backward compatibility
         self.bar_interval = bar_interval
         self.data = None
         self.hmm_data = None  # Separate data for HMM training
@@ -49,24 +42,6 @@ class DataRetriever:
         self.use_cache = use_cache
         self.cache_manager = CacheManager(create_dirs=use_cache)
         self.treasury_rates: Optional[TreasuryRates] = None  # Store treasury rates data
-    
-    def _get_yfinance_interval(self) -> str:
-        """Convert BarTimeInterval enum to yfinance interval string."""
-        interval_map = {
-            BarTimeInterval.MINUTE: "1m",
-            BarTimeInterval.HOUR: "1h",
-            BarTimeInterval.DAY: "1d",
-        }
-        return interval_map[self.bar_interval]
-    
-    def _get_cache_interval_dir(self) -> str:
-        """Get the cache subdirectory name for the current bar interval."""
-        interval_dir_map = {
-            BarTimeInterval.MINUTE: "minute",
-            BarTimeInterval.HOUR: "hourly",
-            BarTimeInterval.DAY: "daily",
-        }
-        return interval_dir_map[self.bar_interval]
 
     def load_treasury_rates(self, start_date: datetime, end_date: datetime = None):
         """
@@ -92,6 +67,227 @@ class DataRetriever:
         else:
             # Fallback: try to find the closest available treasury data
             self._find_closest_treasury_data(start_date)
+
+    def fetch_data_for_period(self, start_date: str, end_date: str = None) -> pd.DataFrame:
+        """
+        Fetch data for a specific period with caching.
+        
+        When cached data exists but does not extend to the requested end_date,
+        only the missing tail is fetched from the API and merged with the cache.
+        This applies to all bar intervals (daily, hourly, minute).
+        
+        Args:
+            start_date: Start date (YYYY-MM-DD)
+            end_date: Optional end date (YYYY-MM-DD), defaults to today
+            
+        Returns:
+            DataFrame with OHLCV data for the specified period
+        """
+        cached_data = self._load_cached_data_range(start_date, end_date)
+
+        if cached_data is not None and not cached_data.empty:
+            effective_end = end_date if end_date is not None else pd.Timestamp.now().strftime('%Y-%m-%d')
+            end_ts = pd.Timestamp(effective_end)
+
+            if cached_data.index[-1] < end_ts:
+                return self._fetch_gap_and_merge(cached_data, start_date, effective_end)
+
+            interval_str = self._get_yfinance_interval()
+            get_logger().info(f"Loaded {len(cached_data)} cached {interval_str} bars")
+            return cached_data
+        
+        # No cached data — full fetch from yfinance
+        interval_str = self._get_yfinance_interval()
+        
+        get_logger().info(f"Fetching {interval_str} bars from {start_date} onwards...")
+        
+        if self.ticker is None:
+            self.ticker = yf.Ticker(self.symbol)
+        
+        info = self.ticker.info
+        if not info or len(info) == 0:
+            raise ValueError(f"Invalid symbol or no info available for {self.symbol}")
+        
+        if end_date is None:
+            end_date_ts = pd.Timestamp.now()
+        else:
+            end_date_ts = pd.Timestamp(end_date)
+        
+        start_date_ts = pd.Timestamp(start_date)
+        
+        data = self.ticker.history(
+            start=start_date_ts,
+            end=end_date_ts,
+            interval=interval_str
+        )
+        
+        if data.empty:
+            raise ValueError(
+                f"No data retrieved for {self.symbol} from {start_date} with interval '{interval_str}'. "
+                f"This could be due to:\n"
+                f"  1. Invalid date range for this interval\n"
+                f"  2. Network/API connectivity issues\n"
+                f"  3. Rate limiting from Yahoo Finance"
+            )
+        
+        data.index = data.index.tz_localize(None)
+        get_logger().info(f"Fetched {len(data)} {interval_str} bars from {data.index[0]} to {data.index[-1]}")
+        
+        data = data[(data.index >= start_date_ts) & (data.index <= end_date_ts)].copy()
+        
+        if data.empty:
+            raise ValueError(f"No data available after filtering for date range {start_date} to {end_date_ts.date()}")
+        
+        if self.use_cache:
+            self._save_data_to_cache(data, start_date)
+        
+        return data
+
+    def fetch_fed_events_for_period(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Fetch federal reserve events and attach next event date and type.
+        
+        Arguments:
+        - data (pd.DataFrame): A datetime-indexed dataframe
+
+        Returns:
+        - A copy of the initial DataFrame plus the next fed event date and type.
+        """
+        return data
+
+    # TODO: Move out of this file - DataRetriever should be reserved for data fetching only, not calculation.
+    def calculate_features_for_data(self, data: pd.DataFrame, window=20):
+        """Calculate technical features for a given dataset"""
+        # Check if we have enough data for proper feature calculation
+        min_required_samples = max(window, 50) + 10  # Need enough for rolling windows plus buffer
+
+        if len(data) < min_required_samples:
+            raise ValueError(
+                f"Insufficient data for feature calculation: {len(data)} samples available, "
+                f"need at least {min_required_samples} samples. "
+                f"This ensures proper calculation of technical indicators like SMA50, RSI, and MACD."
+            )
+
+        # Standard feature calculation for adequate datasets
+        # Basic returns and volatility
+        data['Returns'] = data['Close'].pct_change()
+        data['Log_Returns'] = np.log(data['Close'] / data['Close'].shift(1))
+        
+        # Volatility measures
+        data['Volatility'] = data['Returns'].rolling(window=window, min_periods=1).std()
+        data['High_Low_Range'] = (data['High'] - data['Low']) / data['Close']
+        
+        # Trend indicators
+        data['SMA20'] = data['Close'].rolling(window=window, min_periods=1).mean()
+        data['SMA50'] = data['Close'].rolling(window=50, min_periods=1).mean()
+        data['Price_to_SMA20'] = data['Close'] / data['SMA20']  # Keep for HMM, exclude from LSTM
+        data['SMA20_to_SMA50'] = data['SMA20'] / data['SMA50']
+        
+        # Momentum indicators
+        data['RSI'] = self._calculate_rsi(data['Close'], window)
+        # Calculate MACD components for MACD_Hist (removed standalone MACD feature)
+        macd_line, macd_signal = self._calculate_macd(data['Close'])
+        data['MACD_Hist'] = macd_line - macd_signal
+        
+        # Time series features for SMA20_to_SMA50
+        data['SMA20_to_SMA50_Lag1'] = data['SMA20_to_SMA50'].shift(1)
+        data['SMA20_to_SMA50_Lag5'] = data['SMA20_to_SMA50'].shift(5)
+        data['SMA20_to_SMA50_MA5'] = data['SMA20_to_SMA50'].rolling(window=5, min_periods=1).mean()
+        data['SMA20_to_SMA50_MA10'] = data['SMA20_to_SMA50'].rolling(window=10, min_periods=1).mean()
+        data['SMA20_to_SMA50_Std5'] = data['SMA20_to_SMA50'].rolling(window=5, min_periods=1).std()
+        data['SMA20_to_SMA50_Momentum'] = data['SMA20_to_SMA50'] - data['SMA20_to_SMA50'].shift(5)
+        
+        # Time series features for RSI
+        data['RSI_Lag1'] = data['RSI'].shift(1)
+        data['RSI_Lag5'] = data['RSI'].shift(5)
+        data['RSI_MA5'] = data['RSI'].rolling(window=5, min_periods=1).mean()
+        data['RSI_MA10'] = data['RSI'].rolling(window=10, min_periods=1).mean()
+        data['RSI_Std5'] = data['RSI'].rolling(window=5, min_periods=1).std()
+        data['RSI_Momentum'] = data['RSI'] - data['RSI'].shift(5)
+        data['RSI_Overbought'] = (data['RSI'] > 70).astype(int)
+        data['RSI_Oversold'] = (data['RSI'] < 30).astype(int)
+        
+        # Volume features
+        data['Volume_SMA'] = data['Volume'].rolling(window=window, min_periods=1).mean()
+        data['Volume_Ratio'] = data['Volume'] / data['Volume_SMA']
+        data['OBV'] = self._calculate_obv(data['Close'], data['Volume'])
+        
+        # Drop NaN values
+        original_length = len(data)
+        data.dropna(inplace=True)
+        
+        if len(data) == 0:
+            raise ValueError(
+                f"All data was dropped due to NaN values after feature calculation. "
+                f"This indicates data quality issues or insufficient data for proper technical analysis."
+            )
+        
+        if len(data) < original_length * 0.8:  # If we lost more than 20% of data
+            get_logger().warning(f"Lost {original_length - len(data)} samples due to NaN values, keeping {len(data)} samples")
+        
+        get_logger().info(f"Calculated features for {len(data)} samples")
+
+    def get_live_price(self, symbol: str = None) -> Optional[float]:
+        """Fetch live price for the current date.
+        
+        Results are cached at the class level per symbol for the lifetime of the process.
+        
+        Args:
+            symbol: Stock symbol to fetch price for (defaults to self.symbol)
+            
+        Returns:
+            Optional[float]: Live price if successful, None otherwise
+        """
+        if symbol is None:
+            symbol = self.symbol
+
+        if symbol in self._live_price_cache:
+            cached_price = self._live_price_cache[symbol]
+            get_logger().debug(f"Using cached live price for {symbol}: ${cached_price:.2f}")
+            return cached_price
+        
+        try:
+            get_logger().info(f"Fetching live price for {symbol} using yfinance...")
+            ticker = yf.Ticker(symbol)
+            info = ticker.info
+            
+            # Try to get current price from info
+            if 'currentPrice' in info and info['currentPrice'] is not None:
+                live_price = float(info['currentPrice'])
+                get_logger().info(f"Live price for {symbol} (from yfinance): ${live_price:.2f}")
+            elif 'regularMarketPrice' in info and info['regularMarketPrice'] is not None:
+                live_price = float(info['regularMarketPrice'])
+                get_logger().info(f"Live price for {symbol} (from yfinance regular market): ${live_price:.2f}")
+            elif 'previousClose' in info and info['previousClose'] is not None:
+                live_price = float(info['previousClose'])
+                get_logger().warning(f"Using previous close for {symbol} (from yfinance): ${live_price:.2f}")
+            else:
+                get_logger().warning(f"No price data available from yfinance for {symbol}")
+                return None
+
+            self._live_price_cache[symbol] = live_price
+            return live_price
+                
+        except Exception as yfinance_error:
+            get_logger().error(f"Error fetching live price from yfinance for {symbol}: {str(yfinance_error)}")
+            return None
+
+    def _get_yfinance_interval(self) -> str:
+        """Convert BarTimeInterval enum to yfinance interval string."""
+        interval_map = {
+            BarTimeInterval.MINUTE: "1m",
+            BarTimeInterval.HOUR: "1h",
+            BarTimeInterval.DAY: "1d",
+        }
+        return interval_map[self.bar_interval]
+    
+    def _get_cache_interval_dir(self) -> str:
+        """Get the cache subdirectory name for the current bar interval."""
+        interval_dir_map = {
+            BarTimeInterval.MINUTE: "minute",
+            BarTimeInterval.HOUR: "hourly",
+            BarTimeInterval.DAY: "daily",
+        }
+        return interval_dir_map[self.bar_interval]
 
     def _find_closest_treasury_data(self, target_date: datetime):
         """
@@ -309,154 +505,7 @@ class DataRetriever:
 
         return merged_data
 
-    def fetch_data_for_period(self, start_date: str, end_date: str = None) -> pd.DataFrame:
-        """
-        Fetch data for a specific period with caching.
-        
-        When cached data exists but does not extend to the requested end_date,
-        only the missing tail is fetched from the API and merged with the cache.
-        This applies to all bar intervals (daily, hourly, minute).
-        
-        Args:
-            start_date: Start date (YYYY-MM-DD)
-            end_date: Optional end date (YYYY-MM-DD), defaults to today
-            
-        Returns:
-            DataFrame with OHLCV data for the specified period
-        """
-        cached_data = self._load_cached_data_range(start_date, end_date)
-
-        if cached_data is not None and not cached_data.empty:
-            effective_end = end_date if end_date is not None else pd.Timestamp.now().strftime('%Y-%m-%d')
-            end_ts = pd.Timestamp(effective_end)
-
-            if cached_data.index[-1] < end_ts:
-                return self._fetch_gap_and_merge(cached_data, start_date, effective_end)
-
-            interval_str = self._get_yfinance_interval()
-            get_logger().info(f"Loaded {len(cached_data)} cached {interval_str} bars")
-            return cached_data
-        
-        # No cached data — full fetch from yfinance
-        interval_str = self._get_yfinance_interval()
-        
-        get_logger().info(f"Fetching {interval_str} bars from {start_date} onwards...")
-        
-        if self.ticker is None:
-            self.ticker = yf.Ticker(self.symbol)
-        
-        info = self.ticker.info
-        if not info or len(info) == 0:
-            raise ValueError(f"Invalid symbol or no info available for {self.symbol}")
-        
-        if end_date is None:
-            end_date_ts = pd.Timestamp.now()
-        else:
-            end_date_ts = pd.Timestamp(end_date)
-        
-        start_date_ts = pd.Timestamp(start_date)
-        
-        data = self.ticker.history(
-            start=start_date_ts,
-            end=end_date_ts,
-            interval=interval_str
-        )
-        
-        if data.empty:
-            raise ValueError(
-                f"No data retrieved for {self.symbol} from {start_date} with interval '{interval_str}'. "
-                f"This could be due to:\n"
-                f"  1. Invalid date range for this interval\n"
-                f"  2. Network/API connectivity issues\n"
-                f"  3. Rate limiting from Yahoo Finance"
-            )
-        
-        data.index = data.index.tz_localize(None)
-        get_logger().info(f"Fetched {len(data)} {interval_str} bars from {data.index[0]} to {data.index[-1]}")
-        
-        data = data[(data.index >= start_date_ts) & (data.index <= end_date_ts)].copy()
-        
-        if data.empty:
-            raise ValueError(f"No data available after filtering for date range {start_date} to {end_date_ts.date()}")
-        
-        if self.use_cache:
-            self._save_data_to_cache(data, start_date)
-        
-        return data
-
-    def calculate_features_for_data(self, data: pd.DataFrame, window=20):
-        """Calculate technical features for a given dataset"""
-        # Check if we have enough data for proper feature calculation
-        min_required_samples = max(window, 50) + 10  # Need enough for rolling windows plus buffer
-
-        if len(data) < min_required_samples:
-            raise ValueError(
-                f"Insufficient data for feature calculation: {len(data)} samples available, "
-                f"need at least {min_required_samples} samples. "
-                f"This ensures proper calculation of technical indicators like SMA50, RSI, and MACD."
-            )
-
-        # Standard feature calculation for adequate datasets
-        # Basic returns and volatility
-        data['Returns'] = data['Close'].pct_change()
-        data['Log_Returns'] = np.log(data['Close'] / data['Close'].shift(1))
-        
-        # Volatility measures
-        data['Volatility'] = data['Returns'].rolling(window=window, min_periods=1).std()
-        data['High_Low_Range'] = (data['High'] - data['Low']) / data['Close']
-        
-        # Trend indicators
-        data['SMA20'] = data['Close'].rolling(window=window, min_periods=1).mean()
-        data['SMA50'] = data['Close'].rolling(window=50, min_periods=1).mean()
-        data['Price_to_SMA20'] = data['Close'] / data['SMA20']  # Keep for HMM, exclude from LSTM
-        data['SMA20_to_SMA50'] = data['SMA20'] / data['SMA50']
-        
-        # Momentum indicators
-        data['RSI'] = self._calculate_rsi(data['Close'], window)
-        # Calculate MACD components for MACD_Hist (removed standalone MACD feature)
-        macd_line, macd_signal = self._calculate_macd(data['Close'])
-        data['MACD_Hist'] = macd_line - macd_signal
-        
-        # Time series features for SMA20_to_SMA50
-        data['SMA20_to_SMA50_Lag1'] = data['SMA20_to_SMA50'].shift(1)
-        data['SMA20_to_SMA50_Lag5'] = data['SMA20_to_SMA50'].shift(5)
-        data['SMA20_to_SMA50_MA5'] = data['SMA20_to_SMA50'].rolling(window=5, min_periods=1).mean()
-        data['SMA20_to_SMA50_MA10'] = data['SMA20_to_SMA50'].rolling(window=10, min_periods=1).mean()
-        data['SMA20_to_SMA50_Std5'] = data['SMA20_to_SMA50'].rolling(window=5, min_periods=1).std()
-        data['SMA20_to_SMA50_Momentum'] = data['SMA20_to_SMA50'] - data['SMA20_to_SMA50'].shift(5)
-        
-        # Time series features for RSI
-        data['RSI_Lag1'] = data['RSI'].shift(1)
-        data['RSI_Lag5'] = data['RSI'].shift(5)
-        data['RSI_MA5'] = data['RSI'].rolling(window=5, min_periods=1).mean()
-        data['RSI_MA10'] = data['RSI'].rolling(window=10, min_periods=1).mean()
-        data['RSI_Std5'] = data['RSI'].rolling(window=5, min_periods=1).std()
-        data['RSI_Momentum'] = data['RSI'] - data['RSI'].shift(5)
-        data['RSI_Overbought'] = (data['RSI'] > 70).astype(int)
-        data['RSI_Oversold'] = (data['RSI'] < 30).astype(int)
-        
-        # Volume features
-        data['Volume_SMA'] = data['Volume'].rolling(window=window, min_periods=1).mean()
-        data['Volume_Ratio'] = data['Volume'] / data['Volume_SMA']
-        data['OBV'] = self._calculate_obv(data['Close'], data['Volume'])
-        
-        # Drop NaN values
-        original_length = len(data)
-        data.dropna(inplace=True)
-        
-        if len(data) == 0:
-            raise ValueError(
-                f"All data was dropped due to NaN values after feature calculation. "
-                f"This indicates data quality issues or insufficient data for proper technical analysis."
-            )
-        
-        if len(data) < original_length * 0.8:  # If we lost more than 20% of data
-            get_logger().warning(f"Lost {original_length - len(data)} samples due to NaN values, keeping {len(data)} samples")
-        
-        get_logger().info(f"Calculated features for {len(data)} samples")
-
-    
-
+    # TODO: Should be an indicator
     def _calculate_rsi(self, prices, window=14):
         """Calculate Relative Strength Index"""
         if len(prices) < window + 1:
@@ -471,6 +520,7 @@ class DataRetriever:
         rs = gain / loss
         return 100 - (100 / (1 + rs))
 
+    # TODO: Should be an indicator
     def _calculate_macd(self, prices, fast=12, slow=26, signal=9):
         """Calculate MACD and Signal line"""
         exp1 = prices.ewm(span=fast, adjust=False).mean()
@@ -479,6 +529,7 @@ class DataRetriever:
         signal_line = macd.ewm(span=signal, adjust=False).mean()
         return macd, signal_line
 
+    # TODO: Should be an indicator
     def _calculate_obv(self, prices, volume):
         """Calculate On-Balance Volume"""
         price_change = prices.diff()
@@ -494,49 +545,3 @@ class DataRetriever:
                 obv.iloc[i] = obv.iloc[i-1]
         
         return obv
-
-    def get_live_price(self, symbol: str = None) -> Optional[float]:
-        """Fetch live price for the current date.
-        
-        Results are cached at the class level per symbol for the lifetime of the process.
-        
-        Args:
-            symbol: Stock symbol to fetch price for (defaults to self.symbol)
-            
-        Returns:
-            Optional[float]: Live price if successful, None otherwise
-        """
-        if symbol is None:
-            symbol = self.symbol
-
-        if symbol in self._live_price_cache:
-            cached_price = self._live_price_cache[symbol]
-            get_logger().debug(f"Using cached live price for {symbol}: ${cached_price:.2f}")
-            return cached_price
-        
-        try:
-            get_logger().info(f"Fetching live price for {symbol} using yfinance...")
-            ticker = yf.Ticker(symbol)
-            info = ticker.info
-            
-            # Try to get current price from info
-            if 'currentPrice' in info and info['currentPrice'] is not None:
-                live_price = float(info['currentPrice'])
-                get_logger().info(f"Live price for {symbol} (from yfinance): ${live_price:.2f}")
-            elif 'regularMarketPrice' in info and info['regularMarketPrice'] is not None:
-                live_price = float(info['regularMarketPrice'])
-                get_logger().info(f"Live price for {symbol} (from yfinance regular market): ${live_price:.2f}")
-            elif 'previousClose' in info and info['previousClose'] is not None:
-                live_price = float(info['previousClose'])
-                get_logger().warning(f"Using previous close for {symbol} (from yfinance): ${live_price:.2f}")
-            else:
-                get_logger().warning(f"No price data available from yfinance for {symbol}")
-                return None
-
-            self._live_price_cache[symbol] = live_price
-            return live_price
-                
-        except Exception as yfinance_error:
-            get_logger().error(f"Error fetching live price from yfinance for {symbol}: {str(yfinance_error)}")
-            return None
- 
