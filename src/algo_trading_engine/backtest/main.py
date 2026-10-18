@@ -112,13 +112,8 @@ class BacktestEngine(TradingEngine):
         log_level = "info" if config.quiet_mode else "debug"
         configure_logger("backtest", log_level=log_level, observer=config.observer)
 
-        # Internal: Calculate LSTM start date (days before backtest start)
-        lstm_start_date = (config.start_date - timedelta(days=config.lstm_start_date_offset))
-        
-        # Internal: Create data retriever
         retriever = DataRetriever(
             symbol=config.symbol,
-            lstm_start_date=lstm_start_date.strftime("%Y-%m-%d"),
             bar_interval=config.bar_interval
         )
 
@@ -188,7 +183,6 @@ class BacktestEngine(TradingEngine):
         if config.benchmark_ticker and config.benchmark_ticker != config.symbol:
             benchmark_retriever = DataRetriever(
                 symbol=config.benchmark_ticker,
-                lstm_start_date=lstm_start_date.strftime("%Y-%m-%d"),
                 bar_interval=config.bar_interval
             )
             benchmark_data = benchmark_retriever.fetch_data_for_period(
