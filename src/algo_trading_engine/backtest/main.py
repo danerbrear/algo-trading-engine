@@ -164,6 +164,11 @@ class BacktestEngine(TradingEngine):
             config.end_date.strftime("%Y-%m-%d")
         )
 
+        result, success = retriever.fed_events_provider.add_fed_events_data(data)
+
+        if success:
+            data = result
+
         if data is None or len(data) == 0:
             raise ValueError(f"Failed to fetch data for {config.symbol} from {config.start_date.date()} to {config.end_date.date()}")
 

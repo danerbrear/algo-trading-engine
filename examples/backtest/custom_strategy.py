@@ -52,7 +52,8 @@ def main():
         strategy_type=custom_strategy,  # Pass strategy instance
         api_key=polygon_api_key,
         bar_interval=BarTimeInterval.HOUR,
-        plot_config=PlotConfig(enabled=False)
+        plot_config=PlotConfig(enabled=False),
+        quiet_mode=False
     )
 
     # Create and run engine - all data fetching and setup is handled internally

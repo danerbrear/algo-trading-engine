@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import ClassVar, Dict, Optional
 
 from algo_trading_engine._internal.common.cache.cache_manager import CacheManager
+from algo_trading_engine._internal.common.fed_events_provider import FedEventsProvider
 from algo_trading_engine.logging import get_logger
 from algo_trading_engine.vo import TreasuryRates
 from algo_trading_engine.enums import BarTimeInterval
@@ -42,6 +43,7 @@ class DataRetriever:
         self.use_cache = use_cache
         self.cache_manager = CacheManager(create_dirs=use_cache)
         self.treasury_rates: Optional[TreasuryRates] = None  # Store treasury rates data
+        self.fed_events_provider: FedEventsProvider = FedEventsProvider()
 
     def load_treasury_rates(self, start_date: datetime, end_date: datetime = None):
         """
@@ -141,17 +143,6 @@ class DataRetriever:
         if self.use_cache:
             self._save_data_to_cache(data, start_date)
         
-        return data
-
-    def fetch_fed_events_for_period(self, data: pd.DataFrame) -> pd.DataFrame:
-        """Fetch federal reserve events and attach next event date and type.
-        
-        Arguments:
-        - data (pd.DataFrame): A datetime-indexed dataframe
-
-        Returns:
-        - A copy of the initial DataFrame plus the next fed event date and type.
-        """
         return data
 
     # TODO: Move out of this file - DataRetriever should be reserved for data fetching only, not calculation.
