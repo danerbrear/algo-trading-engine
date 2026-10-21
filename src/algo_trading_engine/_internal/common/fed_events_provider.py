@@ -1,133 +1,220 @@
+"""Federal reserve macro events via Finance Calendar (https://www.financecalendar.com/api/)."""
+
+from __future__ import annotations
+
+import calendar
 import json
-import os
-import re
-from pathlib import Path
+import urllib.error
+import urllib.parse
+import urllib.request
+from dataclasses import dataclass
+from datetime import date, timedelta
 
 import pandas as pd
-from dotenv import load_dotenv
-from google.oauth2.service_account import Credentials
-from googleapiclient.discovery import build
 
 from algo_trading_engine.logging import get_logger
 
-load_dotenv()
+_BASE_URL = "https://www.financecalendar.com/wp-json/fc/v1"
+_FED_EVENT_SERIES = ("fomc", "cpi", "ppi")
+_ATTRIBUTION_URL = "https://www.financecalendar.com"
+_DAYS_COLUMN = "Days Until Fed Event"
+_DESCRIPTION_COLUMN = "Fed Event Description"
+_HISTORY_LIMIT = "500"
+_HTTP_TIMEOUT_SECONDS = 30
+_HISTORY_FLOOR_MONTHS = 6
+_HORIZON_MONTHS = 2
+_USER_AGENT = "algo-trading-engine (+https://www.financecalendar.com)"
 
-SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
-_FED_EVENT_SUMMARY_SUBSTRINGS = (
-    "Consumer Price Index",
-    "Producer Price Index"
-)
+
+@dataclass(frozen=True)
+class NextFedEvent:
+    """Soonest upcoming release among fomc, cpi, and ppi."""
+
+    series: str
+    event_date: date
+    description: str
 
 
-def _event_start_date(event: dict) -> pd.Timestamp | None:
-    """Calendar date of an event start, in the event's time zone."""
-    start = event.get("start") or {}
-    if start.get("date"):
-        return pd.Timestamp(start["date"])
-
-    raw_start = start.get("dateTime")
-    if not raw_start:
+def _http_get(path: str, params: dict[str, str]) -> dict | None:
+    query = urllib.parse.urlencode(params)
+    url = f"{_BASE_URL}/{path.lstrip('/')}?{query}"
+    # Cloudflare rejects Python-urllib's default User-Agent with HTTP 403 (error 1010).
+    request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
+    try:
+        with urllib.request.urlopen(request, timeout=_HTTP_TIMEOUT_SECONDS) as response:
+            body = response.read().decode()
+            return json.loads(body)
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            return None
+        get_logger().warning(f"Finance Calendar request failed ({error.code}): {url}")
+        return None
+    except Exception as error:  # pylint: disable=broad-exception-caught
+        get_logger().warning(f"Finance Calendar request failed: {url} ({error})")
         return None
 
-    timestamp = pd.Timestamp(raw_start)
-    if timestamp.tzinfo is not None:
-        zone = start.get("timeZone")
-        if zone:
-            timestamp = timestamp.tz_convert(zone)
-        timestamp = timestamp.tz_localize(None)
-    return timestamp.normalize()
+
+def _shift_months(start: date, months: int) -> date:
+    """Same calendar day shifted by `months`, clamped to the end of that month."""
+
+    month_index = start.month - 1 + months
+    year = start.year + month_index // 12
+    month = month_index % 12 + 1
+    day = min(start.day, calendar.monthrange(year, month)[1])
+    return date(year, month, day)
 
 
-def _days_until_next_event(
-    index: pd.DatetimeIndex, events: pd.DataFrame
-) -> tuple[pd.Series, pd.Series] | None:
-    """Days until the next event on or after each bar, and that event's summary."""
-    if events.empty or "start" not in events.columns:
-        return None
+def _calendar_dates(index: pd.DatetimeIndex) -> pd.DatetimeIndex:
+    """Naive midnight timestamps for each bar, so intraday rows share a calendar day."""
 
-    scheduled = []
-    for event in events.to_dict("records"):
-        start = _event_start_date(event)
-        if start is not None:
-            scheduled.append((start, event.get("summary") or ""))
-    scheduled.sort(key=lambda item: item[0])
+    bar_dates = index.tz_localize(None) if index.tz is not None else index
+    return pd.DatetimeIndex(pd.Timestamp(value).normalize() for value in bar_dates)
 
-    event_dates: list[pd.Timestamp] = []
-    summaries: list[str] = []
-    for start, summary in scheduled:
-        if event_dates and start == event_dates[-1]:
+
+def _history_windows(first_bar: date, last_bar: date, floor: date) -> list[tuple[date, date]]:
+    """Two-month history ranges covering bars on or after `floor`.
+
+    Each window ends two months after it starts, which may fall after `last_bar`.
+    """
+
+    if last_bar < floor:
+        return []
+
+    windows: list[tuple[date, date]] = []
+    window_from = max(first_bar, floor)
+    while window_from <= last_bar:
+        window_to = _shift_months(window_from, _HORIZON_MONTHS)
+        windows.append((window_from, window_to))
+        window_from = window_to + timedelta(days=1)
+    return windows
+
+
+def _event_description(event: dict) -> str:
+    name = event.get("name")
+    if name:
+        return str(name)
+    title = event.get("title")
+    return str(title) if title else ""
+
+
+def _events_from_payload(payload: dict) -> list[tuple[date, str]]:
+    events: list[tuple[date, str]] = []
+    for event in payload.get("events") or []:
+        raw_date = event.get("date")
+        if not raw_date:
             continue
-        event_dates.append(start)
-        summaries.append(summary)
-    if not event_dates:
-        return None
+        events.append((pd.Timestamp(raw_date).date(), _event_description(event)))
+    return events
 
-    dates = pd.DatetimeIndex(event_dates)
-    bar_dates = pd.DatetimeIndex(index)
-    if bar_dates.tz is not None:
-        bar_dates = bar_dates.tz_localize(None)
-    bar_dates = pd.DatetimeIndex(pd.Timestamp(value).normalize() for value in bar_dates)
 
-    positions = dates.searchsorted(bar_dates, side="left")
-    in_range = positions < len(dates)
-    next_dates = dates.take(positions.clip(max=len(dates) - 1))
-    days = pd.Series((next_dates - bar_dates).days, index=index, dtype="Int64")
-    descriptions = pd.Series(
-        pd.Index(summaries).take(positions.clip(max=len(summaries) - 1)),
-        index=index,
-        dtype="string",
-    )
-    return days.mask(~in_range), descriptions.mask(~in_range)
+def _with_blank_fed_columns(data: pd.DataFrame) -> pd.DataFrame:
+    result = data.copy()
+    result[_DAYS_COLUMN] = pd.NA
+    result[_DESCRIPTION_COLUMN] = None
+    return result
+
+
+def _next_event_for_bar(
+    bar_date: date,
+    events: list[tuple[date, str]],
+    floor: date,
+) -> tuple[int | None, str | None]:
+    """Days until the soonest release on or after `bar_date`, within the horizon."""
+
+    if bar_date < floor:
+        return None, None
+
+    horizon_end = _shift_months(bar_date, _HORIZON_MONTHS)
+    upcoming = [
+        (event_date, description)
+        for event_date, description in events
+        if bar_date <= event_date <= horizon_end
+    ]
+    if not upcoming:
+        return None, None
+    event_date, description = min(upcoming, key=lambda release: release[0])
+    return (event_date - bar_date).days, description
+
+
+def _days_and_descriptions(
+    calendar_dates: pd.DatetimeIndex,
+    events: list[tuple[date, str]],
+    floor: date,
+) -> tuple[list[int | None], list[str | None]]:
+    by_date = {
+        normalized: _next_event_for_bar(normalized.date(), events, floor)
+        for normalized in calendar_dates.unique()
+    }
+    days: list[int | None] = []
+    descriptions: list[str | None] = []
+    for normalized in calendar_dates:
+        day_count, description = by_date[normalized]
+        days.append(day_count)
+        descriptions.append(description)
+    return days, descriptions
 
 
 class FedEventsProvider:
-    """Fetches and handles federal reserve events from the data source"""
-
-    _creds: Credentials | None
-    _bls_cal_id: str | None
-
+    """Fetches macro release dates from Finance Calendar."""
 
     def __init__(self) -> None:
-        self._creds = None
+        self._logged_attribution = False
 
-        bls_cal_id = os.getenv("BLS_CALENDAR_ID")
-        if not bls_cal_id:
-            get_logger().warning("Could not create FedEventsProvider. Missing BLS_CALENDAR_ID.")
+    def _log_attribution_once(self, payload: dict | None) -> None:
+        if self._logged_attribution or not payload:
             return
-        self._bls_cal_id = bls_cal_id
+        attribution = payload.get("attribution")
+        if attribution:
+            get_logger().info(f"{attribution} ({_ATTRIBUTION_URL})")
+        else:
+            get_logger().info(f"Macro calendar data from {_ATTRIBUTION_URL}")
+        self._logged_attribution = True
 
-        creds_path = os.getenv("GOOGLE_CREDS_PATH")
-        if not creds_path:
-            get_logger().warning("Could not create FedEventsProvider. Missing GOOGLE_CREDS_PATH.")
-            return
+    def _fetch_history(
+        self,
+        series: str,
+        *,
+        window_from: date,
+        window_to: date,
+    ) -> dict | None:
+        return _http_get(
+            "history",
+            {
+                "series": series,
+                "from": window_from.isoformat(),
+                "to": window_to.isoformat(),
+                "limit": _HISTORY_LIMIT,
+            },
+        )
 
-        service_account_key = Path(creds_path)
-        if not service_account_key.is_file():
-            relative_key = Path(creds_path.lstrip("/"))
-            if relative_key.is_file():
-                service_account_key = relative_key
-        if not service_account_key.is_file():
-            get_logger().warning(
-                f"Could not create FedEventsProvider. Missing service account key at {service_account_key}."
-            )
-            return
+    def _fetch_next(self, series: str) -> dict | None:
+        return _http_get("next", {"series": series})
 
-        with service_account_key.open(encoding="utf-8") as key_file:
-            creds_info = json.load(key_file)
-        self._creds = Credentials.from_service_account_info(creds_info, scopes=SCOPES)
+    def _collect_history_events(
+        self,
+        windows: list[tuple[date, date]],
+    ) -> tuple[list[tuple[date, str]], bool]:
+        events: list[tuple[date, str]] = []
+        fetched = False
+        for window_from, window_to in windows:
+            for series in _FED_EVENT_SERIES:
+                payload = self._fetch_history(
+                    series,
+                    window_from=window_from,
+                    window_to=window_to,
+                )
+                if payload is None:
+                    continue
+                fetched = True
+                self._log_attribution_once(payload)
+                events.extend(_events_from_payload(payload))
+        return events, fetched
 
-
-    def add_fed_events_data(self, data: pd.DataFrame) -> tuple[pd.DataFrame, bool]:
-        """Fetch federal reserve events and attach next event date and type.
-        
-        Arguments:
-        - data (pd.DataFrame): A datetime-indexed dataframe
-
-        Returns:
-        - A tuple of:
-            - The copy of the initial DataFrame plus the next fed event date and type
-            - Successful - Will return original DataFrame when unsuccessful
-        """
+    def add_fed_events_data(  # pylint: disable=too-many-return-statements
+        self,
+        data: pd.DataFrame,
+    ) -> tuple[pd.DataFrame, bool]:
+        """Attach days-until and description columns using Finance Calendar /history."""
 
         if not isinstance(data, pd.DataFrame) or not isinstance(data.index, pd.DatetimeIndex):
             get_logger().warning(
@@ -135,57 +222,60 @@ class FedEventsProvider:
             )
             return data, False
 
-        if not self._creds:
-            return data, False
+        calendar_dates = _calendar_dates(data.index)
+        if calendar_dates.empty:
+            return data.copy(), True
 
-        service = build("calendar", "v3", credentials=self._creds)
-
-        events: list[dict] = []
-        page_token = None
-        try:
-            while True:
-                events_result = (
-                    service.events()  # pylint: disable=no-member
-                    .list(
-                        calendarId=self._bls_cal_id,
-                        singleEvents=True,
-                        orderBy="startTime",
-                        pageToken=page_token,
-                    )
-                    .execute()
-                )
-                events.extend(events_result.get("items") or [])
-                page_token = events_result.get("nextPageToken")
-                if not page_token:
-                    break
-        except Exception as e:
-            get_logger().warning(f"Failed to fetch events from calendar {self._bls_cal_id}. {e}")
-            return data, False
-
-        # Filter for relevant events
-        summary_pattern = re.compile(
-            "|".join(re.escape(part) for part in _FED_EVENT_SUMMARY_SUBSTRINGS)
+        floor = _shift_months(date.today(), -_HISTORY_FLOOR_MONTHS)
+        windows = _history_windows(
+            calendar_dates.min().date(),
+            calendar_dates.max().date(),
+            floor,
         )
-        events[:] = [
-            event for event in events
-            if summary_pattern.search(event.get("summary") or "")
-        ]
+        if not windows:
+            return _with_blank_fed_columns(data), True
 
-        result = data.copy()
-        counted = _days_until_next_event(result.index, pd.DataFrame(events))
-        if counted is None:
-            get_logger().warning(f"Failed to fetch events from calendar {self._bls_cal_id}")
+        events, fetched = self._collect_history_events(windows)
+        if not fetched:
             return data, False
-        days_until, descriptions = counted
 
-        event_lines = []
-        for event in events:
-            start = _event_start_date(event)
-            start_text = start.strftime("%Y-%m-%d") if start is not None else "unknown"
-            event_lines.append(f"\t\t\t\t\tStart: {start_text} | {event.get('summary', '')} | Status: {event.get('status')}")
-        get_logger().debug("Fed events:\n" + "\n".join(event_lines))
+        days_values, description_values = _days_and_descriptions(calendar_dates, events, floor)
+        result = data.copy()
+        result[_DAYS_COLUMN] = pd.Series(days_values, index=data.index, dtype="Int64")
+        result[_DESCRIPTION_COLUMN] = pd.Series(
+            description_values, index=data.index, dtype="object"
+        )
 
-        get_logger().info(f"Fetched federal reserve events for {len(events)} calendar rows")
-        result["Days Until Fed Event"] = days_until
-        result["Fed Event Description"] = descriptions
+        get_logger().info(
+            f"Attached fed event columns using {len(events)} history releases "
+            f"across {len(windows)} two-month window(s)"
+        )
         return result, True
+
+    def get_next_fed_event(self) -> NextFedEvent | None:
+        """Return the soonest upcoming fomc, cpi, or ppi release via /next."""
+
+        candidates: list[NextFedEvent] = []
+        for series in _FED_EVENT_SERIES:
+            payload = self._fetch_next(series)
+            if not payload:
+                continue
+            self._log_attribution_once(payload)
+            next_event = payload.get("next")
+            if not isinstance(next_event, dict):
+                continue
+            raw_date = next_event.get("date")
+            if not raw_date:
+                continue
+            event_date = pd.Timestamp(raw_date).date()
+            candidates.append(
+                NextFedEvent(
+                    series=series,
+                    event_date=event_date,
+                    description=_event_description(next_event),
+                )
+            )
+
+        if not candidates:
+            return None
+        return min(candidates, key=lambda item: item.event_date)
