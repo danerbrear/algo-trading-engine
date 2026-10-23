@@ -28,6 +28,7 @@ from algo_trading_engine import (
 
     # Data access
     DataRetriever,
+    FedEventsProvider,
     OptionsHandler,
     OptionsRetrieverHelper,
 )
@@ -285,6 +286,7 @@ algo_trading_engine/
 ├── strategy.py              # Strategy
 ├── trade.py                 # PaperTradingEngine
 ├── data_retriever.py        # DataRetriever
+├── fed_events_provider.py   # FedEventsProvider
 ├── options_handler.py       # OptionsHandler
 ├── options_helpers.py       # OptionsRetrieverHelper
 └── _internal/               # Package-private implementation

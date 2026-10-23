@@ -5,7 +5,6 @@ from datetime import datetime
 from typing import ClassVar, Dict, Optional
 
 from algo_trading_engine._internal.common.cache.cache_manager import CacheManager
-from algo_trading_engine._internal.common.fed_events_provider import FedEventsProvider
 from algo_trading_engine.logging import get_logger
 from algo_trading_engine.vo import TreasuryRates
 from algo_trading_engine.enums import BarTimeInterval
@@ -43,7 +42,6 @@ class DataRetriever:
         self.use_cache = use_cache
         self.cache_manager = CacheManager(create_dirs=use_cache)
         self.treasury_rates: Optional[TreasuryRates] = None  # Store treasury rates data
-        self.fed_events_provider: FedEventsProvider = FedEventsProvider()
 
     def load_treasury_rates(self, start_date: datetime, end_date: datetime = None):
         """

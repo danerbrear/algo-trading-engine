@@ -28,6 +28,7 @@ Metrics:
 Helpers:
     - OptionsRetrieverHelper: Static utility methods for filtering, finding, and calculating options data
     - DataRetriever: Market and treasury data fetching for strategies and engines
+    - FedEventsProvider: Federal Reserve macro event dates for a price series
     - OptionsHandler: Options chain and bar retrieval (Polygon / cache)
 
 Sub-packages:
@@ -69,6 +70,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from algo_trading_engine.backtest.main import BacktestEngine
     from algo_trading_engine.data_retriever import DataRetriever
+    from algo_trading_engine.fed_events_provider import FedEventsProvider
     from algo_trading_engine.options_handler import OptionsHandler
     from algo_trading_engine.options_helpers import OptionsRetrieverHelper
     from algo_trading_engine.trade import PaperTradingEngine
@@ -100,6 +102,7 @@ __all__ = [
     # Helpers
     "OptionsRetrieverHelper",
     "DataRetriever",
+    "FedEventsProvider",
     "OptionsHandler",
     # Sub-packages (for strategy development)
     "dto",
@@ -130,6 +133,7 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
         "OptionsRetrieverHelper",
     ),
     "DataRetriever": ("algo_trading_engine.data_retriever", "DataRetriever"),
+    "FedEventsProvider": ("algo_trading_engine.fed_events_provider", "FedEventsProvider"),
     "OptionsHandler": ("algo_trading_engine.options_handler", "OptionsHandler"),
 }
 

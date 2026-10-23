@@ -15,12 +15,12 @@ def _passthrough_credit_spread_ml_prep(data, _retriever, _symbol):
     """Avoid calendar/HMM I/O when unit-testing BacktestEngine.from_config."""
     return data
 
-def _skip_fed_events(retriever):
+@pytest.fixture(autouse=True)
+def _skip_fed_events():
     """Keep the fetched frame. Fed events are not under test here."""
-    retriever.fed_events_provider.add_fed_events_data.return_value = (
-        retriever.fetch_data_for_period.return_value,
-        False,
-    )
+    with patch("algo_trading_engine.backtest.main.FedEventsProvider") as mock_provider:
+        mock_provider.return_value.add_fed_events_data.side_effect = lambda data: (data, False)
+        yield mock_provider
 
 class TestBacktestEngineFactory:
     """Test BacktestEngine.from_config() factory method."""
@@ -39,7 +39,6 @@ class TestBacktestEngineFactory:
         mock_retriever_instance = Mock()
         mock_retriever_instance.treasury_rates = None
         mock_retriever_instance.fetch_data_for_period.return_value = pd.DataFrame({'Close': [100, 101, 102], 'Open': [99, 100, 101], 'High': [101, 102, 103], 'Low': [98, 99, 100], 'Volume': [1000000, 1100000, 1200000]}, index=pd.date_range('2024-01-01', periods=3, freq='D'))
-        _skip_fed_events(mock_retriever_instance)
         mock_data_retriever.return_value = mock_retriever_instance
         config = BacktestConfig(initial_capital=100000, start_date=datetime(2024, 1, 1), end_date=datetime(2024, 1, 31), symbol='SPY', strategy_type='credit_spread', api_key='test_key')
         engine = BacktestEngine.from_config(config)
@@ -72,7 +71,6 @@ class TestBacktestEngineFactory:
         mock_retriever_instance = Mock()
         mock_retriever_instance.treasury_rates = None
         mock_retriever_instance.fetch_data_for_period.return_value = pd.DataFrame({'Close': [100, 101, 102], 'Open': [99, 100, 101], 'High': [101, 102, 103], 'Low': [98, 99, 100], 'Volume': [1000000, 1100000, 1200000]}, index=pd.date_range('2024-01-01', periods=3, freq='D'))
-        _skip_fed_events(mock_retriever_instance)
         mock_data_retriever.return_value = mock_retriever_instance
         config = BacktestConfig(initial_capital=100000, start_date=datetime(2024, 1, 1), end_date=datetime(2024, 1, 31), symbol='SPY', strategy_type=mock_strategy, api_key='test_key')
         engine = BacktestEngine.from_config(config)
@@ -97,7 +95,6 @@ class TestBacktestEngineFactory:
         mock_create_strategy.return_value = mock_strategy
         mock_retriever_instance = Mock()
         mock_retriever_instance.fetch_data_for_period.return_value = None
-        _skip_fed_events(mock_retriever_instance)
         mock_retriever_instance.treasury_rates = None
         mock_data_retriever.return_value = mock_retriever_instance
         mock_options_handler.return_value = Mock()
@@ -119,7 +116,6 @@ class TestBacktestEngineFactory:
         mock_retriever_instance = Mock()
         mock_retriever_instance.treasury_rates = None
         mock_retriever_instance.fetch_data_for_period.return_value = pd.DataFrame({'Close': [100, 101, 102], 'Open': [99, 100, 101], 'High': [101, 102, 103], 'Low': [98, 99, 100], 'Volume': [1000000, 1100000, 1200000]}, index=pd.date_range('2024-01-01', periods=3, freq='D'))
-        _skip_fed_events(mock_retriever_instance)
         mock_data_retriever.return_value = mock_retriever_instance
         volume_config = VolumeConfig(min_volume=20)
         config = BacktestConfig(initial_capital=100000, start_date=datetime(2024, 1, 1), end_date=datetime(2024, 1, 31), symbol='SPY', strategy_type='credit_spread', max_position_size=0.5, volume_config=volume_config, enable_progress_tracking=False, quiet_mode=False, api_key='test_key', use_free_tier=True, lstm_start_date_offset=90, stop_loss=0.6, profit_target=0.4)

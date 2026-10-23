@@ -40,12 +40,12 @@ def _passthrough_credit_spread_ml_prep(data, _retriever, _symbol):
     """Avoid calendar/HMM I/O when unit-testing BacktestEngine.from_config."""
     return data
 
-def _skip_fed_events(retriever):
+@pytest.fixture(autouse=True)
+def _skip_fed_events():
     """Keep the fetched frame. Fed events are not under test here."""
-    retriever.fed_events_provider.add_fed_events_data.return_value = (
-        retriever.fetch_data_for_period.return_value,
-        False,
-    )
+    with patch("algo_trading_engine.backtest.main.FedEventsProvider") as mock_provider:
+        mock_provider.return_value.add_fed_events_data.side_effect = lambda data: (data, False)
+        yield mock_provider
 
 class TestBacktestEngineBenchmarkFromConfig:
     """Test BacktestEngine.from_config with benchmark_ticker."""
@@ -63,7 +63,6 @@ class TestBacktestEngineBenchmarkFromConfig:
         mock_retriever = Mock()
         mock_retriever.treasury_rates = None
         mock_retriever.fetch_data_for_period.return_value = _make_price_data('2024-01-01', 5)
-        _skip_fed_events(mock_retriever)
         mock_data_retriever.return_value = mock_retriever
         config = BacktestConfig(initial_capital=100000, start_date=datetime(2024, 1, 1), end_date=datetime(2024, 1, 31), symbol='DIA', strategy_type='credit_spread')
         engine = BacktestEngine.from_config(config)
@@ -83,7 +82,6 @@ class TestBacktestEngineBenchmarkFromConfig:
         mock_retriever = Mock()
         mock_retriever.treasury_rates = None
         mock_retriever.fetch_data_for_period.return_value = _make_price_data('2024-01-01', 5)
-        _skip_fed_events(mock_retriever)
         mock_data_retriever.return_value = mock_retriever
         config = BacktestConfig(initial_capital=100000, start_date=datetime(2024, 1, 1), end_date=datetime(2024, 1, 31), symbol='SPY', strategy_type='credit_spread', benchmark_ticker='SPY')
         engine = BacktestEngine.from_config(config)
@@ -112,7 +110,6 @@ class TestBacktestEngineBenchmarkFromConfig:
                 retriever.fetch_data_for_period.return_value = trading_data
             else:
                 retriever.fetch_data_for_period.return_value = benchmark_data
-            _skip_fed_events(retriever)
             return retriever
         mock_data_retriever.side_effect = lambda **kw: side_effect()
         config = BacktestConfig(initial_capital=100000, start_date=datetime(2024, 1, 1), end_date=datetime(2024, 1, 31), symbol='DIA', strategy_type='credit_spread', benchmark_ticker='SPY')
@@ -145,7 +142,6 @@ class TestBacktestEngineBenchmarkFromConfig:
                 retriever.fetch_data_for_period.return_value = trading_data
             else:
                 retriever.fetch_data_for_period.return_value = None
-            _skip_fed_events(retriever)
             return retriever
         mock_data_retriever.side_effect = lambda **kw: side_effect()
         config = BacktestConfig(initial_capital=100000, start_date=datetime(2024, 1, 1), end_date=datetime(2024, 1, 31), symbol='DIA', strategy_type='credit_spread', benchmark_ticker='INVALID')

@@ -144,7 +144,7 @@ Public imports come from `algo_trading_engine` and these subpackages:
 - **`logging`** — `get_logger`, `configure_logger`, and `remove_logger_sink`.
 - **`gui`** — `RunObserver` and `JsonLinesRunObserver` for streaming a run to an external host.
 
-`Strategy`, `PaperTradingEngine`, `DataRetriever`, and `OptionsHandler` are exported from the package root. See [Public API Organization](docs/public_api_organization.md).
+`Strategy`, `PaperTradingEngine`, `DataRetriever`, `FedEventsProvider`, and `OptionsHandler` are exported from the package root. See [Public API Organization](docs/public_api_organization.md).
 
 ## 🚀 Quick Start
 
