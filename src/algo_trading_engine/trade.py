@@ -272,7 +272,6 @@ class PaperTradingEngine(TradingEngine):
 
         retriever = DataRetriever(
             symbol=config.symbol,
-            lstm_start_date=fetch_start_date,
             bar_interval=config.bar_interval,
             use_cache=config.use_cache
         )

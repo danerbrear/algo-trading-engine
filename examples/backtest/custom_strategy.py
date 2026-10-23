@@ -17,6 +17,7 @@ import importlib.util
 # Import from the public API
 from algo_trading_engine import BacktestEngine, BacktestConfig
 from algo_trading_engine.enums import BarTimeInterval
+from algo_trading_engine.plotting import PlotConfig
 
 # Import custom strategy using absolute path
 strategy_path = Path(__file__).parent.parent / "strategies" / "custom_strategy.py"
@@ -44,13 +45,15 @@ def main():
     # Note: strategy_type can be either a string (built-in) or a Strategy instance (custom)
     config = BacktestConfig(
         initial_capital=3000,
-        start_date=datetime(2025, 8, 1),
-        end_date=datetime(2026, 1, 30),
+        start_date=datetime(2026, 1, 1),
+        end_date=datetime(2026, 10, 12),
         max_position_size=0.20,
         symbol="SPY",
         strategy_type=custom_strategy,  # Pass strategy instance
         api_key=polygon_api_key,
         bar_interval=BarTimeInterval.HOUR,
+        plot_config=PlotConfig(enabled=False),
+        quiet_mode=False
     )
 
     # Create and run engine - all data fetching and setup is handled internally

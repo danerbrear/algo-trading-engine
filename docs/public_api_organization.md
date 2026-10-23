@@ -2,7 +2,7 @@
 
 ## Overview
 
-The `algo-trading-engine` package provides a clean, organized public API with three main layers:
+The `algo-trading-engine` package exposes engines and helpers from the package root, plus these subpackages: `backtest`, `models`, `dto`, `vo`, `enums`, `indicators`, `plotting`, `database`, `logging`, and `gui`. Implementation that is not part of that surface lives in `_internal`.
 
 ### 1. Core API (Top-Level Imports)
 Primary components for running backtests and paper trading:
@@ -12,24 +12,32 @@ from algo_trading_engine import (
     # Engines
     BacktestEngine,
     PaperTradingEngine,
-    
+
     # Configuration
     BacktestConfig,
     PaperTradingConfig,
     VolumeConfig,
     VolumeStats,
-    
+
     # Strategy Base
     Strategy,
-    
+
     # Metrics
     PerformanceMetrics,
     PositionStats,
+
+    # Data access
+    DataRetriever,
+    FedEventsProvider,
+    OptionsHandler,
+    OptionsRetrieverHelper,
 )
 ```
 
+`BacktestEngine` is also available as `algo_trading_engine.backtest.BacktestEngine`. Config and metrics classes are defined in `algo_trading_engine.models`.
+
 ### 2. Data Transfer Objects (DTOs)
-For API communication and options data:
+For API communication, options data, and persisted decisions:
 
 ```python
 from algo_trading_engine.dto import (
@@ -38,6 +46,8 @@ from algo_trading_engine.dto import (
     StrikeRangeDTO,
     ExpirationRangeDTO,
     OptionsChainDTO,
+    ProposedPositionRequestDTO,
+    DecisionResponseDTO,
 )
 ```
 
@@ -51,6 +61,7 @@ from algo_trading_engine.enums import (
     MarketStateType,
     SignalType,
     BarTimeInterval,  # For configuring data granularity
+    UniversalCloseCondition,
 )
 ```
 
@@ -59,11 +70,19 @@ For strategy development and domain models:
 
 ```python
 from algo_trading_engine.vo import (
-    # Runtime Objects
+    # Runtime objects
     Position,
+    SpreadPosition,
+    create_position,
+    CreditSpreadPosition,
+    DebitSpreadPosition,
+    LongCallPosition,
+    ShortCallPosition,
+    LongPutPosition,
+    ShortPutPosition,
     Option,
-    
-    # Value Objects
+
+    # Value objects
     TreasuryRates,
     StrikePrice,
     ExpirationDate,
@@ -72,6 +91,16 @@ from algo_trading_engine.vo import (
     PriceRange,
     Volatility,
 )
+```
+
+### 5. Indicators, plotting, decisions, logging, and GUI
+
+```python
+from algo_trading_engine.indicators import Indicator, SMAIndicator, ATRIndicator
+from algo_trading_engine.plotting import PlotConfig, PlotSpec, HeatmapSpec, build_plot_spec, show_plot
+from algo_trading_engine.database import DecisionStore, JsonDecisionStore
+from algo_trading_engine.logging import get_logger, configure_logger, remove_logger_sink
+from algo_trading_engine.gui import RunObserver, JsonLinesRunObserver, observer_from_env
 ```
 
 ## Usage Examples
@@ -208,74 +237,85 @@ option = Option(
 ## Design Principles
 
 ### Separation of Concerns
-- **Top-level API**: Execution engines and configurations
-- **dto package**: External data representation (API responses, serialization)
-- **enums package**: Public enums for strategy development
-- **vo package**: Value objects and runtime types (business logic, calculations)
+- **Top-level API**: Engines, `Strategy`, configuration, metrics, and data-access helpers
+- **backtest** and **models**: Backtest engine, configs, and performance metrics
+- **dto**: Records passed across layers (options payloads, proposed positions, decisions)
+- **enums**: Fixed sets used by strategies and configuration
+- **vo**: Positions, option contracts, and other domain values
+- **indicators**: Technical indicators for custom strategies
+- **plotting**: Plot specs and `show_plot`
+- **database**: Decision persistence
+- **logging** and **gui**: Run logs and an observer stream for an external host
+- **_internal**: Package-private implementation. It ships with the wheel and is not a supported import path.
+
+A public package's `__init__.py` re-exports only names defined in modules inside that same package.
 
 ### Import Patterns
 ```python
-# ✅ Recommended: Explicit imports
-from algo_trading_engine import BacktestEngine, BacktestConfig
+# Recommended: explicit imports
+from algo_trading_engine import BacktestEngine, BacktestConfig, DataRetriever
 from algo_trading_engine.enums import StrategyType
 from algo_trading_engine.vo import Position
-from algo_trading_engine.dto import OptionContractDTO
+from algo_trading_engine.dto import OptionContractDTO, DecisionResponseDTO
 
-# ✅ Also valid: Sub-package imports
+# Also valid: sub-package imports
 from algo_trading_engine import vo, enums, dto
-position = types.Position(...)
+position_type = vo.Position
 option_dto = dto.OptionContractDTO(...)
 
-# ❌ Avoid: Internal imports
-from algo_trading_engine.vo import Option
-from algo_trading_engine.backtest.models import Position  # Internal detail
+# Avoid: package-private modules
+from algo_trading_engine._internal.strategies.credit_spread_minimal import CreditSpreadStrategy
+from algo_trading_engine.backtest._volume_validator import VolumeValidator
 ```
-
-### Backward Compatibility
-The `vo` and `enums` sub-packages replace the previous `types` sub-package. Update imports from `algo_trading_engine.types` to use `algo_trading_engine.vo` and `algo_trading_engine.enums` instead.
 
 ## Package Structure
 
 ```
 algo_trading_engine/
-├── __init__.py              # Core API exports
-├── dto/
-│   └── __init__.py          # DTOs for API communication
-├── enums/
-│   └── __init__.py          # Public enums
-├── vo/
-│   ├── __init__.py          # Value objects and runtime types
-│   └── value_objects.py     # Public value objects
-├── models/
-│   ├── config.py            # Configuration DTOs
-│   └── metrics.py           # Metrics DTOs
-├── backtest/                # Internal implementation
-├── core/                    # Internal implementation
-├── common/                  # Internal utilities
-└── ...                      # Other internal packages
+├── __init__.py              # Root exports
+├── backtest/                # BacktestEngine
+├── models/                  # BacktestConfig, PaperTradingConfig, metrics
+├── dto/                     # Public DTOs
+├── vo/                      # Positions, options, and value objects
+├── enums/                   # Public enums
+├── indicators/              # Indicator, SMAIndicator, ATRIndicator
+├── plotting/                # PlotConfig, specs, show_plot
+├── database/                # JsonDecisionStore
+├── logging/                 # get_logger, configure_logger
+├── gui/                     # RunObserver, JsonLinesRunObserver
+├── strategy.py              # Strategy
+├── trade.py                 # PaperTradingEngine
+├── data_retriever.py        # DataRetriever
+├── fed_events_provider.py   # FedEventsProvider
+├── options_handler.py       # OptionsHandler
+├── options_helpers.py       # OptionsRetrieverHelper
+└── _internal/               # Package-private implementation
 ```
 
 ## Adding New Public Types
 
-When adding new types to the public API:
+When adding a name to the public API:
 
-1. **For DTOs** (external data): Add to `dto/__init__.py`
-2. **For enums**: Add to `enums/__init__.py`
-3. **For runtime types/VOs**: Add to `vo/__init__.py` and `vo/value_objects.py`
-4. **For configs/metrics**: Add to `models/` package
-5. **Update tests**: Add to `test_types_subpackage.py` or `test_public_api.py`
+1. **DTOs**: Define the type in `dto/` and export it from `dto/__init__.py`.
+2. **Enums**: Define the type in `enums/` and export it from `enums/__init__.py`.
+3. **Value objects and positions**: Define the type in `vo/` and export it from `vo/__init__.py`.
+4. **Configs and metrics**: Add them to `models/` and, when they belong on the package root, register them in `algo_trading_engine/__init__.py`.
+5. **Indicators, plotting, database, logging, and gui**: Define the name in a module inside that package and export it from that package's `__init__.py`.
+6. **Root exports**: Add the name to `_LAZY_EXPORTS` or the subpackage to `_LAZY_SUBMODULES`. Those maps must not reference `_internal`.
+7. **Tests**: Cover the export in `tests/test_public_api.py` or `tests/test_lazy_public_api.py`. `tests/test_public_surface_boundary.py` checks that public package inits stay inside their own package.
 
 ## Testing
 
-All public API functionality is tested:
-
 ```bash
-# Test vo and enums sub-packages
+# Value objects and enums
 pytest tests/test_types_subpackage.py -v
 
-# Test overall public API
+# Root public API
 pytest tests/test_public_api.py -v
 
-# Test CLI integration
+# Lazy subpackages and import boundaries
+pytest tests/test_lazy_public_api.py tests/test_public_surface_boundary.py -v
+
+# CLI integration
 pytest tests/test_cli_integration.py -v
 ```

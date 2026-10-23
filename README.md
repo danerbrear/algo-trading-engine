@@ -2,6 +2,17 @@
 
 This project provides a comprehensive backtesting and prediction platform for options trading strategies. The system enables users to develop, test, and evaluate trading strategies using historical data, while also providing real-time predictions for current market conditions. It includes a robust backtesting framework with volume validation, risk management tools, and machine learning-powered strategy prediction capabilities.
 
+## Contents
+
+- [Usage](#-usage)
+- [Project structure](#-project-structure)
+- [Quick start](#-quick-start)
+- [Key features](#-key-features)
+- [Configuration](#-configuration)
+- [Testing](#-testing)
+- [Documentation](#-documentation)
+- [License](#-license)
+
 ## 📦 Usage
 
 ### Installation
@@ -120,80 +131,20 @@ See [examples/backtest/](examples/backtest/) for complete examples of each inter
 
 ## 📁 Project Structure
 
-### Core Components
+Public imports come from `algo_trading_engine` and these subpackages:
 
-- **`algo_trading_engine/ml_models/`** - Machine learning models and training logic
-  - Market analysis machine learning models
-  - Strategy prediction machine learning models
-  - See [Model Documentation](algo_trading_engine/ml_models/README.md) for details
+- **`backtest`** — `BacktestEngine` for historical runs, volume checks, and performance stats.
+- **`models`** — `BacktestConfig`, `PaperTradingConfig`, `VolumeConfig`, and performance metrics.
+- **`dto`** — Option, chain, proposed-position, and decision records.
+- **`vo`** — Positions, option contracts, treasury rates, and other domain values.
+- **`enums`** — `StrategyType`, `OptionType`, `BarTimeInterval`, `SignalType`, `MarketStateType`, and `UniversalCloseCondition`.
+- **`indicators`** — `Indicator`, `SMAIndicator`, and `ATRIndicator` for custom strategies.
+- **`plotting`** — `PlotConfig`, plot specs, and `show_plot`.
+- **`database`** — `JsonDecisionStore` for persisted trade decisions.
+- **`logging`** — `get_logger`, `configure_logger`, and `remove_logger_sink`.
+- **`gui`** — `RunObserver` and `JsonLinesRunObserver` for streaming a run to an external host.
 
-- **`algo_trading_engine/strategies/`** - Trading strategy implementations
-  - Various options trading strategies
-  - See [Strategy Documentation](algo_trading_engine/strategies/README.md) for details
-
-- **`algo_trading_engine/backtest/`** - Backtesting framework
-  - Volume validation system
-  - Performance analysis tools
-  - Strategy evaluation
-
-- **`algo_trading_engine/common/`** - Shared utilities and data models
-  - Data retrieval and caching
-  - Value Objects and DTOs
-  - Common functions
-
-- **`algo_trading_engine/prediction/`** - Prediction pipeline
-  - Interactive recommendations and decision capture
-  - JSON decision store
-  - CLI for open/close flows
-  - Equity curve visualization
-  - See [Prediction Documentation](algo_trading_engine/prediction/README.md) for details
-
-### File Structure
-
-```
-/
-├── src/algo_trading_engine/      # Source code directory (Python package)
-│   ├── ml_models/            # ML models and training
-│   │   ├── README.md         # Model-specific documentation
-│   │   ├── main.py           # Training entry point
-│   │   ├── lstm_model.py     # Strategy prediction model
-│   │   ├── market_state_classifier.py # Market analysis model
-│   │   └── ...
-│   ├── strategies/           # Trading strategies
-│   │   ├── velocity_signal_momentum_strategy.py
-│   │   ├── credit_spread_minimal.py
-│   │   └── README.md         # Strategy documentation
-│   ├── backtest/             # Backtesting framework
-│   │   ├── main.py           # Backtesting engine
-│   │   ├── volume_validator.py
-│   │   └── ...
-│   ├── common/               # Shared utilities
-│   │   ├── data_retriever.py # Data fetching
-│   │   ├── models.py         # Value Objects
-│   │   ├── cache/            # Caching system
-│   │   └── ...
-│   └── prediction/           # Prediction pipeline
-│       ├── recommend_cli.py          # CLI entrypoint for recommendations
-│       ├── recommendation_engine.py  # InteractiveStrategyRecommender
-│       ├── decision_store.py         # JSON decision store
-│       └── ...
-├── data_cache/                          # Cached market data
-│   ├── stocks/                          # Stock price data
-│   ├── options/                         # Options chain data
-│   ├── treasury/                        # Treasury yield data
-│   └── calendar/                        # Economic calendar data
-├── config/                              # Configuration files
-│   ├── strategies/                      # Config specific to custom strategies
-│   |   ├── capital_allocations.json     # Specify amount of capital and max position risk for each custom strategy
-│   │   └── ...
-├── tests/                               # Unit tests
-├── docs/                                # Documentation
-├── predictions/                         # Prediction outputs
-├── Trained_Models/                      # Saved models
-├── pyproject.toml                       # Package configuration and dependencies
-├── setup_env.py                         # Environment setup
-└── README.md                            # This file
-```
+`Strategy`, `PaperTradingEngine`, `DataRetriever`, `FedEventsProvider`, and `OptionsHandler` are exported from the package root. See [Public API Organization](docs/public_api_organization.md).
 
 ## 🚀 Quick Start
 

@@ -25,6 +25,7 @@ def test_public_api_imports():
         PerformanceMetrics,
         PositionStats,
         DataRetriever,
+        FedEventsProvider,
         OptionsHandler,
     )
     
@@ -43,6 +44,7 @@ def test_public_api_imports():
 
     assert OptionsRetrieverHelper is not None
     assert DataRetriever is not None
+    assert FedEventsProvider is not None
     assert OptionsHandler is not None
 
 

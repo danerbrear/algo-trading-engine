@@ -15,6 +15,13 @@ def _passthrough_credit_spread_ml_prep(data, _retriever, _symbol):
     """Avoid calendar/HMM I/O when unit-testing BacktestEngine.from_config."""
     return data
 
+@pytest.fixture(autouse=True)
+def _skip_fed_events():
+    """Keep the fetched frame. Fed events are not under test here."""
+    with patch("algo_trading_engine.backtest.main.FedEventsProvider") as mock_provider:
+        mock_provider.return_value.add_fed_events_data.side_effect = lambda data: (data, False)
+        yield mock_provider
+
 class TestBacktestEngineFactory:
     """Test BacktestEngine.from_config() factory method."""
 
@@ -38,7 +45,7 @@ class TestBacktestEngineFactory:
         mock_data_retriever.assert_called_once()
         call_args = mock_data_retriever.call_args
         assert call_args[1]['symbol'] == 'SPY'
-        assert 'lstm_start_date' in call_args[1]
+        assert 'lstm_start_date' not in call_args[1]
         mock_retriever_instance.fetch_data_for_period.assert_called_once()
         mock_options_handler.assert_called_once_with(symbol='SPY', api_key='test_key', use_free_tier=False)
         mock_create_strategy.assert_called_once()
@@ -121,5 +128,4 @@ class TestBacktestEngineFactory:
         assert call_kwargs['stop_loss'] == 0.6
         assert call_kwargs['profit_target'] == 0.4
         call_args = mock_data_retriever.call_args
-        expected_lstm_start = (datetime(2024, 1, 1) - timedelta(days=90)).strftime('%Y-%m-%d')
-        assert call_args[1]['lstm_start_date'] == expected_lstm_start
+        assert 'lstm_start_date' not in call_args[1]

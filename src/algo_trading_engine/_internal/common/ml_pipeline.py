@@ -8,6 +8,7 @@ and hmmlearn at import time.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import TYPE_CHECKING, Any, Optional, Tuple
 
 import pandas as pd
@@ -47,6 +48,7 @@ def load_credit_spread_models(symbol: str) -> Tuple[Any, Any]:
 
 def prepare_data_for_lstm(
     data_retriever: "DataRetriever",
+    start_date: datetime,
     _sequence_length: int = 60,
     state_classifier: Optional["MarketStateClassifier"] = None,
 ) -> pd.DataFrame:
@@ -59,8 +61,8 @@ def prepare_data_for_lstm(
     # pylint: disable=import-outside-toplevel
     from algo_trading_engine._internal.ml_models.calendar_features import CalendarFeatureProcessor
 
-    get_logger().info(f"Phase 1: Preparing LSTM training data from {data_retriever.lstm_start_date}")
-    data_retriever.lstm_data = data_retriever.fetch_data_for_period(data_retriever.lstm_start_date)
+    get_logger().info(f"Phase 1: Preparing LSTM training data from {start_date}")
+    data_retriever.lstm_data = data_retriever.fetch_data_for_period(start_date)
     data_retriever.calculate_features_for_data(data_retriever.lstm_data)
 
     get_logger().info("Phase 2: Applying trained HMM to LSTM data")
@@ -80,7 +82,7 @@ def prepare_data_for_lstm(
     return data_retriever.lstm_data
 
 
-def prepare_training_data(data_retriever: "DataRetriever") -> "MarketStateClassifier":
+def prepare_training_data(data_retriever: "DataRetriever", lstm_start_date: datetime, hmm_start_date: datetime) -> "MarketStateClassifier":
     """
     Train HMM on historical market data and prepare LSTM feature dataset.
 
@@ -90,15 +92,15 @@ def prepare_training_data(data_retriever: "DataRetriever") -> "MarketStateClassi
     # pylint: disable=import-outside-toplevel
     from algo_trading_engine._internal.ml_models.market_state_classifier import MarketStateClassifier
 
-    get_logger().info(f"Phase 1: Preparing HMM training data from {data_retriever.hmm_start_date}")
-    hmm_data = data_retriever.fetch_data_for_period(data_retriever.hmm_start_date)
+    get_logger().info(f"Phase 1: Preparing HMM training data from {hmm_start_date}")
+    hmm_data = data_retriever.fetch_data_for_period(hmm_start_date)
     data_retriever.calculate_features_for_data(hmm_data)
 
     get_logger().info(f"Phase 2: Training HMM on market data ({len(hmm_data)} samples)")
     state_classifier = MarketStateClassifier()
     state_classifier.train_hmm_model(hmm_data)
 
-    prepare_data_for_lstm(data_retriever, state_classifier=state_classifier)
+    prepare_data_for_lstm(data_retriever, start_date=lstm_start_date, state_classifier=state_classifier)
     return state_classifier
 
 

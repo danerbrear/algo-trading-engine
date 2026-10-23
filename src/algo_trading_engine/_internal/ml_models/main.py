@@ -33,11 +33,9 @@ class StockPredictor:
             sequence_length: Length of sequences for LSTM
         """
         self.sequence_length = sequence_length
-        self.data_retriever = DataRetriever(
-            symbol=symbol, 
-            hmm_start_date=hmm_start_date, 
-            lstm_start_date=lstm_start_date,
-        )
+        self.hmm_start_date = hmm_start_date
+        self.lstm_start_date = lstm_start_date
+        self.data_retriever = DataRetriever(symbol=symbol)
         self.model = None
         self.X_train = None
         self.y_train = None
@@ -48,7 +46,7 @@ class StockPredictor:
 
     def prepare_data(self):
         """Prepare the data for training"""
-        self.state_classifier = prepare_training_data(self.data_retriever)
+        self.state_classifier = prepare_training_data(self.data_retriever, lstm_start_date=self.lstm_start_date, hmm_start_date=self.hmm_start_date)
         print(f"✅ HMM model trained with {self.state_classifier.n_states} optimal states")
 
         # Initialize LSTM model with data preparation capabilities
@@ -297,7 +295,7 @@ State Characteristics:
 Note: State characteristics require training data to calculate.
 Use the get_state_description() method with your data to see state details.
 """
-            except:
+            except Exception:
                 pass
         
         # Save info to timestamped folder
