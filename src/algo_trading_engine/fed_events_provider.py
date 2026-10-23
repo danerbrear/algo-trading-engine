@@ -30,9 +30,8 @@ _USER_AGENT = "algo-trading-engine (+https://www.financecalendar.com)"
 class NextFedEvent:
     """Soonest upcoming release among fomc, cpi, and ppi."""
 
-    series: str
-    event_date: date
-    description: str
+    days_until_event: int
+    event_desc: str
 
 
 def _http_get(path: str, params: dict[str, str]) -> dict | None:
@@ -255,6 +254,7 @@ class FedEventsProvider:
     def get_next_fed_event(self) -> NextFedEvent | None:
         """Return the soonest upcoming fomc, cpi, or ppi release via /next."""
 
+        today = date.today()
         candidates: list[NextFedEvent] = []
         for series in _FED_EVENT_SERIES:
             payload = self._fetch_next(series)
@@ -270,12 +270,11 @@ class FedEventsProvider:
             event_date = pd.Timestamp(raw_date).date()
             candidates.append(
                 NextFedEvent(
-                    series=series,
-                    event_date=event_date,
-                    description=_event_description(next_event),
+                    days_until_event=(event_date - today).days,
+                    event_desc=_event_description(next_event),
                 )
             )
 
         if not candidates:
             return None
-        return min(candidates, key=lambda item: item.event_date)
+        return min(candidates, key=lambda item: item.days_until_event)

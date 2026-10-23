@@ -235,7 +235,9 @@ class TestAddFedEventsDataIndex:
 
 
 class TestGetNextFedEvent:
-    def test_returns_soonest_series(self, provider):
+    @patch("algo_trading_engine.fed_events_provider.date", side_effect=date)
+    def test_returns_soonest_series(self, mock_date, provider):
+        mock_date.today.return_value = date(2024, 7, 1)
         with patch.object(
             provider,
             "_fetch_next",
@@ -247,7 +249,7 @@ class TestGetNextFedEvent:
         ):
             event = provider.get_next_fed_event()
 
-        assert event == NextFedEvent(series="cpi", event_date=date(2024, 7, 10), description="US CPI")
+        assert event == NextFedEvent(days_until_event=9, event_desc="US CPI")
 
     def test_returns_none_when_all_fail(self, provider):
         with patch.object(provider, "_fetch_next", return_value=None):
