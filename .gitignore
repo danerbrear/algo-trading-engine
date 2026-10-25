@@ -11,3 +11,4 @@ predictions/*
 backup
 *.egg-info
 logs/
+keys/
