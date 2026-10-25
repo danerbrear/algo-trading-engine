@@ -40,13 +40,6 @@ def _passthrough_credit_spread_ml_prep(data, _retriever, _symbol):
     """Avoid calendar/HMM I/O when unit-testing BacktestEngine.from_config."""
     return data
 
-@pytest.fixture(autouse=True)
-def _skip_fed_events():
-    """Keep the fetched frame. Fed events are not under test here."""
-    with patch("algo_trading_engine.backtest.main.FedEventsProvider") as mock_provider:
-        mock_provider.return_value.add_fed_events_data.side_effect = lambda data: (data, False)
-        yield mock_provider
-
 class TestBacktestEngineBenchmarkFromConfig:
     """Test BacktestEngine.from_config with benchmark_ticker."""
 
