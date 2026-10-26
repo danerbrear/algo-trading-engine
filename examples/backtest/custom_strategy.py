@@ -46,7 +46,7 @@ def main():
     config = BacktestConfig(
         initial_capital=3000,
         start_date=datetime(2026, 1, 1),
-        end_date=datetime(2026, 10, 12),
+        end_date=datetime(2026, 6, 12),
         max_position_size=0.20,
         symbol="SPY",
         strategy_type=custom_strategy,  # Pass strategy instance

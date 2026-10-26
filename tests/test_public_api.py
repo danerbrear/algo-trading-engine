@@ -266,6 +266,7 @@ def test_performance_metrics_structure():
     assert 'total_positions' in field_names
     assert 'closed_positions' in field_names
     assert 'strategy_stats' in field_names
+    assert 'expected_value' in field_names
 
 
 def test_position_stats_structure():

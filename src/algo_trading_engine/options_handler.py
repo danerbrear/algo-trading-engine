@@ -585,10 +585,7 @@ class OptionsHandler:
                     "to": to_str,
                     "limit": limit_val,
                 }
-                get_logger().debug(
-                    "Polygon get_aggs request params: %s",
-                    aggs_params,
-                )
+                get_logger().debug(f"Polygon get_aggs request params: {aggs_params}")
                 bars_response = self.client.get_aggs(**aggs_params)
                 bars_list = list(bars_response)
                 progress_print(f"✅ Fetched {len(bars_list)} bars from API for {contract.ticker} on {dt.date()}")

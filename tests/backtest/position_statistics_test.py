@@ -70,6 +70,7 @@ class TestPositionStatistics:
         assert "Total positions: 3" in captured.out
         assert "Win rate: 66.7%" in captured.out
         assert "Total P&L: $+110.00" in captured.out
+        assert "Expected value: $+36.67" in captured.out
         assert "Call Credit Spread" in captured.out
         assert "Put Credit Spread" in captured.out
     
@@ -191,6 +192,48 @@ class TestPositionStatistics:
             # Check average return is calculated correctly (600/3 = 200) (format: "Avg return: $+200.00")
             avg_line = next(line for line in printed_lines if "Avg return:" in line and "$+200.00" in line)
             assert "$+200.00" in avg_line
+
+    def test_expected_value_uses_win_and_loss_rates(self):
+        """Expectancy comes from realized wins and losses."""
+        self.engine.closed_positions = [
+            {'strategy_type': StrategyType.CALL_CREDIT_SPREAD, 'return_dollars': 100.0},
+            {'strategy_type': StrategyType.CALL_CREDIT_SPREAD, 'return_dollars': -50.0},
+            {'strategy_type': StrategyType.PUT_CREDIT_SPREAD, 'return_dollars': 25.0},
+        ]
+
+        # Wins average 62.50 at a 2/3 rate; the loss averages 50 at a 1/3 rate.
+        stats = self.engine._calculate_overall_statistics()
+        assert stats.expected_value == pytest.approx(25.0)
+        by_strategy = {item.strategy_type: item.expected_value for item in self.engine._calculate_strategy_statistics()}
+        assert by_strategy[StrategyType.CALL_CREDIT_SPREAD] == pytest.approx(25.0)
+        assert by_strategy[StrategyType.PUT_CREDIT_SPREAD] == pytest.approx(25.0)
+
+    def test_expected_value_is_none_without_closed_positions(self):
+        self.engine.closed_positions = []
+        assert self.engine._calculate_overall_statistics().expected_value is None
+
+    def test_performance_metrics_include_expected_value(self):
+        self.engine.total_positions = 1
+        self.engine.capital = 10100
+        self.engine.benchmark.set_start_price(100)
+        self.engine.benchmark.set_end_price(110)
+        self.engine.closed_positions = [
+            {
+                'strategy_type': StrategyType.CALL_CREDIT_SPREAD,
+                'entry_date': datetime(2024, 1, 1),
+                'exit_date': datetime(2024, 1, 15),
+                'entry_price': 2.50,
+                'exit_price': 1.20,
+                'return_dollars': 100.0,
+                'return_percentage': 40.0,
+                'days_held': 14,
+                'max_risk': 250.0,
+            }
+        ]
+
+        metrics = self.engine.get_performance_metrics()
+        assert metrics.expected_value == pytest.approx(100.0)
+        assert metrics.overall_stats.expected_value == pytest.approx(100.0)
 
 
 class TestPositionTracking:

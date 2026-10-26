@@ -3,7 +3,7 @@ import os
 import sys
 import traceback
 from datetime import datetime, timedelta
-from typing import List
+from typing import List, Optional
 
 import numpy as np
 import pandas as pd
@@ -342,6 +342,8 @@ class BacktestEngine(TradingEngine):
         # Position performance statistics
         if self.closed_positions:
             self._print_position_statistics()
+        
+        expected_value = self._calculate_overall_statistics().expected_value if self.closed_positions else None
 
         log_and_echo("Backtest Results Summary:")
         log_and_echo(f"   Benchmark return: {self.benchmark.get_return_percentage():+.2f}%")
@@ -351,6 +353,7 @@ class BacktestEngine(TradingEngine):
         log_and_echo(f"   Final capital: ${self.capital:.2f}")
         log_and_echo(f"   Total Return: ${final_return:+,.2f} ({final_return_pct:+.2f}%)")
         log_and_echo(f"   Sharpe Ratio: {sharpe_ratio:.3f}")
+        log_and_echo(f"   Expected value: {'N/A' if expected_value is None else f'${expected_value:+,.2f}'}")
 
         if self.closed_positions:
             from algo_trading_engine.backtest._equity import build_equity_curve_dataframe  # pylint: disable=import-outside-toplevel
@@ -377,6 +380,7 @@ class BacktestEngine(TradingEngine):
                 "final_capital": f"${self.capital:.2f}",
                 "total_return": f"${final_return:+,.2f} ({final_return_pct:+.2f}%)",
                 "sharpe_ratio": f"{sharpe_ratio:.3f}",
+                "expected_value": "N/A" if expected_value is None else f"${expected_value:+,.2f}",
             })
     
     def get_performance_metrics(self) -> PerformanceMetrics:
@@ -427,7 +431,8 @@ class BacktestEngine(TradingEngine):
             strategy_stats=strategy_stats,
             overall_stats=overall_stats,
             benchmark_return=self.benchmark.get_return_dollars(),
-            benchmark_return_pct=self.benchmark.get_return_percentage()
+            benchmark_return_pct=self.benchmark.get_return_percentage(),
+            expected_value=overall_stats.expected_value,
         )
     
     def get_positions(self) -> List[Position]:
@@ -641,7 +646,8 @@ class BacktestEngine(TradingEngine):
             average_return=avg_return,
             min_drawdown=min_dd,
             mean_drawdown=mean_dd,
-            max_drawdown=max_dd
+            max_drawdown=max_dd,
+            expected_value=self._calculate_expected_value(self.closed_positions),
         )
     
     def _calculate_strategy_statistics(self) -> List['StrategyPerformanceStats']:
@@ -673,12 +679,31 @@ class BacktestEngine(TradingEngine):
                 average_return=avg_return,
                 min_drawdown=min_dd,
                 mean_drawdown=mean_dd,
-                max_drawdown=max_dd
+                max_drawdown=max_dd,
+                expected_value=self._calculate_expected_value(positions),
             )
             strategy_stats.append(stats)
         
         return strategy_stats
     
+    def _calculate_expected_value(self, positions: List[dict]) -> Optional[float]:
+        """Expectancy in dollars per trade from the closed-position results.
+
+        (win rate × average win) − (loss rate × average loss). Both rates use
+        every position in the set. A flat result is neither a win nor a loss.
+        Average loss is the mean losing result as a positive amount.
+        """
+        if not positions:
+            return None
+        wins = [pos['return_dollars'] for pos in positions if pos['return_dollars'] > 0]
+        losses = [pos['return_dollars'] for pos in positions if pos['return_dollars'] < 0]
+        count = len(positions)
+        win_rate = len(wins) / count
+        loss_rate = len(losses) / count
+        average_win = sum(wins) / len(wins) if wins else 0.0
+        average_loss = abs(sum(losses) / len(losses)) if losses else 0.0
+        return (win_rate * average_win) - (loss_rate * average_loss)
+
     def _calculate_drawdown_stats(self, positions: List[dict], initial_capital: float) -> tuple[float, float, float]:
         """
         Calculate drawdown statistics from closed positions.

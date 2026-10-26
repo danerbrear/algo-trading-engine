@@ -66,6 +66,7 @@ class StrategyPerformanceStats:
     min_drawdown: float
     mean_drawdown: float
     max_drawdown: float
+    expected_value: Optional[float] = None  # (win rate × avg win) − (loss rate × avg loss)
     
     def __post_init__(self):
         """Validate strategy stats after initialization."""
@@ -82,6 +83,7 @@ class StrategyPerformanceStats:
         log_and_echo(f"    Win rate: {self.win_rate:.1f}%")
         log_and_echo(f"    Total P&L: ${self.total_pnl:+,.2f}")
         log_and_echo(f"    Avg return: ${self.average_return:+,.2f}")
+        log_and_echo(f"    Expected value: {'N/A' if self.expected_value is None else f'${self.expected_value:+,.2f}'}")
         log_and_echo(f"    Drawdowns: min {self.min_drawdown:.2f}% / mean {self.mean_drawdown:.2f}% / max {self.max_drawdown:.2f}%")
 
 
@@ -100,6 +102,7 @@ class OverallPerformanceStats:
     min_drawdown: float
     mean_drawdown: float
     max_drawdown: float
+    expected_value: Optional[float] = None  # (win rate × avg win) − (loss rate × avg loss)
     
     def __post_init__(self):
         """Validate overall stats after initialization."""
@@ -115,6 +118,7 @@ class OverallPerformanceStats:
         log_and_echo(f"    Win rate: {self.win_rate:.1f}%")
         log_and_echo(f"    Total P&L: ${self.total_pnl:+,.2f}")
         log_and_echo(f"    Avg return: ${self.average_return:+,.2f}")
+        log_and_echo(f"    Expected value: {'N/A' if self.expected_value is None else f'${self.expected_value:+,.2f}'}")
         log_and_echo(f"    Drawdowns: min {self.min_drawdown:.2f}% / mean {self.mean_drawdown:.2f}% / max {self.max_drawdown:.2f}%")
 
 
@@ -137,6 +141,7 @@ class PerformanceMetrics:
     overall_stats: OverallPerformanceStats
     benchmark_return: Optional[float] = None  # Dollar return
     benchmark_return_pct: Optional[float] = None  # Percentage return
+    expected_value: Optional[float] = None  # (win rate × avg win) − (loss rate × avg loss)
     
     def __post_init__(self):
         """Validate performance metrics after initialization."""
@@ -155,6 +160,7 @@ class PerformanceMetrics:
         log_and_echo(f"Sharpe ratio: {self.sharpe_ratio:.3f}")
         log_and_echo(f"Max drawdown: {self.max_drawdown:.2f}%")
         log_and_echo(f"Win rate: {self.win_rate:.1f}%")
+        log_and_echo(f"Expected value: {'N/A' if self.expected_value is None else f'${self.expected_value:+,.2f}'}")
         log_and_echo(f"Total positions: {self.total_positions}")
         if self.benchmark_return is not None and self.benchmark_return_pct is not None:
             log_and_echo(f"Benchmark return: ${self.benchmark_return:+,.2f} ({self.benchmark_return_pct:+.2f}%)")
