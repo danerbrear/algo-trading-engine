@@ -4,8 +4,9 @@ Position domain models for the algo trading engine.
 This module contains the Position abstract base class and all concrete
 position type implementations for different trading strategies.
 """
-
 from __future__ import annotations
+
+from algo_trading_engine._internal.util.datetime_helpers import to_readable_expiration_str
 
 from datetime import datetime
 from typing import Optional, TYPE_CHECKING
@@ -180,18 +181,16 @@ class Position(ABC):
         return True
 
     def __str__(self) -> str:
-        return f"{self.strategy_type.value} {self.symbol} {self.strike_price} @ {self.entry_price:.2f} x{self.quantity} (Open, expires {self.expiration_date.strftime('%Y-%m-%d')})"
+        return f"{self.strategy_type.value} {self.symbol} {self.strike_price} @ {self.entry_price:.2f} x{self.quantity} (Open, expires {to_readable_expiration_str(self.expiration_date)})"
     
     # Strategy-specific methods become abstract
     @abstractmethod
     def get_return_dollars(self, exit_price: float) -> float:
         """Calculate dollar return for this position."""
-        pass
     
     @abstractmethod
     def _get_return(self, exit_price: float) -> float:
         """Calculate percentage return for this position."""
-        pass
     
     @abstractmethod
     def calculate_exit_price(
@@ -200,7 +199,6 @@ class Position(ABC):
         underlying_price: Optional[float],
     ) -> Optional[float]:
         """Calculate current exit price from option chain."""
-        pass
     
     @abstractmethod
     def calculate_exit_price_from_bars(
@@ -210,27 +208,22 @@ class Position(ABC):
         underlying_price: Optional[float],
     ) -> Optional[float]:
         """Calculate current exit price from option bars."""
-        pass
     
     @abstractmethod
     def max_profit(self) -> Optional[float]:
         """Calculate maximum profit for the position based on strategy type."""
-        pass
 
     @abstractmethod
     def max_risk_dollars_per_contract(self) -> Optional[float]:
         """Dollar risk per contract for position sizing. Returns None for unlimited risk."""
-        pass
     
     @abstractmethod
     def max_loss_per_share(self) -> Optional[float]:
         """Theoretical maximum loss per share (option price units) for risk/reward analysis."""
-        pass
     
     @abstractmethod
     def get_return_dollars_from_assignment(self, underlying_price: float) -> float:
         """Get the return from assignment for a position at expiration."""
-        pass
     
     def risk_reward_ratio(self) -> Optional[float]:
         """

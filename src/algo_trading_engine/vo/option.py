@@ -4,6 +4,9 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, Optional
 
+from algo_trading_engine._internal.util.datetime_helpers import to_readable_str
+from algo_trading_engine.dto import OptionBarDTO, OptionContractDTO
+
 from algo_trading_engine.enums import OptionType
 
 
@@ -14,6 +17,7 @@ class Option:
     """
 
     ticker: str
+    timestamp: datetime
     symbol: str
     strike: float
     expiration: str  # Always store as string for cache compatibility
@@ -51,6 +55,8 @@ class Option:
             raise ValueError("Strike price must be positive")
         if self.last_price < 0:
             raise ValueError("Last price cannot be negative")
+        if self.timestamp is None:
+            raise ValueError("Must associate a timestamp with an option since price data is attached.")
         if self.volume is not None and self.volume < 0:
             raise ValueError("Volume cannot be negative")
         if self.open_interest is not None and self.open_interest < 0:
@@ -89,6 +95,7 @@ class Option:
     def to_dict(self) -> Dict[str, Any]:
         return {
             "ticker": self.ticker,
+            "timestamp": self.timestamp,
             "strike": self.strike,
             "expiration": self.expiration,
             "type": self.option_type.value,
@@ -111,6 +118,7 @@ class Option:
     def from_dict(cls, data: Dict[str, Any]) -> Option:
         return cls(
             ticker=data.get("ticker", ""),
+            timestamp=data.get("timestamp"),
             symbol=data["symbol"],
             strike=data["strike"],
             expiration=data["expiration"],
@@ -134,6 +142,7 @@ class Option:
             return False
         return (
             self.ticker == other.ticker
+            and self.timestamp == other.timestamp
             and self.symbol == other.symbol
             and self.strike == other.strike
             and self.expiration == other.expiration
@@ -141,7 +150,7 @@ class Option:
         )
 
     def __str__(self) -> str:
-        return f"{self.symbol} {self.option_type.value.upper()} {self.strike} @ {self.last_price:.2f}"
+        return f"{self.symbol} {self.option_type.value.upper()} {self.strike} @ {self.last_price:.2f} as of {to_readable_str(self.timestamp)}"
 
     def __repr__(self) -> str:
         return (
@@ -151,20 +160,22 @@ class Option:
         )
 
     @classmethod
-    def from_contract_and_bar(cls, contract, bar) -> Option:
+    def from_contract_and_bar(cls, contract: OptionContractDTO, option_bar: OptionBarDTO) -> Option:
+        """Create a complete option object from contract information and pricing data"""
         option_type = (
             OptionType.CALL if contract.contract_type.value == "call" else OptionType.PUT
         )
         return cls(
             ticker=contract.ticker,
+            timestamp=option_bar.timestamp,
             symbol=contract.underlying_ticker,
             strike=float(contract.strike_price.value),
             expiration=str(contract.expiration_date),
             option_type=option_type,
-            last_price=float(bar.close_price),
-            volume=bar.volume,
-            mid_price=float(bar.volume_weighted_avg_price)
-            if bar.volume_weighted_avg_price
+            last_price=float(option_bar.close_price),
+            volume=option_bar.volume,
+            mid_price=float(option_bar.volume_weighted_avg_price)
+            if option_bar.volume_weighted_avg_price
             else None,
         )
 
