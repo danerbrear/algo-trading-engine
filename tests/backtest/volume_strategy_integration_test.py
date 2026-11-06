@@ -24,8 +24,8 @@ class TestStrategyCurrentDateVolumeValidation:
         self.get_option_bar = self.mock_options_handler.get_option_bar
         self.get_options_chain = self.mock_options_handler.get_options_chain
         self.strategy = CreditSpreadStrategy(get_contract_list_for_date=self.get_contract_list_for_date, get_option_bar=self.get_option_bar, get_options_chain=self.get_options_chain, lstm_model=self.mock_lstm_model, lstm_scaler=self.mock_lstm_scaler, symbol='SPY', options_handler=self.mock_options_handler)
-        self.option1 = Option(symbol='SPY240315C00500000', ticker='SPY', expiration='2024-03-15', strike=500.0, option_type=OptionType.CALL, last_price=1.5, volume=15)
-        self.option2 = Option(symbol='SPY240315C00510000', ticker='SPY', expiration='2024-03-15', strike=510.0, option_type=OptionType.CALL, last_price=0.75, volume=8)
+        self.option1 = Option(symbol='SPY240315C00500000', ticker='SPY', timestamp=datetime(2024, 1, 15), expiration='2024-03-15', strike=500.0, option_type=OptionType.CALL, last_price=1.5, volume=15)
+        self.option2 = Option(symbol='SPY240315C00510000', ticker='SPY', timestamp=datetime(2024, 1, 15), expiration='2024-03-15', strike=510.0, option_type=OptionType.CALL, last_price=0.75, volume=8)
         self.position = create_position(symbol='SPY', expiration_date=datetime(2024, 3, 15), strategy_type=StrategyType.CALL_CREDIT_SPREAD, strike_price=500.0, entry_date=datetime(2024, 1, 15), entry_price=0.75, spread_options=[self.option1, self.option2])
         self.test_date = datetime(2024, 2, 15)
 

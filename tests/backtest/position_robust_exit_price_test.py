@@ -35,6 +35,7 @@ def _make_bar(ticker: str, close_price: float) -> OptionBarDTO:
 def _make_call_option(ticker: str, strike: float, last_price: float) -> Option:
     return Option(
         ticker=ticker,
+        timestamp=datetime(2025, 6, 10),
         symbol="SPY",
         strike=strike,
         expiration="2025-06-30",
@@ -46,6 +47,7 @@ def _make_call_option(ticker: str, strike: float, last_price: float) -> Option:
 def _make_put_option(ticker: str, strike: float, last_price: float) -> Option:
     return Option(
         ticker=ticker,
+        timestamp=datetime(2025, 6, 10),
         symbol="SPY",
         strike=strike,
         expiration="2025-06-30",

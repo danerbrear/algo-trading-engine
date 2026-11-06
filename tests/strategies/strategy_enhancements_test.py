@@ -171,8 +171,8 @@ class TestCreditSpreadStrategyEnhancements:
         from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO
         from algo_trading_engine.enums import OptionType as CommonOptionType
         from decimal import Decimal
-        option1 = Option(ticker='SPY', symbol='SPY240119C00450000', strike=450.0, expiration='2024-01-19', option_type=OptionType.CALL, last_price=5.0, volume=100)
-        option2 = Option(ticker='SPY', symbol='SPY240119C00455000', strike=455.0, expiration='2024-01-19', option_type=OptionType.CALL, last_price=3.0, volume=150)
+        option1 = Option(ticker='SPY', timestamp=datetime(2024, 1, 15), symbol='SPY240119C00450000', strike=450.0, expiration='2024-01-19', option_type=OptionType.CALL, last_price=5.0, volume=100)
+        option2 = Option(ticker='SPY', timestamp=datetime(2024, 1, 15), symbol='SPY240119C00455000', strike=455.0, expiration='2024-01-19', option_type=OptionType.CALL, last_price=3.0, volume=150)
         position = create_position(symbol='SPY', expiration_date=datetime(2024, 1, 19), strategy_type=StrategyType.CALL_CREDIT_SPREAD, strike_price=450.0, entry_date=datetime(2024, 1, 15), entry_price=2.0, spread_options=[option1, option2])
         from algo_trading_engine.vo import StrikePrice, ExpirationDate
         contract1 = OptionContractDTO(ticker='O:SPY240119C00450000', underlying_ticker='SPY', contract_type=CommonOptionType.CALL, strike_price=StrikePrice(Decimal('450.0')), expiration_date=ExpirationDate(datetime(2024, 1, 19).date()), exercise_style='american', shares_per_contract=100)
@@ -194,7 +194,7 @@ class TestCreditSpreadStrategyEnhancements:
 
     def test_get_current_volumes_for_position_api_failure(self):
         """Test get_current_volumes_for_position with API failures"""
-        option1 = Option(ticker='SPY', symbol='SPY240119C00450000', strike=450.0, expiration='2024-01-19', option_type=OptionType.CALL, last_price=5.0, volume=100)
+        option1 = Option(ticker='SPY', timestamp=datetime(2024, 1, 15), symbol='SPY240119C00450000', strike=450.0, expiration='2024-01-19', option_type=OptionType.CALL, last_price=5.0, volume=100)
         position = create_position(symbol='SPY', expiration_date=datetime(2024, 1, 19), strategy_type=StrategyType.CALL_CREDIT_SPREAD, strike_price=450.0, entry_date=datetime(2024, 1, 15), entry_price=2.0, spread_options=[option1])
         self.strategy.get_contract_list_for_date = Mock(side_effect=Exception('API Error'))
         test_date = datetime(2024, 1, 16)
@@ -206,7 +206,7 @@ class TestCreditSpreadStrategyEnhancements:
         from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO
         from algo_trading_engine.enums import OptionType as CommonOptionType
         from decimal import Decimal
-        option1 = Option(ticker='SPY', symbol='SPY240119C00450000', strike=450.0, expiration='2024-01-19', option_type=OptionType.CALL, last_price=5.0, volume=100)
+        option1 = Option(ticker='SPY', timestamp=datetime(2024, 1, 15), symbol='SPY240119C00450000', strike=450.0, expiration='2024-01-19', option_type=OptionType.CALL, last_price=5.0, volume=100)
         position = create_position(symbol='SPY', expiration_date=datetime(2024, 1, 19), strategy_type=StrategyType.CALL_CREDIT_SPREAD, strike_price=450.0, entry_date=datetime(2024, 1, 15), entry_price=2.0, spread_options=[option1])
         from algo_trading_engine.vo import StrikePrice, ExpirationDate
         contract1 = OptionContractDTO(ticker='O:SPY240119C00450000', underlying_ticker='SPY', contract_type=CommonOptionType.CALL, strike_price=StrikePrice(Decimal('450.0')), expiration_date=ExpirationDate(datetime(2024, 1, 19).date()), exercise_style='american', shares_per_contract=100)

@@ -192,8 +192,8 @@ class TestVolumeValidationIntegration:
         data = pd.DataFrame({'Close': [100, 101, 102, 103, 104], 'Volume': [1000, 1100, 1200, 1300, 1400], 'Returns': [0.01, 0.01, 0.01, 0.01, 0.01], 'Log_Returns': [0.01, 0.01, 0.01, 0.01, 0.01], 'Volatility': [0.02, 0.02, 0.02, 0.02, 0.02], 'RSI': [50, 50, 50, 50, 50], 'MACD_Hist': [0, 0, 0, 0, 0], 'Volume_Ratio': [1.0, 1.0, 1.0, 1.0, 1.0], 'Market_State': [0, 0, 0, 0, 0], 'Put_Call_Ratio': [1.0, 1.0, 1.0, 1.0, 1.0], 'Option_Volume_Ratio': [1.0, 1.0, 1.0, 1.0, 1.0], 'Days_Until_Next_CPI': [30, 29, 28, 27, 26], 'Days_Since_Last_CPI': [5, 6, 7, 8, 9], 'Days_Until_Next_CC': [30, 29, 28, 27, 26], 'Days_Since_Last_CC': [5, 6, 7, 8, 9], 'Days_Until_Next_FFR': [30, 29, 28, 27, 26], 'Days_Since_Last_FFR': [5, 6, 7, 8, 9]}, index=pd.date_range('2024-01-01', periods=5))
         strategy = MockStrategy()
         engine = BacktestEngine(data=data, strategy=strategy, initial_capital=100000, volume_config=VolumeConfig(min_volume=10, enable_volume_validation=True))
-        atm_option = Option(ticker='SPY', symbol='SPY240119C00100000', strike=100.0, expiration='2024-01-19', option_type=OptionType.CALL, last_price=1.5, volume=5, open_interest=100, bid=1.45, ask=1.55)
-        otm_option = Option(ticker='SPY', symbol='SPY240119C00105000', strike=105.0, expiration='2024-01-19', option_type=OptionType.CALL, last_price=0.75, volume=5, open_interest=100, bid=0.7, ask=0.8)
+        atm_option = Option(ticker='SPY', timestamp=datetime(2024, 1, 1), symbol='SPY240119C00100000', strike=100.0, expiration='2024-01-19', option_type=OptionType.CALL, last_price=1.5, volume=5, open_interest=100, bid=1.45, ask=1.55)
+        otm_option = Option(ticker='SPY', timestamp=datetime(2024, 1, 1), symbol='SPY240119C00105000', strike=105.0, expiration='2024-01-19', option_type=OptionType.CALL, last_price=0.75, volume=5, open_interest=100, bid=0.7, ask=0.8)
         position = create_position(symbol='SPY', expiration_date=datetime(2024, 1, 19), strategy_type=StrategyType.CALL_CREDIT_SPREAD, strike_price=100.0, entry_date=datetime(2024, 1, 1), entry_price=0.75, spread_options=[atm_option, otm_option])
         position.set_quantity(1)
         engine.positions.append(position)
@@ -421,8 +421,8 @@ class TestCreditSpreadAssignmentCapital:
         return BacktestEngine(data=strategy.data, strategy=strategy, initial_capital=10000, volume_config=VolumeConfig(min_volume=10, enable_volume_validation=False), enable_progress_tracking=False, quiet_mode=True)
 
     def _make_put_credit_spread(self, entry_price: float, short_strike: float, long_strike: float):
-        short_put = Option(ticker='SPY', symbol='SPY240119P00658000', strike=short_strike, expiration='2024-01-19', option_type=OptionType.PUT, last_price=1.0, volume=100, open_interest=100, bid=0.95, ask=1.05)
-        long_put = Option(ticker='SPY', symbol='SPY240119P00654000', strike=long_strike, expiration='2024-01-19', option_type=OptionType.PUT, last_price=0.5, volume=100, open_interest=100, bid=0.45, ask=0.55)
+        short_put = Option(ticker='SPY', timestamp=datetime(2024, 1, 1), symbol='SPY240119P00658000', strike=short_strike, expiration='2024-01-19', option_type=OptionType.PUT, last_price=1.0, volume=100, open_interest=100, bid=0.95, ask=1.05)
+        long_put = Option(ticker='SPY', timestamp=datetime(2024, 1, 1), symbol='SPY240119P00654000', strike=long_strike, expiration='2024-01-19', option_type=OptionType.PUT, last_price=0.5, volume=100, open_interest=100, bid=0.45, ask=0.55)
         position = create_position(symbol='SPY', expiration_date=datetime(2024, 1, 19), strategy_type=StrategyType.PUT_CREDIT_SPREAD, strike_price=short_strike, entry_date=datetime(2024, 1, 1), entry_price=entry_price, spread_options=[short_put, long_put])
         position.set_quantity(1)
         return position

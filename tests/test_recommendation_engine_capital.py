@@ -10,7 +10,7 @@ from algo_trading_engine.vo import Option
 
 def _make_option(symbol: str, strike: float, expiration: str, opt_type: str, last: float) -> Option:
     """Helper to create Option objects for testing."""
-    return Option.from_dict({'symbol': symbol, 'ticker': symbol, 'strike': strike, 'expiration': expiration, 'type': opt_type, 'last_price': last, 'bid': last - 0.1, 'ask': last + 0.1, 'volume': 100})
+    return Option.from_dict({'symbol': symbol, 'ticker': symbol, 'timestamp': datetime(2025, 8, 8), 'strike': strike, 'expiration': expiration, 'type': opt_type, 'last_price': last, 'bid': last - 0.1, 'ask': last + 0.1, 'volume': 100})
 
 @pytest.fixture
 def allocations_config():

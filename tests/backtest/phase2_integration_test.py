@@ -48,6 +48,7 @@ class TestPhase2Integration:
         self.option1 = Option(
             symbol="SPY240315C00500000",
             ticker="SPY",
+            timestamp=datetime(2024, 1, 15),
             expiration="2024-03-15",
             strike=500.0,
             option_type=OptionType.CALL,
@@ -58,6 +59,7 @@ class TestPhase2Integration:
         self.option2 = Option(
             symbol="SPY240315C00510000",
             ticker="SPY",
+            timestamp=datetime(2024, 1, 15),
             expiration="2024-03-15",
             strike=510.0,
             option_type=OptionType.CALL,

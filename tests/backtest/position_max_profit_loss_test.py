@@ -21,6 +21,7 @@ class TestPositionMaxProfitLoss:
         """Create a call option at strike 100."""
         return Option(
             ticker="O:SPY250101C00100000",
+            timestamp=datetime(2024, 12, 1),
             symbol="SPY",
             strike=100.0,
             expiration="2025-01-01",
@@ -33,6 +34,7 @@ class TestPositionMaxProfitLoss:
         """Create a call option at strike 105."""
         return Option(
             ticker="O:SPY250101C00105000",
+            timestamp=datetime(2024, 12, 1),
             symbol="SPY",
             strike=105.0,
             expiration="2025-01-01",
@@ -45,6 +47,7 @@ class TestPositionMaxProfitLoss:
         """Create a put option at strike 100."""
         return Option(
             ticker="O:SPY250101P00100000",
+            timestamp=datetime(2024, 12, 1),
             symbol="SPY",
             strike=100.0,
             expiration="2025-01-01",
@@ -57,6 +60,7 @@ class TestPositionMaxProfitLoss:
         """Create a put option at strike 95."""
         return Option(
             ticker="O:SPY250101P00095000",
+            timestamp=datetime(2024, 12, 1),
             symbol="SPY",
             strike=95.0,
             expiration="2025-01-01",
@@ -288,6 +292,7 @@ class TestPositionMaxProfitLoss:
         # 5-point spread
         call_105 = Option(
             ticker="O:SPY250101C00105000",
+            timestamp=datetime(2024, 12, 1),
             symbol="SPY",
             strike=105.0,
             expiration="2025-01-01",
@@ -308,6 +313,7 @@ class TestPositionMaxProfitLoss:
         # 10-point spread (less credit per point width)
         call_110 = Option(
             ticker="O:SPY250101C00110000",
+            timestamp=datetime(2024, 12, 1),
             symbol="SPY",
             strike=110.0,
             expiration="2025-01-01",

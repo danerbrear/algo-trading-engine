@@ -2,15 +2,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 from vollib.black_scholes.implied_volatility import implied_volatility
 
 from algo_trading_engine._internal.util.datetime_helpers import EXPIRATION_DATE_FORMAT, to_readable_str, to_readable_expiration_str
-from algo_trading_engine.dto import OptionBarDTO, OptionContractDTO
 
 from algo_trading_engine.enums import OptionType
 
+if TYPE_CHECKING:
+    from algo_trading_engine.dto.options_dtos import OptionBarDTO, OptionContractDTO
 
+
+@dataclass(frozen=True)
 class Option:
     """
     Value object for an individual option contract snapshot.
@@ -36,6 +39,9 @@ class Option:
     moneyness: Optional[float] = None
 
     def __post_init__(self):
+        if isinstance(self.timestamp, str):
+            object.__setattr__(self, "timestamp", datetime.fromisoformat(self.timestamp))
+
         if isinstance(self.option_type, str):
             object.__setattr__(self, "option_type", OptionType(self.option_type))
         elif hasattr(self.option_type, "value") and self.option_type.value in ("call", "put"):
@@ -102,7 +108,7 @@ class Option:
     def to_dict(self) -> Dict[str, Any]:
         return {
             "ticker": self.ticker,
-            "timestamp": self.timestamp,
+            "timestamp": self.timestamp.isoformat(),
             "strike": self.strike,
             "expiration": self.expiration,
             "type": self.option_type.value,

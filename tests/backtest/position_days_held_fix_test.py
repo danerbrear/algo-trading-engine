@@ -28,6 +28,7 @@ class TestPositionDaysHeldFix(unittest.TestCase):
             spread_options=[
                 Option(
                     ticker="O:SPY250930P00666000",
+                    timestamp=datetime(2025, 9, 22, 17, 6, 46),
                     symbol="SPY",
                     strike=666.0,
                     expiration="2025-09-30",
@@ -36,6 +37,7 @@ class TestPositionDaysHeldFix(unittest.TestCase):
                 ),
                 Option(
                     ticker="O:SPY250930P00657000",
+                    timestamp=datetime(2025, 9, 22, 17, 6, 46),
                     symbol="SPY",
                     strike=657.0,
                     expiration="2025-09-30",
