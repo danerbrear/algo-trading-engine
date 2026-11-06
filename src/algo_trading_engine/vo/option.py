@@ -3,17 +3,17 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, Optional
+from vollib.black_scholes.implied_volatility import implied_volatility
 
-from algo_trading_engine._internal.util.datetime_helpers import to_readable_str
+from algo_trading_engine._internal.util.datetime_helpers import EXPIRATION_DATE_FORMAT, to_readable_str, to_readable_expiration_str
 from algo_trading_engine.dto import OptionBarDTO, OptionContractDTO
 
 from algo_trading_engine.enums import OptionType
 
 
-@dataclass(frozen=True)
 class Option:
     """
-    Immutable Data Transfer Object for an individual option contract, matching the cache format.
+    Value object for an individual option contract snapshot.
     """
 
     ticker: str
@@ -46,7 +46,7 @@ class Option:
             )
 
         if isinstance(self.expiration, datetime):
-            object.__setattr__(self, "expiration", self.expiration.strftime("%Y-%m-%d"))
+            object.__setattr__(self, "expiration", to_readable_expiration_str(self.expiration))
 
         if self.mid_price is None and self.bid is not None and self.ask is not None:
             object.__setattr__(self, "mid_price", (self.bid + self.ask) / 2)
@@ -91,6 +91,13 @@ class Option:
         if self.is_call:
             return self.moneyness < 1.0
         return self.moneyness > 1.0
+
+    @property
+    def time_to_expiration(self) -> float:
+        """Time to expiration in years"""
+        expiration_dt = datetime.strptime(self.expiration, EXPIRATION_DATE_FORMAT)
+        diff = expiration_dt - self.timestamp
+        return diff.days / 365
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -177,6 +184,17 @@ class Option:
             mid_price=float(option_bar.volume_weighted_avg_price)
             if option_bar.volume_weighted_avg_price
             else None,
+        )
+
+    def get_black_scholes_implied_vol(self, underlying_price: float, treasury_rate: float):
+        """Returns the implied volatility, calculated using Black-Scholes."""
+        return implied_volatility(
+            price=self.last_price,
+            S=underlying_price,
+            K=self.strike,
+            t=self.time_to_expiration,
+            r=treasury_rate,
+            flag="c" if self.option_type == OptionType.CALL else "p"
         )
 
 

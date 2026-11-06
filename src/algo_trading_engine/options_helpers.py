@@ -89,7 +89,6 @@ class OptionsRetrieverHelper:
         
         return call_contract, put_contract
     
-    
     @staticmethod
     def find_contracts_by_expiration(
         contracts: List[OptionContractDTO], 
@@ -534,7 +533,6 @@ class OptionsRetrieverHelper:
             Net credit received
         """
         return short_premium - long_premium
-    
     
     @staticmethod
     def find_optimal_expiration(
