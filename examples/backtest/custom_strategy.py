@@ -22,6 +22,8 @@ from algo_trading_engine.plotting import PlotConfig
 # Import custom strategy using absolute path
 strategy_path = Path(__file__).parent.parent / "strategies" / "custom_strategy.py"
 spec = importlib.util.spec_from_file_location("custom_strategy", strategy_path)
+if spec is None or spec.loader is None:
+    raise ImportError(f"Could not load custom strategy from {strategy_path}")
 custom_strategy_module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(custom_strategy_module)
 MyCustomStrategy = custom_strategy_module.MyCustomStrategy

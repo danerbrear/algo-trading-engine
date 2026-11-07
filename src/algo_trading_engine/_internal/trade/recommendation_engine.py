@@ -142,10 +142,10 @@ class InteractiveStrategyRecommender:
     def _process_open_recommendation(self, position: Position) -> Optional[DecisionResponseDTO]:
         """Process a captured open position recommendation."""
         # Extract the recommendation details from the created position
-        if not position.spread_options or len(position.spread_options) != 2:
+        if not position.legs or len(position.legs) != 2:
             return None
         
-        atm_option, otm_option = position.spread_options
+        atm_option, otm_option = position.legs
         width = abs(atm_option.strike - otm_option.strike)
         
         # Build recommendation dict
@@ -329,7 +329,7 @@ class InteractiveStrategyRecommender:
             strike_price=strike,
             entry_date=datetime.fromisoformat(rec.decided_at),
             entry_price=float(rec.entry_price if rec.entry_price is not None else rec.proposal.credit),
-            spread_options=list(rec.proposal.legs),
+            legs=list(rec.proposal.legs),
         )
         position.set_quantity(int(rec.quantity) if rec.quantity is not None else 1)
         return position
@@ -382,57 +382,36 @@ class InteractiveStrategyRecommender:
             f"Rationale: {rationale}"
         )
 
+    def _prompt_leg_price(self, option) -> float:
+        """Prompt for one leg, defaulting to the quote already stored on it."""
+        raw = input(f"Enter exit price for {option.ticker} (current: ${option.last_price}): ").strip()
+        if raw:
+            price = float(raw)
+            get_logger().info(f"Using custom price for {option.ticker}: ${price}")
+            return price
+        get_logger().info(f"Using current price for {option.ticker}: ${option.last_price}")
+        return float(option.last_price)
+
     def _get_exit_price_from_user_prompts(self, position: Position, date: datetime) -> Optional[float]:
-        """Get exit price by prompting user: with bar data, prompt per-leg with current prices and defaults; without bar data, single prompt for net exit price."""
+        """Prompt per leg, defaulting to the quote refreshed onto the position."""
+        del date
         try:
-            if not position.spread_options or len(position.spread_options) != 2:
-                get_logger().warning("Position doesn't have valid spread options")
+            if not position.legs or len(position.legs) != 2:
+                get_logger().warning("Position doesn't have valid legs")
                 return None
 
-            atm_option, otm_option = position.spread_options
+            atm_option, otm_option = position.legs
+            get_logger().info(f"Interactive mode: Please provide exit prices for position {position.__str__()}")
+            atm_price = self._prompt_leg_price(atm_option)
+            otm_price = self._prompt_leg_price(otm_option)
 
-            # Get bar data for both options (optional; used for convenience only)
-            atm_bar = self.strategy.get_current_option_bar(atm_option, date)
-            otm_bar = self.strategy.get_current_option_bar(otm_option, date)
-
-            if atm_bar and otm_bar:
-                # Bar data available: prompt per-leg with current prices and defaults on Enter
-                get_logger().info(f"Interactive mode: Please provide exit prices for position {position.__str__()}")
-
-                atm_price_input = input(f"Enter exit price for {atm_option.ticker} (current: ${atm_bar.close_price}): ").strip()
-                if atm_price_input:
-                    atm_price = float(atm_price_input)
-                    get_logger().info(f"✅ Using custom ATM price: ${atm_price}")
-                else:
-                    atm_price = float(atm_bar.close_price)
-                    get_logger().info(f"✅ Using current ATM price: ${atm_price}")
-
-                otm_price_input = input(f"Enter exit price for {otm_option.ticker} (current: ${otm_bar.close_price}): ").strip()
-                if otm_price_input:
-                    otm_price = float(otm_price_input)
-                    get_logger().info(f"Using custom OTM price: ${otm_price}")
-                else:
-                    otm_price = float(otm_bar.close_price)
-                    get_logger().info(f"Using current OTM price: ${otm_price}")
-
-                if position.strategy_type.value == "put_credit_spread":
-                    exit_price = atm_price - otm_price
-                    get_logger().info(f"Calculated exit price: ${atm_price:.2f} - ${otm_price:.2f} = ${exit_price:.2f}")
-                else:
-                    raise ValueError(f"Unsupported strategy type for manual exit price calculation: {position.strategy_type.value}")
+            if position.strategy_type.value == "put_credit_spread":
+                exit_price = atm_price - otm_price
+                get_logger().info(f"Calculated exit price: ${atm_price:.2f} - ${otm_price:.2f} = ${exit_price:.2f}")
                 return exit_price
-
-            # No bar data: attempt robust resolution before prompting
-            underlying_price = self.strategy.get_current_underlying_price(date, position.symbol)
-            exit_price = position.calculate_exit_price_from_bars(None, None, underlying_price)
-            if exit_price is not None:
-                return exit_price
-
-            get_logger().warning(f"No bar data available for options on {date.strftime('%Y-%m-%d')}; prompting for net exit price only.")
-            net_input = input("Enter net exit price for spread: ").strip()
-            if not net_input:
-                return None
-            return float(net_input)
+            raise ValueError(
+                f"Unsupported strategy type for manual exit price calculation: {position.strategy_type.value}"
+            )
 
         except Exception as e:
             get_logger().warning(f"Error calculating exit price: {e}")
@@ -441,19 +420,12 @@ class InteractiveStrategyRecommender:
     def _get_exit_price_for_status(self, position: Position, date: datetime) -> Optional[float]:
         """Get exit price for status display without prompting user."""
         try:
-            if not position.spread_options or len(position.spread_options) != 2:
+            if not position.legs or len(position.legs) != 2:
                 return None
-                
-            atm_option, otm_option = position.spread_options
 
-            # Get bar data for both options
-            atm_bar = self.strategy.get_current_option_bar(atm_option, date)
-            otm_bar = self.strategy.get_current_option_bar(otm_option, date)
             underlying_price = self.strategy.get_current_underlying_price(date, position.symbol)
+            return position.exit_price_from_leg_quotes(underlying_price)
 
-            exit_price = position.calculate_exit_price_from_bars(atm_bar, otm_bar, underlying_price)
-            return exit_price
-    
         except Exception:
             return None
 

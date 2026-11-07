@@ -10,7 +10,7 @@ from algo_trading_engine.vo import Option
 
 def _make_option(symbol: str, strike: float, expiration: str, opt_type: str, last: float) -> Option:
     """Helper to create Option objects for testing."""
-    return Option.from_dict({'symbol': symbol, 'ticker': symbol, 'strike': strike, 'expiration': expiration, 'type': opt_type, 'last_price': last, 'bid': last - 0.1, 'ask': last + 0.1, 'volume': 100})
+    return Option.from_dict({'symbol': symbol, 'ticker': symbol, 'timestamp': datetime(2025, 8, 8), 'strike': strike, 'expiration': expiration, 'type': opt_type, 'last_price': last, 'bid': last - 0.1, 'ask': last + 0.1, 'volume': 100})
 
 @pytest.fixture
 def allocations_config():
@@ -59,7 +59,7 @@ def test_recommender_with_capital_manager_risk_check_pass(strategy_mock, decisio
 
     def mock_on_new_date(date_arg, positions, add_position, _remove_position):
         if len(positions) == 0:
-            position = create_position(symbol='SPY', expiration_date=datetime(2025, 9, 6), strategy_type=StrategyType.PUT_CREDIT_SPREAD, strike_price=500.0, entry_date=date_arg, entry_price=1.0, spread_options=(atm_option, otm_option))
+            position = create_position(symbol='SPY', expiration_date=datetime(2025, 9, 6), strategy_type=StrategyType.PUT_CREDIT_SPREAD, strike_price=500.0, entry_date=date_arg, entry_price=1.0, legs=(atm_option, otm_option))
             position.set_quantity(1)
             add_position(position)
     strategy_mock.on_new_date = mock_on_new_date
@@ -80,7 +80,7 @@ def test_recommender_with_capital_manager_risk_check_fail(strategy_mock, decisio
 
     def mock_on_new_date(date_arg, positions, add_position, _remove_position):
         if len(positions) == 0:
-            position = create_position(symbol='SPY', expiration_date=datetime(2025, 9, 6), strategy_type=StrategyType.PUT_CREDIT_SPREAD, strike_price=500.0, entry_date=date_arg, entry_price=1.0, spread_options=(atm_option, otm_option))
+            position = create_position(symbol='SPY', expiration_date=datetime(2025, 9, 6), strategy_type=StrategyType.PUT_CREDIT_SPREAD, strike_price=500.0, entry_date=date_arg, entry_price=1.0, legs=(atm_option, otm_option))
             position.set_quantity(1)
             add_position(position)
     strategy_mock.on_new_date = mock_on_new_date
@@ -101,7 +101,7 @@ def test_recommender_calculates_max_risk_correctly(strategy_mock, decision_store
 
     def mock_on_new_date(date_arg, positions, add_position, _remove_position):
         if len(positions) == 0:
-            position = create_position(symbol='SPY', expiration_date=datetime(2025, 9, 6), strategy_type=StrategyType.PUT_CREDIT_SPREAD, strike_price=500.0, entry_date=date_arg, entry_price=1.0, spread_options=(atm_option, otm_option))
+            position = create_position(symbol='SPY', expiration_date=datetime(2025, 9, 6), strategy_type=StrategyType.PUT_CREDIT_SPREAD, strike_price=500.0, entry_date=date_arg, entry_price=1.0, legs=(atm_option, otm_option))
             position.set_quantity(1)
             add_position(position)
     strategy_mock.on_new_date = mock_on_new_date
@@ -125,7 +125,7 @@ def test_recommender_displays_premium_info(strategy_mock, decision_store, capita
 
     def mock_on_new_date(date_arg, positions, add_position, _remove_position):
         if len(positions) == 0:
-            position = create_position(symbol='SPY', expiration_date=datetime(2025, 9, 6), strategy_type=StrategyType.PUT_CREDIT_SPREAD, strike_price=500.0, entry_date=date_arg, entry_price=1.86, spread_options=(atm_option, otm_option))
+            position = create_position(symbol='SPY', expiration_date=datetime(2025, 9, 6), strategy_type=StrategyType.PUT_CREDIT_SPREAD, strike_price=500.0, entry_date=date_arg, entry_price=1.86, legs=(atm_option, otm_option))
             position.set_quantity(1)
             add_position(position)
     strategy_mock.on_new_date = mock_on_new_date
@@ -152,7 +152,7 @@ def test_recommender_strategy_name_mapping(decision_store, allocations_config):
 
     def mock_on_new_date(date_arg, positions, add_position, _remove_position):
         if len(positions) == 0:
-            position = create_position(symbol='SPY', expiration_date=datetime(2025, 9, 6), strategy_type=StrategyType.PUT_CREDIT_SPREAD, strike_price=500.0, entry_date=date_arg, entry_price=1.0, spread_options=(atm_option, otm_option))
+            position = create_position(symbol='SPY', expiration_date=datetime(2025, 9, 6), strategy_type=StrategyType.PUT_CREDIT_SPREAD, strike_price=500.0, entry_date=date_arg, entry_price=1.0, legs=(atm_option, otm_option))
             position.set_quantity(1)
             add_position(position)
     strategy_mock.on_new_date = mock_on_new_date

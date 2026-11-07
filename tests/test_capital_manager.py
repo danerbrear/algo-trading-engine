@@ -16,6 +16,7 @@ def _make_option(symbol: str, strike: float, expiration: str, opt_type: str, las
     return Option.from_dict({
         'symbol': symbol,
         'ticker': symbol,
+        'timestamp': datetime(2025, 8, 8),
         'strike': strike,
         'expiration': expiration,
         'type': opt_type,

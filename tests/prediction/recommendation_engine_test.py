@@ -9,7 +9,7 @@ from algo_trading_engine.vo import Option
 from algo_trading_engine.vo import create_position
 
 def _make_option(symbol: str, strike: float, expiration: str, opt_type: str, last: float, volume: int=100) -> Option:
-    return Option.from_dict({'symbol': symbol, 'ticker': symbol, 'strike': strike, 'expiration': expiration, 'type': opt_type, 'last_price': last, 'bid': last - 0.1, 'ask': last + 0.1, 'volume': volume})
+    return Option.from_dict({'symbol': symbol, 'ticker': symbol, 'timestamp': datetime(2025, 8, 8), 'strike': strike, 'expiration': expiration, 'type': opt_type, 'last_price': last, 'bid': last - 0.1, 'ask': last + 0.1, 'volume': volume})
 
 def test_store_append_and_read(tmp_path):
     store = JsonDecisionStore(base_dir=str(tmp_path))
@@ -52,7 +52,7 @@ def test_recommender_open_accept(tmp_path):
 
     def mock_on_new_date(date_arg, positions, add_position, _remove_position):
         if len(positions) == 0:
-            position = create_position(symbol='SPY', expiration_date=datetime(2025, 9, 6), strategy_type=StrategyType.PUT_CREDIT_SPREAD, strike_price=500.0, entry_date=date_arg, entry_price=1.05, spread_options=(atm_option, otm_option))
+            position = create_position(symbol='SPY', expiration_date=datetime(2025, 9, 6), strategy_type=StrategyType.PUT_CREDIT_SPREAD, strike_price=500.0, entry_date=date_arg, entry_price=1.05, legs=(atm_option, otm_option))
             position.set_quantity(1)
             add_position(position)
     strategy.on_new_date = mock_on_new_date
@@ -103,7 +103,7 @@ def test_recommender_open_calls_on_add_position_success(tmp_path):
     strategy.data.loc.__getitem__.return_value = {'Close': 500}
     mock_class = type('CreditSpreadStrategy', (), {})
     strategy.__class__ = mock_class
-    created_position = create_position(symbol='SPY', expiration_date=datetime(2025, 9, 6), strategy_type=StrategyType.PUT_CREDIT_SPREAD, strike_price=500.0, entry_date=date, entry_price=1.05, spread_options=(atm_option, otm_option))
+    created_position = create_position(symbol='SPY', expiration_date=datetime(2025, 9, 6), strategy_type=StrategyType.PUT_CREDIT_SPREAD, strike_price=500.0, entry_date=date, entry_price=1.05, legs=(atm_option, otm_option))
     created_position.set_quantity(1)
 
     def mock_on_new_date(_date_arg, positions, add_position, _remove_position):
@@ -205,19 +205,14 @@ def test_strategy_sees_its_own_open_position(tmp_path):
     recommender.run(date)
     assert len(received_positions) == 1
 
-def test_get_exit_price_from_user_prompts_with_bar_data_uses_defaults(tmp_path):
-    """With auto_yes=False and get_option_bar returning data, prompt for exit price with default from bar (Enter = use default)."""
+def test_get_exit_price_from_user_prompts_uses_leg_prices_as_defaults(tmp_path):
+    """Enter accepts the quote already stored on each leg."""
     atm_option = _make_option('SPY_500P', 500, '2025-09-06', 'put', 2.0)
     otm_option = _make_option('SPY_495P', 495, '2025-09-06', 'put', 1.0)
-    position = create_position(symbol='SPY', expiration_date=datetime(2025, 9, 6), strategy_type=StrategyType.PUT_CREDIT_SPREAD, strike_price=500.0, entry_date=datetime(2025, 8, 1), entry_price=1.05, spread_options=(atm_option, otm_option))
+    position = create_position(symbol='SPY', expiration_date=datetime(2025, 9, 6), strategy_type=StrategyType.PUT_CREDIT_SPREAD, strike_price=500.0, entry_date=datetime(2025, 8, 1), entry_price=1.05, legs=(atm_option, otm_option))
     position.set_quantity(1)
     strategy = MagicMock()
     strategy.symbol = 'SPY'
-    atm_bar = MagicMock()
-    atm_bar.close_price = 1.8
-    otm_bar = MagicMock()
-    otm_bar.close_price = 0.9
-    strategy.get_current_option_bar = MagicMock(side_effect=[atm_bar, otm_bar])
     store = JsonDecisionStore(base_dir=str(tmp_path))
     allocations_config = {'strategies': {'credit_spread': {'allocated_capital': 10000.0, 'max_risk_percentage': 0.05}}}
     capital_manager = CapitalManager(allocations_config, store)
@@ -225,23 +220,22 @@ def test_get_exit_price_from_user_prompts_with_bar_data_uses_defaults(tmp_path):
     with patch('algo_trading_engine._internal.trade.recommendation_engine.input', side_effect=['', '']):
         result = recommender._get_exit_price_from_user_prompts(position, datetime(2025, 8, 8))
     assert result is not None
-    assert abs(result - 0.9) < 1e-06
+    assert abs(result - 1.0) < 1e-06
+    strategy.get_current_option_bar.assert_not_called()
 
-def test_get_exit_price_from_user_prompts_without_bar_data_prompts_without_default(tmp_path):
-    """With auto_yes=False and get_option_bar NOT returning data, prompt for net exit price without default."""
+def test_get_exit_price_from_user_prompts_accepts_custom_leg_prices(tmp_path):
+    """Typed prices replace the quotes stored on the legs."""
     atm_option = _make_option('SPY_500P', 500, '2025-09-06', 'put', 2.0)
     otm_option = _make_option('SPY_495P', 495, '2025-09-06', 'put', 1.0)
-    position = create_position(symbol='SPY', expiration_date=datetime(2025, 9, 6), strategy_type=StrategyType.PUT_CREDIT_SPREAD, strike_price=500.0, entry_date=datetime(2025, 8, 1), entry_price=1.05, spread_options=(atm_option, otm_option))
+    position = create_position(symbol='SPY', expiration_date=datetime(2025, 9, 6), strategy_type=StrategyType.PUT_CREDIT_SPREAD, strike_price=500.0, entry_date=datetime(2025, 8, 1), entry_price=1.05, legs=(atm_option, otm_option))
     position.set_quantity(1)
     strategy = MagicMock()
     strategy.symbol = 'SPY'
-    strategy.get_current_option_bar = MagicMock(return_value=None)
-    strategy.get_current_underlying_price = MagicMock(return_value=None)
     store = JsonDecisionStore(base_dir=str(tmp_path))
     allocations_config = {'strategies': {'credit_spread': {'allocated_capital': 10000.0, 'max_risk_percentage': 0.05}}}
     capital_manager = CapitalManager(allocations_config, store)
     recommender = InteractiveStrategyRecommender(strategy, store, capital_manager, auto_yes=False)
-    with patch('algo_trading_engine._internal.trade.recommendation_engine.input', return_value='0.75'):
+    with patch('algo_trading_engine._internal.trade.recommendation_engine.input', side_effect=['1.5', '0.75']):
         result = recommender._get_exit_price_from_user_prompts(position, datetime(2025, 8, 8))
     assert result is not None
     assert abs(result - 0.75) < 1e-06

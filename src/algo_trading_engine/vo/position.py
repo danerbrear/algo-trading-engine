@@ -4,8 +4,9 @@ Position domain models for the algo trading engine.
 This module contains the Position abstract base class and all concrete
 position type implementations for different trading strategies.
 """
-
 from __future__ import annotations
+
+from algo_trading_engine._internal.util.datetime_helpers import to_readable_expiration_str
 
 from datetime import datetime
 from typing import Optional, TYPE_CHECKING
@@ -32,12 +33,12 @@ class Position(ABC):
     Strategy-specific P&L and pricing logic is delegated to subclasses.
     
     Args:
-        spread_options (list[Option]): List of Option objects that make up the spread (e.g., [atm_option, otm_option])
+        legs (list[Option]): List of Option objects that make up the spread (e.g., [atm_option, otm_option])
     """
 
     def __init__(self, symbol: str, expiration_date: datetime, strategy_type: 'StrategyType', 
                  strike_price: float, entry_date: datetime, entry_price: float, 
-                 spread_options: list[Option] = None):
+                 legs: list[Option] = None):
         self.symbol = symbol
         self.expiration_date = expiration_date
         self.quantity = None
@@ -45,22 +46,7 @@ class Position(ABC):
         self.strike_price = strike_price
         self.entry_date = entry_date
         self.entry_price = entry_price
-        self.spread_options: list[Option] = spread_options if spread_options is not None else []
-        # Runtime type check - use class name and module to handle test isolation issues
-        if self.spread_options:
-            for opt in self.spread_options:
-                # Check if it's an Option instance
-                # First try isinstance (works for Mock(spec=Option) and real Option instances)
-                if isinstance(opt, Option):
-                    continue
-                # If isinstance fails, check by class name and module (handles test isolation issues)
-                opt_class = type(opt)
-                # Allow Mock objects (used in tests) - Mock(spec=Option) should pass isinstance, but handle edge cases
-                is_mock = opt_class.__name__ == 'Mock'
-                # Check if it's an Option by class name and module
-                is_option = (opt_class.__name__ == 'Option' and 'algo_trading_engine.vo.option' in str(opt_class.__module__))
-                if not (is_option or is_mock):
-                    raise TypeError(f"All elements of spread_options must be of type Option, got {opt_class.__name__} from {opt_class.__module__}")
+        self.legs: list[Option] = legs if legs is not None else []
     
     def set_quantity(self, quantity: int):
         """Set the quantity for a position."""
@@ -109,26 +95,6 @@ class Position(ABC):
         else:
             raise ValueError("Entry date is not set")
     
-    def spread_width(self) -> Optional[float]:
-        """
-        Calculate the spread width for spread strategies.
-        
-        Returns:
-            Spread width (difference between strikes), or None if not a spread strategy.
-        """
-        
-        if self.strategy_type not in [
-            StrategyType.CALL_CREDIT_SPREAD, StrategyType.PUT_CREDIT_SPREAD,
-            StrategyType.CALL_DEBIT_SPREAD, StrategyType.PUT_DEBIT_SPREAD,
-        ]:
-            return None
-        
-        if not self.spread_options or len(self.spread_options) != 2:
-            raise ValueError("Spread strategy requires 2 options in spread_options")
-        
-        atm_option, otm_option = self.spread_options
-        return abs(atm_option.strike - otm_option.strike)
-    
     def __eq__(self, other) -> bool:
         """
         Check if two positions are equal based on key attributes.
@@ -140,7 +106,7 @@ class Position(ABC):
         - Same expiration date
         - Same entry date
         - Same exit date (if both have one)
-        - Same spread options (if both have them)
+        - Same legs (if both have them)
         
         Args:
             other: Another Position object to compare against
@@ -165,42 +131,43 @@ class Position(ABC):
         if self_exit != other_exit:
             return False
             
-        # Compare spread options if both have them
-        if self.spread_options and other.spread_options:
-            if len(self.spread_options) != len(self.spread_options):
+        # Compare legs if both have them
+        if self.legs and other.legs:
+            if len(self.legs) != len(other.legs):
                 return False
-            # Compare each spread option using Option's __eq__ method
-            for self_opt, other_opt in zip(self.spread_options, other.spread_options):
+            # Compare each leg using Option's __eq__ method
+            for self_opt, other_opt in zip(self.legs, other.legs):
                 if self_opt != other_opt:
                     return False
-        elif self.spread_options or other.spread_options:
-            # One has spread options, other doesn't
+        elif self.legs or other.legs:
+            # One has legs, the other does not
             return False
             
         return True
 
     def __str__(self) -> str:
-        return f"{self.strategy_type.value} {self.symbol} {self.strike_price} @ {self.entry_price:.2f} x{self.quantity} (Open, expires {self.expiration_date.strftime('%Y-%m-%d')})"
+        return f"{self.strategy_type.value} {self.symbol} {self.strike_price} @ {self.entry_price:.2f} x{self.quantity} (Open, expires {to_readable_expiration_str(self.expiration_date)})"
     
     # Strategy-specific methods become abstract
     @abstractmethod
     def get_return_dollars(self, exit_price: float) -> float:
         """Calculate dollar return for this position."""
-        pass
     
     @abstractmethod
     def _get_return(self, exit_price: float) -> float:
         """Calculate percentage return for this position."""
-        pass
     
     @abstractmethod
-    def calculate_exit_price(
+    def exit_price_from_leg_quotes(self, underlying_price: Optional[float]) -> Optional[float]:
+        """Mark the position from the quotes already stored on its legs."""
+
+    @abstractmethod
+    def exit_price_from_chain(
         self,
         current_option_chain: OptionChain,
         underlying_price: Optional[float],
     ) -> Optional[float]:
         """Calculate current exit price from option chain."""
-        pass
     
     @abstractmethod
     def calculate_exit_price_from_bars(
@@ -210,27 +177,22 @@ class Position(ABC):
         underlying_price: Optional[float],
     ) -> Optional[float]:
         """Calculate current exit price from option bars."""
-        pass
     
     @abstractmethod
     def max_profit(self) -> Optional[float]:
         """Calculate maximum profit for the position based on strategy type."""
-        pass
 
     @abstractmethod
     def max_risk_dollars_per_contract(self) -> Optional[float]:
         """Dollar risk per contract for position sizing. Returns None for unlimited risk."""
-        pass
     
     @abstractmethod
     def max_loss_per_share(self) -> Optional[float]:
         """Theoretical maximum loss per share (option price units) for risk/reward analysis."""
-        pass
     
     @abstractmethod
     def get_return_dollars_from_assignment(self, underlying_price: float) -> float:
         """Get the return from assignment for a position at expiration."""
-        pass
     
     def risk_reward_ratio(self) -> Optional[float]:
         """
@@ -293,10 +255,10 @@ class SpreadPosition(Position):
 
     def spread_width(self) -> float:
         """Calculate the spread width (difference between strikes)."""
-        if not self.spread_options or len(self.spread_options) != 2:
-            raise ValueError("Spread strategy requires 2 options in spread_options")
+        if not self.legs or len(self.legs) != 2:
+            raise ValueError("Spread strategy requires 2 options in legs")
 
-        atm_option, otm_option = self.spread_options
+        atm_option, otm_option = self.legs
         return abs(atm_option.strike - otm_option.strike)
 
     def _options_match(self, bar: 'OptionBarDTO', option: Option) -> bool:
@@ -350,11 +312,11 @@ class SpreadPosition(Position):
         (beyond both strikes by at least one full spread width). Deep ITM is capped
         at 90% of width so full spread value is reserved for expiration.
         """
-        if not self.spread_options or len(self.spread_options) != 2:
+        if not self.legs or len(self.legs) != 2:
             raise ValueError("Spread options are not set")
 
-        low_strike = min(leg.strike for leg in self.spread_options)
-        high_strike = max(leg.strike for leg in self.spread_options)
+        low_strike = min(leg.strike for leg in self.legs)
+        high_strike = max(leg.strike for leg in self.legs)
         width = high_strike - low_strike
 
         raw_value = atm_price - otm_price if atm_price is not None and otm_price is not None else None
@@ -373,7 +335,7 @@ class SpreadPosition(Position):
             )
             return None
 
-        option_type = self.spread_options[0].option_type
+        option_type = self.legs[0].option_type
         if option_type == OptionType.CALL:
             deeply_itm = underlying_price >= high_strike + width
             deeply_otm = underlying_price <= low_strike - width
@@ -425,16 +387,28 @@ class SpreadPosition(Position):
         )
         return None
 
-    def calculate_exit_price(
+    def exit_price_from_leg_quotes(self, underlying_price: Optional[float]) -> Optional[float]:
+        """Mark the spread from the current last_price on each leg."""
+        if not self.legs or len(self.legs) != 2:
+            raise ValueError("Spread options are not set")
+
+        atm_option, otm_option = self.legs
+        return self._resolve_spread_value(
+            atm_option.last_price,
+            otm_option.last_price,
+            underlying_price,
+        )
+
+    def exit_price_from_chain(
         self,
         current_option_chain: OptionChain,
         underlying_price: Optional[float],
     ) -> Optional[float]:
         """Calculate current exit price for a spread from option chain data."""
-        if not self.spread_options or len(self.spread_options) != 2:
+        if not self.legs or len(self.legs) != 2:
             raise ValueError("Spread options are not set")
 
-        atm_option, otm_option = self.spread_options
+        atm_option, otm_option = self.legs
 
         current_atm_option = current_option_chain.get_option_data_for_option(atm_option)
         current_otm_option = current_option_chain.get_option_data_for_option(otm_option)
@@ -460,10 +434,10 @@ class SpreadPosition(Position):
         underlying_price: Optional[float],
     ) -> Optional[float]:
         """Calculate current exit price for a spread from option bar data."""
-        if not self.spread_options or len(self.spread_options) != 2:
+        if not self.legs or len(self.legs) != 2:
             raise ValueError("Spread options are not set")
 
-        atm_option, otm_option = self.spread_options
+        atm_option, otm_option = self.legs
 
         if atm_bar is not None and not self._options_match(atm_bar, atm_option):
             raise ValueError(
@@ -521,10 +495,10 @@ class CreditSpreadPosition(SpreadPosition):
         - At expiration, we calculate the intrinsic value of our short and long legs
         """
         
-        if not self.spread_options or len(self.spread_options) != 2:
+        if not self.legs or len(self.legs) != 2:
             raise ValueError("Spread options are not set")
             
-        atm_option, otm_option = self.spread_options
+        atm_option, otm_option = self.legs
         
         if self.strategy_type == StrategyType.CALL_CREDIT_SPREAD:
             # Short ATM call, Long OTM call
@@ -567,9 +541,9 @@ class CreditSpreadPosition(SpreadPosition):
         Calculate maximum loss for credit spread.
         Max loss = spread width - net credit
         """
-        if not self.spread_options or len(self.spread_options) != 2:
-            raise ValueError("Credit spread requires 2 options in spread_options")
-        atm_option, otm_option = self.spread_options
+        if not self.legs or len(self.legs) != 2:
+            raise ValueError("Credit spread requires 2 options in legs")
+        atm_option, otm_option = self.legs
         spread_width = abs(atm_option.strike - otm_option.strike)
         return spread_width - self.entry_price
 
@@ -615,10 +589,10 @@ class DebitSpreadPosition(SpreadPosition):
         - P&L = Intrinsic Value - Debit Paid
         """
         
-        if not self.spread_options or len(self.spread_options) != 2:
+        if not self.legs or len(self.legs) != 2:
             raise ValueError("Spread options are not set")
             
-        itm_option, otm_option = self.spread_options
+        itm_option, otm_option = self.legs
         
         if self.strategy_type == StrategyType.CALL_DEBIT_SPREAD:
             # Long ITM call, Short OTM call
@@ -657,9 +631,9 @@ class DebitSpreadPosition(SpreadPosition):
         Calculate maximum profit for debit spread.
         Max profit = spread width - debit paid
         """
-        if not self.spread_options or len(self.spread_options) != 2:
-            raise ValueError("Debit spread requires 2 options in spread_options")
-        itm_option, otm_option = self.spread_options
+        if not self.legs or len(self.legs) != 2:
+            raise ValueError("Debit spread requires 2 options in legs")
+        itm_option, otm_option = self.legs
         spread_width = abs(itm_option.strike - otm_option.strike)
         return spread_width - self.entry_price
     
@@ -689,16 +663,23 @@ class LongCallPosition(Position):
         if self.quantity is None or exit_price is None:
             raise ValueError("Quantity is not set")
         return ((exit_price * self.quantity * 100) - (self.entry_price * self.quantity * 100)) / (self.entry_price * self.quantity * 100)
+
+    def exit_price_from_leg_quotes(self, underlying_price: Optional[float]) -> Optional[float]:
+        """Mark a long call from the quote already stored on its leg."""
+        del underlying_price
+        if not self.legs or len(self.legs) != 1:
+            raise ValueError("Long call requires 1 option in legs")
+        return float(self.legs[0].last_price)
     
-    def calculate_exit_price(
+    def exit_price_from_chain(
         self,
         current_option_chain: OptionChain,
         underlying_price: Optional[float],
     ) -> Optional[float]:
         """Calculate current exit price for long call from option chain."""
-        if not self.spread_options or len(self.spread_options) == 0:
-            raise ValueError("Long call requires option data in spread_options")
-        option = self.spread_options[0]
+        if not self.legs or len(self.legs) == 0:
+            raise ValueError("Long call requires option data in legs")
+        option = self.legs[0]
         current_option = current_option_chain.get_option_data_for_option(option)
         if current_option is None:
             return None
@@ -717,9 +698,9 @@ class LongCallPosition(Position):
     
     def get_return_dollars_from_assignment(self, underlying_price: float) -> float:
         """Get return from assignment for long call at expiration."""
-        if not self.spread_options or len(self.spread_options) == 0:
-            raise ValueError("Long call requires option data in spread_options")
-        option = self.spread_options[0]
+        if not self.legs or len(self.legs) == 0:
+            raise ValueError("Long call requires option data in legs")
+        option = self.legs[0]
         intrinsic = max(0, underlying_price - option.strike)
         net_pnl = intrinsic - self.entry_price
         return net_pnl * self.quantity * 100
@@ -752,16 +733,23 @@ class ShortCallPosition(Position):
         if self.quantity is None or exit_price is None:
             raise ValueError("Quantity is not set")
         return ((self.entry_price * self.quantity * 100) - (exit_price * self.quantity * 100)) / (self.entry_price * self.quantity * 100)
+
+    def exit_price_from_leg_quotes(self, underlying_price: Optional[float]) -> Optional[float]:
+        """Mark a short call from the quote already stored on its leg."""
+        del underlying_price
+        if not self.legs or len(self.legs) != 1:
+            raise ValueError("Short call requires 1 option in legs")
+        return float(self.legs[0].last_price)
     
-    def calculate_exit_price(
+    def exit_price_from_chain(
         self,
         current_option_chain: OptionChain,
         underlying_price: Optional[float],
     ) -> Optional[float]:
         """Calculate current exit price for short call from option chain."""
-        if not self.spread_options or len(self.spread_options) == 0:
-            raise ValueError("Short call requires option data in spread_options")
-        option = self.spread_options[0]
+        if not self.legs or len(self.legs) == 0:
+            raise ValueError("Short call requires option data in legs")
+        option = self.legs[0]
         current_option = current_option_chain.get_option_data_for_option(option)
         if current_option is None:
             return None
@@ -780,9 +768,9 @@ class ShortCallPosition(Position):
     
     def get_return_dollars_from_assignment(self, underlying_price: float) -> float:
         """Get return from assignment for short call at expiration."""
-        if not self.spread_options or len(self.spread_options) == 0:
-            raise ValueError("Short call requires option data in spread_options")
-        option = self.spread_options[0]
+        if not self.legs or len(self.legs) == 0:
+            raise ValueError("Short call requires option data in legs")
+        option = self.legs[0]
         intrinsic = max(0, underlying_price - option.strike)
         # For short: premium received - intrinsic value
         net_pnl = self.entry_price - intrinsic
@@ -815,16 +803,23 @@ class LongPutPosition(Position):
         if self.quantity is None or exit_price is None:
             raise ValueError("Quantity is not set")
         return ((exit_price * self.quantity * 100) - (self.entry_price * self.quantity * 100)) / (self.entry_price * self.quantity * 100)
+
+    def exit_price_from_leg_quotes(self, underlying_price: Optional[float]) -> Optional[float]:
+        """Mark a long put from the quote already stored on its leg."""
+        del underlying_price
+        if not self.legs or len(self.legs) != 1:
+            raise ValueError("Long put requires 1 option in legs")
+        return float(self.legs[0].last_price)
     
-    def calculate_exit_price(
+    def exit_price_from_chain(
         self,
         current_option_chain: OptionChain,
         underlying_price: Optional[float],
     ) -> Optional[float]:
         """Calculate current exit price for long put from option chain."""
-        if not self.spread_options or len(self.spread_options) == 0:
-            raise ValueError("Long put requires option data in spread_options")
-        option = self.spread_options[0]
+        if not self.legs or len(self.legs) == 0:
+            raise ValueError("Long put requires option data in legs")
+        option = self.legs[0]
         current_option = current_option_chain.get_option_data_for_option(option)
         if current_option is None:
             return None
@@ -843,18 +838,18 @@ class LongPutPosition(Position):
     
     def get_return_dollars_from_assignment(self, underlying_price: float) -> float:
         """Get return from assignment for long put at expiration."""
-        if not self.spread_options or len(self.spread_options) == 0:
-            raise ValueError("Long put requires option data in spread_options")
-        option = self.spread_options[0]
+        if not self.legs or len(self.legs) == 0:
+            raise ValueError("Long put requires option data in legs")
+        option = self.legs[0]
         intrinsic = max(0, option.strike - underlying_price)
         net_pnl = intrinsic - self.entry_price
         return net_pnl * self.quantity * 100
     
     def max_profit(self) -> Optional[float]:
         """Max profit if stock goes to 0."""
-        if not self.spread_options or len(self.spread_options) == 0:
-            raise ValueError("Long put requires option data in spread_options")
-        option = self.spread_options[0]
+        if not self.legs or len(self.legs) == 0:
+            raise ValueError("Long put requires option data in legs")
+        option = self.legs[0]
         return option.strike - self.entry_price
     
     def max_loss_per_share(self) -> Optional[float]:
@@ -881,16 +876,23 @@ class ShortPutPosition(Position):
         if self.quantity is None or exit_price is None:
             raise ValueError("Quantity is not set")
         return ((self.entry_price * self.quantity * 100) - (exit_price * self.quantity * 100)) / (self.entry_price * self.quantity * 100)
+
+    def exit_price_from_leg_quotes(self, underlying_price: Optional[float]) -> Optional[float]:
+        """Mark a short put from the quote already stored on its leg."""
+        del underlying_price
+        if not self.legs or len(self.legs) != 1:
+            raise ValueError("Short put requires 1 option in legs")
+        return float(self.legs[0].last_price)
     
-    def calculate_exit_price(
+    def exit_price_from_chain(
         self,
         current_option_chain: OptionChain,
         underlying_price: Optional[float],
     ) -> Optional[float]:
         """Calculate current exit price for short put from option chain."""
-        if not self.spread_options or len(self.spread_options) == 0:
-            raise ValueError("Short put requires option data in spread_options")
-        option = self.spread_options[0]
+        if not self.legs or len(self.legs) == 0:
+            raise ValueError("Short put requires option data in legs")
+        option = self.legs[0]
         current_option = current_option_chain.get_option_data_for_option(option)
         if current_option is None:
             return None
@@ -909,9 +911,9 @@ class ShortPutPosition(Position):
     
     def get_return_dollars_from_assignment(self, underlying_price: float) -> float:
         """Get return from assignment for short put at expiration."""
-        if not self.spread_options or len(self.spread_options) == 0:
-            raise ValueError("Short put requires option data in spread_options")
-        option = self.spread_options[0]
+        if not self.legs or len(self.legs) == 0:
+            raise ValueError("Short put requires option data in legs")
+        option = self.legs[0]
         intrinsic = max(0, option.strike - underlying_price)
         # For short: premium received - intrinsic value
         net_pnl = self.entry_price - intrinsic
@@ -923,9 +925,9 @@ class ShortPutPosition(Position):
     
     def max_loss_per_share(self) -> Optional[float]:
         """Max loss if stock goes to 0."""
-        if not self.spread_options or len(self.spread_options) == 0:
-            raise ValueError("Short put requires option data in spread_options")
-        option = self.spread_options[0]
+        if not self.legs or len(self.legs) == 0:
+            raise ValueError("Short put requires option data in legs")
+        option = self.legs[0]
         return option.strike - self.entry_price
 
     def max_risk_dollars_per_contract(self) -> Optional[float]:
@@ -935,7 +937,7 @@ class ShortPutPosition(Position):
 
 def create_position(symbol: str, expiration_date: datetime, strategy_type: 'StrategyType',
                    strike_price: float, entry_date: datetime, entry_price: float,
-                   spread_options: list[Option] = None) -> Position:
+                   legs: list[Option] = None) -> Position:
     """
     Factory function to create appropriate Position subclass based on strategy_type.
     
@@ -946,7 +948,7 @@ def create_position(symbol: str, expiration_date: datetime, strategy_type: 'Stra
         strike_price: Strike price
         entry_date: Date position was entered
         entry_price: Price at entry
-        spread_options: List of Option objects for the position
+        legs: List of Option objects for the position
         
     Returns:
         Position: Appropriate Position subclass instance
@@ -957,21 +959,21 @@ def create_position(symbol: str, expiration_date: datetime, strategy_type: 'Stra
     
     if strategy_type in [StrategyType.CALL_CREDIT_SPREAD, StrategyType.PUT_CREDIT_SPREAD]:
         return CreditSpreadPosition(symbol, expiration_date, strategy_type, strike_price,
-                                   entry_date, entry_price, spread_options)
+                                   entry_date, entry_price, legs)
     elif strategy_type in [StrategyType.CALL_DEBIT_SPREAD, StrategyType.PUT_DEBIT_SPREAD]:
         return DebitSpreadPosition(symbol, expiration_date, strategy_type, strike_price,
-                                   entry_date, entry_price, spread_options)
+                                   entry_date, entry_price, legs)
     elif strategy_type == StrategyType.LONG_CALL:
         return LongCallPosition(symbol, expiration_date, strategy_type, strike_price,
-                               entry_date, entry_price, spread_options)
+                               entry_date, entry_price, legs)
     elif strategy_type == StrategyType.SHORT_CALL:
         return ShortCallPosition(symbol, expiration_date, strategy_type, strike_price,
-                                entry_date, entry_price, spread_options)
+                                entry_date, entry_price, legs)
     elif strategy_type == StrategyType.LONG_PUT:
         return LongPutPosition(symbol, expiration_date, strategy_type, strike_price,
-                              entry_date, entry_price, spread_options)
+                              entry_date, entry_price, legs)
     elif strategy_type == StrategyType.SHORT_PUT:
         return ShortPutPosition(symbol, expiration_date, strategy_type, strike_price,
-                               entry_date, entry_price, spread_options)
+                               entry_date, entry_price, legs)
     else:
         raise ValueError(f"Unknown strategy type: {strategy_type}")

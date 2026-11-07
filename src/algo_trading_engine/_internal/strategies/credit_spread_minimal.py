@@ -8,7 +8,7 @@ import pandas as pd
 from algo_trading_engine.strategy import Strategy
 from algo_trading_engine.vo import Position, create_position
 from algo_trading_engine.enums import StrategyType
-from algo_trading_engine.vo import Option, OptionChain, TreasuryRates
+from algo_trading_engine.vo import Option, TreasuryRates
 from algo_trading_engine.enums import OptionType
 from algo_trading_engine._internal.common.progress_tracker import progress_print
 from algo_trading_engine.dto import ExpirationRangeDTO, StrikeRangeDTO
@@ -53,69 +53,6 @@ class CreditSpreadStrategy(Strategy):
         )
         self.data = LSTMModel.calculate_option_signals(self.data)
 
-    def _get_options_chain_for_date(self, date: datetime, min_dte: int = None, max_dte: int = None, 
-                                     strike_min: float = None, strike_max: float = None):
-        """
-        Get options chain for a specific date using OptionsHandler.
-        
-        Args:
-            date: The date to get options for
-            min_dte: Minimum days to expiration (default: 0 - all expirations)
-            max_dte: Maximum days to expiration (default: 60 - up to 2 months out)
-            strike_min: Minimum strike price (default: current_price - 30)
-            strike_max: Maximum strike price (default: current_price + 30)
-            
-        Returns:
-            OptionChain: Options chain with calls and puts, or empty chain if error
-        """
-        try:
-            # Get current price
-            current_price = self.data.loc[date]['Close']
-            
-            # Define strike range around current price
-            # Use wider range to ensure we capture position strikes that may be OTM
-            atm_strike = round(current_price)
-            min_strike = strike_min if strike_min is not None else atm_strike - 30
-            max_strike = strike_max if strike_max is not None else atm_strike + 30
-            
-            strike_range = StrikeRangeDTO(
-                min_strike=StrikePrice(Decimal(str(min_strike))),
-                max_strike=StrikePrice(Decimal(str(max_strike)))
-            )
-            
-            # Define expiration range
-            # Default to 0-60 days to catch positions at any stage of their lifecycle
-            min_days = min_dte if min_dte is not None else 0
-            max_days = max_dte if max_dte is not None else 60
-            expiration_range = ExpirationRangeDTO(min_days=min_days, max_days=max_days)
-            
-            # Fetch options chain
-            chain_dto = self.get_options_chain(
-                date=date,
-                current_price=current_price,
-                strike_range=strike_range,
-                expiration_range=expiration_range
-            )
-            
-            # Convert OptionsChainDTO to OptionChain
-            calls = []
-            puts = []
-            
-            for contract in chain_dto.contracts:
-                bar = chain_dto.get_bar_for_contract(contract)
-                if bar:
-                    option = Option.from_contract_and_bar(contract, bar)
-                    if option.is_call:
-                        calls.append(option)
-                    else:
-                        puts.append(option)
-            
-            return OptionChain(calls=tuple(calls), puts=tuple(puts))
-            
-        except Exception as e:
-            print(f"⚠️  Error getting options chain for {date}: {e}")
-            return OptionChain()
-
     def on_new_date(self, date: datetime, positions: tuple['Position', ...],
                     add_position: Callable[['Position'], None], 
                     remove_position: Callable[['Position'], None]):
@@ -159,44 +96,14 @@ class CreditSpreadStrategy(Strategy):
 
         else:
             for position in positions:
-                # Calculate exit price for the position
-                date_key = date.strftime('%Y-%m-%d')
-                exit_price = None
-                
-                # Get option chain using OptionsHandler
-                option_chain = self._get_options_chain_for_date(date)
+                # Legs were refreshed by Strategy._update_positions before this loop.
                 underlying_price = self.get_current_underlying_price(date, self.symbol)
-                exit_price = position.calculate_exit_price(option_chain, underlying_price)
-
-                # Fetch missing contract using new API
-                if exit_price is None:
-                    # Initialize empty option_chain if not already set
-                    if option_chain is None:
-                        option_chain = OptionChain()
-                    
-                    for option in position.spread_options:
-                        # Get contract with bar data using new API
-                        contract = self._get_option_with_bar(
-                            option.strike,
-                            datetime.strptime(option.expiration, '%Y-%m-%d').date(),
-                            option.option_type,
-                            date
-                        )
-                        if contract is None:
-                            print(f"Error: No contract found for {option.strike} {option.expiration} {option.option_type.value}")
-                            has_error = True
-                        
-                        if contract is not None:
-                            if (contract.option_type == OptionType.CALL):
-                                option_chain = option_chain.add_option(contract)
-                            elif (contract.option_type == OptionType.PUT):
-                                option_chain = option_chain.add_option(contract)
-                            else:
-                                print(f"Error: Invalid option type: {contract.option_type}")
-                                has_error = True
-
-                    if not has_error:
-                        exit_price = position.calculate_exit_price(option_chain, underlying_price)
+                try:
+                    exit_price = position.exit_price_from_leg_quotes(underlying_price)
+                except Exception as e:
+                    print(f"Error calculating exit price for {position.__str__()}: {e}")
+                    has_error = True
+                    exit_price = None
 
                 if exit_price is None or has_error:
                     print(f"Error calculating exit price for {position.__str__()}")
@@ -239,10 +146,8 @@ class CreditSpreadStrategy(Strategy):
         """
         for position in positions:
             try:
-                # Calculate the return for this position using OptionsHandler
-                option_chain = self._get_options_chain_for_date(date)
                 underlying_price = self.get_current_underlying_price(date, self.symbol)
-                exit_price = position.calculate_exit_price(option_chain, underlying_price)
+                exit_price = position.exit_price_from_leg_quotes(underlying_price)
 
                 # Fetch current date volume data for enhanced validation
                 current_volumes = self.get_current_volumes_for_position(position, date)
@@ -671,7 +576,7 @@ class CreditSpreadStrategy(Strategy):
             strike_price=best_spread['atm_strike'],
             entry_date=date,
             entry_price=best_spread['credit'],  # Use net credit as entry price
-            spread_options=[atm_option, otm_option]  # Store the specific spread options
+            legs=[atm_option, otm_option]  # Store the specific spread options
         )
         
         print(f"📊 Call Credit Spread:")
@@ -725,7 +630,7 @@ class CreditSpreadStrategy(Strategy):
             strike_price=best_spread['atm_strike'],
             entry_date=date,
             entry_price=best_spread['credit'],  # Use net credit as entry price
-            spread_options=[atm_option, otm_option]  # Store the specific spread options
+            legs=[atm_option, otm_option]  # Store the specific spread options
         )
         
         print(f"📊 Put Credit Spread:")
@@ -825,39 +730,12 @@ class CreditSpreadStrategy(Strategy):
 
     def get_current_volumes_for_position(self, position: Position, date: datetime) -> list[int]:
         """
-        Fetch current date volume data for all options in a position.
-        
-        Args:
-            position: The position containing options to check
-            date: The current date for volume validation
-            
-        Returns:
-            list[int]: List of current volume values for each option in position.spread_options
+        Return the volume already stored on each leg.
+
+        ``Strategy._update_positions`` refreshes those volumes for ``date`` before close checks.
         """
-        current_volumes = []
-        
-        for option in position.spread_options:
-            try:
-                # Fetch fresh data from API for the current date using new API
-                fresh_option = self._get_option_with_bar(
-                    option.strike,
-                    datetime.strptime(option.expiration, '%Y-%m-%d').date(),
-                    option.option_type,
-                    date  # Use the current date for closure validation
-                )
-                
-                if fresh_option and fresh_option.volume is not None:
-                    current_volumes.append(fresh_option.volume)
-                    print(f"📡 Fetched volume data for {option.symbol} on {date.date()}: {fresh_option.volume}")
-                else:
-                    current_volumes.append(None)
-                    print(f"⚠️  No volume data available for {option.symbol} on {date.date()}")
-                    
-            except Exception as e:
-                print(f"⚠️  Error fetching volume data for {option.symbol}: {e}")
-                current_volumes.append(None)
-        
-        return current_volumes
+        _ = date
+        return [option.volume for option in position.legs]
 
     def validate_data(self, data: pd.DataFrame) -> bool:
         """

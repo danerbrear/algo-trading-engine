@@ -23,9 +23,9 @@ class TestVelocitySignalMomentumStrategy:
         treasury_dates = pd.date_range('2021-01-01', '2021-01-30', freq='D')
         treasury_data = pd.DataFrame({'IRX_1Y': [0.001] * len(treasury_dates), 'TNX_10Y': [0.015] * len(treasury_dates)}, index=treasury_dates)
         self.treasury_rates = TreasuryRates(treasury_data)
-        self.atm_option = Option(ticker='SPY', symbol='SPY', expiration='2021-02-19', strike=100.0, option_type=OptionType.PUT, last_price=2.5, bid=2.45, ask=2.55, volume=100, open_interest=1000)
-        self.otm_option = Option(ticker='SPY', symbol='SPY', expiration='2021-02-19', strike=95.0, option_type=OptionType.PUT, last_price=1.0, bid=0.95, ask=1.05, volume=50, open_interest=500)
-        self.position = create_position(symbol='SPY', expiration_date=datetime(2021, 2, 19), strategy_type=StrategyType.PUT_CREDIT_SPREAD, strike_price=100.0, entry_date=datetime(2021, 1, 15), entry_price=1.5, spread_options=[self.atm_option, self.otm_option])
+        self.atm_option = Option(ticker='SPY', timestamp=datetime(2021, 1, 15), symbol='SPY', expiration='2021-02-19', strike=100.0, option_type=OptionType.PUT, last_price=2.5, bid=2.45, ask=2.55, volume=100, open_interest=1000)
+        self.otm_option = Option(ticker='SPY', timestamp=datetime(2021, 1, 15), symbol='SPY', expiration='2021-02-19', strike=95.0, option_type=OptionType.PUT, last_price=1.0, bid=0.95, ask=1.05, volume=50, open_interest=500)
+        self.position = create_position(symbol='SPY', expiration_date=datetime(2021, 2, 19), strategy_type=StrategyType.PUT_CREDIT_SPREAD, strike_price=100.0, entry_date=datetime(2021, 1, 15), entry_price=1.5, legs=[self.atm_option, self.otm_option])
         self.position.set_quantity(1)
 
     def test_profit_target_and_stop_loss_initialization(self):
@@ -138,9 +138,9 @@ class TestVelocitySignalMomentumStrategy:
         get_options_chain = mock_options_handler.get_options_chain
         strategy = VelocitySignalMomentumStrategy(get_contract_list_for_date=get_contract_list_for_date, get_option_bar=get_option_bar, get_options_chain=get_options_chain)
         date = datetime(2024, 1, 1)
-        atm = Option(ticker='O:SPY240115P100', symbol='A', expiration='2024-01-15', strike=100.0, option_type=OptionType.PUT, last_price=2.0)
-        otm = Option(ticker='O:SPY240115P90', symbol='B', expiration='2024-01-15', strike=90.0, option_type=OptionType.PUT, last_price=1.0)
-        pos = create_position(symbol='SPY', expiration_date=datetime(2024, 1, 15), strategy_type=StrategyType.PUT_CREDIT_SPREAD, strike_price=100.0, entry_date=date, entry_price=1.0, spread_options=[atm, otm])
+        atm = Option(ticker='O:SPY240115P100', timestamp=date, symbol='A', expiration='2024-01-15', strike=100.0, option_type=OptionType.PUT, last_price=2.0)
+        otm = Option(ticker='O:SPY240115P90', timestamp=date, symbol='B', expiration='2024-01-15', strike=90.0, option_type=OptionType.PUT, last_price=1.0)
+        pos = create_position(symbol='SPY', expiration_date=datetime(2024, 1, 15), strategy_type=StrategyType.PUT_CREDIT_SPREAD, strike_price=100.0, entry_date=date, entry_price=1.0, legs=[atm, otm])
         pos.set_quantity(1)
         strategy.compute_exit_price = Mock(return_value=0.8)
         exit_price = strategy.compute_exit_price(pos, date)
@@ -198,7 +198,7 @@ class TestVelocitySignalMomentumStrategy:
         assert position.strategy_type == StrategyType.PUT_CREDIT_SPREAD
         assert position.strike_price == 100.0
         assert position.entry_price == 2.0
-        assert len(position.spread_options) == 2
+        assert len(position.legs) == 2
 
     def test_create_test_put_credit_spread_no_credit(self):
         """Test creating a test put credit spread when no credit is received."""
@@ -208,8 +208,8 @@ class TestVelocitySignalMomentumStrategy:
         get_options_chain = mock_options_handler.get_options_chain
         strategy = VelocitySignalMomentumStrategy(get_contract_list_for_date=get_contract_list_for_date, get_option_bar=get_option_bar, get_options_chain=get_options_chain)
         data = pd.DataFrame({'Close': [100, 101, 102]}, index=pd.date_range('2024-01-01', periods=3))
-        atm_put = Option(ticker='SPY', symbol='SPY240115P100', strike=100.0, expiration='2024-01-15', option_type=OptionType.PUT, last_price=0.5, volume=100)
-        otm_put = Option(ticker='SPY', symbol='SPY240115P90', strike=90.0, expiration='2024-01-15', option_type=OptionType.PUT, last_price=2.5, volume=100)
+        atm_put = Option(ticker='SPY', timestamp=datetime(2024, 1, 1), symbol='SPY240115P100', strike=100.0, expiration='2024-01-15', option_type=OptionType.PUT, last_price=0.5, volume=100)
+        otm_put = Option(ticker='SPY', timestamp=datetime(2024, 1, 1), symbol='SPY240115P90', strike=90.0, expiration='2024-01-15', option_type=OptionType.PUT, last_price=2.5, volume=100)
         option_chain = OptionChain(calls=[], puts=[atm_put, otm_put])
         treasury_data = TreasuryRates(pd.DataFrame({'IRX_1Y': [0.05, 0.06, 0.07], 'TNX_10Y': [0.04, 0.05, 0.06]}, index=pd.date_range('2024-01-01', periods=3)))
         strategy.set_data(data, treasury_data)
