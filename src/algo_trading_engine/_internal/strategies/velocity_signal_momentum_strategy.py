@@ -72,7 +72,7 @@ class VelocitySignalMomentumStrategy(Strategy):
             self.data['Velocity_Changes'] = self.data['MA_Velocity_15_30'].diff()
 
     def on_new_date(self, date: datetime, positions: tuple['Position', ...], add_position: Callable[['Position'], None], remove_position: Callable[[datetime, 'Position', float, Optional[float], Optional[list[int]]], None]):
-        # Base class on_new_date is abstract, so no need to call super()
+        super().on_new_date(date, positions, add_position, remove_position)
 
         if len(positions) == 0:
             self._try_open_position(date, add_position)
@@ -353,7 +353,7 @@ class VelocitySignalMomentumStrategy(Strategy):
                     strike_price=atm_strike,
                     entry_date=date,
                     entry_price=net_credit,
-                    spread_options=[atm_option, otm_option]
+                    legs=[atm_option, otm_option]
                 )
                 # Note: Do NOT set quantity here - the backtest engine will set it based on max_position_size
                 return position

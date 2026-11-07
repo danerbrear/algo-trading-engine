@@ -25,7 +25,7 @@ class TestPositionDaysHeldFix(unittest.TestCase):
             strike_price=666.0,
             entry_date=datetime(2025, 9, 22, 17, 6, 46),  # 5:06 PM on 2025-09-22
             entry_price=2.35,
-            spread_options=[
+            legs=[
                 Option(
                     ticker="O:SPY250930P00666000",
                     timestamp=datetime(2025, 9, 22, 17, 6, 46),
@@ -78,7 +78,7 @@ class TestPositionDaysHeldFix(unittest.TestCase):
             strike_price=666.0,
             entry_date=datetime(2025, 9, 22, 17, 6, 46, tzinfo=timezone.utc),  # UTC timezone
             entry_price=2.35,
-            spread_options=self.test_position.spread_options
+            legs=self.test_position.legs
         )
         
         # Check next day (timezone-naive)
@@ -103,7 +103,7 @@ class TestPositionDaysHeldFix(unittest.TestCase):
             strike_price=666.0,
             entry_date=datetime(2025, 9, 22, 17, 6, 46, tzinfo=timezone.utc),
             entry_price=2.35,
-            spread_options=self.test_position.spread_options
+            legs=self.test_position.legs
         )
         
         # Check with timezone-aware current date
@@ -143,7 +143,7 @@ class TestPositionDaysHeldFix(unittest.TestCase):
             strike_price=666.0,
             entry_date=friday_entry,
             entry_price=2.35,
-            spread_options=self.test_position.spread_options
+            legs=self.test_position.legs
         )
         
         days_held = weekend_position.get_days_held(monday_check)
@@ -159,7 +159,7 @@ class TestPositionDaysHeldFix(unittest.TestCase):
             strike_price=666.0,
             entry_date=None,  # No entry date
             entry_price=2.35,
-            spread_options=self.test_position.spread_options
+            legs=self.test_position.legs
         )
         
         with self.assertRaises(ValueError) as context:

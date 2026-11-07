@@ -127,8 +127,8 @@ def _add_position(self, position: Position):
     """
     
     # Volume validation - check all options in the spread
-    if self.volume_config.enable_volume_validation and position.spread_options:
-        for option in position.spread_options:
+    if self.volume_config.enable_volume_validation and position.legs:
+        for option in position.legs:
             if not self._validate_option_volume(option):
                 print(f"⚠️  Volume validation failed: {option.symbol} has insufficient volume")
                 self.volume_stats = self.volume_stats.increment_rejected_positions()
@@ -225,7 +225,7 @@ def _create_call_credit_spread_from_chain(self, date: datetime, prediction: dict
         strike_price=atm_strike,
         entry_date=date,
         entry_price=entry_price,
-        spread_options=[atm_option, otm_option]
+        legs=[atm_option, otm_option]
     )
     
     return position

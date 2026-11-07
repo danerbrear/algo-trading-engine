@@ -348,7 +348,7 @@ class TestStrategyCallbacksFromPaperTradingEngine:
 
         def fake_on_new_date(date_arg, positions, add_position, _remove_position):
             if len(positions) == 0:
-                pos = _cp(symbol='SPY', expiration_date=datetime(2025, 9, 6), strategy_type=StrategyType.PUT_CREDIT_SPREAD, strike_price=500.0, entry_date=date_arg, entry_price=1.05, spread_options=(atm, otm))
+                pos = _cp(symbol='SPY', expiration_date=datetime(2025, 9, 6), strategy_type=StrategyType.PUT_CREDIT_SPREAD, strike_price=500.0, entry_date=date_arg, entry_price=1.05, legs=(atm, otm))
                 pos.set_quantity(1)
                 add_position(pos)
         strategy.on_new_date = fake_on_new_date

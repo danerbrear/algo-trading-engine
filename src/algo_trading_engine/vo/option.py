@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, Optional
 from vollib.black_scholes.implied_volatility import implied_volatility
@@ -190,6 +190,15 @@ class Option:
             mid_price=float(option_bar.volume_weighted_avg_price)
             if option_bar.volume_weighted_avg_price
             else None,
+        )
+
+    def set_bar_data(self, option_bar: OptionBarDTO) -> Option:
+        """Return a copy whose quote and timestamp come from ``option_bar``."""
+        return replace(
+            self,
+            timestamp=option_bar.timestamp,
+            last_price=float(option_bar.close_price),
+            volume=option_bar.volume,
         )
 
     def get_black_scholes_implied_vol(self, underlying_price: float, treasury_rate: float):

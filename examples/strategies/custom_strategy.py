@@ -104,6 +104,6 @@ class MyCustomStrategy(Strategy):
             strike_price=float(call.strike_price.value),
             entry_date=entry_dt,
             entry_price=call_option.last_price,
-            spread_options=[call_option],
+            legs=[call_option],
         )
         add_position(position)

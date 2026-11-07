@@ -75,7 +75,7 @@ class TestPhase2Integration:
             strike_price=500.0,
             entry_date=datetime(2024, 1, 15),
             entry_price=0.75,
-            spread_options=[self.option1, self.option2]
+            legs=[self.option1, self.option2]
         )
         self.position.set_quantity(1)  # Set quantity after creation
         
@@ -231,9 +231,6 @@ class TestPhase2Integration:
             '2024-02-15': Mock()  # Mock option chain data
         }
         
-        # Mock calculate_exit_price
-        self.position.calculate_exit_price = Mock(return_value=0.50)
-        
         # Create a mock remove_position function to capture calls
         mock_remove_position = Mock()
         
@@ -251,5 +248,5 @@ class TestPhase2Integration:
         call_args = mock_remove_position.call_args
         assert call_args[0][0] == self.test_date  # date
         assert call_args[0][1] == self.position   # position
-        assert call_args[0][2] == 0.50           # exit_price
+        assert call_args[0][2] == 0.75           # exit_price from leg quotes 1.50 - 0.75
         assert call_args[1]['current_volumes'] == [25, 15]  # current_volumes 

@@ -43,6 +43,16 @@ package-dir = {"" = "src"}
 where = ["src"]
 include = ["algo_trading_engine*"]
 
+[tool.basedpyright]
+exclude = [
+    "**/__pycache__",
+    "**/.*",
+    "data_cache",
+    "venv",
+    "logs",
+    "build",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]

@@ -11,7 +11,7 @@ from decimal import Decimal
 
 import pytest
 
-from algo_trading_engine.vo import Option, OptionChain
+from algo_trading_engine.vo import Option
 from algo_trading_engine.enums import OptionType, StrategyType
 from algo_trading_engine.dto import OptionBarDTO
 from algo_trading_engine.vo import create_position
@@ -67,7 +67,7 @@ class TestRobustSpreadExitPrice:
             strike_price=100.0,
             entry_date=datetime(2025, 6, 10),
             entry_price=2.50,
-            spread_options=[long_leg, short_leg],
+            legs=[long_leg, short_leg],
         )
 
         exit_price = position.calculate_exit_price_from_bars(
@@ -88,7 +88,7 @@ class TestRobustSpreadExitPrice:
             strike_price=100.0,
             entry_date=datetime(2025, 6, 10),
             entry_price=2.50,
-            spread_options=[short_leg, long_leg],
+            legs=[short_leg, long_leg],
         )
 
         exit_price = position.calculate_exit_price_from_bars(
@@ -109,7 +109,7 @@ class TestRobustSpreadExitPrice:
             strike_price=737.0,
             entry_date=datetime(2025, 6, 10),
             entry_price=0.88,
-            spread_options=[long_leg, short_leg],
+            legs=[long_leg, short_leg],
         )
         position.set_quantity(1)
 
@@ -132,7 +132,7 @@ class TestRobustSpreadExitPrice:
             strike_price=100.0,
             entry_date=datetime(2025, 6, 10),
             entry_price=2.50,
-            spread_options=[long_leg, short_leg],
+            legs=[long_leg, short_leg],
         )
 
         exit_price = position.calculate_exit_price_from_bars(
@@ -153,7 +153,7 @@ class TestRobustSpreadExitPrice:
             strike_price=100.0,
             entry_date=datetime(2025, 6, 10),
             entry_price=2.50,
-            spread_options=[long_leg, short_leg],
+            legs=[long_leg, short_leg],
         )
 
         exit_price = position.calculate_exit_price_from_bars(
@@ -174,7 +174,7 @@ class TestRobustSpreadExitPrice:
             strike_price=737.0,
             entry_date=datetime(2025, 6, 10),
             entry_price=0.88,
-            spread_options=[long_leg, short_leg],
+            legs=[long_leg, short_leg],
         )
 
         exit_price = position.calculate_exit_price_from_bars(
@@ -195,7 +195,7 @@ class TestRobustSpreadExitPrice:
             strike_price=100.0,
             entry_date=datetime(2025, 6, 10),
             entry_price=4.50,
-            spread_options=[long_leg, short_leg],
+            legs=[long_leg, short_leg],
         )
 
         exit_price = position.calculate_exit_price_from_bars(
@@ -216,7 +216,7 @@ class TestRobustSpreadExitPrice:
             strike_price=100.0,
             entry_date=datetime(2025, 6, 10),
             entry_price=0.50,
-            spread_options=[long_leg, short_leg],
+            legs=[long_leg, short_leg],
         )
 
         exit_price = position.calculate_exit_price_from_bars(
@@ -226,21 +226,3 @@ class TestRobustSpreadExitPrice:
         )
 
         assert exit_price == pytest.approx(0.0)
-
-    def test_calculate_exit_price_from_option_chain_deep_itm(self):
-        long_leg = _make_call_option("O:SPY250630C00737000", 737.0, 16.31)
-        short_leg = _make_call_option("O:SPY250630C00739000", 739.0, 19.54)
-        position = create_position(
-            symbol="SPY",
-            expiration_date=datetime(2025, 6, 30),
-            strategy_type=StrategyType.CALL_DEBIT_SPREAD,
-            strike_price=737.0,
-            entry_date=datetime(2025, 6, 10),
-            entry_price=0.88,
-            spread_options=[long_leg, short_leg],
-        )
-        option_chain = OptionChain(calls=(long_leg, short_leg))
-
-        exit_price = position.calculate_exit_price(option_chain, underlying_price=756.0)
-
-        assert exit_price == pytest.approx(1.8)

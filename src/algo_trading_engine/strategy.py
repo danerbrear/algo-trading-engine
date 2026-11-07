@@ -28,9 +28,6 @@ class _NotImplementedCallback:  # pylint: disable=too-few-public-methods
         raise NotImplementedError("This logic must be overridden.")
 
 
-_raise_not_implemented = _NotImplementedCallback()
-
-
 class IndicatorUpdateError(RuntimeError):
     """Raised when an indicator fails to update for the current date.
 
@@ -63,13 +60,13 @@ class Strategy(ABC):
     """
     
     # Callables for options trading strategies. Default to a raising stub until injected.
-    get_contract_list_for_date: Callable[[datetime, str], List['OptionContractDTO']] = _raise_not_implemented
-    get_option_bar: Callable[['OptionContractDTO', datetime], Optional['OptionBarDTO']] = _raise_not_implemented
-    get_rt_option_bar: Callable[['OptionContractDTO'], Optional['OptionBarDTO']] = _raise_not_implemented
-    get_options_chain: Callable[[str, datetime, Optional['ExpirationRangeDTO'], Optional['StrikeRangeDTO'], Optional[BarTimeInterval], Optional[int]], 'OptionsChainDTO'] = _raise_not_implemented
-    get_current_volumes_for_position: Callable[['Position', datetime], Optional[List[int]]] = _raise_not_implemented
-    compute_exit_price: Callable[['Position', datetime], Optional[float]] = _raise_not_implemented
-    get_position_size: Callable[['Position', float], int] = _raise_not_implemented
+    get_contract_list_for_date: Callable[[datetime, Optional['StrikeRangeDTO'], Optional['ExpirationRangeDTO']], List['OptionContractDTO']] = _NotImplementedCallback()
+    get_option_bar: Callable[['OptionContractDTO', datetime], Optional['OptionBarDTO']] = _NotImplementedCallback()
+    get_rt_option_bar: Callable[['OptionContractDTO'], Optional['OptionBarDTO']] = _NotImplementedCallback()
+    get_options_chain: Callable[[str, datetime, Optional['ExpirationRangeDTO'], Optional['StrikeRangeDTO'], Optional[BarTimeInterval], Optional[int]], 'OptionsChainDTO'] = _NotImplementedCallback()
+    get_current_volumes_for_position: Callable[['Position', datetime], Optional[List[int]]] = _NotImplementedCallback()
+    compute_exit_price: Callable[['Position', datetime], Optional[float]] = _NotImplementedCallback()
+    get_position_size: Callable[['Position', float], int] = _NotImplementedCallback()
 
     def __init__(
         self,
@@ -101,6 +98,7 @@ class Strategy(ABC):
         self.treasury_data: Optional[TreasuryRates] = None
         self.plot_config: Optional["PlotConfig"] = None
         self.indicators: List[Indicator] = []
+        self.option_bar_timespan = BarTimeInterval.DAY
         self._indicator_error: Optional[Exception] = None
         self._failed_indicator_name: Optional[str] = None
 
@@ -173,6 +171,10 @@ class Strategy(ABC):
                 f"Indicator {self._failed_indicator_name} failed to update for {date}: "
                 f"{self._indicator_error}"
             ) from self._indicator_error
+
+        if not self._update_positions(date, positions):
+            get_logger().warning("Error updating positions.")
+
 
     @abstractmethod
     def on_end(
@@ -271,7 +273,7 @@ class Strategy(ABC):
             position: Position to remove
             exit_price: Price at which the position is being closed
             underlying_price: Price of the underlying at the time of exit
-            current_volumes: List of current volume data for each option in position.spread_options
+            current_volumes: List of current volume data for each option in position.legs
         """
 
     def on_add_position_success(self, position: 'Position'):
@@ -390,3 +392,37 @@ class Strategy(ABC):
                 self._indicator_error = e
                 return False
         return True
+    
+    def _update_positions(self, date: datetime, positions: tuple['Position', ...]) -> bool:
+        """Replace each open leg's quote and timestamp with the current option bar.
+
+        A leg with no bar keeps its previous quote. Returns False when any leg
+        could not be refreshed.
+        """
+        updated = True
+        for position in positions:
+            refreshed_legs: list = []
+            for option in position.legs:
+                try:
+                    bar = self.get_current_option_bar(
+                        option,
+                        date,
+                        timespan=self.option_bar_timespan,
+                    )
+                except Exception as exc:
+                    get_logger().warning(
+                        f"Error refreshing {getattr(option, 'ticker', option)} on {date}: {exc}"
+                    )
+                    refreshed_legs.append(option)
+                    updated = False
+                    continue
+                if bar is None:
+                    get_logger().warning(
+                        f"No option bar for {getattr(option, 'ticker', option)} on {date.date()}"
+                    )
+                    refreshed_legs.append(option)
+                    updated = False
+                    continue
+                refreshed_legs.append(option.set_bar_data(bar))
+            position.legs = refreshed_legs
+        return updated

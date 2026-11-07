@@ -25,7 +25,7 @@ class TestVelocitySignalMomentumStrategy:
         self.treasury_rates = TreasuryRates(treasury_data)
         self.atm_option = Option(ticker='SPY', timestamp=datetime(2021, 1, 15), symbol='SPY', expiration='2021-02-19', strike=100.0, option_type=OptionType.PUT, last_price=2.5, bid=2.45, ask=2.55, volume=100, open_interest=1000)
         self.otm_option = Option(ticker='SPY', timestamp=datetime(2021, 1, 15), symbol='SPY', expiration='2021-02-19', strike=95.0, option_type=OptionType.PUT, last_price=1.0, bid=0.95, ask=1.05, volume=50, open_interest=500)
-        self.position = create_position(symbol='SPY', expiration_date=datetime(2021, 2, 19), strategy_type=StrategyType.PUT_CREDIT_SPREAD, strike_price=100.0, entry_date=datetime(2021, 1, 15), entry_price=1.5, spread_options=[self.atm_option, self.otm_option])
+        self.position = create_position(symbol='SPY', expiration_date=datetime(2021, 2, 19), strategy_type=StrategyType.PUT_CREDIT_SPREAD, strike_price=100.0, entry_date=datetime(2021, 1, 15), entry_price=1.5, legs=[self.atm_option, self.otm_option])
         self.position.set_quantity(1)
 
     def test_profit_target_and_stop_loss_initialization(self):
@@ -140,7 +140,7 @@ class TestVelocitySignalMomentumStrategy:
         date = datetime(2024, 1, 1)
         atm = Option(ticker='O:SPY240115P100', timestamp=date, symbol='A', expiration='2024-01-15', strike=100.0, option_type=OptionType.PUT, last_price=2.0)
         otm = Option(ticker='O:SPY240115P90', timestamp=date, symbol='B', expiration='2024-01-15', strike=90.0, option_type=OptionType.PUT, last_price=1.0)
-        pos = create_position(symbol='SPY', expiration_date=datetime(2024, 1, 15), strategy_type=StrategyType.PUT_CREDIT_SPREAD, strike_price=100.0, entry_date=date, entry_price=1.0, spread_options=[atm, otm])
+        pos = create_position(symbol='SPY', expiration_date=datetime(2024, 1, 15), strategy_type=StrategyType.PUT_CREDIT_SPREAD, strike_price=100.0, entry_date=date, entry_price=1.0, legs=[atm, otm])
         pos.set_quantity(1)
         strategy.compute_exit_price = Mock(return_value=0.8)
         exit_price = strategy.compute_exit_price(pos, date)
@@ -198,7 +198,7 @@ class TestVelocitySignalMomentumStrategy:
         assert position.strategy_type == StrategyType.PUT_CREDIT_SPREAD
         assert position.strike_price == 100.0
         assert position.entry_price == 2.0
-        assert len(position.spread_options) == 2
+        assert len(position.legs) == 2
 
     def test_create_test_put_credit_spread_no_credit(self):
         """Test creating a test put credit spread when no credit is received."""

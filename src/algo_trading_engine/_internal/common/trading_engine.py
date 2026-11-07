@@ -74,6 +74,8 @@ class TradingEngine(ABC):
         self.bar_interval = bar_interval
         
         strategy.get_current_underlying_price = self._get_current_underlying_price
+        if bar_interval is not None:
+            strategy.option_bar_timespan = bar_interval
     
     @abstractmethod
     def run(self) -> bool:
@@ -169,91 +171,46 @@ class TradingEngine(ABC):
         
     def get_current_volumes_for_position(self, position: 'Position', date: Optional[datetime] = None) -> list[int]:
         """
-        Fetch current date volume data for all options in a position using options_retriever.
+        Return the volume already stored on each leg.
+
+        ``Strategy._update_positions`` refreshes those volumes for ``date`` before
+        close checks, so this does not fetch another option bar.
         """
-        if date is None:
-            date = datetime.now()
-            get_logger().warning("get_current_volumes_for_position was called without date; using datetime.now()")
+        if not getattr(position, "legs", None):
+            return []
+
         current_volumes = []
-        
-        # Check if position has spread_options
-        if not hasattr(position, 'spread_options') or position.spread_options is None:
-            return current_volumes
-
-        get_current_option_bar = self._strategy.get_current_option_bar
-
-        for option in position.spread_options:
-            try:
-                # Real-time snapshot when live, historical /aggs otherwise (handled by the strategy helper)
-                bar_data = get_current_option_bar(option, date)
-
-                if bar_data is None:
-                    get_logger().warning(f"No option bar data available for {option.ticker} on {date.date()}")
-                    current_volumes.append(None)
-                    continue
-
-                if bar_data and hasattr(bar_data, 'volume') and bar_data.volume is not None:
-                    current_volumes.append(bar_data.volume)
-                    get_logger().debug(f"Fetched volume data for {option.ticker} on {date.date()}: {bar_data.volume}")
-                else:
-                    current_volumes.append(None)
-                    get_logger().warning(f"No volume data available for {option.ticker} on {date.date()}")
-
-            except Exception as e:
-                get_logger().warning(f"Error fetching volume data for {option.symbol}: {e}")
-                current_volumes.append(None)
+        as_of = date.date() if date is not None else None
+        for option in position.legs:
+            volume = getattr(option, "volume", None)
+            if volume is None:
+                get_logger().warning(f"No volume on {getattr(option, 'ticker', option)} for {as_of}")
+            current_volumes.append(volume)
         return current_volumes
-    
-    def _get_valuation_bar(self, option: 'OptionContractDTO', date: datetime) -> Optional[OptionBarDTO]:
-        """
-        Fetch a bar for valuing a position leg.
-
-        Delegates to Strategy.get_current_option_bar: near-real-time snapshot when live,
-        historical /aggs (at the configured bar interval) during backtests.
-        """
-        return self.strategy.get_current_option_bar(option, date, timespan=self.bar_interval)
 
     def compute_exit_price(self, position: 'Position', date: datetime) -> Optional[float]:
         """
         Compute exit price for a position on a specific date.
-        
+
+        Uses the quote ``Strategy._update_positions`` stored on each leg.
+
         Args:
             position: Position to compute exit price for
             date: Date to compute exit price on
-            
+
         Returns:
             Exit price or None if unavailable
         """
         try:
-            if not position.spread_options:
-                get_logger().warning("Position has no spread options")
+            if not position.legs:
+                get_logger().warning("Position has no legs")
                 return None
 
             underlying_price = self.strategy.get_current_underlying_price(
                 date,
                 getattr(self.strategy, 'symbol', None),
             )
-
-            if len(position.spread_options) == 1:
-                option = position.spread_options[0]
-                bar = self._get_valuation_bar(option, date)
-                if not bar:
-                    get_logger().warning(f"No bar data available for option: {option.ticker} on {date.date()}")
-                    return None
-                exit_price = position.calculate_exit_price_from_bars(bar, bar, underlying_price)
-                return float(exit_price) if exit_price is not None else None
-
-            atm_option, otm_option = position.spread_options
-            atm_bar = self._get_valuation_bar(atm_option, date)
-            otm_bar = self._get_valuation_bar(otm_option, date)
-            if not atm_bar or not otm_bar:
-                get_logger().warning(
-                    "Missing bar data for spread options {} and {} on {}; attempting robust resolution",
-                    atm_option.ticker,
-                    otm_option.ticker,
-                    date.date(),
-                )
-            exit_price = position.calculate_exit_price_from_bars(atm_bar, otm_bar, underlying_price)
+            exit_price = position.exit_price_from_leg_quotes(underlying_price)
             return float(exit_price) if exit_price is not None else None
 
         except Exception as e:

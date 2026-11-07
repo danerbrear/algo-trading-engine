@@ -10,10 +10,6 @@ from pathlib import Path
 import pytest
 from algo_trading_engine._internal.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
 from algo_trading_engine._internal.strategies.credit_spread_minimal import CreditSpreadStrategy
-from algo_trading_engine.vo import Option
-from algo_trading_engine.enums import OptionType
-from algo_trading_engine.vo import Position, create_position
-from algo_trading_engine.enums import StrategyType
 
 @pytest.fixture
 def temp_cache_dir():
@@ -165,56 +161,6 @@ class TestCreditSpreadStrategyEnhancements:
         self.strategy.get_current_underlying_price = mock_get_price
         price = self.strategy.get_current_underlying_price(current_date, symbol)
         assert price == 150.0
-
-    def test_get_current_volumes_for_position_success(self):
-        """Test get_current_volumes_for_position with successful API calls"""
-        from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO
-        from algo_trading_engine.enums import OptionType as CommonOptionType
-        from decimal import Decimal
-        option1 = Option(ticker='SPY', timestamp=datetime(2024, 1, 15), symbol='SPY240119C00450000', strike=450.0, expiration='2024-01-19', option_type=OptionType.CALL, last_price=5.0, volume=100)
-        option2 = Option(ticker='SPY', timestamp=datetime(2024, 1, 15), symbol='SPY240119C00455000', strike=455.0, expiration='2024-01-19', option_type=OptionType.CALL, last_price=3.0, volume=150)
-        position = create_position(symbol='SPY', expiration_date=datetime(2024, 1, 19), strategy_type=StrategyType.CALL_CREDIT_SPREAD, strike_price=450.0, entry_date=datetime(2024, 1, 15), entry_price=2.0, spread_options=[option1, option2])
-        from algo_trading_engine.vo import StrikePrice, ExpirationDate
-        contract1 = OptionContractDTO(ticker='O:SPY240119C00450000', underlying_ticker='SPY', contract_type=CommonOptionType.CALL, strike_price=StrikePrice(Decimal('450.0')), expiration_date=ExpirationDate(datetime(2024, 1, 19).date()), exercise_style='american', shares_per_contract=100)
-        contract2 = OptionContractDTO(ticker='O:SPY240119C00455000', underlying_ticker='SPY', contract_type=CommonOptionType.CALL, strike_price=StrikePrice(Decimal('455.0')), expiration_date=ExpirationDate(datetime(2024, 1, 19).date()), exercise_style='american', shares_per_contract=100)
-        bar1 = OptionBarDTO(ticker='O:SPY240119C00450000', timestamp=datetime(2024, 1, 16), open_price=Decimal('5.0'), high_price=Decimal('5.1'), low_price=Decimal('4.9'), close_price=Decimal('5.0'), volume=200, volume_weighted_avg_price=Decimal('5.0'), number_of_transactions=100)
-        bar2 = OptionBarDTO(ticker='O:SPY240119C00455000', timestamp=datetime(2024, 1, 16), open_price=Decimal('3.0'), high_price=Decimal('3.1'), low_price=Decimal('2.9'), close_price=Decimal('3.0'), volume=250, volume_weighted_avg_price=Decimal('3.0'), number_of_transactions=80)
-
-        def mock_get_option_with_bar(strike, expiry_date, option_type, _date):
-            if strike == 450.0 and expiry_date == datetime(2024, 1, 19).date() and (option_type == OptionType.CALL):
-                return Option.from_contract_and_bar(contract1, bar1)
-            elif strike == 455.0 and expiry_date == datetime(2024, 1, 19).date() and (option_type == OptionType.CALL):
-                return Option.from_contract_and_bar(contract2, bar2)
-            return None
-        self.strategy._get_option_with_bar = Mock(side_effect=mock_get_option_with_bar)
-        test_date = datetime(2024, 1, 16)
-        volumes = self.strategy.get_current_volumes_for_position(position, test_date)
-        assert volumes == [200, 250]
-        assert self.strategy._get_option_with_bar.call_count == 2
-
-    def test_get_current_volumes_for_position_api_failure(self):
-        """Test get_current_volumes_for_position with API failures"""
-        option1 = Option(ticker='SPY', timestamp=datetime(2024, 1, 15), symbol='SPY240119C00450000', strike=450.0, expiration='2024-01-19', option_type=OptionType.CALL, last_price=5.0, volume=100)
-        position = create_position(symbol='SPY', expiration_date=datetime(2024, 1, 19), strategy_type=StrategyType.CALL_CREDIT_SPREAD, strike_price=450.0, entry_date=datetime(2024, 1, 15), entry_price=2.0, spread_options=[option1])
-        self.strategy.get_contract_list_for_date = Mock(side_effect=Exception('API Error'))
-        test_date = datetime(2024, 1, 16)
-        volumes = self.strategy.get_current_volumes_for_position(position, test_date)
-        assert volumes == [None]
-
-    def test_get_current_volumes_for_position_no_volume_data(self):
-        """Test get_current_volumes_for_position when fresh option has no volume"""
-        from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO
-        from algo_trading_engine.enums import OptionType as CommonOptionType
-        from decimal import Decimal
-        option1 = Option(ticker='SPY', timestamp=datetime(2024, 1, 15), symbol='SPY240119C00450000', strike=450.0, expiration='2024-01-19', option_type=OptionType.CALL, last_price=5.0, volume=100)
-        position = create_position(symbol='SPY', expiration_date=datetime(2024, 1, 19), strategy_type=StrategyType.CALL_CREDIT_SPREAD, strike_price=450.0, entry_date=datetime(2024, 1, 15), entry_price=2.0, spread_options=[option1])
-        from algo_trading_engine.vo import StrikePrice, ExpirationDate
-        contract1 = OptionContractDTO(ticker='O:SPY240119C00450000', underlying_ticker='SPY', contract_type=CommonOptionType.CALL, strike_price=StrikePrice(Decimal('450.0')), expiration_date=ExpirationDate(datetime(2024, 1, 19).date()), exercise_style='american', shares_per_contract=100)
-        self.strategy.get_contract_list_for_date = Mock(return_value=[contract1])
-        self.strategy.get_option_bar = Mock(return_value=None)
-        test_date = datetime(2024, 1, 16)
-        volumes = self.strategy.get_current_volumes_for_position(position, test_date)
-        assert volumes == [None]
 
 class TestDataRetrieverLivePrice:
     """Test cases for DataRetriever get_live_price method"""

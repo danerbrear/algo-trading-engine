@@ -43,7 +43,7 @@ class MockStrategy(Strategy):
             option2.strike = 510.0
             option2.expiration = '2024-03-15'
             option2.option_type = OptionType.CALL
-            position = create_position(symbol='SPY', expiration_date=datetime(2024, 3, 15), strategy_type=StrategyType.CALL_CREDIT_SPREAD, strike_price=500.0, entry_date=date, entry_price=2.5, spread_options=[option1, option2])
+            position = create_position(symbol='SPY', expiration_date=datetime(2024, 3, 15), strategy_type=StrategyType.CALL_CREDIT_SPREAD, strike_price=500.0, entry_date=date, entry_price=2.5, legs=[option1, option2])
             add_position(position)
 
     def on_end(self, positions, remove_position, date):
@@ -88,7 +88,7 @@ class TestVolumeValidationIntegration:
                     option2.strike = 510.0
                     option2.expiration = '2024-03-15'
                     option2.option_type = OptionType.CALL
-                    position = create_position(symbol='SPY', expiration_date=datetime(2024, 3, 15), strategy_type=StrategyType.CALL_CREDIT_SPREAD, strike_price=500.0, entry_date=date, entry_price=2.5, spread_options=[option1, option2])
+                    position = create_position(symbol='SPY', expiration_date=datetime(2024, 3, 15), strategy_type=StrategyType.CALL_CREDIT_SPREAD, strike_price=500.0, entry_date=date, entry_price=2.5, legs=[option1, option2])
                     add_position(position)
 
         def on_end(_self, _positions, _remove_position, _date):
@@ -123,7 +123,7 @@ class TestVolumeValidationIntegration:
                     option2.strike = 510.0
                     option2.expiration = '2024-03-15'
                     option2.option_type = OptionType.CALL
-                    position = create_position(symbol='SPY', expiration_date=datetime(2024, 3, 15), strategy_type=StrategyType.CALL_CREDIT_SPREAD, strike_price=500.0, entry_date=date, entry_price=2.5, spread_options=[option1, option2])
+                    position = create_position(symbol='SPY', expiration_date=datetime(2024, 3, 15), strategy_type=StrategyType.CALL_CREDIT_SPREAD, strike_price=500.0, entry_date=date, entry_price=2.5, legs=[option1, option2])
                     add_position(position)
 
         def on_end(_self, _positions, _remove_position, _date):
@@ -158,7 +158,7 @@ class TestVolumeValidationIntegration:
                     option2.strike = 510.0
                     option2.expiration = '2024-03-15'
                     option2.option_type = OptionType.CALL
-                    position = create_position(symbol='SPY', expiration_date=datetime(2024, 3, 15), strategy_type=StrategyType.CALL_CREDIT_SPREAD, strike_price=500.0, entry_date=date, entry_price=2.5, spread_options=[option1, option2])
+                    position = create_position(symbol='SPY', expiration_date=datetime(2024, 3, 15), strategy_type=StrategyType.CALL_CREDIT_SPREAD, strike_price=500.0, entry_date=date, entry_price=2.5, legs=[option1, option2])
                     add_position(position)
 
         def on_end(_self, _positions, _remove_position, _date):
@@ -194,7 +194,7 @@ class TestVolumeValidationIntegration:
         engine = BacktestEngine(data=data, strategy=strategy, initial_capital=100000, volume_config=VolumeConfig(min_volume=10, enable_volume_validation=True))
         atm_option = Option(ticker='SPY', timestamp=datetime(2024, 1, 1), symbol='SPY240119C00100000', strike=100.0, expiration='2024-01-19', option_type=OptionType.CALL, last_price=1.5, volume=5, open_interest=100, bid=1.45, ask=1.55)
         otm_option = Option(ticker='SPY', timestamp=datetime(2024, 1, 1), symbol='SPY240119C00105000', strike=105.0, expiration='2024-01-19', option_type=OptionType.CALL, last_price=0.75, volume=5, open_interest=100, bid=0.7, ask=0.8)
-        position = create_position(symbol='SPY', expiration_date=datetime(2024, 1, 19), strategy_type=StrategyType.CALL_CREDIT_SPREAD, strike_price=100.0, entry_date=datetime(2024, 1, 1), entry_price=0.75, spread_options=[atm_option, otm_option])
+        position = create_position(symbol='SPY', expiration_date=datetime(2024, 1, 19), strategy_type=StrategyType.CALL_CREDIT_SPREAD, strike_price=100.0, entry_date=datetime(2024, 1, 1), entry_price=0.75, legs=[atm_option, otm_option])
         position.set_quantity(1)
         engine.positions.append(position)
         initial_capital = engine.capital
@@ -235,7 +235,7 @@ class TestUniversalCloseCallback:
                     option2.expiration = '2024-01-01'
                     option2.last_price = 0.75
                     option2.option_type = OptionType.CALL
-                    position = create_position(symbol='SPY', expiration_date=datetime(2024, 1, 1), strategy_type=StrategyType.CALL_CREDIT_SPREAD, strike_price=500.0, entry_date=date, entry_price=2.5, spread_options=[option1, option2])
+                    position = create_position(symbol='SPY', expiration_date=datetime(2024, 1, 1), strategy_type=StrategyType.CALL_CREDIT_SPREAD, strike_price=500.0, entry_date=date, entry_price=2.5, legs=[option1, option2])
                     add_position(position)
 
             def on_remove_position_success(self, date, position, exit_price, underlying_price=None, current_volumes=None):
@@ -289,7 +289,7 @@ class TestUniversalCloseCallback:
                     self._option2.expiration = '2024-03-15'
                     self._option2.last_price = 0.75
                     self._option2.option_type = OptionType.CALL
-                    position = create_position(symbol='SPY', expiration_date=datetime(2024, 3, 15), strategy_type=StrategyType.CALL_CREDIT_SPREAD, strike_price=500.0, entry_date=date, entry_price=2.5, spread_options=[self._option1, self._option2])
+                    position = create_position(symbol='SPY', expiration_date=datetime(2024, 3, 15), strategy_type=StrategyType.CALL_CREDIT_SPREAD, strike_price=500.0, entry_date=date, entry_price=2.5, legs=[self._option1, self._option2])
                     add_position(position)
 
             def get_option_bar(self, option, date, multiplier=1, timespan=None):
@@ -351,7 +351,7 @@ class TestUniversalCloseCallback:
                     self._option2.expiration = '2024-03-15'
                     self._option2.last_price = 0.75
                     self._option2.option_type = OptionType.CALL
-                    position = create_position(symbol='SPY', expiration_date=datetime(2024, 3, 15), strategy_type=StrategyType.CALL_CREDIT_SPREAD, strike_price=500.0, entry_date=date, entry_price=2.5, spread_options=[self._option1, self._option2])
+                    position = create_position(symbol='SPY', expiration_date=datetime(2024, 3, 15), strategy_type=StrategyType.CALL_CREDIT_SPREAD, strike_price=500.0, entry_date=date, entry_price=2.5, legs=[self._option1, self._option2])
                     add_position(position)
 
             def get_option_bar(self, option, date, multiplier=1, timespan=None):
@@ -423,7 +423,7 @@ class TestCreditSpreadAssignmentCapital:
     def _make_put_credit_spread(self, entry_price: float, short_strike: float, long_strike: float):
         short_put = Option(ticker='SPY', timestamp=datetime(2024, 1, 1), symbol='SPY240119P00658000', strike=short_strike, expiration='2024-01-19', option_type=OptionType.PUT, last_price=1.0, volume=100, open_interest=100, bid=0.95, ask=1.05)
         long_put = Option(ticker='SPY', timestamp=datetime(2024, 1, 1), symbol='SPY240119P00654000', strike=long_strike, expiration='2024-01-19', option_type=OptionType.PUT, last_price=0.5, volume=100, open_interest=100, bid=0.45, ask=0.55)
-        position = create_position(symbol='SPY', expiration_date=datetime(2024, 1, 19), strategy_type=StrategyType.PUT_CREDIT_SPREAD, strike_price=short_strike, entry_date=datetime(2024, 1, 1), entry_price=entry_price, spread_options=[short_put, long_put])
+        position = create_position(symbol='SPY', expiration_date=datetime(2024, 1, 19), strategy_type=StrategyType.PUT_CREDIT_SPREAD, strike_price=short_strike, entry_date=datetime(2024, 1, 1), entry_price=entry_price, legs=[short_put, long_put])
         position.set_quantity(1)
         return position
 

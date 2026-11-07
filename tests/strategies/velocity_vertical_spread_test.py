@@ -56,9 +56,9 @@ class TestVelocityVerticalSpread:
         strategy.set_data(data, {})
         position = strategy._create_put_credit_spread(date=current_date, current_price=current_price, expiration=target_expiration)
         assert position is not None, 'Position should be created'
-        assert len(position.spread_options) == 2, 'Position should have 2 legs'
-        short_leg = position.spread_options[0]
-        long_leg = position.spread_options[1]
+        assert len(position.legs) == 2, 'Position should have 2 legs'
+        short_leg = position.legs[0]
+        long_leg = position.legs[1]
         short_exp = short_leg.expiration if hasattr(short_leg, 'expiration') else None
         long_exp = long_leg.expiration if hasattr(long_leg, 'expiration') else None
         print(f'\n🔍 Debug Info:')

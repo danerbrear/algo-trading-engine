@@ -445,9 +445,9 @@ class TestDebitSpreadMaxRewardRisk:
         assert result is not None
         assert result.strategy_type == StrategyType.CALL_DEBIT_SPREAD
         assert result.entry_price > 0
-        assert len(result.spread_options) == 2
-        assert result.spread_options[0].symbol == 'SPY'
-        assert result.spread_options[1].symbol == 'SPY'
+        assert len(result.legs) == 2
+        assert result.legs[0].symbol == 'SPY'
+        assert result.legs[1].symbol == 'SPY'
         assert result.max_profit() > 0
         assert result.max_loss_per_share() == result.entry_price
         assert result.risk_reward_ratio() > 0
@@ -480,7 +480,7 @@ class TestDebitSpreadMaxRewardRisk:
         result = OptionsRetrieverHelper.find_debit_spread_max_reward_risk(contracts, current_price, expiration, get_bar_fn, test_date, min_spread_width=4, max_spread_width=6, option_type=OptionType.PUT)
         assert result is not None
         assert result.strategy_type == StrategyType.PUT_DEBIT_SPREAD
-        assert len(result.spread_options) == 2
+        assert len(result.legs) == 2
         assert result.entry_price > 0
         assert result.max_profit() > 0
 
@@ -614,6 +614,6 @@ class TestDebitSpreadMaxRewardRisk:
         assert result.strategy_type == StrategyType.CALL_DEBIT_SPREAD
         assert result.entry_date == bar_datetime
         assert result.entry_price > 0
-        assert len(result.spread_options) == 2
+        assert len(result.legs) == 2
         assert result.max_profit() > 0
         assert result.max_loss_per_share() == result.entry_price

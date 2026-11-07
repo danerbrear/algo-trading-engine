@@ -451,8 +451,8 @@ class BacktestEngine(TradingEngine):
         """
         
         # Volume validation - check all options in the spread
-        if self.volume_config.enable_volume_validation and position.spread_options:
-            for option in position.spread_options:
+        if self.volume_config.enable_volume_validation and position.legs:
+            for option in position.legs:
                 if not self._validate_option_volume(option):
                     get_logger().warning(f"Volume validation failed: {option.symbol} has insufficient volume")
                     self.volume_stats = self.volume_stats.increment_rejected_positions()
@@ -492,18 +492,18 @@ class BacktestEngine(TradingEngine):
             position: Position to remove
             exit_price: Price at which the position is being closed
             underlying_price: Price of the underlying at the time of exit
-            current_volumes: List of current volume data for each option in position.spread_options
+            current_volumes: List of current volume data for each option in position.legs
         """
         # Enhanced volume validation - check all options in the spread with current date data
-        if self.volume_config.enable_volume_validation and position.spread_options and current_volumes:
+        if self.volume_config.enable_volume_validation and position.legs and current_volumes:
             volume_validation_failed = False
             failed_options = []
             
             # Increment options checked counter for each option in the spread
-            for option in position.spread_options:
+            for option in position.legs:
                 self.volume_stats = self.volume_stats.increment_options_checked()
             
-            for option, current_volume in zip(position.spread_options, current_volumes):
+            for option, current_volume in zip(position.legs, current_volumes):
                 if current_volume is None or current_volume < self.volume_config.min_volume:
                     volume_validation_failed = True
                     failed_options.append(option.symbol)
