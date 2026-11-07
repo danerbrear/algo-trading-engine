@@ -13,7 +13,7 @@ Example Usage:
     from algo_trading_engine.enums import StrategyType, OptionType
 """
 
-from algo_trading_engine.vo.option import Option, OptionChain
+from algo_trading_engine.vo.option import ImpliedVolatilityError, Option, OptionChain
 from algo_trading_engine.vo.position import (
     CreditSpreadPosition,
     DebitSpreadPosition,
@@ -46,6 +46,7 @@ __all__ = [
     "ShortPutPosition",
     "create_position",
     "Option",
+    "ImpliedVolatilityError",
     "TreasuryRates",
     "StrikePrice",
     "ExpirationDate",

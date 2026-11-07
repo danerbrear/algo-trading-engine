@@ -70,8 +70,8 @@ class Strategy(ABC):
 
     def __init__(
         self,
-        profit_target: float = None,
-        stop_loss: float = None,
+        profit_target: float | None = None,
+        stop_loss: float | None = None,
         universal_close_conditions: Optional[Iterable[UniversalCloseCondition]] = None,
         use_snapshot_for_current_bar: bool = False,
     ):
@@ -264,7 +264,7 @@ class Strategy(ABC):
                 return indicator
         return None
 
-    def on_remove_position_success(self, date: datetime, position: 'Position', exit_price: float, underlying_price: float = None, current_volumes: list[int] = None):
+    def on_remove_position_success(self, date: datetime, position: 'Position', exit_price: float, underlying_price: float | None = None, current_volumes: list[int] = None):
         """
         Callback function for when a position is removed successfully via the TradingEngine.
 

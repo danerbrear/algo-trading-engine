@@ -6,7 +6,7 @@ import pytest
 from vollib.black_scholes import black_scholes
 
 from algo_trading_engine.enums import OptionType
-from algo_trading_engine.vo import Option
+from algo_trading_engine.vo import ImpliedVolatilityError, Option
 
 _UNDERLYING_PRICE = 100.0
 _TREASURY_RATE = 0.01
@@ -80,3 +80,31 @@ class TestGetBlackScholesImpliedVol:
         implied = option.get_black_scholes_implied_vol(_UNDERLYING_PRICE, _TREASURY_RATE)
 
         assert implied == pytest.approx(_VOLATILITY, abs=1e-8)
+
+    def test_raises_implied_volatility_error_when_price_is_above_maximum(self):
+        option = Option(
+            ticker="O:SPY",
+            timestamp=datetime(2025, 1, 1),
+            symbol="SPY",
+            strike=100.0,
+            expiration="2026-01-01",
+            option_type=OptionType.CALL,
+            last_price=100.0,
+        )
+
+        with pytest.raises(ImpliedVolatilityError, match="Could not calculate implied volatility"):
+            option.get_black_scholes_implied_vol(_UNDERLYING_PRICE, _TREASURY_RATE)
+
+    def test_raises_implied_volatility_error_when_price_is_below_intrinsic(self):
+        option = Option(
+            ticker="O:SPY",
+            timestamp=datetime(2025, 1, 1),
+            symbol="SPY",
+            strike=90.0,
+            expiration="2026-01-01",
+            option_type=OptionType.CALL,
+            last_price=1.0,
+        )
+
+        with pytest.raises(ImpliedVolatilityError, match="Could not calculate implied volatility"):
+            option.get_black_scholes_implied_vol(_UNDERLYING_PRICE, _TREASURY_RATE)

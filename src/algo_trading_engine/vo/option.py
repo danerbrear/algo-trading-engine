@@ -13,6 +13,10 @@ if TYPE_CHECKING:
     from algo_trading_engine.dto.options_dtos import OptionBarDTO, OptionContractDTO
 
 
+class ImpliedVolatilityError(ValueError):
+    """Raised when Black-Scholes implied volatility cannot be computed from the quote."""
+
+
 @dataclass(frozen=True)
 class Option:
     """
@@ -131,7 +135,7 @@ class Option:
     def from_dict(cls, data: Dict[str, Any]) -> Option:
         return cls(
             ticker=data.get("ticker", ""),
-            timestamp=data.get("timestamp"),
+            timestamp=data["timestamp"],
             symbol=data["symbol"],
             strike=data["strike"],
             expiration=data["expiration"],
@@ -201,16 +205,25 @@ class Option:
             volume=option_bar.volume,
         )
 
-    def get_black_scholes_implied_vol(self, underlying_price: float, treasury_rate: float):
-        """Returns the implied volatility, calculated using Black-Scholes."""
-        return implied_volatility(
-            price=self.last_price,
-            S=underlying_price,
-            K=self.strike,
-            t=self.time_to_expiration,
-            r=treasury_rate,
-            flag="c" if self.option_type == OptionType.CALL else "p"
-        )
+    def get_black_scholes_implied_vol(self, underlying_price: float, treasury_rate: float) -> float:
+        """Return Black-Scholes implied volatility for this option's last price.
+
+        Raises:
+            ImpliedVolatilityError: If the quote cannot be inverted to a volatility.
+        """
+        try:
+            return implied_volatility(
+                price=self.last_price,
+                S=underlying_price,
+                K=self.strike,
+                t=self.time_to_expiration,
+                r=treasury_rate,
+                flag="c" if self.option_type == OptionType.CALL else "p",
+            )
+        except Exception as exc:
+            raise ImpliedVolatilityError(
+                f"Could not calculate implied volatility for {self}: {exc}"
+            ) from exc
 
 
 @dataclass(frozen=True)
@@ -259,15 +272,8 @@ class OptionChain:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> OptionChain:
         return cls(
-            calls=[Option.from_dict(opt) for opt in data.get("calls", [])],
-            puts=[Option.from_dict(opt) for opt in data.get("puts", [])],
-        )
-
-    @classmethod
-    def from_dict_w_options(cls, data: Dict[Option, Any]) -> OptionChain:
-        return cls(
-            calls=data.get("calls", []),
-            puts=data.get("puts", []),
+            calls=tuple(Option.from_dict(opt) for opt in data.get("calls", [])),
+            puts=tuple(Option.from_dict(opt) for opt in data.get("puts", [])),
         )
 
     def get_option_data_for_option(self, option: Option) -> Optional[Option]:
