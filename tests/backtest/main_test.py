@@ -292,12 +292,12 @@ class TestUniversalCloseCallback:
                     position = create_position(symbol='SPY', expiration_date=datetime(2024, 3, 15), strategy_type=StrategyType.CALL_CREDIT_SPREAD, strike_price=500.0, entry_date=date, entry_price=2.5, legs=[self._option1, self._option2])
                     add_position(position)
 
-            def get_option_bar(self, option, date, multiplier=1, timespan=None):
+            def get_option_bar(self, ticker, date, multiplier=1, timespan=None):
                 _ = date, multiplier, timespan
-                if option is self._option1:
-                    return make_bar(option.ticker, 1.0, date)
-                if option is self._option2:
-                    return make_bar(option.ticker, 0.25, date)
+                if ticker == self._option1.ticker:
+                    return make_bar(ticker, 1.0, date)
+                if ticker == self._option2.ticker:
+                    return make_bar(ticker, 0.25, date)
                 return None
 
             def on_remove_position_success(self, date, position, exit_price, underlying_price=None, current_volumes=None):
@@ -354,12 +354,12 @@ class TestUniversalCloseCallback:
                     position = create_position(symbol='SPY', expiration_date=datetime(2024, 3, 15), strategy_type=StrategyType.CALL_CREDIT_SPREAD, strike_price=500.0, entry_date=date, entry_price=2.5, legs=[self._option1, self._option2])
                     add_position(position)
 
-            def get_option_bar(self, option, date, multiplier=1, timespan=None):
+            def get_option_bar(self, ticker, date, multiplier=1, timespan=None):
                 _ = date, multiplier, timespan
-                if option is self._option1:
-                    return make_bar(option.ticker, 1.0, date)
-                if option is self._option2:
-                    return make_bar(option.ticker, 0.25, date)
+                if ticker == self._option1.ticker:
+                    return make_bar(ticker, 1.0, date)
+                if ticker == self._option2.ticker:
+                    return make_bar(ticker, 0.25, date)
                 return None
 
             def on_remove_position_success(self, date, position, exit_price, underlying_price=None, current_volumes=None):

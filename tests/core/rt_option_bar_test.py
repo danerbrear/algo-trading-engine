@@ -30,8 +30,8 @@ def _sample_bar(ticker: str = "O:SPY211119C00045000") -> OptionBarDTO:
 
 
 @pytest.fixture
-def contract():
-    return Mock(ticker="O:SPY211119C00045000")
+def ticker():
+    return "O:SPY211119C00045000"
 
 
 class _MinimalStrategy(Strategy):
@@ -48,28 +48,28 @@ class _MinimalStrategy(Strategy):
 
 
 class TestMakeRtOptionBar:
-    def test_returns_snapshot_result(self, contract):
+    def test_returns_snapshot_result(self, ticker):
         handler = Mock()
         handler.get_option_snapshot = Mock(return_value=_sample_bar())
         handler.get_option_bar = Mock()
 
         rt = make_rt_option_bar(handler)
-        bar = rt(contract)
+        bar = rt(ticker)
 
         assert bar is not None
-        handler.get_option_snapshot.assert_called_once_with(contract)
+        handler.get_option_snapshot.assert_called_once_with(ticker)
         handler.get_option_bar.assert_not_called()
 
-    def test_returns_none_without_aggs_fallback(self, contract):
+    def test_returns_none_without_aggs_fallback(self, ticker):
         handler = Mock()
         handler.get_option_snapshot = Mock(return_value=None)
         handler.get_option_bar = Mock(return_value=_sample_bar())
 
         rt = make_rt_option_bar(handler)
-        bar = rt(contract)
+        bar = rt(ticker)
 
         assert bar is None
-        handler.get_option_snapshot.assert_called_once_with(contract)
+        handler.get_option_snapshot.assert_called_once_with(ticker)
         handler.get_option_bar.assert_not_called()
 
 
@@ -101,25 +101,25 @@ class TestUseSnapshotForCurrentBar:
 
 
 class TestStrategyGetCurrentOptionBar:
-    def test_live_uses_rt_snapshot(self, contract):
+    def test_live_uses_rt_snapshot(self, ticker):
         strategy = _MinimalStrategy(use_snapshot_for_current_bar=True)
         rt_bar = _sample_bar()
         strategy.get_rt_option_bar = Mock(return_value=rt_bar)
         strategy.get_option_bar = Mock(return_value=_sample_bar("other"))
 
-        result = strategy.get_current_option_bar(contract, datetime.now(), timespan=BarTimeInterval.HOUR)
+        result = strategy.get_current_option_bar(ticker, datetime.now(), timespan=BarTimeInterval.HOUR)
 
         assert result is rt_bar
-        strategy.get_rt_option_bar.assert_called_once_with(contract)
+        strategy.get_rt_option_bar.assert_called_once_with(ticker)
         strategy.get_option_bar.assert_not_called()
 
-    def test_backtest_uses_historical_aggs(self, contract):
+    def test_backtest_uses_historical_aggs(self, ticker):
         strategy = _MinimalStrategy()
         hist_bar = _sample_bar()
         strategy.get_option_bar = Mock(return_value=hist_bar)
         date = datetime(2025, 1, 2)
 
-        result = strategy.get_current_option_bar(contract, date, timespan=BarTimeInterval.DAY)
+        result = strategy.get_current_option_bar(ticker, date, timespan=BarTimeInterval.DAY)
 
         assert result is hist_bar
-        strategy.get_option_bar.assert_called_once_with(contract, date, timespan=BarTimeInterval.DAY)
+        strategy.get_option_bar.assert_called_once_with(ticker, date, 1, BarTimeInterval.DAY)

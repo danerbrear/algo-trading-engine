@@ -326,7 +326,7 @@ class CreditSpreadStrategy(Strategy):
                 return None
             
             # Get price/volume data (real-time snapshot when live, else historical /aggs)
-            bar = self.get_current_option_bar(contract_dto, date)
+            bar = self.get_current_option_bar(contract_dto.ticker, date)
             if bar is None:
                 return None
             

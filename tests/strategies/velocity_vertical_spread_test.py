@@ -39,15 +39,15 @@ class TestVelocityVerticalSpread:
         mock_bar_579 = mock_bar_579_nov6
         strategy.get_contract_list_for_date = Mock(return_value=mock_contracts)
 
-        def mock_get_option_bar(contract, date, multiplier=1, timespan=None):
+        def mock_get_option_bar(ticker, date, multiplier=1, timespan=None):
             _ = date, multiplier, timespan
-            if '585' in contract.ticker and str(contract.expiration_date) == '2025-11-06':
+            if '585' in ticker and '251106' in ticker:
                 return mock_bar_585
-            elif '579' in contract.ticker and str(contract.expiration_date) == '2025-11-06':
+            elif '579' in ticker and '251106' in ticker:
                 return mock_bar_579
-            elif '585' in contract.ticker:
+            elif '585' in ticker:
                 return mock_bar_585
-            elif '579' in contract.ticker:
+            elif '579' in ticker:
                 return mock_bar_579
             return None
         strategy.get_option_bar = Mock(side_effect=mock_get_option_bar)

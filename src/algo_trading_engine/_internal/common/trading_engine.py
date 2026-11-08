@@ -14,8 +14,9 @@ from algo_trading_engine import DataRetriever, Strategy
 from algo_trading_engine.logging import get_logger
 from algo_trading_engine.enums import BarTimeInterval, UniversalCloseCondition
 from algo_trading_engine.models import EngineConfig
-from algo_trading_engine.models.config import PaperTradingConfig
-from algo_trading_engine.dto import OptionBarDTO, OptionContractDTO
+from algo_trading_engine.models.config import BacktestConfig, PaperTradingConfig
+from algo_trading_engine.dto import OptionBarDTO
+from algo_trading_engine.vo import Position
 
 # Minimum calendar lookback for LSTM / feature history in paper trading (aligned with prior default).
 DEFAULT_PAPER_TRADING_LSTM_LOOKBACK_DAYS = 120
@@ -43,7 +44,7 @@ def compute_paper_trading_fetch_start_date(
 
 def make_rt_option_bar(
     options_handler,
-) -> Callable[['OptionContractDTO'], Optional[OptionBarDTO]]:
+) -> Callable[[str], Optional[OptionBarDTO]]:
     """
     Build a near-real-time option bar callable for live/paper trading.
 
@@ -53,8 +54,8 @@ def make_rt_option_bar(
     which BacktestConfig sets False and PaperTradingConfig sets True.
     """
 
-    def _get_rt_option_bar(contract: 'OptionContractDTO') -> Optional[OptionBarDTO]:
-        return options_handler.get_option_snapshot(contract)
+    def _get_rt_option_bar(ticker: str) -> Optional[OptionBarDTO]:
+        return options_handler.get_option_snapshot(ticker)
 
     return _get_rt_option_bar
 
@@ -67,7 +68,7 @@ class TradingEngine(ABC):
     allowing for unified usage patterns.
     """
 
-    def __init__(self, strategy: Strategy, data: pd.DataFrame, config: EngineConfig, bar_interval: 'BarTimeInterval' = None):
+    def __init__(self, strategy: Strategy, data: pd.DataFrame, config: EngineConfig, bar_interval: Optional['BarTimeInterval'] = None):
         self._strategy = strategy
         self._data = data
         self._config = config
@@ -87,7 +88,7 @@ class TradingEngine(ABC):
         """
     
     @abstractmethod
-    def get_positions(self) -> List['Position']:
+    def get_positions(self) -> List[Position]:
         """
         Get current open positions.
         
@@ -107,7 +108,7 @@ class TradingEngine(ABC):
     
     @classmethod
     @abstractmethod
-    def from_config(cls, config: Union['BacktestConfig', PaperTradingConfig]) -> 'TradingEngine':
+    def from_config(cls, config: Union[BacktestConfig, PaperTradingConfig]) -> 'TradingEngine':
         """
         Create trading engine from configuration.
         
@@ -169,7 +170,7 @@ class TradingEngine(ABC):
                     raise ValueError(f"Could not find price data for date {date.date()}") from e
     
         
-    def get_current_volumes_for_position(self, position: 'Position', date: Optional[datetime] = None) -> list[int]:
+    def get_current_volumes_for_position(self, position: Position, date: Optional[datetime] = None) -> list[int]:
         """
         Return the volume already stored on each leg.
 
@@ -188,7 +189,7 @@ class TradingEngine(ABC):
             current_volumes.append(volume)
         return current_volumes
 
-    def compute_exit_price(self, position: 'Position', date: datetime) -> Optional[float]:
+    def compute_exit_price(self, position: Position, date: datetime) -> Optional[float]:
         """
         Compute exit price for a position on a specific date.
 
@@ -208,7 +209,7 @@ class TradingEngine(ABC):
 
             underlying_price = self.strategy.get_current_underlying_price(
                 date,
-                getattr(self.strategy, 'symbol', None),
+                position.symbol,
             )
             exit_price = position.exit_price_from_leg_quotes(underlying_price)
             return float(exit_price) if exit_price is not None else None
@@ -221,7 +222,7 @@ class TradingEngine(ABC):
         self,
         date: datetime,
         remove_position: Optional[
-            Callable[[datetime, "Position", float, Optional[float], Optional[list[int]]], None]
+            Callable[[datetime, Position, float, Optional[float], Optional[list[int]]], None]
         ] = None,
     ) -> None:
         """
@@ -243,7 +244,7 @@ class TradingEngine(ABC):
             def close_position(
                 close_price: float,
                 underlying_price: Optional[float] = None,
-                position: "Position" = position,
+                position: Position = position,
                 current_volumes: Optional[list[int]] = current_volumes,
             ) -> None:
                 if remove_position is None:
@@ -263,7 +264,7 @@ class TradingEngine(ABC):
                 get_logger().info(f"Stop loss hit for {position.__str__()} at exit {exit_price}")
                 close_position(exit_price if exit_price is not None else 0.0)
     
-    def _should_close_due_to_assignment(self, position: 'Position', date: datetime) -> bool:
+    def _should_close_due_to_assignment(self, position: Position, date: datetime) -> bool:
         if UniversalCloseCondition.ASSIGNMENT not in self.strategy.universal_close_conditions:
             return False
         try:
@@ -271,14 +272,14 @@ class TradingEngine(ABC):
         except Exception:
             return False
 
-    def _should_close_due_to_profit_target(self, position: 'Position', exit_price: Optional[float]) -> bool:
+    def _should_close_due_to_profit_target(self, position: Position, exit_price: Optional[float]) -> bool:
         if UniversalCloseCondition.PROFIT_TARGET not in self.strategy.universal_close_conditions:
             return False
         if exit_price is None or self.strategy.profit_target is None:
             return False
         return position.profit_target_hit(self.strategy.profit_target, exit_price)
 
-    def _should_close_due_to_stop(self, position: 'Position', exit_price: Optional[float]) -> bool:
+    def _should_close_due_to_stop(self, position: Position, exit_price: Optional[float]) -> bool:
         if UniversalCloseCondition.STOP_LOSS not in self.strategy.universal_close_conditions:
             return False
         if exit_price is None or self.strategy.stop_loss is None:

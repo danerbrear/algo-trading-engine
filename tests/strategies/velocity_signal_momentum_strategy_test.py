@@ -189,7 +189,7 @@ class TestVelocitySignalMomentumStrategy:
         from decimal import Decimal
         atm_bar = OptionBarDTO(ticker='O:SPY240115P100', timestamp=datetime(2024, 1, 1), open_price=Decimal('2.50'), high_price=Decimal('2.60'), low_price=Decimal('2.40'), close_price=Decimal('2.50'), volume=1000, volume_weighted_avg_price=Decimal('2.50'), number_of_transactions=100)
         otm_bar = OptionBarDTO(ticker='O:SPY240115P94', timestamp=datetime(2024, 1, 1), open_price=Decimal('0.50'), high_price=Decimal('0.60'), low_price=Decimal('0.40'), close_price=Decimal('0.50'), volume=800, volume_weighted_avg_price=Decimal('0.50'), number_of_transactions=80)
-        strategy.get_option_bar = Mock(side_effect=lambda opt, date, multiplier=1, timespan=None: atm_bar if '100' in opt.ticker else otm_bar)
+        strategy.get_option_bar = Mock(side_effect=lambda ticker, date, multiplier=1, timespan=None: atm_bar if '100' in ticker else otm_bar)
         data = pd.DataFrame({'Close': [100, 101, 102]}, index=pd.date_range('2024-01-01', periods=3))
         treasury_data = TreasuryRates(pd.DataFrame({'IRX_1Y': [0.05, 0.06, 0.07], 'TNX_10Y': [0.04, 0.05, 0.06]}, index=pd.date_range('2024-01-01', periods=3)))
         strategy.set_data(data, treasury_data)

@@ -452,13 +452,13 @@ class TestStrategyIndicatorEdgeCases:
     """Test edge cases and error scenarios"""
 
     def test_update_indicators_with_none_data(self):
-        """Test _update_indicators when strategy data is None"""
+        """Test _update_indicators skips updates when strategy data is None."""
         indicator = MockIndicator()
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(indicator)
         result = strategy._update_indicators(datetime(2024, 1, 10))
-        assert result is True
-        assert indicator.last_update_data is None
+        assert result is False
+        assert indicator.update_called is False
 
     def test_indicators_list_is_mutable(self):
         """Test that indicators list can be modified after initialization"""

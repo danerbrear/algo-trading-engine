@@ -558,7 +558,7 @@ class LSTMModel:
                 puts_by_strike = {}
                 
                 for contract in needed_contracts:
-                    bar = options_handler.get_option_bar(contract, current_date)
+                    bar = options_handler.get_option_bar(contract.ticker, current_date)
                     if bar:
                         # Convert contract and bar to Option object
                         option = Option.from_contract_and_bar(contract, bar)

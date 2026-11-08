@@ -89,7 +89,7 @@ class MyCustomStrategy(Strategy):
             return
         # Price the chosen leg via the live-aware helper: near-real-time snapshot when paper
         # trading, historical /aggs (at the chain's timespan) when backtesting.
-        call_bar = self.get_current_option_bar(call, date, timespan=BarTimeInterval.HOUR)
+        call_bar = self.get_current_option_bar(call.ticker, date, timespan=BarTimeInterval.HOUR)
         if call_bar is None:
             get_logger().warning("No bar data for ATM call, skipping position")
             return

@@ -60,13 +60,13 @@ class Strategy(ABC):
     """
     
     # Callables for options trading strategies. Default to a raising stub until injected.
-    get_contract_list_for_date: Callable[[datetime, Optional['StrikeRangeDTO'], Optional['ExpirationRangeDTO']], List['OptionContractDTO']] = _NotImplementedCallback()
-    get_option_bar: Callable[['OptionContractDTO', datetime], Optional['OptionBarDTO']] = _NotImplementedCallback()
-    get_rt_option_bar: Callable[['OptionContractDTO'], Optional['OptionBarDTO']] = _NotImplementedCallback()
-    get_options_chain: Callable[[str, datetime, Optional['ExpirationRangeDTO'], Optional['StrikeRangeDTO'], Optional[BarTimeInterval], Optional[int]], 'OptionsChainDTO'] = _NotImplementedCallback()
-    get_current_volumes_for_position: Callable[['Position', datetime], Optional[List[int]]] = _NotImplementedCallback()
-    compute_exit_price: Callable[['Position', datetime], Optional[float]] = _NotImplementedCallback()
-    get_position_size: Callable[['Position', float], int] = _NotImplementedCallback()
+    get_contract_list_for_date: Optional[Callable[[datetime, Optional['StrikeRangeDTO'], Optional['ExpirationRangeDTO']], List['OptionContractDTO']]] = _NotImplementedCallback()
+    get_option_bar: Optional[Callable[[str, datetime, Optional[int], Optional['BarTimeInterval']], Optional['OptionBarDTO']]] = _NotImplementedCallback()
+    get_rt_option_bar: Optional[Callable[[str], Optional['OptionBarDTO']]] = _NotImplementedCallback()
+    get_options_chain: Optional[Callable[[str, datetime, Optional['ExpirationRangeDTO'], Optional['StrikeRangeDTO'], Optional[BarTimeInterval], Optional[int]], 'OptionsChainDTO']] = _NotImplementedCallback()
+    get_current_volumes_for_position: Optional[Callable[['Position', datetime], Optional[List[int]]]] = _NotImplementedCallback()
+    compute_exit_price: Optional[Callable[['Position', datetime], Optional[float]]] = _NotImplementedCallback()
+    get_position_size: Optional[Callable[['Position', float], int]] = _NotImplementedCallback()
 
     def __init__(
         self,
@@ -104,7 +104,7 @@ class Strategy(ABC):
 
     def get_current_option_bar(
         self,
-        contract: 'OptionContractDTO',
+        ticker: str,
         date: datetime,
         timespan: BarTimeInterval = BarTimeInterval.DAY,
     ) -> Optional['OptionBarDTO']:
@@ -114,9 +114,13 @@ class Strategy(ABC):
         When ``use_snapshot_for_current_bar`` is set, use the near-real-time Polygon snapshot
         (dateless). Otherwise use the historical /aggs bar for ``date`` at the given ``timespan``.
         """
-        if self.use_snapshot_for_current_bar:
-            return self.get_rt_option_bar(contract)
-        return self.get_option_bar(contract, date, timespan=timespan)
+        if self.use_snapshot_for_current_bar and self.get_rt_option_bar:
+            return self.get_rt_option_bar(ticker)
+
+        if self.get_option_bar:
+            return self.get_option_bar(ticker, date, 1, timespan)
+
+        return None
 
     @property
     def warm_up_period(self) -> int:
@@ -264,7 +268,7 @@ class Strategy(ABC):
                 return indicator
         return None
 
-    def on_remove_position_success(self, date: datetime, position: 'Position', exit_price: float, underlying_price: float | None = None, current_volumes: list[int] = None):
+    def on_remove_position_success(self, date: datetime, position: 'Position', exit_price: float, underlying_price: float | None = None, current_volumes: Optional[list[int]] = None):
         """
         Callback function for when a position is removed successfully via the TradingEngine.
 
@@ -379,6 +383,9 @@ class Strategy(ABC):
         Returns:
             True if indicators were updated, False otherwise
         """
+        if self.data is None:
+            return not self.indicators
+            
         self._indicator_error = None
         self._failed_indicator_name = None
         for indicator in self.indicators:
@@ -405,7 +412,7 @@ class Strategy(ABC):
             for option in position.legs:
                 try:
                     bar = self.get_current_option_bar(
-                        option,
+                        option.ticker,
                         date,
                         timespan=self.option_bar_timespan,
                     )

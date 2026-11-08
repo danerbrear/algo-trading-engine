@@ -40,9 +40,9 @@ class _RecordingStrategy(Strategy):
     def validate_data(self, data):
         return True
 
-    def get_option_bar(self, contract, date, multiplier=1, timespan=BarTimeInterval.DAY):
+    def get_option_bar(self, ticker, date, multiplier=1, timespan=BarTimeInterval.DAY):
         del multiplier
-        return self.bars.get((contract.ticker, date, timespan))
+        return self.bars.get((ticker, date, timespan))
 
 
 def _leg(ticker: str, strike: float) -> Option:
