@@ -26,6 +26,7 @@ class TestBacktestEngineFactory:
         """Test factory method with strategy name string."""
         mock_strategy = Mock()
         mock_strategy.set_data = Mock()
+        mock_strategy.indicators = []
         mock_strategy.warm_up_period = 0
         mock_strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(0))
         mock_create_strategy.return_value = mock_strategy
@@ -58,6 +59,7 @@ class TestBacktestEngineFactory:
         """Test factory method with Strategy instance."""
         mock_strategy = Mock()
         mock_strategy.set_data = Mock()
+        mock_strategy.indicators = []
         mock_strategy.warm_up_period = 0
         mock_strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(0))
         mock_strategy.options_handler = None
@@ -83,6 +85,7 @@ class TestBacktestEngineFactory:
         """Test factory method handles data fetch failure (after strategy is constructed)."""
         mock_strategy = Mock()
         mock_strategy.set_data = Mock()
+        mock_strategy.indicators = []
         mock_strategy.warm_up_period = 0
         mock_strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(0))
         mock_create_strategy.return_value = mock_strategy
@@ -103,6 +106,7 @@ class TestBacktestEngineFactory:
         """Test factory method with all optional parameters."""
         mock_strategy = Mock()
         mock_strategy.set_data = Mock()
+        mock_strategy.indicators = []
         mock_strategy.warm_up_period = 0
         mock_strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(0))
         mock_create_strategy.return_value = mock_strategy

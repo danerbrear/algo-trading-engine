@@ -77,7 +77,25 @@ class TradingEngine(ABC):
         strategy.get_current_underlying_price = self._get_current_underlying_price
         if bar_interval is not None:
             strategy.option_bar_timespan = bar_interval
-    
+
+        self.precompute_indicators()
+
+    def precompute_indicators(self) -> None:
+        """Vectorized indicator fill for all bars in engine data."""
+        if not self._strategy.indicators:
+            return
+        if self._data is None or self._data.empty:
+            raise ValueError(
+                "Cannot precompute indicators without data. "
+                "Provide market data before constructing the trading engine."
+            )
+        for indicator in self._strategy.indicators:
+            indicator.precompute(self._data)
+        get_logger().info(
+            f"Indicator precompute complete: {len(self._strategy.indicators)} indicator(s), "
+            f"{len(self._data)} bar(s)"
+        )
+
     @abstractmethod
     def run(self) -> bool:
         """

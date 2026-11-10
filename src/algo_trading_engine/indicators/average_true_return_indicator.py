@@ -36,6 +36,59 @@ class ATRIndicator(Indicator):
     def warm_up_period(self) -> int:
         return self.period + 1
 
+    def precompute(self, data: pd.DataFrame) -> None:
+        required = {"High", "Low", "Close"}
+        missing = required - set(data.columns)
+        if missing:
+            raise ValueError(f"Missing OHLC columns for ATR: {sorted(missing)}")
+
+        self._values = pd.Series(dtype=float)
+        self._current_atr = None
+        self._current_date = None
+
+        if self.reset_daily and self._is_intraday():
+            segments: list[pd.Series] = []
+            for _day, group in data.groupby(data.index.date):
+                segments.append(self._wilder_atr_series(group))
+            if segments:
+                combined = pd.concat(segments).sort_index()
+                self._values = combined.dropna().astype(float)
+        else:
+            atr_series = self._wilder_atr_series(data)
+            self._values = atr_series.dropna().astype(float)
+
+        if len(self._values) > 0:
+            self._current_atr = float(self._values.iloc[-1])
+            last_ts = self._values.index[-1]
+            self._current_date = (
+                last_ts.date() if hasattr(last_ts, "date") else last_ts
+            )
+
+    def _wilder_atr_series(self, data: pd.DataFrame) -> pd.Series:
+        """Wilder ATR aligned with per-bar ``update()`` semantics."""
+        high = data["High"]
+        low = data["Low"]
+        close = data["Close"]
+        prev_close = close.shift(1)
+        tr = pd.concat(
+            [high - low, (high - prev_close).abs(), (low - prev_close).abs()],
+            axis=1,
+        ).max(axis=1)
+
+        atr = pd.Series(index=data.index, dtype=float)
+        n = len(data)
+        if n < self.period + 1:
+            return atr
+
+        current_atr = float(tr.iloc[1 : self.period + 1].mean())
+        atr.iloc[self.period] = current_atr
+
+        for i in range(self.period + 1, n):
+            current_atr = ((current_atr * (self.period - 1)) + float(tr.iloc[i])) / self.period
+            atr.iloc[i] = current_atr
+
+        return atr
+
     def update(self, date: datetime, data: pd.DataFrame) -> None:
         """
         Update the ATR indicator for a given bar of data.

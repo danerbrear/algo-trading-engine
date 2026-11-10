@@ -199,8 +199,8 @@ class OptionsHandler:
         self,
         ticker: str,
         date: datetime,
-        multiplier: int = 1,
-        timespan: BarTimeInterval = BarTimeInterval.DAY,
+        multiplier: Optional[int] = 1,
+        timespan: Optional[BarTimeInterval] = BarTimeInterval.DAY,
     ) -> Optional[OptionBarDTO]:
         """
         Get bar data for a specific option contract.
@@ -216,10 +216,8 @@ class OptionsHandler:
         Returns:
             OptionBarDTO if found, None otherwise
         """
-        if not isinstance(ticker, str) or not ticker:
+        if not isinstance(ticker, str) or not ticker or not multiplier or not timespan:
             return None
-        if not isinstance(date, (datetime, _date_class)):
-            raise TypeError(f"date must be datetime or date, got {type(date).__name__}")
 
         date_obj = date.date() if isinstance(date, datetime) else date
 
@@ -285,8 +283,8 @@ class OptionsHandler:
         current_price: float,
         strike_range: Optional[StrikeRangeDTO] = None,
         expiration_range: Optional[ExpirationRangeDTO] = None,
-        timespan: BarTimeInterval = BarTimeInterval.DAY,
-        multiplier: int = 1,
+        timespan: Optional[BarTimeInterval] = BarTimeInterval.DAY,
+        multiplier: Optional[int] = 1,
     ) -> OptionsChainDTO:
         """
         Get complete option chain for a date.

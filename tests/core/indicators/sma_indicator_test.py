@@ -372,3 +372,38 @@ class TestSMAGetValueAtBehavior:
         data = self._hourly_data()
         sma.update(data.index[-1], data)
         assert sma.get_value_at(data.index[5]) is None
+
+
+class TestSMAIndicatorPrecompute:
+    def test_precompute_matches_iterative_update(self):
+        dates = pd.date_range(start="2024-01-01", periods=10, freq="D")
+        data = pd.DataFrame({"Close": [float(i) for i in range(10)]}, index=dates)
+        iterative = SMAIndicator(period=3)
+        for ts in data.index:
+            iterative.update(ts, data)
+        vectorized = SMAIndicator(period=3)
+        vectorized.precompute(data)
+        for ts in data.index[iterative.warm_up_period - 1 :]:
+            assert iterative.get_value_at(ts) == pytest.approx(vectorized.get_value_at(ts))
+
+    def test_precompute_skips_weekends(self):
+        dates = pd.DatetimeIndex(
+            [
+                datetime(2024, 1, 5),
+                datetime(2024, 1, 6),
+                datetime(2024, 1, 8),
+            ]
+        )
+        data = pd.DataFrame({"Close": [10.0, 11.0, 12.0]}, index=dates)
+        indicator = SMAIndicator(period=1)
+        indicator.precompute(data)
+        assert datetime(2024, 1, 6) not in indicator.get_values().index
+
+    def test_update_after_precompute_appends_new_bar(self):
+        dates = pd.date_range(start="2024-01-01", periods=5, freq="D")
+        data = pd.DataFrame({"Close": [1.0, 2.0, 3.0, 4.0, 5.0]}, index=dates)
+        indicator = SMAIndicator(period=3)
+        indicator.precompute(data.iloc[:4])
+        new_date = dates[4]
+        indicator.update(new_date, data)
+        assert indicator.get_value_at(new_date) == pytest.approx(4.0)

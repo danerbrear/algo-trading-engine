@@ -538,3 +538,66 @@ class TestATRGetValueAtBehavior:
         data = self._daily_data()
         atr.update(data.index[-1], data)
         assert atr.get_value_at(data.index[10]) is None
+
+
+class TestATRIndicatorPrecompute:
+    def test_precompute_constant_tr_matches_update(self):
+        indicator = ATRIndicator(period=3)
+        dates = pd.date_range(start="2024-01-01", periods=4, freq="D")
+        data = pd.DataFrame(
+            {
+                "Open": [100, 101, 102, 103],
+                "High": [110, 111, 112, 113],
+                "Low": [90, 91, 92, 93],
+                "Close": [100, 101, 102, 103],
+                "Volume": [1000000] * 4,
+            },
+            index=dates,
+        )
+        indicator.precompute(data)
+        assert indicator.get_value_at(datetime(2024, 1, 4)) == 20.0
+        iterative = ATRIndicator(period=3)
+        iterative.update(datetime(2024, 1, 4), data)
+        assert iterative.value == 20.0
+
+    def test_precompute_matches_iterative_series(self):
+        dates = pd.date_range(start="2024-01-01", periods=10, freq="D")
+        data = pd.DataFrame(
+            {
+                "Open": [100 + i for i in range(10)],
+                "High": [110 + i for i in range(10)],
+                "Low": [90 + i for i in range(10)],
+                "Close": [100 + i for i in range(10)],
+                "Volume": [1000000] * 10,
+            },
+            index=dates,
+        )
+        iterative = ATRIndicator(period=3)
+        for ts in data.index:
+            iterative.update(ts, data)
+        vectorized = ATRIndicator(period=3)
+        vectorized.precompute(data)
+        for ts in data.index[iterative.warm_up_period - 1 :]:
+            assert iterative.get_value_at(ts) == pytest.approx(vectorized.get_value_at(ts))
+
+    def test_update_after_precompute_continues_wilder_smoothing(self):
+        dates = pd.date_range(start="2024-01-01", periods=5, freq="D")
+        data = pd.DataFrame(
+            {
+                "Open": [100, 101, 102, 103, 104],
+                "High": [110, 111, 112, 113, 114],
+                "Low": [90, 91, 92, 93, 94],
+                "Close": [100, 101, 102, 103, 104],
+                "Volume": [1000000] * 5,
+            },
+            index=dates,
+        )
+        iterative = ATRIndicator(period=3)
+        for ts in data.index:
+            iterative.update(ts, data)
+
+        indicator = ATRIndicator(period=3)
+        indicator.precompute(data.iloc[:4])
+        last = dates[4]
+        indicator.update(last, data)
+        assert indicator.get_value_at(last) == pytest.approx(iterative.get_value_at(last))

@@ -58,13 +58,14 @@ class Strategy(ABC):
         - compute_exit_price: Compute the exit price for a position on a specific date
         - get_position_size: Size a position from available capital
     """
+    symbol: str
     
     # Callables for options trading strategies. Default to a raising stub until injected.
     get_contract_list_for_date: Optional[Callable[[datetime, Optional['StrikeRangeDTO'], Optional['ExpirationRangeDTO']], List['OptionContractDTO']]] = _NotImplementedCallback()
     get_option_bar: Optional[Callable[[str, datetime, Optional[int], Optional['BarTimeInterval']], Optional['OptionBarDTO']]] = _NotImplementedCallback()
     get_rt_option_bar: Optional[Callable[[str], Optional['OptionBarDTO']]] = _NotImplementedCallback()
-    get_options_chain: Optional[Callable[[str, datetime, Optional['ExpirationRangeDTO'], Optional['StrikeRangeDTO'], Optional[BarTimeInterval], Optional[int]], 'OptionsChainDTO']] = _NotImplementedCallback()
-    get_current_volumes_for_position: Optional[Callable[['Position', datetime], Optional[List[int]]]] = _NotImplementedCallback()
+    get_options_chain: Optional[Callable[[datetime, float, Optional['StrikeRangeDTO'], Optional['ExpirationRangeDTO'], Optional[BarTimeInterval], Optional[int]], 'OptionsChainDTO']] = _NotImplementedCallback()
+    get_current_volumes_for_position: Optional[Callable[['Position', Optional[datetime]], Optional[List[int]]]] = _NotImplementedCallback()
     compute_exit_price: Optional[Callable[['Position', datetime], Optional[float]]] = _NotImplementedCallback()
     get_position_size: Optional[Callable[['Position', float], int]] = _NotImplementedCallback()
 
@@ -99,8 +100,6 @@ class Strategy(ABC):
         self.plot_config: Optional["PlotConfig"] = None
         self.indicators: List[Indicator] = []
         self.option_bar_timespan = BarTimeInterval.DAY
-        self._indicator_error: Optional[Exception] = None
-        self._failed_indicator_name: Optional[str] = None
 
     def get_current_option_bar(
         self,
@@ -169,13 +168,6 @@ class Strategy(ABC):
             remove_position: Callback function to remove/close a position
                 Signature: (date, position, exit_price, underlying_price=None, current_volumes=None)
         """
-        if not self._update_indicators(date):
-            get_logger().error(f"Error updating indicators for date {date}, aborting execution")
-            raise IndicatorUpdateError(
-                f"Indicator {self._failed_indicator_name} failed to update for {date}: "
-                f"{self._indicator_error}"
-            ) from self._indicator_error
-
         if not self._update_positions(date, positions):
             get_logger().warning("Error updating positions.")
 
@@ -347,59 +339,6 @@ class Strategy(ABC):
             return False
         return position.stop_loss_hit(self.stop_loss, exit_price)
 
-    def warm_up_indicators(self) -> None:
-        """Replay historical bars through all indicators so they have values
-        at every datetime, matching backtest behavior.
-
-        Should be called after set_data() and before the first on_new_date() in
-        contexts where the engine does not iterate through every bar (e.g. paper
-        trading, Lambda).
-
-        Raises:
-            ValueError: If indicators are registered but no data is available.
-        """
-        if not self.indicators:
-            return
-        if self.data is None or self.data.empty:
-            raise ValueError(
-                "Cannot warm up indicators without data. "
-                "Call set_data() before warm_up_indicators()."
-            )
-        for date in self.data.index:
-            for indicator in self.indicators:
-                indicator.update(date, self.data)
-        get_logger().info(
-            f"Indicator warm-up complete: {len(self.indicators)} indicator(s), "
-            f"{len(self.data)} bar(s)"
-        )
-
-    def _update_indicators(self, date: datetime) -> bool:
-        """
-        Update the indicators for the strategy.
-        
-        Args:
-            date: Current date
-
-        Returns:
-            True if indicators were updated, False otherwise
-        """
-        if self.data is None:
-            return not self.indicators
-            
-        self._indicator_error = None
-        self._failed_indicator_name = None
-        for indicator in self.indicators:
-            try:
-                if date in indicator.get_values().index:
-                    continue
-                indicator.update(date, self.data)
-            except Exception as e:
-                get_logger().error(f"Error updating indicator {indicator.name}: {e}")
-                self._failed_indicator_name = indicator.name
-                self._indicator_error = e
-                return False
-        return True
-    
     def _update_positions(self, date: datetime, positions: tuple['Position', ...]) -> bool:
         """Replace each open leg's quote and timestamp with the current option bar.
 
