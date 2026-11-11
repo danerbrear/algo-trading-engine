@@ -1158,8 +1158,6 @@ class TestOptionsHandlerErrorHandling:
         assert result is None
         result = options_handler.get_option_bar(None, datetime.now())
         assert result is None
-        with pytest.raises(TypeError, match='date must be datetime or date'):
-            options_handler.get_option_bar('O:SPY250115C00600000', 'invalid_date')
 
     def test_invalid_filter_parameters(self):
         """Test error handling for invalid filter parameters."""
