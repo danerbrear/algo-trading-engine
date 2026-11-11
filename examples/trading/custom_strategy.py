@@ -8,7 +8,6 @@ strategies against live market data.
 """
 
 import os
-import sys
 from pathlib import Path
 from dotenv import load_dotenv
 import importlib.util

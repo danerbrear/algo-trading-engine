@@ -13,6 +13,8 @@ import pandas as pd
 from algo_trading_engine.logging import configure_logger, get_logger
 from algo_trading_engine.logging.logger import log_and_echo
 from algo_trading_engine._internal.common.ml_pipeline import is_credit_spread_strategy, prepare_credit_spread_backtest_data
+from algo_trading_engine._internal.util.market_clock import market_now
+from algo_trading_engine._internal.trade.live_bar import apply_live_quote
 from algo_trading_engine._internal.common.trading_engine import (
     DEFAULT_PAPER_TRADING_LSTM_LOOKBACK_DAYS,
     TradingEngine,
@@ -126,7 +128,7 @@ class PaperTradingEngine(TradingEngine):
         
         # Get current date. Sub-second precision cannot be represented in coarser
         # bar-index resolutions, which breaks indicator writes keyed on this date.
-        run_date = datetime.now().replace(microsecond=0)
+        run_date = market_now()
         
         # Create recommender (needed for position status checks)
         recommender = InteractiveStrategyRecommender(
@@ -251,7 +253,7 @@ class PaperTradingEngine(TradingEngine):
         if not isinstance(config, PaperTradingConfig):
             raise ValueError("Must use trading config.")
 
-        today = datetime.now()
+        today = market_now()
 
         # Internal: Create options handler (strategy needs option callables before first fetch)
         options_handler = OptionsHandler(
@@ -305,6 +307,10 @@ class PaperTradingEngine(TradingEngine):
         if data is None or len(data) == 0:
             raise ValueError(f"Failed to fetch data for {config.symbol}")
         get_logger().info(f"Fetched {len(data)} data points for {config.symbol} from {data.index[0]} to {data.index[-1]}")
+
+        live_price = retriever.get_live_price()
+        if live_price is not None:
+            data = apply_live_quote(data, live_price, today, config.bar_interval)
 
         if is_credit_spread_strategy(config.strategy_type):
             data = prepare_credit_spread_backtest_data(data, retriever, config.symbol)

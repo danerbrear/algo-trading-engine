@@ -4,6 +4,7 @@ import re
 from datetime import datetime, timezone
 from typing import Optional, List
 
+from algo_trading_engine._internal.util.market_clock import market_now
 from algo_trading_engine.strategy import Strategy
 from algo_trading_engine.vo import Position, create_position
 from algo_trading_engine.enums import StrategyType
@@ -46,8 +47,8 @@ class InteractiveStrategyRecommender:
         if current_price is None:
             return
         
-        # Display recent prices for velocity strategies
-        if hasattr(self.strategy, '__class__') and 'velocity' in self.strategy.__class__.__name__.lower():
+        # Display recent prices for strategies
+        if hasattr(self.strategy, '__class__'):
             self._display_recent_underlying_prices(date)
         
         # Get open positions for closing logic (scoped to this strategy)
@@ -65,7 +66,7 @@ class InteractiveStrategyRecommender:
             recommended_position = position
         
         def capture_remove_position(_date_arg: datetime, position: Position, exit_price: float, 
-                                   underlying_price: float = None, current_volumes: list = None):
+                                   underlying_price: Optional[float] = None, current_volumes: Optional[list] = None):
             """Capture the position closure decision from the strategy's on_new_date logic"""
             positions_to_close.append({
                 "position": position,
@@ -99,7 +100,7 @@ class InteractiveStrategyRecommender:
         current_price = None
         
         # Check if the specified date is the current date
-        current_date = datetime.now().date()
+        current_date = market_now().date()
         if date.date() == current_date:
             # Use live price via strategy's injected method
             get_logger().info(f"Fetching live price for {date.date()} (current date)")
@@ -367,7 +368,7 @@ class InteractiveStrategyRecommender:
         # Compute P&L
         try:
             pnl_dollars = position.get_return_dollars(exit_price)
-            pnl_pct = ((position.entry_price * position.quantity * 100) - (exit_price * position.quantity * 100)) / (position.entry_price * position.quantity * 100)
+            pnl_pct = position._get_return(exit_price)
         except Exception:
             pnl_dollars = None
             pnl_pct = None
@@ -439,12 +440,12 @@ class InteractiveStrategyRecommender:
             # Get the most recent 5 days of data
             recent_data = self.strategy.data.tail(5)
             
-            get_logger().info("Recent 5 Days of Underlying Price:")
+            get_logger().info("Recent 5 bars of Underlying Price:")
             get_logger().info("=" * 50)
             
             for idx, (date_idx, row) in enumerate(recent_data.iterrows()):
                 # Format the date
-                if hasattr(date_idx, 'date'):
+                if isinstance(date_idx, datetime):
                     date_str = date_idx.date().strftime('%Y-%m-%d')
                 else:
                     date_str = str(date_idx)
@@ -457,8 +458,8 @@ class InteractiveStrategyRecommender:
                     price_str = str(close_price)
                 
                 # Add indicator for current date
-                current_date = datetime.now().date()
-                if hasattr(date_idx, 'date') and date_idx.date() == current_date:
+                current_date = market_now().date()
+                if isinstance(date_idx, datetime) and date_idx.date() == current_date:
                     date_str += " (TODAY)"
                 elif idx == len(recent_data) - 1:
                     date_str += " (LATEST)"

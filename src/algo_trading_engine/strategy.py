@@ -286,6 +286,17 @@ class Strategy(ABC):
         """
         raise NotImplementedError("get_current_underlying_price is not implemented in the base Strategy class.")
 
+    def get_current_bar_timestamp(self, date: datetime) -> Optional[datetime]:
+        """Most recent bar in ``data`` at or before ``date``."""
+        if self.data is None or self.data.empty:
+            return None
+        candidates = self.data.index[self.data.index <= date]
+        if len(candidates) > 0:
+            ts = candidates[-1]
+            return ts.to_pydatetime() if hasattr(ts, "to_pydatetime") else ts
+        ts = self.data.index[-1]
+        return ts.to_pydatetime() if hasattr(ts, "to_pydatetime") else ts
+
     def set_data(self, data: pd.DataFrame, treasury_data: Optional[TreasuryRates] = None):
         """
         Set the market data for the strategy.

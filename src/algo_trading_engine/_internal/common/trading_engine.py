@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 
 from algo_trading_engine import DataRetriever, Strategy
+from algo_trading_engine._internal.util.market_clock import market_now
 from algo_trading_engine.logging import get_logger
 from algo_trading_engine.enums import BarTimeInterval, UniversalCloseCondition
 from algo_trading_engine.models import EngineConfig
@@ -160,7 +161,7 @@ class TradingEngine(ABC):
         Raises:
             ValueError: If live price fetch fails and date is current date
         """
-        current_date = datetime.now().date()
+        current_date = market_now().date()
         if date.date() == current_date:
             try:
                 use_cache = True

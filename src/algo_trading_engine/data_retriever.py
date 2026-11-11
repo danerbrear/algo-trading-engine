@@ -1,10 +1,11 @@
 import yfinance as yf
 import pandas as pd
 import numpy as np
-from datetime import datetime
-from typing import ClassVar, Dict, Optional
+from datetime import datetime, timedelta
+from typing import ClassVar, Dict, Optional, cast
 
 from algo_trading_engine._internal.common.cache.cache_manager import CacheManager
+from algo_trading_engine._internal.util.market_clock import market_now
 from algo_trading_engine.logging import get_logger
 from algo_trading_engine.vo import TreasuryRates
 from algo_trading_engine.enums import BarTimeInterval
@@ -43,7 +44,7 @@ class DataRetriever:
         self.cache_manager = CacheManager(create_dirs=use_cache)
         self.treasury_rates: Optional[TreasuryRates] = None  # Store treasury rates data
 
-    def load_treasury_rates(self, start_date: datetime, end_date: datetime = None):
+    def load_treasury_rates(self, start_date: datetime, end_date: Optional[datetime] = None):
         """
         Load treasury rates from cache for the specified date range.
         
@@ -68,7 +69,54 @@ class DataRetriever:
             # Fallback: try to find the closest available treasury data
             self._find_closest_treasury_data(start_date)
 
-    def fetch_data_for_period(self, start_date: str, end_date: str = None) -> pd.DataFrame:
+    @staticmethod
+    def _as_timestamp(value: datetime | str) -> pd.Timestamp:
+        """Parse a datetime or ISO string into a ``Timestamp``.
+
+        The pandas constructor is typed as ``Timestamp | NaT`` for every input.
+        """
+        parsed = pd.Timestamp(value)
+        if parsed is pd.NaT:
+            raise ValueError(f"Invalid timestamp: {value!r}")
+        return cast(pd.Timestamp, parsed)
+
+    @staticmethod
+    def _effective_end_inclusive(end_date: Optional[str]) -> pd.Timestamp:
+        """Upper inclusive bound for bar filtering (Eastern naive)."""
+        if end_date is None:
+            return DataRetriever._as_timestamp(market_now())
+        ts = DataRetriever._as_timestamp(end_date)
+        if len(end_date.strip()) == 10:
+            day = ts.date()
+            return DataRetriever._as_timestamp(
+                datetime(day.year, day.month, day.day, 23, 59, 59, 999999)
+            )
+        return ts
+
+    @staticmethod
+    def _yfinance_end_exclusive(end_inclusive: pd.Timestamp) -> pd.Timestamp:
+        """yfinance ``history`` end is exclusive; include all bars through *end_inclusive*."""
+        day = end_inclusive.date() + timedelta(days=1)
+        return DataRetriever._as_timestamp(datetime(day.year, day.month, day.day))
+
+    @staticmethod
+    def _end_spans_today(end_inclusive: pd.Timestamp) -> bool:
+        return end_inclusive.date() >= market_now().date()
+
+    def _cache_is_complete(
+        self,
+        cached_data: pd.DataFrame,
+        end_date: Optional[str],
+        end_inclusive: pd.Timestamp,
+    ) -> bool:
+        if self._end_spans_today(end_inclusive):
+            return False
+        last = cached_data.index[-1]
+        if end_date is not None and len(end_date.strip()) == 10:
+            return last.date() >= end_inclusive.date()
+        return last >= end_inclusive
+
+    def fetch_data_for_period(self, start_date: str, end_date: Optional[str] = None) -> pd.DataFrame:
         """
         Fetch data for a specific period with caching.
         
@@ -84,12 +132,11 @@ class DataRetriever:
             DataFrame with OHLCV data for the specified period
         """
         cached_data = self._load_cached_data_range(start_date, end_date)
+        end_inclusive = self._effective_end_inclusive(end_date)
 
         if cached_data is not None and not cached_data.empty:
-            effective_end = end_date if end_date is not None else pd.Timestamp.now().strftime('%Y-%m-%d')
-            end_ts = pd.Timestamp(effective_end)
-
-            if cached_data.index[-1] < end_ts:
+            effective_end = end_date if end_date is not None else end_inclusive.strftime("%Y-%m-%d")
+            if not self._cache_is_complete(cached_data, end_date, end_inclusive):
                 return self._fetch_gap_and_merge(cached_data, start_date, effective_end)
 
             interval_str = self._get_yfinance_interval()
@@ -108,16 +155,12 @@ class DataRetriever:
         if not info or len(info) == 0:
             raise ValueError(f"Invalid symbol or no info available for {self.symbol}")
         
-        if end_date is None:
-            end_date_ts = pd.Timestamp.now()
-        else:
-            end_date_ts = pd.Timestamp(end_date)
-        
         start_date_ts = pd.Timestamp(start_date)
-        
+        yf_end = self._yfinance_end_exclusive(end_inclusive)
+
         data = self.ticker.history(
             start=start_date_ts,
-            end=end_date_ts,
+            end=yf_end,
             interval=interval_str
         )
         
@@ -133,10 +176,12 @@ class DataRetriever:
         data.index = data.index.tz_localize(None)
         get_logger().info(f"Fetched {len(data)} {interval_str} bars from {data.index[0]} to {data.index[-1]}")
         
-        data = data[(data.index >= start_date_ts) & (data.index <= end_date_ts)].copy()
-        
+        data = data[(data.index >= start_date_ts) & (data.index <= end_inclusive)].copy()
+
         if data.empty:
-            raise ValueError(f"No data available after filtering for date range {start_date} to {end_date_ts.date()}")
+            raise ValueError(
+                f"No data available after filtering for date range {start_date} to {end_inclusive}"
+            )
         
         if self.use_cache:
             self._save_data_to_cache(data, start_date)
@@ -315,7 +360,7 @@ class DataRetriever:
         else:
             get_logger().warning("Could not find any treasury rate files")
     
-    def _load_cached_data_range(self, start_date: str, end_date: str = None) -> Optional[pd.DataFrame]:
+    def _load_cached_data_range(self, start_date: str, end_date: Optional[str] = None) -> Optional[pd.DataFrame]:
         """
         Load cached data for a date range from the interval-specific cache directory.
         
@@ -331,7 +376,7 @@ class DataRetriever:
             DataFrame with cached data (may be partial), or None if no cache exists
         """
         if end_date is None:
-            end_date = pd.Timestamp.now().strftime('%Y-%m-%d')
+            end_date = market_now().strftime("%Y-%m-%d")
         
         interval_dir = self._get_cache_interval_dir()
         cache_base = self.cache_manager.get_cache_dir('stocks', self.symbol)
@@ -346,8 +391,7 @@ class DataRetriever:
             if cache_file.exists():
                 try:
                     data = pd.read_pickle(cache_file)
-                    end_ts = pd.Timestamp(end_date)
-                    # Trim to end_date only when cache extends past it
+                    end_ts = self._effective_end_inclusive(end_date)
                     if data.index[-1] > end_ts:
                         data = data[data.index <= end_ts]
                     return data
@@ -364,8 +408,8 @@ class DataRetriever:
         
         dfs = []
         start_ts = pd.Timestamp(start_date)
-        end_ts = pd.Timestamp(end_date)
-        
+        end_ts = self._effective_end_inclusive(end_date)
+
         for cache_file in cache_files:
             try:
                 file_date_str = cache_file.stem.split('_')[0]
@@ -387,13 +431,10 @@ class DataRetriever:
     def _fetch_bars_from_api(self, start_date: str, end_date: str) -> pd.DataFrame:
         """
         Fetch bar data from yfinance for a date range without caching.
-        
+
         Args:
             start_date: Start date (YYYY-MM-DD)
-            end_date: End date (YYYY-MM-DD)
-            
-        Returns:
-            DataFrame with OHLCV data, or empty DataFrame if no data available
+            end_date: End date (YYYY-MM-DD), inclusive through that calendar day
         """
         interval_str = self._get_yfinance_interval()
 
@@ -401,19 +442,20 @@ class DataRetriever:
             self.ticker = yf.Ticker(self.symbol)
 
         start_date_ts = pd.Timestamp(start_date)
-        end_date_ts = pd.Timestamp(end_date)
+        end_inclusive = self._effective_end_inclusive(end_date)
+        yf_end = self._yfinance_end_exclusive(end_inclusive)
 
         data = self.ticker.history(
             start=start_date_ts,
-            end=end_date_ts,
-            interval=interval_str
+            end=yf_end,
+            interval=interval_str,
         )
 
         if data.empty:
             return pd.DataFrame()
 
         data.index = data.index.tz_localize(None)
-        data = data[(data.index >= start_date_ts) & (data.index <= end_date_ts)].copy()
+        data = data[(data.index >= start_date_ts) & (data.index <= end_inclusive)].copy()
 
         return data
 
@@ -429,6 +471,13 @@ class DataRetriever:
         cache_base = self.cache_manager.get_cache_dir('stocks', self.symbol)
         cache_dir = cache_base / interval_dir
         cache_dir.mkdir(parents=True, exist_ok=True)
+
+        today = market_now().date()
+        if not data.empty:
+            keep = [ts.date() != today for ts in data.index]
+            data = data.loc[keep].copy()
+        if data.empty:
+            return
 
         if self.bar_interval == BarTimeInterval.DAY:
             cache_file = cache_dir / f"{start_date}.pkl"

@@ -237,6 +237,45 @@ class TestPaperTradingEngineFromConfig:
         assert 'lstm_start_date' not in mock_data_retriever.call_args[1]
         mock_retriever_instance.fetch_data_for_period.assert_called_once_with('2024-06-01')
 
+    @patch("algo_trading_engine.trade.apply_live_quote")
+    @patch("algo_trading_engine.trade.market_now", return_value=datetime(2026, 11, 11, 10, 30))
+    @patch("algo_trading_engine.trade.OptionsHandler")
+    @patch("algo_trading_engine.trade.DataRetriever")
+    def test_from_config_applies_live_quote_before_set_data(
+        self,
+        mock_data_retriever,
+        _mock_options_handler,
+        _mock_market_now,
+        mock_apply_live,
+    ):
+        frame = pd.DataFrame(
+            {
+                "Close": [500.0] * 2,
+                "Open": [499.0] * 2,
+                "High": [501.0] * 2,
+                "Low": [498.0] * 2,
+            },
+            index=pd.to_datetime(["2026-11-10", "2026-11-11"]),
+        )
+        mock_strategy = MagicMock()
+        mock_strategy.set_data = Mock()
+        mock_strategy.indicators = []
+        mock_strategy.options_handler = None
+        mock_strategy.warm_up_period = 0
+        mock_strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(0))
+        mock_retriever_instance = MagicMock()
+        mock_retriever_instance.treasury_rates = None
+        mock_retriever_instance.fetch_data_for_period.return_value = frame
+        mock_retriever_instance.get_live_price.return_value = 505.0
+        mock_data_retriever.return_value = mock_retriever_instance
+        mock_apply_live.side_effect = lambda data, *_a, **_k: data
+        config = PaperTradingConfig(
+            symbol="SPY", strategy_type=mock_strategy, api_key="test_key", use_free_tier=True
+        )
+        PaperTradingEngine.from_config(config)
+        mock_apply_live.assert_called_once()
+        mock_strategy.set_data.assert_called_once()
+
     @patch('algo_trading_engine.trade.OptionsHandler')
     @patch('algo_trading_engine.trade.DataRetriever')
     @patch('algo_trading_engine.trade.TradingEngine.precompute_indicators')
