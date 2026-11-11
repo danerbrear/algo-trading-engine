@@ -93,6 +93,54 @@ class InteractiveStrategyRecommender:
         if positions_to_close:
             self._process_close_recommendations(date, positions_to_close, open_records)
 
+    def get_open_positions_status(self, date: datetime) -> List[dict]:
+        """Return current stats for all open positions without prompting.
+
+        Stats include exit price, P&L dollars and percent, days held, and DTE.
+        """
+        statuses: List[dict] = []
+        for rec in self.decision_store.get_open_positions(strategy_name=self._get_strategy_name_from_class()):
+            position = self._position_from_decision(rec)
+            # For status display, always use auto mode (no prompts)
+            exit_price = self._get_exit_price_for_status(position, date)
+            if exit_price is None:
+                continue
+            try:
+                pnl_dollars = position.get_return_dollars(exit_price)
+                pnl_pct = position._get_return(exit_price)
+            except Exception:
+                pnl_dollars = None
+                pnl_pct = None
+            try:
+                days_held = position.get_days_held(date)
+                dte = position.get_days_to_expiration(date)
+            except Exception:
+                days_held = None
+                dte = None
+
+            statuses.append({
+                "id": rec.id,
+                "symbol": rec.proposal.symbol,
+                "strategy_type": rec.proposal.strategy_type.value,
+                "legs": tuple((leg.option_type.value, leg.strike, leg.expiration) for leg in rec.proposal.legs),
+                "quantity": position.quantity,
+                "entry_price": position.entry_price,
+                "exit_price": exit_price,
+                "pnl_dollars": pnl_dollars,
+                "pnl_percent": pnl_pct,
+                "days_held": days_held,
+                "dte": dte,
+            })
+        return statuses
+
+    # ---------- Utilities ----------
+
+    def prompt(self, message: str) -> bool:
+        if self.auto_yes:
+            return True
+        answer = input(f"{message} [y/N]: ").strip().lower()
+        return answer in {"y", "yes"}
+
     # ---------- Helper methods for unified run() ----------
     
     def _get_current_price(self, date: datetime) -> Optional[float]:
@@ -263,54 +311,6 @@ class InteractiveStrategyRecommender:
                     break
         
         return closed_records
-
-    def get_open_positions_status(self, date: datetime) -> List[dict]:
-        """Return current stats for all open positions without prompting.
-
-        Stats include exit price, P&L dollars and percent, days held, and DTE.
-        """
-        statuses: List[dict] = []
-        for rec in self.decision_store.get_open_positions(strategy_name=self._get_strategy_name_from_class()):
-            position = self._position_from_decision(rec)
-            # For status display, always use auto mode (no prompts)
-            exit_price = self._get_exit_price_for_status(position, date)
-            if exit_price is None:
-                continue
-            try:
-                pnl_dollars = position.get_return_dollars(exit_price)
-                pnl_pct = position._get_return(exit_price)
-            except Exception:
-                pnl_dollars = None
-                pnl_pct = None
-            try:
-                days_held = position.get_days_held(date)
-                dte = position.get_days_to_expiration(date)
-            except Exception:
-                days_held = None
-                dte = None
-
-            statuses.append({
-                "id": rec.id,
-                "symbol": rec.proposal.symbol,
-                "strategy_type": rec.proposal.strategy_type.value,
-                "legs": tuple((leg.option_type.value, leg.strike, leg.expiration) for leg in rec.proposal.legs),
-                "quantity": position.quantity,
-                "entry_price": position.entry_price,
-                "exit_price": exit_price,
-                "pnl_dollars": pnl_dollars,
-                "pnl_percent": pnl_pct,
-                "days_held": days_held,
-                "dte": dte,
-            })
-        return statuses
-
-    # ---------- Utilities ----------
-
-    def prompt(self, message: str) -> bool:
-        if self.auto_yes:
-            return True
-        answer = input(f"{message} [y/N]: ").strip().lower()
-        return answer in {"y", "yes"}
 
     def _position_from_decision(self, rec: DecisionResponseDTO) -> Position:
         # Determine representative strike for display based on strategy type

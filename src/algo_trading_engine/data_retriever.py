@@ -15,11 +15,6 @@ class DataRetriever:
 
     _live_price_cache: ClassVar[Dict[str, float]] = {}
 
-    @classmethod
-    def clear_live_price_cache(cls) -> None:
-        """Clear cached live prices. Intended for tests."""
-        cls._live_price_cache.clear()
-
     def __init__(
         self, 
         symbol='SPY', 
@@ -43,6 +38,11 @@ class DataRetriever:
         self.use_cache = use_cache
         self.cache_manager = CacheManager(create_dirs=use_cache)
         self.treasury_rates: Optional[TreasuryRates] = None  # Store treasury rates data
+
+    @classmethod
+    def clear_live_price_cache(cls) -> None:
+        """Clear cached live prices. Intended for tests."""
+        cls._live_price_cache.clear()
 
     def load_treasury_rates(self, start_date: datetime, end_date: Optional[datetime] = None):
         """
@@ -68,53 +68,6 @@ class DataRetriever:
         else:
             # Fallback: try to find the closest available treasury data
             self._find_closest_treasury_data(start_date)
-
-    @staticmethod
-    def _as_timestamp(value: datetime | str) -> pd.Timestamp:
-        """Parse a datetime or ISO string into a ``Timestamp``.
-
-        The pandas constructor is typed as ``Timestamp | NaT`` for every input.
-        """
-        parsed = pd.Timestamp(value)
-        if parsed is pd.NaT:
-            raise ValueError(f"Invalid timestamp: {value!r}")
-        return cast(pd.Timestamp, parsed)
-
-    @staticmethod
-    def _effective_end_inclusive(end_date: Optional[str]) -> pd.Timestamp:
-        """Upper inclusive bound for bar filtering (Eastern naive)."""
-        if end_date is None:
-            return DataRetriever._as_timestamp(market_now())
-        ts = DataRetriever._as_timestamp(end_date)
-        if len(end_date.strip()) == 10:
-            day = ts.date()
-            return DataRetriever._as_timestamp(
-                datetime(day.year, day.month, day.day, 23, 59, 59, 999999)
-            )
-        return ts
-
-    @staticmethod
-    def _yfinance_end_exclusive(end_inclusive: pd.Timestamp) -> pd.Timestamp:
-        """yfinance ``history`` end is exclusive; include all bars through *end_inclusive*."""
-        day = end_inclusive.date() + timedelta(days=1)
-        return DataRetriever._as_timestamp(datetime(day.year, day.month, day.day))
-
-    @staticmethod
-    def _end_spans_today(end_inclusive: pd.Timestamp) -> bool:
-        return end_inclusive.date() >= market_now().date()
-
-    def _cache_is_complete(
-        self,
-        cached_data: pd.DataFrame,
-        end_date: Optional[str],
-        end_inclusive: pd.Timestamp,
-    ) -> bool:
-        if self._end_spans_today(end_inclusive):
-            return False
-        last = cached_data.index[-1]
-        if end_date is not None and len(end_date.strip()) == 10:
-            return last.date() >= end_inclusive.date()
-        return last >= end_inclusive
 
     def fetch_data_for_period(self, start_date: str, end_date: Optional[str] = None) -> pd.DataFrame:
         """
@@ -304,6 +257,53 @@ class DataRetriever:
         except Exception as yfinance_error:
             get_logger().error(f"Error fetching live price from yfinance for {symbol}: {str(yfinance_error)}")
             return None
+
+    @staticmethod
+    def _as_timestamp(value: datetime | str) -> pd.Timestamp:
+        """Parse a datetime or ISO string into a ``Timestamp``.
+
+        The pandas constructor is typed as ``Timestamp | NaT`` for every input.
+        """
+        parsed = pd.Timestamp(value)
+        if parsed is pd.NaT:
+            raise ValueError(f"Invalid timestamp: {value!r}")
+        return cast(pd.Timestamp, parsed)
+
+    @staticmethod
+    def _effective_end_inclusive(end_date: Optional[str]) -> pd.Timestamp:
+        """Upper inclusive bound for bar filtering (Eastern naive)."""
+        if end_date is None:
+            return DataRetriever._as_timestamp(market_now())
+        ts = DataRetriever._as_timestamp(end_date)
+        if len(end_date.strip()) == 10:
+            day = ts.date()
+            return DataRetriever._as_timestamp(
+                datetime(day.year, day.month, day.day, 23, 59, 59, 999999)
+            )
+        return ts
+
+    @staticmethod
+    def _yfinance_end_exclusive(end_inclusive: pd.Timestamp) -> pd.Timestamp:
+        """yfinance ``history`` end is exclusive; include all bars through *end_inclusive*."""
+        day = end_inclusive.date() + timedelta(days=1)
+        return DataRetriever._as_timestamp(datetime(day.year, day.month, day.day))
+
+    @staticmethod
+    def _end_spans_today(end_inclusive: pd.Timestamp) -> bool:
+        return end_inclusive.date() >= market_now().date()
+
+    def _cache_is_complete(
+        self,
+        cached_data: pd.DataFrame,
+        end_date: Optional[str],
+        end_inclusive: pd.Timestamp,
+    ) -> bool:
+        if self._end_spans_today(end_inclusive):
+            return False
+        last = cached_data.index[-1]
+        if end_date is not None and len(end_date.strip()) == 10:
+            return last.date() >= end_inclusive.date()
+        return last >= end_inclusive
 
     def _get_yfinance_interval(self) -> str:
         """Convert BarTimeInterval enum to yfinance interval string."""

@@ -80,22 +80,16 @@ class TradingEngine(ABC):
             strategy.option_bar_timespan = bar_interval
 
         self.precompute_indicators()
-
-    def precompute_indicators(self) -> None:
-        """Vectorized indicator fill for all bars in engine data."""
-        if not self._strategy.indicators:
-            return
-        if self._data is None or self._data.empty:
-            raise ValueError(
-                "Cannot precompute indicators without data. "
-                "Provide market data before constructing the trading engine."
-            )
-        for indicator in self._strategy.indicators:
-            indicator.precompute(self._data)
-        get_logger().info(
-            f"Indicator precompute complete: {len(self._strategy.indicators)} indicator(s), "
-            f"{len(self._data)} bar(s)"
-        )
+    
+    @property
+    def data(self) -> pd.DataFrame:
+        """Get the market data."""
+        return self._data
+    
+    @property
+    @abstractmethod
+    def strategy(self) -> Strategy:
+        """Get the strategy being used by this engine."""
 
     @abstractmethod
     def run(self) -> bool:
@@ -114,16 +108,6 @@ class TradingEngine(ABC):
         Returns:
             List of currently open Position objects
         """
-    
-    @property
-    def data(self) -> pd.DataFrame:
-        """Get the market data."""
-        return self._data
-    
-    @property
-    @abstractmethod
-    def strategy(self) -> Strategy:
-        """Get the strategy being used by this engine."""
     
     @classmethod
     @abstractmethod
@@ -144,49 +128,21 @@ class TradingEngine(ABC):
             ValueError: If configuration is invalid or data fetching fails
         """
 
-    def _get_current_underlying_price(self, date: datetime, symbol: str) -> Optional[float]:
-        """
-        Fetch and return the live price if the date is the current date, otherwise return last_price for the date.
-        
-        This method is injected into strategies so they can get current underlying prices
-        without needing to manage DataRetriever themselves.
-        
-        Args:
-            date: Date to get price for
-            symbol: Symbol to fetch price for (e.g., 'SPY')
-            
-        Returns:
-            Current underlying price as float, or None if unavailable
-            
-        Raises:
-            ValueError: If live price fetch fails and date is current date
-        """
-        current_date = market_now().date()
-        if date.date() == current_date:
-            try:
-                use_cache = True
-                if hasattr(self, '_config') and hasattr(self._config, 'use_cache'):
-                    use_cache = self._config.use_cache
-
-                data_retriever = DataRetriever(symbol=symbol, use_cache=use_cache)
-                live_price = data_retriever.get_live_price()
-            except Exception as e:
-                raise ValueError(f'Failed to fetch live price from DataRetriever: {e}') from e
-
-            if live_price is not None:
-                return live_price
-            else:
-                raise ValueError("Failed to fetch live price from DataRetriever.")
-        else:
-            # Historical date - return Close price from data
-            try:
-                return float(self.data.loc[date]['Close'])
-            except (KeyError, IndexError):
-                # If exact date not found, try to get closest available date
-                try:
-                    return float(self.data.loc[self.data.index <= date]['Close'].iloc[-1])
-                except (IndexError, KeyError) as e:
-                    raise ValueError(f"Could not find price data for date {date.date()}") from e
+    def precompute_indicators(self) -> None:
+        """Vectorized indicator fill for all bars in engine data."""
+        if not self._strategy.indicators:
+            return
+        if self._data is None or self._data.empty:
+            raise ValueError(
+                "Cannot precompute indicators without data. "
+                "Provide market data before constructing the trading engine."
+            )
+        for indicator in self._strategy.indicators:
+            indicator.precompute(self._data)
+        get_logger().info(
+            f"Indicator precompute complete: {len(self._strategy.indicators)} indicator(s), "
+            f"{len(self._data)} bar(s)"
+        )
     
         
     def get_current_volumes_for_position(self, position: Position, date: Optional[datetime] = None) -> list[int]:
@@ -282,6 +238,50 @@ class TradingEngine(ABC):
             elif self._should_close_due_to_stop(position, exit_price):
                 get_logger().info(f"Stop loss hit for {position.__str__()} at exit {exit_price}")
                 close_position(exit_price if exit_price is not None else 0.0)
+
+    def _get_current_underlying_price(self, date: datetime, symbol: str) -> Optional[float]:
+        """
+        Fetch and return the live price if the date is the current date, otherwise return last_price for the date.
+        
+        This method is injected into strategies so they can get current underlying prices
+        without needing to manage DataRetriever themselves.
+        
+        Args:
+            date: Date to get price for
+            symbol: Symbol to fetch price for (e.g., 'SPY')
+            
+        Returns:
+            Current underlying price as float, or None if unavailable
+            
+        Raises:
+            ValueError: If live price fetch fails and date is current date
+        """
+        current_date = market_now().date()
+        if date.date() == current_date:
+            try:
+                use_cache = True
+                if hasattr(self, '_config') and hasattr(self._config, 'use_cache'):
+                    use_cache = self._config.use_cache
+
+                data_retriever = DataRetriever(symbol=symbol, use_cache=use_cache)
+                live_price = data_retriever.get_live_price()
+            except Exception as e:
+                raise ValueError(f'Failed to fetch live price from DataRetriever: {e}') from e
+
+            if live_price is not None:
+                return live_price
+            else:
+                raise ValueError("Failed to fetch live price from DataRetriever.")
+        else:
+            # Historical date - return Close price from data
+            try:
+                return float(self.data.loc[date]['Close'])
+            except (KeyError, IndexError):
+                # If exact date not found, try to get closest available date
+                try:
+                    return float(self.data.loc[self.data.index <= date]['Close'].iloc[-1])
+                except (IndexError, KeyError) as e:
+                    raise ValueError(f"Could not find price data for date {date.date()}") from e
     
     def _should_close_due_to_assignment(self, position: Position, date: datetime) -> bool:
         if UniversalCloseCondition.ASSIGNMENT not in self.strategy.universal_close_conditions:

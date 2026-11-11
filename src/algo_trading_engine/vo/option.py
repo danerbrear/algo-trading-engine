@@ -72,6 +72,28 @@ class Option:
         if self.open_interest is not None and self.open_interest < 0:
             raise ValueError("Open interest cannot be negative")
 
+    def __eq__(self, other) -> bool:
+        if not isinstance(other, Option):
+            return False
+        return (
+            self.ticker == other.ticker
+            and self.timestamp == other.timestamp
+            and self.symbol == other.symbol
+            and self.strike == other.strike
+            and self.expiration == other.expiration
+            and self.option_type == other.option_type
+        )
+
+    def __str__(self) -> str:
+        return f"{self.symbol} {self.option_type.value.upper()} {self.strike} @ {self.last_price:.2f} as of {to_readable_str(self.timestamp)}"
+
+    def __repr__(self) -> str:
+        return (
+            f"Option(symbol='{self.symbol}', strike={self.strike}, "
+            f"expiration={self.expiration}, "
+            f"type={self.option_type.value}, price={self.last_price:.2f})"
+        )
+
     @property
     def is_call(self) -> bool:
         return self.option_type == OptionType.CALL
@@ -154,28 +176,6 @@ class Option:
             moneyness=data.get("moneyness"),
         )
 
-    def __eq__(self, other) -> bool:
-        if not isinstance(other, Option):
-            return False
-        return (
-            self.ticker == other.ticker
-            and self.timestamp == other.timestamp
-            and self.symbol == other.symbol
-            and self.strike == other.strike
-            and self.expiration == other.expiration
-            and self.option_type == other.option_type
-        )
-
-    def __str__(self) -> str:
-        return f"{self.symbol} {self.option_type.value.upper()} {self.strike} @ {self.last_price:.2f} as of {to_readable_str(self.timestamp)}"
-
-    def __repr__(self) -> str:
-        return (
-            f"Option(symbol='{self.symbol}', strike={self.strike}, "
-            f"expiration={self.expiration}, "
-            f"type={self.option_type.value}, price={self.last_price:.2f})"
-        )
-
     @classmethod
     def from_contract_and_bar(cls, contract: OptionContractDTO, option_bar: OptionBarDTO) -> Option:
         """Create a complete option object from contract information and pricing data"""
@@ -251,6 +251,21 @@ class OptionChain:
         object.__setattr__(self, "calls", tuple(calls_list))
         object.__setattr__(self, "puts", tuple(puts_list))
 
+    def __str__(self) -> str:
+        result = f"OptionChain({self.total_calls} calls, {self.total_puts} puts)"
+        if self.calls:
+            result += "\n  Calls:"
+            for call in self.calls:
+                result += f"\n    {call}"
+        if self.puts:
+            result += "\n  Puts:"
+            for put in self.puts:
+                result += f"\n    {put}"
+        return result
+
+    def __repr__(self) -> str:
+        return f"OptionChain(calls={self.total_calls}, puts={self.total_puts})"
+
     @property
     def total_calls(self) -> int:
         return len(self.calls)
@@ -308,18 +323,3 @@ class OptionChain:
             date=self.date,
             source=self.source,
         )
-
-    def __str__(self) -> str:
-        result = f"OptionChain({self.total_calls} calls, {self.total_puts} puts)"
-        if self.calls:
-            result += "\n  Calls:"
-            for call in self.calls:
-                result += f"\n    {call}"
-        if self.puts:
-            result += "\n  Puts:"
-            for put in self.puts:
-                result += f"\n    {put}"
-        return result
-
-    def __repr__(self) -> str:
-        return f"OptionChain(calls={self.total_calls}, puts={self.total_puts})"

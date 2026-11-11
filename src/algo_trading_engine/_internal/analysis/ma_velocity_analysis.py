@@ -192,64 +192,6 @@ class MAVelocityAnalyzer:
         
         return signals
     
-    def _check_trend_success(self, data: pd.DataFrame, signal_index: int, 
-                           trend_type: str, min_duration: int = 3, 
-                           max_duration: int = 60) -> Tuple[bool, int, float]:
-        """
-        Check if a trend signal leads to a successful trend.
-        
-        Args:
-            data: DataFrame with price data
-            signal_index: Index of the signal
-            trend_type: 'up' or 'down'
-            min_duration: Minimum trend duration in days
-            max_duration: Maximum trend duration in days
-            
-        Returns:
-            Tuple of (success, duration, return)
-        """
-        start_price = data['Close'].iloc[signal_index]
-        
-        # Look for trend continuation
-        for duration in range(min_duration, min(max_duration + 1, len(data) - signal_index)):
-            end_index = signal_index + duration
-            if end_index >= len(data):
-                break
-                
-            end_price = data['Close'].iloc[end_index]
-            total_return = (end_price - start_price) / start_price
-            
-            if trend_type == 'up':
-                if total_return > 0:
-                    # Check if this is a sustained upward trend
-                    # Look for any significant reversal within the trend period
-                    trend_sustained = True
-                    for j in range(signal_index + 1, end_index):
-                        current_price = data['Close'].iloc[j]
-                        current_return = (current_price - start_price) / start_price
-                        if current_return < -0.02:  # 2% reversal threshold
-                            trend_sustained = False
-                            break
-                    
-                    if trend_sustained:
-                        return True, duration, total_return
-            else:  # down trend
-                if total_return < 0:
-                    # Check if this is a sustained downward trend
-                    # Look for any significant reversal within the trend period
-                    trend_sustained = True
-                    for j in range(signal_index + 1, end_index):
-                        current_price = data['Close'].iloc[j]
-                        current_return = (current_price - start_price) / start_price
-                        if current_return > 0.02:  # 2% reversal threshold
-                            trend_sustained = False
-                            break
-                    
-                    if trend_sustained:
-                        return True, duration, total_return
-        
-        return False, 0, 0.0
-    
     def calculate_success_rates(self, signals: List[TrendSignal]) -> Dict[str, List[MAVelocityResult]]:
         """
         Calculate success rates for different MA combinations.
@@ -420,6 +362,118 @@ class MAVelocityAnalyzer:
             report.append("")
         
         return "\n".join(report)
+
+    def plot_results(
+        self,
+        optimal_combinations: Dict[str, MAVelocityResult],
+        save_path: Optional[str] = None,
+        plot_config: Optional[PlotConfig] = None,
+    ):
+        """
+        Create visualization plots for the analysis results.
+
+        Args:
+            optimal_combinations: Dictionary with optimal MA combinations
+            save_path: Optional path to save the plot
+            plot_config: Plotting configuration (defaults to enabled interactive plots)
+        """
+        config = plot_config or PlotConfig()
+        specs = []
+        if "up" in optimal_combinations:
+            up_result = optimal_combinations["up"]
+            specs.append(
+                self._price_ma_spec(
+                    up_result,
+                    name="ma_velocity_up",
+                    title=f"Optimal MAs for Upward Trends (Success Rate: {up_result.success_rate:.1%})",
+                )
+            )
+        if "down" in optimal_combinations:
+            down_result = optimal_combinations["down"]
+            specs.append(
+                self._price_ma_spec(
+                    down_result,
+                    name="ma_velocity_down",
+                    title=f"Optimal MAs for Downward Trends (Success Rate: {down_result.success_rate:.1%})",
+                )
+            )
+        successful_signals = [signal for signal in self.trend_signals if signal.success]
+        failed_signals = [signal for signal in self.trend_signals if not signal.success]
+        specs.append(
+            self._signal_spec(
+                successful_signals,
+                name="ma_velocity_successful_signals",
+                title="Successful Trend Signals",
+            )
+        )
+        specs.append(
+            self._signal_spec(
+                failed_signals,
+                name="ma_velocity_failed_signals",
+                title="Failed Trend Signals",
+            )
+        )
+        show_plot(specs, config=config, save_path=save_path)
+        if save_path:
+            print(f"📊 Plot saved to {save_path}")
+    
+    def _check_trend_success(self, data: pd.DataFrame, signal_index: int, 
+                           trend_type: str, min_duration: int = 3, 
+                           max_duration: int = 60) -> Tuple[bool, int, float]:
+        """
+        Check if a trend signal leads to a successful trend.
+        
+        Args:
+            data: DataFrame with price data
+            signal_index: Index of the signal
+            trend_type: 'up' or 'down'
+            min_duration: Minimum trend duration in days
+            max_duration: Maximum trend duration in days
+            
+        Returns:
+            Tuple of (success, duration, return)
+        """
+        start_price = data['Close'].iloc[signal_index]
+        
+        # Look for trend continuation
+        for duration in range(min_duration, min(max_duration + 1, len(data) - signal_index)):
+            end_index = signal_index + duration
+            if end_index >= len(data):
+                break
+                
+            end_price = data['Close'].iloc[end_index]
+            total_return = (end_price - start_price) / start_price
+            
+            if trend_type == 'up':
+                if total_return > 0:
+                    # Check if this is a sustained upward trend
+                    # Look for any significant reversal within the trend period
+                    trend_sustained = True
+                    for j in range(signal_index + 1, end_index):
+                        current_price = data['Close'].iloc[j]
+                        current_return = (current_price - start_price) / start_price
+                        if current_return < -0.02:  # 2% reversal threshold
+                            trend_sustained = False
+                            break
+                    
+                    if trend_sustained:
+                        return True, duration, total_return
+            else:  # down trend
+                if total_return < 0:
+                    # Check if this is a sustained downward trend
+                    # Look for any significant reversal within the trend period
+                    trend_sustained = True
+                    for j in range(signal_index + 1, end_index):
+                        current_price = data['Close'].iloc[j]
+                        current_return = (current_price - start_price) / start_price
+                        if current_return > 0.02:  # 2% reversal threshold
+                            trend_sustained = False
+                            break
+                    
+                    if trend_sustained:
+                        return True, duration, total_return
+        
+        return False, 0, 0.0
     
     def _ensure_ma_columns(self, short_ma: int, long_ma: int) -> tuple[str, str]:
         short_ma_col = f"SMA_{short_ma}"
@@ -480,60 +534,6 @@ class MAVelocityAnalyzer:
             y_label="Price",
             markers=self._signal_marker_frames(signals),
         )
-
-    def plot_results(
-        self,
-        optimal_combinations: Dict[str, MAVelocityResult],
-        save_path: Optional[str] = None,
-        plot_config: Optional[PlotConfig] = None,
-    ):
-        """
-        Create visualization plots for the analysis results.
-
-        Args:
-            optimal_combinations: Dictionary with optimal MA combinations
-            save_path: Optional path to save the plot
-            plot_config: Plotting configuration (defaults to enabled interactive plots)
-        """
-        config = plot_config or PlotConfig()
-        specs = []
-        if "up" in optimal_combinations:
-            up_result = optimal_combinations["up"]
-            specs.append(
-                self._price_ma_spec(
-                    up_result,
-                    name="ma_velocity_up",
-                    title=f"Optimal MAs for Upward Trends (Success Rate: {up_result.success_rate:.1%})",
-                )
-            )
-        if "down" in optimal_combinations:
-            down_result = optimal_combinations["down"]
-            specs.append(
-                self._price_ma_spec(
-                    down_result,
-                    name="ma_velocity_down",
-                    title=f"Optimal MAs for Downward Trends (Success Rate: {down_result.success_rate:.1%})",
-                )
-            )
-        successful_signals = [signal for signal in self.trend_signals if signal.success]
-        failed_signals = [signal for signal in self.trend_signals if not signal.success]
-        specs.append(
-            self._signal_spec(
-                successful_signals,
-                name="ma_velocity_successful_signals",
-                title="Successful Trend Signals",
-            )
-        )
-        specs.append(
-            self._signal_spec(
-                failed_signals,
-                name="ma_velocity_failed_signals",
-                title="Failed Trend Signals",
-            )
-        )
-        show_plot(specs, config=config, save_path=save_path)
-        if save_path:
-            print(f"📊 Plot saved to {save_path}")
 
 
 def main():

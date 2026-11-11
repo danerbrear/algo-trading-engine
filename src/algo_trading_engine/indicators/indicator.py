@@ -20,6 +20,23 @@ class Indicator(ABC):
         if len(self._values) == 0:
             return None
         return self._values.iloc[-1]
+
+    @abstractmethod
+    def precompute(self, data: pd.DataFrame) -> None:
+        """
+        Populate historical values for all bars in ``data`` in one pass.
+
+        Implementations must fill ``_values`` and leave internal state so a
+        later ``update()`` on a new bar can continue from the last value.
+        """
+
+    @abstractmethod
+    def update(self, date: datetime, data: pd.DataFrame) -> float:
+        """Update a value for a date"""
+
+    @abstractmethod
+    def print(self):
+        pass
     
     def get_value_at(self, date: datetime) -> Optional[float]:
         """
@@ -43,20 +60,3 @@ class Indicator(ABC):
             pd.Series: Series of all indicator values indexed by datetime
         """
         return self._values
-
-    @abstractmethod
-    def precompute(self, data: pd.DataFrame) -> None:
-        """
-        Populate historical values for all bars in ``data`` in one pass.
-
-        Implementations must fill ``_values`` and leave internal state so a
-        later ``update()`` on a new bar can continue from the last value.
-        """
-
-    @abstractmethod
-    def update(self, date: datetime, data: pd.DataFrame) -> float:
-        """Update a value for a date"""
-
-    @abstractmethod
-    def print(self):
-        pass

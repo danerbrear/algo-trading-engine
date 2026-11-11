@@ -159,56 +159,6 @@ class FedEventsProvider:
     def __init__(self) -> None:
         self._logged_attribution = False
 
-    def _log_attribution_once(self, payload: dict | None) -> None:
-        if self._logged_attribution or not payload:
-            return
-        attribution = payload.get("attribution")
-        if attribution:
-            get_logger().info(f"{attribution} ({_ATTRIBUTION_URL})")
-        else:
-            get_logger().info(f"Macro calendar data from {_ATTRIBUTION_URL}")
-        self._logged_attribution = True
-
-    def _fetch_history(
-        self,
-        series: str,
-        *,
-        window_from: date,
-        window_to: date,
-    ) -> dict | None:
-        return _http_get(
-            "history",
-            {
-                "series": series,
-                "from": window_from.isoformat(),
-                "to": window_to.isoformat(),
-                "limit": _HISTORY_LIMIT,
-            },
-        )
-
-    def _fetch_next(self, series: str) -> dict | None:
-        return _http_get("next", {"series": series})
-
-    def _collect_history_events(
-        self,
-        windows: list[tuple[date, date]],
-    ) -> tuple[list[tuple[date, str]], bool]:
-        events: list[tuple[date, str]] = []
-        fetched = False
-        for window_from, window_to in windows:
-            for series in _FED_EVENT_SERIES:
-                payload = self._fetch_history(
-                    series,
-                    window_from=window_from,
-                    window_to=window_to,
-                )
-                if payload is None:
-                    continue
-                fetched = True
-                self._log_attribution_once(payload)
-                events.extend(_events_from_payload(payload))
-        return events, fetched
-
     def add_fed_events_data(  # pylint: disable=too-many-return-statements
         self,
         data: pd.DataFrame,
@@ -278,3 +228,53 @@ class FedEventsProvider:
         if not candidates:
             return None
         return min(candidates, key=lambda item: item.days_until_event)
+
+    def _log_attribution_once(self, payload: dict | None) -> None:
+        if self._logged_attribution or not payload:
+            return
+        attribution = payload.get("attribution")
+        if attribution:
+            get_logger().info(f"{attribution} ({_ATTRIBUTION_URL})")
+        else:
+            get_logger().info(f"Macro calendar data from {_ATTRIBUTION_URL}")
+        self._logged_attribution = True
+
+    def _fetch_history(
+        self,
+        series: str,
+        *,
+        window_from: date,
+        window_to: date,
+    ) -> dict | None:
+        return _http_get(
+            "history",
+            {
+                "series": series,
+                "from": window_from.isoformat(),
+                "to": window_to.isoformat(),
+                "limit": _HISTORY_LIMIT,
+            },
+        )
+
+    def _fetch_next(self, series: str) -> dict | None:
+        return _http_get("next", {"series": series})
+
+    def _collect_history_events(
+        self,
+        windows: list[tuple[date, date]],
+    ) -> tuple[list[tuple[date, str]], bool]:
+        events: list[tuple[date, str]] = []
+        fetched = False
+        for window_from, window_to in windows:
+            for series in _FED_EVENT_SERIES:
+                payload = self._fetch_history(
+                    series,
+                    window_from=window_from,
+                    window_to=window_to,
+                )
+                if payload is None:
+                    continue
+                fetched = True
+                self._log_attribution_once(payload)
+                events.extend(_events_from_payload(payload))
+        return events, fetched

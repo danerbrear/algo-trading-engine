@@ -101,26 +101,6 @@ class Strategy(ABC):
         self.indicators: List[Indicator] = []
         self.option_bar_timespan = BarTimeInterval.DAY
 
-    def get_current_option_bar(
-        self,
-        ticker: str,
-        date: datetime,
-        timespan: BarTimeInterval = BarTimeInterval.DAY,
-    ) -> Optional['OptionBarDTO']:
-        """
-        Fetch an option bar for current valuation.
-
-        When ``use_snapshot_for_current_bar`` is set, use the near-real-time Polygon snapshot
-        (dateless). Otherwise use the historical /aggs bar for ``date`` at the given ``timespan``.
-        """
-        if self.use_snapshot_for_current_bar and self.get_rt_option_bar:
-            return self.get_rt_option_bar(ticker)
-
-        if self.get_option_bar:
-            return self.get_option_bar(ticker, date, 1, timespan)
-
-        return None
-
     @property
     def warm_up_period(self) -> int:
         """
@@ -132,23 +112,6 @@ class Strategy(ABC):
         if not self.indicators:
             return 0
         return max(indicator.warm_up_period for indicator in self.indicators)
-
-    def get_warm_up_period_timedelta(self, bar_interval: BarTimeInterval) -> timedelta:
-        """
-        Time delta representing the warm-up period.
-        """
-        warm_up_period = self.warm_up_period * 2.0 # 2.0 is a factor to account for the fact that the warm-up period is a bar count, not a wall-clock time
-        if bar_interval == BarTimeInterval.DAY:
-            return timedelta(days=warm_up_period)
-        elif bar_interval == BarTimeInterval.HOUR:
-            if warm_up_period <= 0:
-                return timedelta(0)
-            trading_days = math.ceil(
-                warm_up_period / 7
-            )
-            return timedelta(days=trading_days)
-        else:
-            raise ValueError(f"Unsupported bar interval: {bar_interval}")
         
     @abstractmethod
     def on_new_date(
@@ -199,6 +162,43 @@ class Strategy(ABC):
         Returns:
             True if data is valid, False otherwise
         """
+
+    def get_current_option_bar(
+        self,
+        ticker: str,
+        date: datetime,
+        timespan: BarTimeInterval = BarTimeInterval.DAY,
+    ) -> Optional['OptionBarDTO']:
+        """
+        Fetch an option bar for current valuation.
+
+        When ``use_snapshot_for_current_bar`` is set, use the near-real-time Polygon snapshot
+        (dateless). Otherwise use the historical /aggs bar for ``date`` at the given ``timespan``.
+        """
+        if self.use_snapshot_for_current_bar and self.get_rt_option_bar:
+            return self.get_rt_option_bar(ticker)
+
+        if self.get_option_bar:
+            return self.get_option_bar(ticker, date, 1, timespan)
+
+        return None
+
+    def get_warm_up_period_timedelta(self, bar_interval: BarTimeInterval) -> timedelta:
+        """
+        Time delta representing the warm-up period.
+        """
+        warm_up_period = self.warm_up_period * 2.0 # 2.0 is a factor to account for the fact that the warm-up period is a bar count, not a wall-clock time
+        if bar_interval == BarTimeInterval.DAY:
+            return timedelta(days=warm_up_period)
+        elif bar_interval == BarTimeInterval.HOUR:
+            if warm_up_period <= 0:
+                return timedelta(0)
+            trading_days = math.ceil(
+                warm_up_period / 7
+            )
+            return timedelta(days=trading_days)
+        else:
+            raise ValueError(f"Unsupported bar interval: {bar_interval}")
 
     def add_indicator(self, indicator: Indicator) -> None:
         """

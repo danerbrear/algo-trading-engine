@@ -61,12 +61,6 @@ class JsonLinesRunObserver:
         self._run_id = run_id
         self._stream = stream or sys.stdout
 
-    def _send(self, message_type: str, payload: dict[str, Any]) -> None:
-        line = json.dumps(_make_message(message_type, self._run_id, payload))
-        self._stream.write(line)
-        self._stream.write("\n")
-        self._stream.flush()
-
     def log(self, level: str, message: str) -> None:
         del level  # GUI log pane shows message only; level is in the audit file
         self._send("log", {"line": message, "stream": "stdout"})
@@ -106,6 +100,12 @@ class JsonLinesRunObserver:
             },
         )
         self._send("dataframe", plot_payload(spec))
+
+    def _send(self, message_type: str, payload: dict[str, Any]) -> None:
+        line = json.dumps(_make_message(message_type, self._run_id, payload))
+        self._stream.write(line)
+        self._stream.write("\n")
+        self._stream.flush()
 
 
 def observer_from_env() -> JsonLinesRunObserver | None:

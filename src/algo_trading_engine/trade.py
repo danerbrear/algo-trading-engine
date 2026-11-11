@@ -180,27 +180,6 @@ class PaperTradingEngine(TradingEngine):
             get_logger().error(f"Failed to run recommendation engine: {e}")
             return False
     
-    def _get_strategy_name_from_class(self) -> str:
-        """
-        Get strategy name from strategy class for capital manager.
-        
-        Uses the same logic as InteractiveStrategyRecommender to ensure consistency.
-        
-        Returns:
-            Strategy name string (e.g., 'credit_spread', 'velocity_momentum', 'my_custom')
-        """
-        # Remove "Strategy" suffix and convert CamelCase to snake_case
-        class_name = self._strategy.__class__.__name__.replace("Strategy", "")
-        strategy_name = re.sub(r'(?<!^)(?=[A-Z])', '_', class_name).lower()
-        
-        # Map class names to config keys for built-in strategies
-        name_mapping = {
-            "credit_spread": "credit_spread",
-            "velocity_signal_momentum": "velocity_momentum",
-        }
-        
-        return name_mapping.get(strategy_name, strategy_name)
-    
     def update_indicators(self, date: datetime) -> None:
         """Fill indicator values for the paper-trading run timestamp.
 
@@ -330,4 +309,25 @@ class PaperTradingEngine(TradingEngine):
         strategy.get_rt_option_bar = make_rt_option_bar(options_handler)
 
         return engine
+    
+    def _get_strategy_name_from_class(self) -> str:
+        """
+        Get strategy name from strategy class for capital manager.
+        
+        Uses the same logic as InteractiveStrategyRecommender to ensure consistency.
+        
+        Returns:
+            Strategy name string (e.g., 'credit_spread', 'velocity_momentum', 'my_custom')
+        """
+        # Remove "Strategy" suffix and convert CamelCase to snake_case
+        class_name = self._strategy.__class__.__name__.replace("Strategy", "")
+        strategy_name = re.sub(r'(?<!^)(?=[A-Z])', '_', class_name).lower()
+        
+        # Map class names to config keys for built-in strategies
+        name_mapping = {
+            "credit_spread": "credit_spread",
+            "velocity_signal_momentum": "velocity_momentum",
+        }
+        
+        return name_mapping.get(strategy_name, strategy_name)
 

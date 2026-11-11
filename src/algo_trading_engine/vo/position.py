@@ -48,53 +48,6 @@ class Position(ABC):
         self.entry_price = entry_price
         self.legs: list[Option] = legs if legs is not None else []
     
-    def set_quantity(self, quantity: int):
-        """Set the quantity for a position."""
-        self.quantity = quantity
-    
-    def profit_target_hit(self, profit_target: float, exit_price: float) -> bool:
-        """Check if the profit target has been hit for a position."""
-        return self._get_return(exit_price) >= profit_target if exit_price is not None else False
-    
-    def stop_loss_hit(self, stop_loss: float, exit_price: float) -> bool:
-        """Check if the stop loss has been hit for a position."""
-        return self._get_return(exit_price) <= -stop_loss if exit_price is not None else False
-    
-    def get_days_to_expiration(self, current_date: datetime) -> int:
-        """Get the number of days to expiration for a position from the given current_date."""
-        if self.expiration_date is not None:
-            # Ensure both datetimes are timezone-naive for consistent comparison
-            if current_date.tzinfo is not None:
-                current_date = current_date.replace(tzinfo=None)
-            if self.expiration_date.tzinfo is not None:
-                expiration_date = self.expiration_date.replace(tzinfo=None)
-            else:
-                expiration_date = self.expiration_date
-            return (expiration_date - current_date).days
-        else:
-            raise ValueError("Expiration date is not set")
-
-    def get_days_held(self, current_date: datetime) -> int:
-        """
-        Get the number of days held for a position from the given current_date.
-        Uses date-only comparison for trading day calculation.
-        """
-        if self.entry_date is not None:
-            # Convert to date-only for trading day calculation
-            if current_date.tzinfo is not None:
-                current_date = current_date.replace(tzinfo=None)
-            if self.entry_date.tzinfo is not None:
-                entry_date = self.entry_date.replace(tzinfo=None)
-            else:
-                entry_date = self.entry_date
-            
-            # Use date-only comparison for trading days
-            current_date_only = current_date.date()
-            entry_date_only = entry_date.date()
-            return (current_date_only - entry_date_only).days
-        else:
-            raise ValueError("Entry date is not set")
-    
     def __eq__(self, other) -> bool:
         """
         Check if two positions are equal based on key attributes.
@@ -154,10 +107,6 @@ class Position(ABC):
         """Calculate dollar return for this position."""
     
     @abstractmethod
-    def _get_return(self, exit_price: float) -> float:
-        """Calculate percentage return for this position."""
-    
-    @abstractmethod
     def exit_price_from_leg_quotes(self, underlying_price: Optional[float]) -> Optional[float]:
         """Mark the position from the quotes already stored on its legs."""
 
@@ -193,6 +142,53 @@ class Position(ABC):
     @abstractmethod
     def get_return_dollars_from_assignment(self, underlying_price: float) -> float:
         """Get the return from assignment for a position at expiration."""
+    
+    def set_quantity(self, quantity: int):
+        """Set the quantity for a position."""
+        self.quantity = quantity
+    
+    def profit_target_hit(self, profit_target: float, exit_price: float) -> bool:
+        """Check if the profit target has been hit for a position."""
+        return self._get_return(exit_price) >= profit_target if exit_price is not None else False
+    
+    def stop_loss_hit(self, stop_loss: float, exit_price: float) -> bool:
+        """Check if the stop loss has been hit for a position."""
+        return self._get_return(exit_price) <= -stop_loss if exit_price is not None else False
+    
+    def get_days_to_expiration(self, current_date: datetime) -> int:
+        """Get the number of days to expiration for a position from the given current_date."""
+        if self.expiration_date is not None:
+            # Ensure both datetimes are timezone-naive for consistent comparison
+            if current_date.tzinfo is not None:
+                current_date = current_date.replace(tzinfo=None)
+            if self.expiration_date.tzinfo is not None:
+                expiration_date = self.expiration_date.replace(tzinfo=None)
+            else:
+                expiration_date = self.expiration_date
+            return (expiration_date - current_date).days
+        else:
+            raise ValueError("Expiration date is not set")
+
+    def get_days_held(self, current_date: datetime) -> int:
+        """
+        Get the number of days held for a position from the given current_date.
+        Uses date-only comparison for trading day calculation.
+        """
+        if self.entry_date is not None:
+            # Convert to date-only for trading day calculation
+            if current_date.tzinfo is not None:
+                current_date = current_date.replace(tzinfo=None)
+            if self.entry_date.tzinfo is not None:
+                entry_date = self.entry_date.replace(tzinfo=None)
+            else:
+                entry_date = self.entry_date
+            
+            # Use date-only comparison for trading days
+            current_date_only = current_date.date()
+            entry_date_only = entry_date.date()
+            return (current_date_only - entry_date_only).days
+        else:
+            raise ValueError("Entry date is not set")
     
     def risk_reward_ratio(self) -> Optional[float]:
         """
@@ -243,6 +239,10 @@ class Position(ABC):
             return None
         
         return (max_profit_val * probability_of_profit) - (max_loss_val * (1 - probability_of_profit))
+    
+    @abstractmethod
+    def _get_return(self, exit_price: float) -> float:
+        """Calculate percentage return for this position."""
 
 
 class SpreadPosition(Position):
@@ -260,6 +260,79 @@ class SpreadPosition(Position):
 
         atm_option, otm_option = self.legs
         return abs(atm_option.strike - otm_option.strike)
+
+    def exit_price_from_leg_quotes(self, underlying_price: Optional[float]) -> Optional[float]:
+        """Mark the spread from the current last_price on each leg."""
+        if not self.legs or len(self.legs) != 2:
+            raise ValueError("Spread options are not set")
+
+        atm_option, otm_option = self.legs
+        return self._resolve_spread_value(
+            atm_option.last_price,
+            otm_option.last_price,
+            underlying_price,
+        )
+
+    def exit_price_from_chain(
+        self,
+        current_option_chain: OptionChain,
+        underlying_price: Optional[float],
+    ) -> Optional[float]:
+        """Calculate current exit price for a spread from option chain data."""
+        if not self.legs or len(self.legs) != 2:
+            raise ValueError("Spread options are not set")
+
+        atm_option, otm_option = self.legs
+
+        current_atm_option = current_option_chain.get_option_data_for_option(atm_option)
+        current_otm_option = current_option_chain.get_option_data_for_option(otm_option)
+
+        current_atm_price = current_atm_option.last_price if current_atm_option is not None else None
+        current_otm_price = current_otm_option.last_price if current_otm_option is not None else None
+
+        if current_atm_price is None or current_otm_price is None:
+            get_logger().warning(
+                "Missing current option data for {} or {}",
+                atm_option.__str__(),
+                otm_option.__str__(),
+            )
+
+        get_logger().debug(f"Current ATM price: {current_atm_price}, Current OTM price: {current_otm_price}")
+
+        return self._resolve_spread_value(current_atm_price, current_otm_price, underlying_price)
+
+    def calculate_exit_price_from_bars(
+        self,
+        atm_bar: Optional['OptionBarDTO'],
+        otm_bar: Optional['OptionBarDTO'],
+        underlying_price: Optional[float],
+    ) -> Optional[float]:
+        """Calculate current exit price for a spread from option bar data."""
+        if not self.legs or len(self.legs) != 2:
+            raise ValueError("Spread options are not set")
+
+        atm_option, otm_option = self.legs
+
+        if atm_bar is not None and not self._options_match(atm_bar, atm_option):
+            raise ValueError(
+                f"ATM bar doesn't match position ATM option. Expected: {atm_option.ticker} "
+                f"(strike: {atm_option.strike}, exp: {atm_option.expiration}, "
+                f"type: {atm_option.option_type.value}), Got: {atm_bar.ticker}"
+            )
+
+        if otm_bar is not None and not self._options_match(otm_bar, otm_option):
+            raise ValueError(
+                f"OTM bar doesn't match position OTM option. Expected: {otm_option.ticker} "
+                f"(strike: {otm_option.strike}, exp: {otm_option.expiration}, "
+                f"type: {otm_option.option_type.value}), Got: {otm_bar.ticker}"
+            )
+
+        current_atm_price = float(atm_bar.close_price) if atm_bar is not None else None
+        current_otm_price = float(otm_bar.close_price) if otm_bar is not None else None
+
+        get_logger().debug(f"Current ATM price: {current_atm_price}, Current OTM price: {current_otm_price}")
+
+        return self._resolve_spread_value(current_atm_price, current_otm_price, underlying_price)
 
     def _options_match(self, bar: 'OptionBarDTO', option: Option) -> bool:
         """
@@ -387,79 +460,6 @@ class SpreadPosition(Position):
         )
         return None
 
-    def exit_price_from_leg_quotes(self, underlying_price: Optional[float]) -> Optional[float]:
-        """Mark the spread from the current last_price on each leg."""
-        if not self.legs or len(self.legs) != 2:
-            raise ValueError("Spread options are not set")
-
-        atm_option, otm_option = self.legs
-        return self._resolve_spread_value(
-            atm_option.last_price,
-            otm_option.last_price,
-            underlying_price,
-        )
-
-    def exit_price_from_chain(
-        self,
-        current_option_chain: OptionChain,
-        underlying_price: Optional[float],
-    ) -> Optional[float]:
-        """Calculate current exit price for a spread from option chain data."""
-        if not self.legs or len(self.legs) != 2:
-            raise ValueError("Spread options are not set")
-
-        atm_option, otm_option = self.legs
-
-        current_atm_option = current_option_chain.get_option_data_for_option(atm_option)
-        current_otm_option = current_option_chain.get_option_data_for_option(otm_option)
-
-        current_atm_price = current_atm_option.last_price if current_atm_option is not None else None
-        current_otm_price = current_otm_option.last_price if current_otm_option is not None else None
-
-        if current_atm_price is None or current_otm_price is None:
-            get_logger().warning(
-                "Missing current option data for {} or {}",
-                atm_option.__str__(),
-                otm_option.__str__(),
-            )
-
-        get_logger().debug(f"Current ATM price: {current_atm_price}, Current OTM price: {current_otm_price}")
-
-        return self._resolve_spread_value(current_atm_price, current_otm_price, underlying_price)
-
-    def calculate_exit_price_from_bars(
-        self,
-        atm_bar: Optional['OptionBarDTO'],
-        otm_bar: Optional['OptionBarDTO'],
-        underlying_price: Optional[float],
-    ) -> Optional[float]:
-        """Calculate current exit price for a spread from option bar data."""
-        if not self.legs or len(self.legs) != 2:
-            raise ValueError("Spread options are not set")
-
-        atm_option, otm_option = self.legs
-
-        if atm_bar is not None and not self._options_match(atm_bar, atm_option):
-            raise ValueError(
-                f"ATM bar doesn't match position ATM option. Expected: {atm_option.ticker} "
-                f"(strike: {atm_option.strike}, exp: {atm_option.expiration}, "
-                f"type: {atm_option.option_type.value}), Got: {atm_bar.ticker}"
-            )
-
-        if otm_bar is not None and not self._options_match(otm_bar, otm_option):
-            raise ValueError(
-                f"OTM bar doesn't match position OTM option. Expected: {otm_option.ticker} "
-                f"(strike: {otm_option.strike}, exp: {otm_option.expiration}, "
-                f"type: {otm_option.option_type.value}), Got: {otm_bar.ticker}"
-            )
-
-        current_atm_price = float(atm_bar.close_price) if atm_bar is not None else None
-        current_otm_price = float(otm_bar.close_price) if otm_bar is not None else None
-
-        get_logger().debug(f"Current ATM price: {current_atm_price}, Current OTM price: {current_otm_price}")
-
-        return self._resolve_spread_value(current_atm_price, current_otm_price, underlying_price)
-
 
 class CreditSpreadPosition(SpreadPosition):
     """Position for credit spread strategies (CALL_CREDIT_SPREAD, PUT_CREDIT_SPREAD)."""
@@ -475,15 +475,6 @@ class CreditSpreadPosition(SpreadPosition):
         # exit_price = cost to close the position
         # Return = Credit received - Cost to close
         return (self.entry_price * self.quantity * 100) - (exit_price * self.quantity * 100)
-    
-    def _get_return(self, exit_price: float) -> float:
-        """
-        Get the percentage return for a credit spread position.
-        For credit spreads, calculate percentage return based on max risk.
-        """
-        if self.quantity is None or exit_price is None:
-            raise ValueError("Quantity is not set")
-        return ((self.entry_price * self.quantity * 100) - (exit_price * self.quantity * 100)) / (self.entry_price * self.quantity * 100)
     
     def get_return_dollars_from_assignment(self, underlying_price: float) -> float:
         """
@@ -553,6 +544,15 @@ class CreditSpreadPosition(SpreadPosition):
         if loss is None:
             raise ValueError("Credit spread max loss per share is not defined")
         return float(loss) * 100
+    
+    def _get_return(self, exit_price: float) -> float:
+        """
+        Get the percentage return for a credit spread position.
+        For credit spreads, calculate percentage return based on max risk.
+        """
+        if self.quantity is None or exit_price is None:
+            raise ValueError("Quantity is not set")
+        return ((self.entry_price * self.quantity * 100) - (exit_price * self.quantity * 100)) / (self.entry_price * self.quantity * 100)
 
 
 class DebitSpreadPosition(SpreadPosition):
@@ -569,15 +569,6 @@ class DebitSpreadPosition(SpreadPosition):
         # entry_price = debit paid when opening
         # Return = Exit value - Debit paid
         return (exit_price * self.quantity * 100) - (self.entry_price * self.quantity * 100)
-    
-    def _get_return(self, exit_price: float) -> float:
-        """
-        Get the percentage return for a debit spread position.
-        For debit spreads, return is based on initial debit paid.
-        """
-        if self.quantity is None or exit_price is None:
-            raise ValueError("Quantity is not set")
-        return ((exit_price * self.quantity * 100) - (self.entry_price * self.quantity * 100)) / (self.entry_price * self.quantity * 100)
     
     def get_return_dollars_from_assignment(self, underlying_price: float) -> float:
         """
@@ -647,6 +638,15 @@ class DebitSpreadPosition(SpreadPosition):
     def max_risk_dollars_per_contract(self) -> float:
         """Max risk for debit spread = premium paid per contract."""
         return self.entry_price * 100
+    
+    def _get_return(self, exit_price: float) -> float:
+        """
+        Get the percentage return for a debit spread position.
+        For debit spreads, return is based on initial debit paid.
+        """
+        if self.quantity is None or exit_price is None:
+            raise ValueError("Quantity is not set")
+        return ((exit_price * self.quantity * 100) - (self.entry_price * self.quantity * 100)) / (self.entry_price * self.quantity * 100)
 
 
 class LongCallPosition(Position):
@@ -657,12 +657,6 @@ class LongCallPosition(Position):
         if self.quantity is None:
             raise ValueError("Quantity is not set")
         return (exit_price * self.quantity * 100) - (self.entry_price * self.quantity * 100)
-    
-    def _get_return(self, exit_price: float) -> float:
-        """Get the percentage return for a long call position."""
-        if self.quantity is None or exit_price is None:
-            raise ValueError("Quantity is not set")
-        return ((exit_price * self.quantity * 100) - (self.entry_price * self.quantity * 100)) / (self.entry_price * self.quantity * 100)
 
     def exit_price_from_leg_quotes(self, underlying_price: Optional[float]) -> Optional[float]:
         """Mark a long call from the quote already stored on its leg."""
@@ -716,6 +710,12 @@ class LongCallPosition(Position):
     def max_risk_dollars_per_contract(self) -> float:
         """Max risk for long call = premium paid per contract."""
         return self.entry_price * 100
+    
+    def _get_return(self, exit_price: float) -> float:
+        """Get the percentage return for a long call position."""
+        if self.quantity is None or exit_price is None:
+            raise ValueError("Quantity is not set")
+        return ((exit_price * self.quantity * 100) - (self.entry_price * self.quantity * 100)) / (self.entry_price * self.quantity * 100)
 
 
 class ShortCallPosition(Position):
@@ -727,12 +727,6 @@ class ShortCallPosition(Position):
             raise ValueError("Quantity is not set")
         # For short options: credit received - cost to close
         return (self.entry_price * self.quantity * 100) - (exit_price * self.quantity * 100)
-    
-    def _get_return(self, exit_price: float) -> float:
-        """Get the percentage return for a short call position."""
-        if self.quantity is None or exit_price is None:
-            raise ValueError("Quantity is not set")
-        return ((self.entry_price * self.quantity * 100) - (exit_price * self.quantity * 100)) / (self.entry_price * self.quantity * 100)
 
     def exit_price_from_leg_quotes(self, underlying_price: Optional[float]) -> Optional[float]:
         """Mark a short call from the quote already stored on its leg."""
@@ -787,6 +781,12 @@ class ShortCallPosition(Position):
     def max_risk_dollars_per_contract(self) -> Optional[float]:
         """Unlimited risk for short call."""
         return None
+    
+    def _get_return(self, exit_price: float) -> float:
+        """Get the percentage return for a short call position."""
+        if self.quantity is None or exit_price is None:
+            raise ValueError("Quantity is not set")
+        return ((self.entry_price * self.quantity * 100) - (exit_price * self.quantity * 100)) / (self.entry_price * self.quantity * 100)
 
 
 class LongPutPosition(Position):
@@ -797,12 +797,6 @@ class LongPutPosition(Position):
         if self.quantity is None:
             raise ValueError("Quantity is not set")
         return (exit_price * self.quantity * 100) - (self.entry_price * self.quantity * 100)
-    
-    def _get_return(self, exit_price: float) -> float:
-        """Get the percentage return for a long put position."""
-        if self.quantity is None or exit_price is None:
-            raise ValueError("Quantity is not set")
-        return ((exit_price * self.quantity * 100) - (self.entry_price * self.quantity * 100)) / (self.entry_price * self.quantity * 100)
 
     def exit_price_from_leg_quotes(self, underlying_price: Optional[float]) -> Optional[float]:
         """Mark a long put from the quote already stored on its leg."""
@@ -859,6 +853,12 @@ class LongPutPosition(Position):
     def max_risk_dollars_per_contract(self) -> float:
         """Max risk for long put = premium paid per contract."""
         return self.entry_price * 100
+    
+    def _get_return(self, exit_price: float) -> float:
+        """Get the percentage return for a long put position."""
+        if self.quantity is None or exit_price is None:
+            raise ValueError("Quantity is not set")
+        return ((exit_price * self.quantity * 100) - (self.entry_price * self.quantity * 100)) / (self.entry_price * self.quantity * 100)
 
 
 class ShortPutPosition(Position):
@@ -870,12 +870,6 @@ class ShortPutPosition(Position):
             raise ValueError("Quantity is not set")
         # For short options: credit received - cost to close
         return (self.entry_price * self.quantity * 100) - (exit_price * self.quantity * 100)
-    
-    def _get_return(self, exit_price: float) -> float:
-        """Get the percentage return for a short put position."""
-        if self.quantity is None or exit_price is None:
-            raise ValueError("Quantity is not set")
-        return ((self.entry_price * self.quantity * 100) - (exit_price * self.quantity * 100)) / (self.entry_price * self.quantity * 100)
 
     def exit_price_from_leg_quotes(self, underlying_price: Optional[float]) -> Optional[float]:
         """Mark a short put from the quote already stored on its leg."""
@@ -933,6 +927,12 @@ class ShortPutPosition(Position):
     def max_risk_dollars_per_contract(self) -> Optional[float]:
         """Unlimited risk for short put."""
         return None
+    
+    def _get_return(self, exit_price: float) -> float:
+        """Get the percentage return for a short put position."""
+        if self.quantity is None or exit_price is None:
+            raise ValueError("Quantity is not set")
+        return ((self.entry_price * self.quantity * 100) - (exit_price * self.quantity * 100)) / (self.entry_price * self.quantity * 100)
 
 
 def create_position(symbol: str, expiration_date: datetime, strategy_type: 'StrategyType',

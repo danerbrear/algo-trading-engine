@@ -290,6 +290,67 @@ class BacktestEngine(TradingEngine):
         self._end()
 
         return True
+    
+    def get_performance_metrics(self) -> PerformanceMetrics:
+        """
+        Get performance statistics for the backtest.
+        
+        Returns:
+            PerformanceMetrics object with all performance data
+        """
+        # Calculate overall stats
+        overall_stats = self._calculate_overall_statistics()
+        strategy_stats = self._calculate_strategy_statistics()
+        
+        # Calculate final return
+        final_return = self.capital - self.initial_capital
+        final_return_pct = (final_return / self.initial_capital) * 100
+        
+        # Calculate Sharpe Ratio
+        sharpe_ratio = self._calculate_sharpe_ratio()
+        
+        # Calculate max drawdown
+        max_drawdown = overall_stats.max_drawdown
+        
+        # Convert closed positions to PositionStats
+        position_stats_list = []
+        for pos in self.closed_positions:
+            position_stats = PositionStats(
+                strategy_type=pos['strategy_type'],
+                entry_date=pos['entry_date'],
+                exit_date=pos['exit_date'],
+                entry_price=pos['entry_price'],
+                exit_price=pos['exit_price'],
+                return_dollars=pos['return_dollars'],
+                return_percentage=pos['return_percentage'],
+                days_held=pos['days_held'],
+                max_risk=pos['max_risk']
+            )
+            position_stats_list.append(position_stats)
+        
+        return PerformanceMetrics(
+            total_return=final_return,
+            total_return_pct=final_return_pct,
+            sharpe_ratio=sharpe_ratio,
+            max_drawdown=max_drawdown,
+            win_rate=overall_stats.win_rate,
+            total_positions=self.total_positions,
+            closed_positions=position_stats_list,
+            strategy_stats=strategy_stats,
+            overall_stats=overall_stats,
+            benchmark_return=self.benchmark.get_return_dollars(),
+            benchmark_return_pct=self.benchmark.get_return_percentage(),
+            expected_value=overall_stats.expected_value,
+        )
+    
+    def get_positions(self) -> List[Position]:
+        """
+        Get current open positions.
+        
+        Returns:
+            List of currently open Position objects
+        """
+        return self.positions.copy()
 
     def _end(self):
         """
@@ -382,67 +443,6 @@ class BacktestEngine(TradingEngine):
                 "sharpe_ratio": f"{sharpe_ratio:.3f}",
                 "expected_value": "N/A" if expected_value is None else f"${expected_value:+,.2f}",
             })
-    
-    def get_performance_metrics(self) -> PerformanceMetrics:
-        """
-        Get performance statistics for the backtest.
-        
-        Returns:
-            PerformanceMetrics object with all performance data
-        """
-        # Calculate overall stats
-        overall_stats = self._calculate_overall_statistics()
-        strategy_stats = self._calculate_strategy_statistics()
-        
-        # Calculate final return
-        final_return = self.capital - self.initial_capital
-        final_return_pct = (final_return / self.initial_capital) * 100
-        
-        # Calculate Sharpe Ratio
-        sharpe_ratio = self._calculate_sharpe_ratio()
-        
-        # Calculate max drawdown
-        max_drawdown = overall_stats.max_drawdown
-        
-        # Convert closed positions to PositionStats
-        position_stats_list = []
-        for pos in self.closed_positions:
-            position_stats = PositionStats(
-                strategy_type=pos['strategy_type'],
-                entry_date=pos['entry_date'],
-                exit_date=pos['exit_date'],
-                entry_price=pos['entry_price'],
-                exit_price=pos['exit_price'],
-                return_dollars=pos['return_dollars'],
-                return_percentage=pos['return_percentage'],
-                days_held=pos['days_held'],
-                max_risk=pos['max_risk']
-            )
-            position_stats_list.append(position_stats)
-        
-        return PerformanceMetrics(
-            total_return=final_return,
-            total_return_pct=final_return_pct,
-            sharpe_ratio=sharpe_ratio,
-            max_drawdown=max_drawdown,
-            win_rate=overall_stats.win_rate,
-            total_positions=self.total_positions,
-            closed_positions=position_stats_list,
-            strategy_stats=strategy_stats,
-            overall_stats=overall_stats,
-            benchmark_return=self.benchmark.get_return_dollars(),
-            benchmark_return_pct=self.benchmark.get_return_percentage(),
-            expected_value=overall_stats.expected_value,
-        )
-    
-    def get_positions(self) -> List[Position]:
-        """
-        Get current open positions.
-        
-        Returns:
-            List of currently open Position objects
-        """
-        return self.positions.copy()
 
     def _add_position(self, position: Position):
         """

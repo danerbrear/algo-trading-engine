@@ -58,6 +58,74 @@ class VelocitySignalMomentumStrategy(Strategy):
             # Calculate velocity changes for signal detection
             self.data['Velocity_Changes'] = self.data['MA_Velocity_15_30'].diff()
 
+    def on_new_date(self, date: datetime, positions: tuple['Position', ...], add_position: Callable[['Position'], None], remove_position: Callable[[datetime, 'Position', float, Optional[float], Optional[list[int]]], None]):
+        super().on_new_date(date, positions, add_position, remove_position)
+
+        if len(positions) == 0:
+            self._try_open_position(date, add_position)
+            
+        self._try_close_positions(date, positions, remove_position)
+
+    def on_end(self, positions: tuple['Position', ...], remove_position: Callable[[datetime, 'Position', float, Optional[float], Optional[list[int]]], None], date: datetime):
+        """End-of-run hook; plotting is handled by the engine / show_plot callers."""
+        del positions, remove_position, date
+
+    def validate_data(self, data: pd.DataFrame) -> bool:
+        """
+        Validate the data for the Velocity Signal Momentum Strategy.
+        
+        This strategy requires:
+        - Basic OHLCV data
+        - Moving averages (SMA_15, SMA_30) for velocity calculation
+        - Velocity changes data
+        
+        Args:
+            data: DataFrame with market data and features
+            
+        Returns:
+            bool: True if data is valid for this strategy, False otherwise
+        """        
+        get_logger().info(f"\n🔍 Validating data for Velocity Signal Momentum Strategy...")
+        get_logger().info(f"   Data shape: {data.shape}")
+        
+        # Check if the data has the required columns for velocity momentum strategy
+        required_columns = [
+            'Open', 'High', 'Low', 'Close', 'Volume',  # Basic OHLCV data
+        ]
+        
+        missing_columns = [col for col in required_columns if col not in data.columns]
+        if missing_columns:
+            get_logger().warning(f"⚠️  Warning: Missing required columns: {missing_columns}")
+            get_logger().info(f"   Available columns: {list(data.columns)}")
+            return False
+        else:
+            get_logger().info(f"✅ All required columns present")
+        
+        # Check if data has datetime index
+        if not isinstance(data.index, pd.DatetimeIndex):
+            get_logger().error("❌ Error: Data must have a datetime index for backtesting")
+            return False
+        
+        # Check if we have enough data for moving averages (need at least 30 days for SMA 30)
+        if len(data) < 30:
+            get_logger().warning(f"⚠️  Warning: Not enough data for velocity analysis. Need at least 30 days, got {len(data)}")
+            return False
+        
+        # Check for gaps in the data (missing trading days)
+        if len(data) > 1:
+            date_range = pd.bdate_range(start=data.index.min(), end=data.index.max())
+            expected_business_days = len(date_range)
+            actual_trading_days = len(data)
+            if actual_trading_days < expected_business_days * 0.9:  # Allow for some holidays
+                get_logger().warning(f"⚠️  Warning: Data may have gaps. Expected ~{expected_business_days} business days, got {actual_trading_days}")
+        
+        get_logger().info(f"✅ Data validation complete for Velocity Signal Momentum Strategy")
+        get_logger().info(f"   Final data shape: {data.shape}")
+        get_logger().info(f"   Date range: {data.index.min()} to {data.index.max()}")
+        get_logger().info(f"   Trading days: {len(data)}")
+        
+        return True
+
     def _recalculate_moving_averages(self):
         """Recalculate moving averages and velocity changes after data updates."""
         if self.data is not None and not self.data.empty:
@@ -70,18 +138,6 @@ class VelocitySignalMomentumStrategy(Strategy):
             
             # Calculate velocity changes for signal detection
             self.data['Velocity_Changes'] = self.data['MA_Velocity_15_30'].diff()
-
-    def on_new_date(self, date: datetime, positions: tuple['Position', ...], add_position: Callable[['Position'], None], remove_position: Callable[[datetime, 'Position', float, Optional[float], Optional[list[int]]], None]):
-        super().on_new_date(date, positions, add_position, remove_position)
-
-        if len(positions) == 0:
-            self._try_open_position(date, add_position)
-            
-        self._try_close_positions(date, positions, remove_position)
-
-    def on_end(self, positions: tuple['Position', ...], remove_position: Callable[[datetime, 'Position', float, Optional[float], Optional[list[int]]], None], date: datetime):
-        """End-of-run hook; plotting is handled by the engine / show_plot callers."""
-        del positions, remove_position, date
 
     def _has_buy_signal(self, date: datetime) -> bool:
         """
@@ -493,59 +549,3 @@ class VelocitySignalMomentumStrategy(Strategy):
             return position.get_days_held(date) >= holding_period
         except Exception:
             return False
-
-    def validate_data(self, data: pd.DataFrame) -> bool:
-        """
-        Validate the data for the Velocity Signal Momentum Strategy.
-        
-        This strategy requires:
-        - Basic OHLCV data
-        - Moving averages (SMA_15, SMA_30) for velocity calculation
-        - Velocity changes data
-        
-        Args:
-            data: DataFrame with market data and features
-            
-        Returns:
-            bool: True if data is valid for this strategy, False otherwise
-        """        
-        get_logger().info(f"\n🔍 Validating data for Velocity Signal Momentum Strategy...")
-        get_logger().info(f"   Data shape: {data.shape}")
-        
-        # Check if the data has the required columns for velocity momentum strategy
-        required_columns = [
-            'Open', 'High', 'Low', 'Close', 'Volume',  # Basic OHLCV data
-        ]
-        
-        missing_columns = [col for col in required_columns if col not in data.columns]
-        if missing_columns:
-            get_logger().warning(f"⚠️  Warning: Missing required columns: {missing_columns}")
-            get_logger().info(f"   Available columns: {list(data.columns)}")
-            return False
-        else:
-            get_logger().info(f"✅ All required columns present")
-        
-        # Check if data has datetime index
-        if not isinstance(data.index, pd.DatetimeIndex):
-            get_logger().error("❌ Error: Data must have a datetime index for backtesting")
-            return False
-        
-        # Check if we have enough data for moving averages (need at least 30 days for SMA 30)
-        if len(data) < 30:
-            get_logger().warning(f"⚠️  Warning: Not enough data for velocity analysis. Need at least 30 days, got {len(data)}")
-            return False
-        
-        # Check for gaps in the data (missing trading days)
-        if len(data) > 1:
-            date_range = pd.bdate_range(start=data.index.min(), end=data.index.max())
-            expected_business_days = len(date_range)
-            actual_trading_days = len(data)
-            if actual_trading_days < expected_business_days * 0.9:  # Allow for some holidays
-                get_logger().warning(f"⚠️  Warning: Data may have gaps. Expected ~{expected_business_days} business days, got {actual_trading_days}")
-        
-        get_logger().info(f"✅ Data validation complete for Velocity Signal Momentum Strategy")
-        get_logger().info(f"   Final data shape: {data.shape}")
-        get_logger().info(f"   Date range: {data.index.min()} to {data.index.max()}")
-        get_logger().info(f"   Trading days: {len(data)}")
-        
-        return True
