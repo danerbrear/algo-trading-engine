@@ -3,7 +3,7 @@ Velocity strategy reads the current bar from pre-loaded data (live overlay is en
 """
 
 import unittest
-from datetime import datetime, timedelta
+from datetime import datetime
 from unittest.mock import Mock, patch
 
 import numpy as np
@@ -16,7 +16,7 @@ from algo_trading_engine._internal.strategies.velocity_signal_momentum_strategy 
 
 class TestVelocityLivePrice(unittest.TestCase):
     def setUp(self):
-        dates = pd.date_range(end=datetime.now() - timedelta(days=1), periods=60, freq="D")
+        dates = pd.date_range(end=datetime(2026, 11, 10), periods=60, freq="D")
         self.test_data = pd.DataFrame(
             {
                 "Open": np.random.uniform(580, 600, len(dates)),

@@ -3,7 +3,7 @@ Signal consistency when live and close prices match on the same bar (engine over
 """
 
 import unittest
-from datetime import datetime, timedelta
+from datetime import datetime
 from unittest.mock import Mock, patch
 
 import numpy as np
@@ -16,7 +16,7 @@ from algo_trading_engine._internal.strategies.velocity_signal_momentum_strategy 
 
 class TestVelocityLiveVsCloseConsistency(unittest.TestCase):
     def setUp(self):
-        dates = pd.date_range(end=datetime.now() - timedelta(days=1), periods=90, freq="D")
+        dates = pd.date_range(end=datetime(2026, 11, 10), periods=90, freq="D")
         prices = np.concatenate([np.linspace(550, 570, 60), np.linspace(570, 600, 30)])
         self.historical_data = pd.DataFrame(
             {
