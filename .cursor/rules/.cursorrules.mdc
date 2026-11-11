@@ -12,6 +12,16 @@ alwaysApply: true
 - Prefer polymorphism over type/enum branching. When behavior differs by type, put the behavior on the type (override a method) and call it through a shared interface. Do not switch on `strategy_type`, class name, or similar discriminators in callers when a subclass method would do.
 - All prices should use the Decimal data type over float
 
+### Class member order
+
+Order members in every class as follows:
+
+1. Class attributes (annotations and constants)
+2. `__init__` and other dunder methods
+3. Properties
+4. Public methods: abstract methods first, then concrete methods. Public `@classmethod` and `@staticmethod` stay in this group
+5. Private methods, including private static and class methods
+
 ### Startup and imports
 
 - Keep **program startup fast**: importing a module for a lightweight workflow (CLI, DTOs, backtest wiring without ML) must not eagerly load heavy stacks (TensorFlow/keras, sklearn/hmmlearn, matplotlib/seaborn) unless that module’s job is ML or plotting.
