@@ -77,7 +77,6 @@ class Option:
             return False
         return (
             self.ticker == other.ticker
-            and self.timestamp == other.timestamp
             and self.symbol == other.symbol
             and self.strike == other.strike
             and self.expiration == other.expiration

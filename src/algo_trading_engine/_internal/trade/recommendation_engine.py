@@ -157,7 +157,7 @@ class InteractiveStrategyRecommender:
             if hasattr(self.strategy, 'symbol'):
                 symbol = self.strategy.symbol
             elif hasattr(self.strategy, 'data') and self.strategy.data is not None:
-                symbol = self.strategy.data.index.name if self.strategy.data.index.name else 'SPY'
+                symbol = str(self.strategy.data.index.name) if self.strategy.data.index.name else 'SPY'
             
             if symbol:
                 try:
@@ -283,7 +283,7 @@ class InteractiveStrategyRecommender:
                 if computed_exit_price is not None:
                     exit_price = computed_exit_price
                 else:
-                    get_logger().warning(f"Could not compute exit price for position {position.__str__()}, using strategy-provided price")
+                    get_logger().warning(f"Could not compute exit price for position {position}, using strategy-provided price")
             # else: auto_yes is true — assume we're closing and use existing exit_price
             
             # Find the corresponding decision record using Position equality
