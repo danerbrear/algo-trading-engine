@@ -290,12 +290,17 @@ class Strategy(ABC):
         """Most recent bar in ``data`` at or before ``date``."""
         if self.data is None or self.data.empty:
             return None
+
         candidates = self.data.index[self.data.index <= date]
-        if len(candidates) > 0:
-            ts = candidates[-1]
-            return ts.to_pydatetime() if hasattr(ts, "to_pydatetime") else ts
-        ts = self.data.index[-1]
-        return ts.to_pydatetime() if hasattr(ts, "to_pydatetime") else ts
+        label = candidates[-1] if len(candidates) > 0 else self.data.index[-1]
+        if not isinstance(label, datetime):
+            return None
+
+        value = pd.Timestamp(label).to_pydatetime()
+        if not isinstance(value, datetime) or value is pd.NaT:
+            return None
+
+        return value
 
     def set_data(self, data: pd.DataFrame, treasury_data: Optional[TreasuryRates] = None):
         """

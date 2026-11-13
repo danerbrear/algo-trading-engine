@@ -483,7 +483,7 @@ class BacktestEngine(TradingEngine):
 
         self.strategy.on_add_position_success(position)
 
-    def _remove_position(self, date: datetime, position: Position, exit_price: float, underlying_price: float = None, current_volumes: list[int] = None):
+    def _remove_position(self, date: datetime, position: Position, exit_price: float, underlying_price: Optional[float] = None, current_volumes: Optional[list[int]] = None):
         """
         Remove a position from the positions list with enhanced current date volume validation.
         
@@ -518,15 +518,15 @@ class BacktestEngine(TradingEngine):
                     return  # Skip closure and keep position open
 
         if position not in self.positions:
-            raise ValueError(f"Could not find position to close within open positions. {position.__str__()}")
+            raise ValueError(f"Could not find position to close within open positions. {position}")
 
         # Calculate the return for this position due to assignment
         if position.get_days_to_expiration(date) < 1:
             if underlying_price is None:
-                raise ValueError(f"Underlying price not provided for position {position.__str__()}")
+                raise ValueError(f"Underlying price not provided for position {position}")
 
             position_return = position.get_return_dollars_from_assignment(underlying_price)
-            get_logger().info(f"   Position closed by assignment: {position.__str__()}")
+            get_logger().info(f"   Position closed by assignment: {position}")
         else:
             if exit_price is None: # Allows for exit price to be 0 - possible if ATM and OTM market price are equal
                 raise ValueError("Exit price not provided for the unexpired position")
