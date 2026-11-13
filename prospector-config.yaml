@@ -1,0 +1,48 @@
+output-format: yaml
+
+ignore-patterns:
+  - "^venv/.*$"
+  - "^build/.*$"
+  - "^src/.*\\.egg-info/.*$"
+
+pylint:
+  disable:
+    - broad-exception-caught
+    - line-too-long
+    - trailing-whitespace
+    - trailing-newlines
+    - missing-final-newline
+    - superfluous-parens
+    - wrong-import-order
+    - ungrouped-imports
+  options:
+    max-args: 8
+    max-attributes: 12
+    max-returns: 6
+    max-branches: 15
+    max-statements: 60
+    max-line-length: 120
+
+pycodestyle:
+  options:
+    max-line-length: 120
+  disable:
+    - E304
+    - E265
+    - E266
+    - W291
+    - W292
+    - W391
+    - N811
+    - N812
+    - N813
+    - N814
+
+pyright:
+  run: true
+
+pydocstyle:
+  run: false
+
+pyflakes:
+  run: false

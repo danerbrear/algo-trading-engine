@@ -1,0 +1,14 @@
+repos:
+  - repo: https://github.com/PyCQA/prospector
+    rev: v1.20.0
+    hooks:
+      - id: prospector
+        args: [--profile=prospector-config.yaml]
+  - repo: local
+    hooks:
+      - id: format
+        name: format
+        entry: venv/bin/python -m black .
+        language: system
+        pass_filenames: false
+        files: \.py$
