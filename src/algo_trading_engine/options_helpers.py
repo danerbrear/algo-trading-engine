@@ -89,7 +89,6 @@ class OptionsRetrieverHelper:
         
         return call_contract, put_contract
     
-    
     @staticmethod
     def find_contracts_by_expiration(
         contracts: List[OptionContractDTO], 
@@ -535,7 +534,6 @@ class OptionsRetrieverHelper:
         """
         return short_premium - long_premium
     
-    
     @staticmethod
     def find_optimal_expiration(
         contracts: List[OptionContractDTO], 
@@ -943,7 +941,7 @@ class OptionsRetrieverHelper:
 
         Evaluates spreads from min_spread_width to max_spread_width and selects the one
         with the highest reward/risk ratio. Return None if no valid spread found. Return a Position (DebitSpreadPosition) with
-        spread_options built from Option.from_contract_and_bar(contract, bar) for each leg.
+        legs built from Option.from_contract_and_bar(contract, bar) for each leg.
 
         For a debit spread:
         - Buy the ITM/ATM leg (pay premium)
@@ -965,7 +963,7 @@ class OptionsRetrieverHelper:
             timespan: Bar time interval to use (default: BarTimeInterval.DAY)
             multiplier: Bar multiplier to use (default: 1)
         Returns:
-            A DebitSpreadPosition with spread_options populated from the chosen legs, or None if no valid spread found.
+            A DebitSpreadPosition with legs populated from the chosen legs, or None if no valid spread found.
         """
         # Filter contracts for the target expiration
         contracts_for_expiration = [
@@ -1079,6 +1077,6 @@ class OptionsRetrieverHelper:
             strike_price=strike_price,
             entry_date=date,
             entry_price=net_debit,
-            spread_options=[itm_option, otm_option],
+            legs=[itm_option, otm_option],
         )
     

@@ -23,78 +23,6 @@ class CalendarFeatureProcessor:
         for event_type in event_types:
             self._load_events_for_type(event_type, calendar_data_path)
     
-    def _load_events_for_type(self, event_type, calendar_data_path=None):
-        """Load events for a specific event type"""
-        if calendar_data_path is None:
-            # Try multiple possible paths for the calendar data
-            possible_paths = []
-            
-            # Path 1: Relative to current file (when run as module)
-            current_dir = Path(__file__).parent.parent.parent
-            possible_paths.append(current_dir / "data_cache" / "calendar" / f"Historic Economic Event Calendar Data - {event_type}.csv")
-            
-            # Path 2: Relative to working directory (when run from project root)
-            possible_paths.append(Path("data_cache") / "calendar" / f"Historic Economic Event Calendar Data - {event_type}.csv")
-            
-            # Path 3: Absolute path from project root
-            project_root = Path.cwd()
-            possible_paths.append(project_root / "data_cache" / "calendar" / f"Historic Economic Event Calendar Data - {event_type}.csv")
-            
-            # Find the first path that exists
-            event_calendar_data_path = None
-            for path in possible_paths:
-                if path.exists():
-                    event_calendar_data_path = path
-                    break
-            
-            if event_calendar_data_path is None:
-                # If none found, use the first path and let the error be raised with a helpful message
-                event_calendar_data_path = possible_paths[0]
-                print(f"⚠️  Warning: {event_type} calendar data not found. Tried these paths:")
-                for i, path in enumerate(possible_paths, 1):
-                    print(f"   {i}. {path}")
-                print(f"   Please ensure the file exists at one of these locations.")
-        else:
-            event_calendar_data_path = Path(calendar_data_path)
-        
-        self._load_events(event_type, event_calendar_data_path)
-    
-    def _load_events(self, event_type, calendar_data_path):
-        """Load and parse calendar events from CSV for a specific event type"""
-        if not calendar_data_path.exists():
-            raise FileNotFoundError(f"{event_type} calendar data not found at {calendar_data_path}")
-        
-        print(f"📅 Loading {event_type} calendar data from {calendar_data_path}")
-        
-        # Read CSV with no header (data starts from first row)
-        df = pd.read_csv(calendar_data_path, header=None, names=[
-            'Date', 'Time', 'Currency', 'Impact', 'Event', 'Actual', 'Forecast', 'Previous'
-        ])
-        
-        # Filter for the specific event type
-        if event_type == "Core CPI":
-            event_filter = 'Core CPI m/m'
-        elif event_type == "CB Consumer Confidence":
-            event_filter = 'CB Consumer Confidence'
-        elif event_type == "Fed Funds Rate":
-            event_filter = 'Federal Funds Rate'
-        else:
-            event_filter = event_type
-        
-        event_mask = df['Event'].str.contains(event_filter, na=False)
-        events = df[event_mask].copy()
-        
-        # Convert date column to datetime
-        events['Date'] = pd.to_datetime(events['Date'], format='%Y/%m/%d')
-        
-        # Sort by date
-        events = events.sort_values('Date').reset_index(drop=True)
-        
-        # Store events for this type
-        self.events_data[event_type] = events
-        
-        print(f"✅ Loaded {len(events)} {event_type} events from {events['Date'].min().strftime('%Y-%m-%d')} to {events['Date'].max().strftime('%Y-%m-%d')}")
-    
     def calculate_all_features(self, data):
         """Calculate calendar features for all event types at once
         
@@ -269,48 +197,6 @@ class CalendarFeatureProcessor:
         """
         return self.calculate_features(data, feature_prefix="CPI", event_type="Core CPI")
     
-    def _calculate_days_since_last(self, current_date, event_dates):
-        """Calculate days since the last event
-        
-        Args:
-            current_date: Current date to check from
-            event_dates: List of event dates
-            
-        Returns:
-            Number of days since last event, or NaN if no previous event
-        """
-        # Find the most recent event before or on the current date
-        previous_events = [d for d in event_dates if d <= current_date]
-        
-        if not previous_events:
-            return np.nan
-        
-        last_event_date = max(previous_events)
-        days_since = (current_date - last_event_date).days
-        
-        return days_since
-    
-    def _calculate_days_until_next(self, current_date, event_dates):
-        """Calculate days until the next event
-        
-        Args:
-            current_date: Current date to check from
-            event_dates: List of event dates
-            
-        Returns:
-            Number of days until next event, or NaN if no next event
-        """
-        # Find the next event after the current date
-        future_events = [d for d in event_dates if d > current_date]
-        
-        if not future_events:
-            return np.nan
-        
-        next_event_date = min(future_events)
-        days_until = (next_event_date - current_date).days
-        
-        return days_until
-    
     def get_event_summary(self, event_type=None):
         """Get summary statistics of events
         
@@ -439,6 +325,120 @@ class CalendarFeatureProcessor:
         show_plot([since_spec, until_spec], config=config, save_path=save_path)
         if save_path:
             print(f"📊 {event_type} features plot saved to {save_path}")
+    
+    def _load_events_for_type(self, event_type, calendar_data_path=None):
+        """Load events for a specific event type"""
+        if calendar_data_path is None:
+            # Try multiple possible paths for the calendar data
+            possible_paths = []
+            
+            # Path 1: Relative to current file (when run as module)
+            current_dir = Path(__file__).parent.parent.parent
+            possible_paths.append(current_dir / "data_cache" / "calendar" / f"Historic Economic Event Calendar Data - {event_type}.csv")
+            
+            # Path 2: Relative to working directory (when run from project root)
+            possible_paths.append(Path("data_cache") / "calendar" / f"Historic Economic Event Calendar Data - {event_type}.csv")
+            
+            # Path 3: Absolute path from project root
+            project_root = Path.cwd()
+            possible_paths.append(project_root / "data_cache" / "calendar" / f"Historic Economic Event Calendar Data - {event_type}.csv")
+            
+            # Find the first path that exists
+            event_calendar_data_path = None
+            for path in possible_paths:
+                if path.exists():
+                    event_calendar_data_path = path
+                    break
+            
+            if event_calendar_data_path is None:
+                # If none found, use the first path and let the error be raised with a helpful message
+                event_calendar_data_path = possible_paths[0]
+                print(f"⚠️  Warning: {event_type} calendar data not found. Tried these paths:")
+                for i, path in enumerate(possible_paths, 1):
+                    print(f"   {i}. {path}")
+                print(f"   Please ensure the file exists at one of these locations.")
+        else:
+            event_calendar_data_path = Path(calendar_data_path)
+        
+        self._load_events(event_type, event_calendar_data_path)
+    
+    def _load_events(self, event_type, calendar_data_path):
+        """Load and parse calendar events from CSV for a specific event type"""
+        if not calendar_data_path.exists():
+            raise FileNotFoundError(f"{event_type} calendar data not found at {calendar_data_path}")
+        
+        print(f"📅 Loading {event_type} calendar data from {calendar_data_path}")
+        
+        # Read CSV with no header (data starts from first row)
+        df = pd.read_csv(calendar_data_path, header=None, names=[
+            'Date', 'Time', 'Currency', 'Impact', 'Event', 'Actual', 'Forecast', 'Previous'
+        ])
+        
+        # Filter for the specific event type
+        if event_type == "Core CPI":
+            event_filter = 'Core CPI m/m'
+        elif event_type == "CB Consumer Confidence":
+            event_filter = 'CB Consumer Confidence'
+        elif event_type == "Fed Funds Rate":
+            event_filter = 'Federal Funds Rate'
+        else:
+            event_filter = event_type
+        
+        event_mask = df['Event'].str.contains(event_filter, na=False)
+        events = df[event_mask].copy()
+        
+        # Convert date column to datetime
+        events['Date'] = pd.to_datetime(events['Date'], format='%Y/%m/%d')
+        
+        # Sort by date
+        events = events.sort_values('Date').reset_index(drop=True)
+        
+        # Store events for this type
+        self.events_data[event_type] = events
+        
+        print(f"✅ Loaded {len(events)} {event_type} events from {events['Date'].min().strftime('%Y-%m-%d')} to {events['Date'].max().strftime('%Y-%m-%d')}")
+    
+    def _calculate_days_since_last(self, current_date, event_dates):
+        """Calculate days since the last event
+        
+        Args:
+            current_date: Current date to check from
+            event_dates: List of event dates
+            
+        Returns:
+            Number of days since last event, or NaN if no previous event
+        """
+        # Find the most recent event before or on the current date
+        previous_events = [d for d in event_dates if d <= current_date]
+        
+        if not previous_events:
+            return np.nan
+        
+        last_event_date = max(previous_events)
+        days_since = (current_date - last_event_date).days
+        
+        return days_since
+    
+    def _calculate_days_until_next(self, current_date, event_dates):
+        """Calculate days until the next event
+        
+        Args:
+            current_date: Current date to check from
+            event_dates: List of event dates
+            
+        Returns:
+            Number of days until next event, or NaN if no next event
+        """
+        # Find the next event after the current date
+        future_events = [d for d in event_dates if d > current_date]
+        
+        if not future_events:
+            return np.nan
+        
+        next_event_date = min(future_events)
+        days_until = (next_event_date - current_date).days
+        
+        return days_until
 
     
 

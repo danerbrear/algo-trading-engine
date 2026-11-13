@@ -89,11 +89,28 @@ class VolumeStats:
         }
 
 
+@dataclass(frozen=True, kw_only=True)
 class EngineConfig(ABC):
-    """Config superclass"""
+    """Shared configuration for backtesting and paper trading engines."""
+
+    symbol: str
+    strategy_type: Union[str, 'Strategy']
+    bar_interval: BarTimeInterval = BarTimeInterval.DAY
+    max_position_size: Optional[float] = None
+    api_key: Optional[str] = None
+    use_free_tier: bool = False
+    stop_loss: Optional[float] = None
+    profit_target: Optional[float] = None
+    observer: Optional["RunObserver"] = field(default=None, compare=False, hash=False)
+    use_cache: bool = True
+
+    def __post_init__(self):
+        if self.max_position_size is not None:
+            if not 0 < self.max_position_size <= 1:
+                raise ValueError("Max position size must be between 0 and 1")
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class BacktestConfig(EngineConfig):
     """
     Configuration for backtesting engine.
@@ -104,39 +121,25 @@ class BacktestConfig(EngineConfig):
     initial_capital: float
     start_date: datetime
     end_date: datetime
-    symbol: str
-    strategy_type: Union[str, 'Strategy']  # Strategy name (str) or Strategy instance (from core.strategy)
-    bar_interval: BarTimeInterval = BarTimeInterval.DAY  # Time interval for market data bars
-    max_position_size: Optional[float] = None  # Fraction of capital (e.g., 0.4 = 40%)
     volume_config: Optional[VolumeConfig] = None
     enable_progress_tracking: bool = True
     quiet_mode: bool = True
-    api_key: Optional[str] = None  # Polygon.io API key (falls back to POLYGON_API_KEY env var)
-    use_free_tier: bool = False  # Use free tier rate limiting (13 second timeout)
-    lstm_start_date_offset: int = 120  # Days before start_date for LSTM data
-    stop_loss: Optional[float] = None  # Optional stop loss percentage
-    profit_target: Optional[float] = None  # Optional profit target percentage
-    benchmark_ticker: Optional[str] = None  # Ticker for buy-and-hold benchmark comparison (defaults to symbol)
-    plot_config: Optional["PlotConfig"] = None  # None disables local plotting and matplotlib import
-    observer: Optional["RunObserver"] = field(default=None, compare=False, hash=False)
+    lstm_start_date_offset: int = 120
+    benchmark_ticker: Optional[str] = None
+    plot_config: Optional["PlotConfig"] = None
 
     def __post_init__(self):
-        """Validate configuration after initialization."""
+        super().__post_init__()
         if self.initial_capital <= 0:
             raise ValueError("Initial capital must be greater than 0")
         if self.start_date >= self.end_date:
             raise ValueError("Start date must be before end date")
-        if self.max_position_size is not None:
-            if not 0 < self.max_position_size <= 1:
-                raise ValueError("Max position size must be between 0 and 1")
         if self.volume_config is None:
-            # Set default volume config
             object.__setattr__(self, 'volume_config', VolumeConfig())
-        
-        # Validate bar_interval for date range (yfinance limitations)
+
         if self.bar_interval != BarTimeInterval.DAY:
             days_diff = (self.end_date - self.start_date).days
-            
+
             if self.bar_interval == BarTimeInterval.HOUR and days_diff > 729:
                 raise ValueError(
                     f"Hourly bars are limited to 729 days (yfinance restriction). "
@@ -151,7 +154,7 @@ class BacktestConfig(EngineConfig):
                 )
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class PaperTradingConfig(EngineConfig):
     """
     Configuration for paper trading engine.
@@ -160,24 +163,11 @@ class PaperTradingConfig(EngineConfig):
     to run paper trading. Capital allocation is managed separately
     through config/strategies/capital_allocations.json.
     """
-    symbol: str
-    strategy_type: Union[str, 'Strategy']  # Strategy name (str) or Strategy instance (from core.strategy)
-    bar_interval: BarTimeInterval = BarTimeInterval.DAY  # Time interval for market data bars
-    max_position_size: Optional[float] = None  # Fraction of capital
-    api_key: Optional[str] = None  # Polygon.io API key (falls back to POLYGON_API_KEY env var)
-    use_free_tier: bool = False  # Use free tier rate limiting (13 second timeout)
-    use_cache: bool = True  # Whether to write fetched data to the local filesystem cache
-    stop_loss: Optional[float] = None  # Optional stop loss percentage
-    profit_target: Optional[float] = None  # Optional profit target percentage
-    decision_store: Optional['DecisionStore'] = None # Database immplementation for storing decisions
-    auto_yes: bool = False  # Skip interactive prompts (e.g., for Lambda / headless environments)
-    observer: Optional["RunObserver"] = field(default=None, compare=False, hash=False)
+    decision_store: Optional['DecisionStore'] = None
+    auto_yes: bool = False
 
     def __post_init__(self):
-        """Validate configuration after initialization."""
-        if self.max_position_size is not None:
-            if not 0 < self.max_position_size <= 1:
-                raise ValueError("Max position size must be between 0 and 1")
+        super().__post_init__()
         if not isinstance(self.strategy_type, str):
             self.strategy_type.use_snapshot_for_current_bar = True
 

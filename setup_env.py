@@ -152,18 +152,11 @@ def main():
         print("\n" + "=" * 60)
         print("✅ Setup completed successfully!")
         print("=" * 60)
-        print("\nNext steps:")
-        print("1. Activate the virtual environment:")
+        print("Activate the virtual environment:")
         if os.name == 'nt':  # Windows
             print("   .\\venv\\Scripts\\activate")
         else:  # Unix/MacOS
             print("   source venv/bin/activate")
-        print("\n2. Verify installation:")
-        print("   python -c \"import algo_trading_engine; print(algo_trading_engine.__version__)\"")
-        print("\n3. Run a backtest:")
-        print("   algo-backtest --strategy velocity_momentum --symbol SPY")
-        print("\n4. Or run paper trading:")
-        print("   algo-paper-trade --strategy velocity_momentum --symbol SPY")
         print()
             
     except Exception as e:

@@ -46,16 +46,6 @@ class ProgressTracker:
             smoothing=0.1,  # Smooth ETA calculations
             disable=observer is not None,
         )
-        
-    def _count_trading_days(self, start_date: datetime, end_date: datetime) -> int:
-        """Count number of trading days between two dates (excluding weekends)"""
-        days = 0
-        current_date = start_date
-        while current_date <= end_date:
-            if current_date.weekday() < 5:  # 0-4 are weekdays
-                days += 1
-            current_date += timedelta(days=1)
-        return days
     
     def write(self, message: str):
         """Write a message above the progress bar with thread safety"""
@@ -122,6 +112,16 @@ class ProgressTracker:
             log.info("Processing completed:")
             log.info(f"   Total time: {timedelta(seconds=int(stats['elapsed_time']))}")
             log.info(f"   Average time per {self.unit}: {stats['avg_time_per_date']:.2f} seconds")
+        
+    def _count_trading_days(self, start_date: datetime, end_date: datetime) -> int:
+        """Count number of trading days between two dates (excluding weekends)"""
+        days = 0
+        current_date = start_date
+        while current_date <= end_date:
+            if current_date.weekday() < 5:  # 0-4 are weekdays
+                days += 1
+            current_date += timedelta(days=1)
+        return days
 
 # Global progress tracker instance for use across modules
 _global_progress_tracker: Optional[ProgressTracker] = None

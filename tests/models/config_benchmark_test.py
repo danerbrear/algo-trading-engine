@@ -51,6 +51,7 @@ class TestBacktestEngineBenchmarkFromConfig:
         """When benchmark_ticker is None, benchmark uses trading symbol data."""
         mock_strategy = Mock()
         mock_strategy.set_data = Mock()
+        mock_strategy.indicators = []
         mock_strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(0))
         mock_create_strategy.return_value = mock_strategy
         mock_retriever = Mock()
@@ -70,6 +71,7 @@ class TestBacktestEngineBenchmarkFromConfig:
         """When benchmark_ticker equals symbol, no extra data fetch is made."""
         mock_strategy = Mock()
         mock_strategy.set_data = Mock()
+        mock_strategy.indicators = []
         mock_strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(0))
         mock_create_strategy.return_value = mock_strategy
         mock_retriever = Mock()
@@ -89,6 +91,7 @@ class TestBacktestEngineBenchmarkFromConfig:
         """When benchmark_ticker differs from symbol, a second DataRetriever fetches benchmark data."""
         mock_strategy = Mock()
         mock_strategy.set_data = Mock()
+        mock_strategy.indicators = []
         mock_strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(0))
         mock_create_strategy.return_value = mock_strategy
         trading_data = _make_price_data('2024-01-01', 5, base_price=200.0)
@@ -122,6 +125,7 @@ class TestBacktestEngineBenchmarkFromConfig:
         """When benchmark data fetch fails, engine falls back to trading data."""
         mock_strategy = Mock()
         mock_strategy.set_data = Mock()
+        mock_strategy.indicators = []
         mock_strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(0))
         mock_create_strategy.return_value = mock_strategy
         trading_data = _make_price_data('2024-01-01', 5)
@@ -150,6 +154,7 @@ class TestBacktestEngineBenchmarkRun:
         mock_strategy.validate_data = Mock(return_value=True)
         mock_strategy.on_new_date = Mock()
         mock_strategy.on_end = Mock()
+        mock_strategy.indicators = []
         mock_strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(0))
         trading_data = _make_price_data('2024-01-01', 5, base_price=200.0)
         benchmark_data = _make_price_data('2024-01-01', 5, base_price=400.0)
@@ -164,6 +169,7 @@ class TestBacktestEngineBenchmarkRun:
         mock_strategy.validate_data = Mock(return_value=True)
         mock_strategy.on_new_date = Mock()
         mock_strategy.on_end = Mock()
+        mock_strategy.indicators = []
         mock_strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(0))
         trading_data = _make_price_data('2024-01-01', 5, base_price=200.0)
         engine = BacktestEngine(data=trading_data, strategy=mock_strategy, initial_capital=100000, start_date=datetime(2024, 1, 1), end_date=datetime(2024, 1, 5), enable_progress_tracking=False, quiet_mode=True, benchmark_data=None)

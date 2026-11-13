@@ -39,15 +39,15 @@ class TestVelocityVerticalSpread:
         mock_bar_579 = mock_bar_579_nov6
         strategy.get_contract_list_for_date = Mock(return_value=mock_contracts)
 
-        def mock_get_option_bar(contract, date, multiplier=1, timespan=None):
+        def mock_get_option_bar(ticker, date, multiplier=1, timespan=None):
             _ = date, multiplier, timespan
-            if '585' in contract.ticker and str(contract.expiration_date) == '2025-11-06':
+            if '585' in ticker and '251106' in ticker:
                 return mock_bar_585
-            elif '579' in contract.ticker and str(contract.expiration_date) == '2025-11-06':
+            elif '579' in ticker and '251106' in ticker:
                 return mock_bar_579
-            elif '585' in contract.ticker:
+            elif '585' in ticker:
                 return mock_bar_585
-            elif '579' in contract.ticker:
+            elif '579' in ticker:
                 return mock_bar_579
             return None
         strategy.get_option_bar = Mock(side_effect=mock_get_option_bar)
@@ -56,9 +56,9 @@ class TestVelocityVerticalSpread:
         strategy.set_data(data, {})
         position = strategy._create_put_credit_spread(date=current_date, current_price=current_price, expiration=target_expiration)
         assert position is not None, 'Position should be created'
-        assert len(position.spread_options) == 2, 'Position should have 2 legs'
-        short_leg = position.spread_options[0]
-        long_leg = position.spread_options[1]
+        assert len(position.legs) == 2, 'Position should have 2 legs'
+        short_leg = position.legs[0]
+        long_leg = position.legs[1]
         short_exp = short_leg.expiration if hasattr(short_leg, 'expiration') else None
         long_exp = long_leg.expiration if hasattr(long_leg, 'expiration') else None
         print(f'\n🔍 Debug Info:')

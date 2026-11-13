@@ -1,0 +1,24 @@
+output-format: yaml
+
+ignore-patterns:
+  - "^venv/.*$"
+  - "^build/.*$"
+  - "^src/.*\\.egg-info/.*$"
+
+pylint:
+  run: true
+
+pycodestyle:
+  run: false
+
+pyright:
+  run: true
+
+pyroma:
+  run: true
+
+pydocstyle:
+  run: false
+
+pyflakes:
+  run: false

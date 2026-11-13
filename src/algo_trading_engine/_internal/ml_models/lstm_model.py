@@ -37,45 +37,6 @@ class LSTMModel:
         self.feature_columns = None
         self.original_features = None
         self.feature_recommendations = None
-        
-    def _build_model(self):
-        """Build an enhanced LSTM model for options trading signals"""
-        model = Sequential([
-            # Input layer
-            Input(shape=(self.sequence_length, self.n_features)),
-            
-            # First Bidirectional LSTM layer
-            Bidirectional(LSTM(units=LSTM_UNITS[0], return_sequences=True,
-                             kernel_regularizer=l2(0.01))),
-            LayerNormalization(),
-            Dropout(DROPOUT_RATE),
-            
-            # Second Bidirectional LSTM layer (final LSTM layer)
-            Bidirectional(LSTM(units=LSTM_UNITS[1], return_sequences=False,
-                             kernel_regularizer=l2(0.01))),
-            LayerNormalization(),
-            Dropout(DROPOUT_RATE),
-            
-            # Dense layers
-            Dense(units=DENSE_UNITS[0], activation='relu',
-                 kernel_regularizer=l2(0.01)),
-            LayerNormalization(),
-            Dropout(DROPOUT_RATE),
-            
-            # Output layer for 3-class classification
-            Dense(units=self.n_classes, activation='softmax')
-        ])
-        
-        # Use fixed learning rate with Adam optimizer
-        optimizer = Adam(learning_rate=LEARNING_RATE)
-        
-        model.compile(
-            optimizer=optimizer,
-            loss='sparse_categorical_crossentropy',
-            metrics=['accuracy'],
-            jit_compile=True
-        )
-        return model
     
     def prepare_data(self, data_retriever, sequence_length=60):
         """Prepare data for LSTM model with enhanced features using separate date ranges
@@ -354,11 +315,6 @@ class LSTMModel:
         )
         return history
     
-    def _predict(self, X):
-        """Make predictions using the trained model (private method)"""
-        pred_probs = self.model.predict(X, batch_size=128)
-        return np.argmax(pred_probs, axis=1)
-    
     def predict(self, X):
         """Make predictions using the trained model (public wrapper)"""
         return self._predict(X)
@@ -558,7 +514,7 @@ class LSTMModel:
                 puts_by_strike = {}
                 
                 for contract in needed_contracts:
-                    bar = options_handler.get_option_bar(contract, current_date)
+                    bar = options_handler.get_option_bar(contract.ticker, current_date)
                     if bar:
                         # Convert contract and bar to Option object
                         option = Option.from_contract_and_bar(contract, bar)
@@ -625,3 +581,47 @@ class LSTMModel:
         print(f"   Successful: {successful_dates}, Failed: {failed_dates}")
         
         return data
+        
+    def _build_model(self):
+        """Build an enhanced LSTM model for options trading signals"""
+        model = Sequential([
+            # Input layer
+            Input(shape=(self.sequence_length, self.n_features)),
+            
+            # First Bidirectional LSTM layer
+            Bidirectional(LSTM(units=LSTM_UNITS[0], return_sequences=True,
+                             kernel_regularizer=l2(0.01))),
+            LayerNormalization(),
+            Dropout(DROPOUT_RATE),
+            
+            # Second Bidirectional LSTM layer (final LSTM layer)
+            Bidirectional(LSTM(units=LSTM_UNITS[1], return_sequences=False,
+                             kernel_regularizer=l2(0.01))),
+            LayerNormalization(),
+            Dropout(DROPOUT_RATE),
+            
+            # Dense layers
+            Dense(units=DENSE_UNITS[0], activation='relu',
+                 kernel_regularizer=l2(0.01)),
+            LayerNormalization(),
+            Dropout(DROPOUT_RATE),
+            
+            # Output layer for 3-class classification
+            Dense(units=self.n_classes, activation='softmax')
+        ])
+        
+        # Use fixed learning rate with Adam optimizer
+        optimizer = Adam(learning_rate=LEARNING_RATE)
+        
+        model.compile(
+            optimizer=optimizer,
+            loss='sparse_categorical_crossentropy',
+            metrics=['accuracy'],
+            jit_compile=True
+        )
+        return model
+    
+    def _predict(self, X):
+        """Make predictions using the trained model (private method)"""
+        pred_probs = self.model.predict(X, batch_size=128)
+        return np.argmax(pred_probs, axis=1)

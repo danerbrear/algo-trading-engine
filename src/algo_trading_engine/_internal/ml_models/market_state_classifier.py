@@ -178,21 +178,6 @@ class MarketStateClassifier:
         scaled_features = self.scaler.transform(feature_matrix)
         return self.hmm_model.predict(scaled_features)
     
-    def _get_state_characteristics(self, data, states):
-        """Calculate characteristics for each state"""
-        state_chars = {}
-        for state in range(self.n_states):
-            state_data = data[states == state]
-            state_chars[state] = {
-                'proportion': len(state_data) / len(data),
-                'avg_return': state_data['Returns'].mean(),
-                'volatility': state_data['Volatility'].mean(),
-                'price_sma20': state_data['Price_to_SMA20'].mean(),
-                'sma_trend': state_data['SMA20_to_SMA50'].mean(),
-                'volume_ratio': state_data['Volume_Ratio'].mean()
-            }
-        return state_chars
-    
     def get_state_description(self, state_id, data, states):
         """Generate description for each state based on its characteristics"""
         state_data = data[states == state_id]
@@ -212,3 +197,18 @@ class MarketStateClassifier:
         
         return (f"State {state_id}: {trend} with {volatility} volatility, {volume} volume, "
                 f"Price {price_trend}, Moving Averages trending {ma_trend}") 
+    
+    def _get_state_characteristics(self, data, states):
+        """Calculate characteristics for each state"""
+        state_chars = {}
+        for state in range(self.n_states):
+            state_data = data[states == state]
+            state_chars[state] = {
+                'proportion': len(state_data) / len(data),
+                'avg_return': state_data['Returns'].mean(),
+                'volatility': state_data['Volatility'].mean(),
+                'price_sma20': state_data['Price_to_SMA20'].mean(),
+                'sma_trend': state_data['SMA20_to_SMA50'].mean(),
+                'volume_ratio': state_data['Volume_Ratio'].mean()
+            }
+        return state_chars

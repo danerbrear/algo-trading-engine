@@ -424,9 +424,11 @@ class TestPartialCacheFetch:
 
     def test_hourly_complete_cache_returns_without_api_call(self):
         """When hourly cache already covers end_date, no API call is made."""
-        retriever = DataRetriever(symbol='SPY', bar_interval=BarTimeInterval.HOUR)
+        retriever = DataRetriever(symbol='ZZZ_HOURLY_COMPLETE', bar_interval=BarTimeInterval.HOUR)
         cached = self._create_hourly_data('2024-01-02', 8)
-        cache_dir = retriever.cache_manager.get_cache_dir('stocks', 'SPY') / 'hourly'
+        cache_dir = retriever.cache_manager.get_cache_dir('stocks', 'ZZZ_HOURLY_COMPLETE') / 'hourly'
+        if cache_dir.exists():
+            shutil.rmtree(cache_dir)
         cache_dir.mkdir(parents=True, exist_ok=True)
         for idx, row in cached.iterrows():
             fname = f"{idx.strftime('%Y-%m-%d')}_{idx.strftime('%H%M')}.pkl"
@@ -448,3 +450,43 @@ class TestPartialCacheFetch:
             result = retriever.fetch_data_for_period('2024-01-01')
         (mock_api.assert_called_once(), 'Stale cache should trigger a gap fetch')
         assert len(result) == len(cached) + len(gap_data)
+
+    @patch("algo_trading_engine.data_retriever.market_now")
+    def test_save_data_to_cache_skips_today_bars(self, mock_market_now):
+        """Provisional session bars must not be written to cache."""
+        mock_market_now.return_value = datetime(2026, 11, 11, 10, 0, 0)
+        symbol = "ZZZ_SKIP_TODAY"
+        retriever = DataRetriever(symbol=symbol, bar_interval=BarTimeInterval.HOUR)
+        cache_dir = retriever.cache_manager.get_cache_dir("stocks", symbol) / "hourly"
+        if cache_dir.exists():
+            shutil.rmtree(cache_dir)
+        idx = pd.DatetimeIndex(
+            [datetime(2026, 11, 10, 15, 30), datetime(2026, 11, 11, 9, 30)]
+        )
+        data = pd.DataFrame(
+            {
+                "Open": [100.0, 101.0],
+                "High": [101.0, 102.0],
+                "Low": [99.0, 100.0],
+                "Close": [100.5, 101.5],
+                "Volume": [1_000_000, 1_000_000],
+            },
+            index=idx,
+        )
+        retriever._save_data_to_cache(data, "2026-01-01")
+        assert (cache_dir / "2026-11-10_1530.pkl").exists()
+        assert list(cache_dir.glob("2026-11-11_*.pkl")) == []
+
+    @patch("algo_trading_engine.data_retriever.market_now")
+    def test_spans_today_forces_gap_fetch(self, mock_market_now):
+        mock_market_now.return_value = datetime(2026, 11, 11, 10, 0, 0)
+        retriever = DataRetriever(symbol="SPY", bar_interval=BarTimeInterval.HOUR)
+        cached = self._create_hourly_data("2026-11-11", 3)
+        cache_dir = retriever.cache_manager.get_cache_dir("stocks", "SPY") / "hourly"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        for idx, row in cached.iterrows():
+            fname = f"{idx.strftime('%Y-%m-%d')}_{idx.strftime('%H%M')}.pkl"
+            pd.DataFrame([row]).to_pickle(cache_dir / fname)
+        with patch.object(retriever, "_fetch_gap_and_merge", return_value=cached) as mock_merge:
+            retriever.fetch_data_for_period("2026-11-01", "2026-11-11")
+        mock_merge.assert_called_once()

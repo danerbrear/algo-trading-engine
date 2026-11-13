@@ -290,6 +290,67 @@ class BacktestEngine(TradingEngine):
         self._end()
 
         return True
+    
+    def get_performance_metrics(self) -> PerformanceMetrics:
+        """
+        Get performance statistics for the backtest.
+        
+        Returns:
+            PerformanceMetrics object with all performance data
+        """
+        # Calculate overall stats
+        overall_stats = self._calculate_overall_statistics()
+        strategy_stats = self._calculate_strategy_statistics()
+        
+        # Calculate final return
+        final_return = self.capital - self.initial_capital
+        final_return_pct = (final_return / self.initial_capital) * 100
+        
+        # Calculate Sharpe Ratio
+        sharpe_ratio = self._calculate_sharpe_ratio()
+        
+        # Calculate max drawdown
+        max_drawdown = overall_stats.max_drawdown
+        
+        # Convert closed positions to PositionStats
+        position_stats_list = []
+        for pos in self.closed_positions:
+            position_stats = PositionStats(
+                strategy_type=pos['strategy_type'],
+                entry_date=pos['entry_date'],
+                exit_date=pos['exit_date'],
+                entry_price=pos['entry_price'],
+                exit_price=pos['exit_price'],
+                return_dollars=pos['return_dollars'],
+                return_percentage=pos['return_percentage'],
+                days_held=pos['days_held'],
+                max_risk=pos['max_risk']
+            )
+            position_stats_list.append(position_stats)
+        
+        return PerformanceMetrics(
+            total_return=final_return,
+            total_return_pct=final_return_pct,
+            sharpe_ratio=sharpe_ratio,
+            max_drawdown=max_drawdown,
+            win_rate=overall_stats.win_rate,
+            total_positions=self.total_positions,
+            closed_positions=position_stats_list,
+            strategy_stats=strategy_stats,
+            overall_stats=overall_stats,
+            benchmark_return=self.benchmark.get_return_dollars(),
+            benchmark_return_pct=self.benchmark.get_return_percentage(),
+            expected_value=overall_stats.expected_value,
+        )
+    
+    def get_positions(self) -> List[Position]:
+        """
+        Get current open positions.
+        
+        Returns:
+            List of currently open Position objects
+        """
+        return self.positions.copy()
 
     def _end(self):
         """
@@ -382,67 +443,6 @@ class BacktestEngine(TradingEngine):
                 "sharpe_ratio": f"{sharpe_ratio:.3f}",
                 "expected_value": "N/A" if expected_value is None else f"${expected_value:+,.2f}",
             })
-    
-    def get_performance_metrics(self) -> PerformanceMetrics:
-        """
-        Get performance statistics for the backtest.
-        
-        Returns:
-            PerformanceMetrics object with all performance data
-        """
-        # Calculate overall stats
-        overall_stats = self._calculate_overall_statistics()
-        strategy_stats = self._calculate_strategy_statistics()
-        
-        # Calculate final return
-        final_return = self.capital - self.initial_capital
-        final_return_pct = (final_return / self.initial_capital) * 100
-        
-        # Calculate Sharpe Ratio
-        sharpe_ratio = self._calculate_sharpe_ratio()
-        
-        # Calculate max drawdown
-        max_drawdown = overall_stats.max_drawdown
-        
-        # Convert closed positions to PositionStats
-        position_stats_list = []
-        for pos in self.closed_positions:
-            position_stats = PositionStats(
-                strategy_type=pos['strategy_type'],
-                entry_date=pos['entry_date'],
-                exit_date=pos['exit_date'],
-                entry_price=pos['entry_price'],
-                exit_price=pos['exit_price'],
-                return_dollars=pos['return_dollars'],
-                return_percentage=pos['return_percentage'],
-                days_held=pos['days_held'],
-                max_risk=pos['max_risk']
-            )
-            position_stats_list.append(position_stats)
-        
-        return PerformanceMetrics(
-            total_return=final_return,
-            total_return_pct=final_return_pct,
-            sharpe_ratio=sharpe_ratio,
-            max_drawdown=max_drawdown,
-            win_rate=overall_stats.win_rate,
-            total_positions=self.total_positions,
-            closed_positions=position_stats_list,
-            strategy_stats=strategy_stats,
-            overall_stats=overall_stats,
-            benchmark_return=self.benchmark.get_return_dollars(),
-            benchmark_return_pct=self.benchmark.get_return_percentage(),
-            expected_value=overall_stats.expected_value,
-        )
-    
-    def get_positions(self) -> List[Position]:
-        """
-        Get current open positions.
-        
-        Returns:
-            List of currently open Position objects
-        """
-        return self.positions.copy()
 
     def _add_position(self, position: Position):
         """
@@ -451,8 +451,8 @@ class BacktestEngine(TradingEngine):
         """
         
         # Volume validation - check all options in the spread
-        if self.volume_config.enable_volume_validation and position.spread_options:
-            for option in position.spread_options:
+        if self.volume_config.enable_volume_validation and position.legs:
+            for option in position.legs:
                 if not self._validate_option_volume(option):
                     get_logger().warning(f"Volume validation failed: {option.symbol} has insufficient volume")
                     self.volume_stats = self.volume_stats.increment_rejected_positions()
@@ -483,7 +483,7 @@ class BacktestEngine(TradingEngine):
 
         self.strategy.on_add_position_success(position)
 
-    def _remove_position(self, date: datetime, position: Position, exit_price: float, underlying_price: float = None, current_volumes: list[int] = None):
+    def _remove_position(self, date: datetime, position: Position, exit_price: float, underlying_price: Optional[float] = None, current_volumes: Optional[list[int]] = None):
         """
         Remove a position from the positions list with enhanced current date volume validation.
         
@@ -492,18 +492,18 @@ class BacktestEngine(TradingEngine):
             position: Position to remove
             exit_price: Price at which the position is being closed
             underlying_price: Price of the underlying at the time of exit
-            current_volumes: List of current volume data for each option in position.spread_options
+            current_volumes: List of current volume data for each option in position.legs
         """
         # Enhanced volume validation - check all options in the spread with current date data
-        if self.volume_config.enable_volume_validation and position.spread_options and current_volumes:
+        if self.volume_config.enable_volume_validation and position.legs and current_volumes:
             volume_validation_failed = False
             failed_options = []
             
             # Increment options checked counter for each option in the spread
-            for option in position.spread_options:
+            for option in position.legs:
                 self.volume_stats = self.volume_stats.increment_options_checked()
             
-            for option, current_volume in zip(position.spread_options, current_volumes):
+            for option, current_volume in zip(position.legs, current_volumes):
                 if current_volume is None or current_volume < self.volume_config.min_volume:
                     volume_validation_failed = True
                     failed_options.append(option.symbol)
@@ -518,15 +518,15 @@ class BacktestEngine(TradingEngine):
                     return  # Skip closure and keep position open
 
         if position not in self.positions:
-            raise ValueError(f"Could not find position to close within open positions. {position.__str__()}")
+            raise ValueError(f"Could not find position to close within open positions. {position}")
 
         # Calculate the return for this position due to assignment
         if position.get_days_to_expiration(date) < 1:
             if underlying_price is None:
-                raise ValueError(f"Underlying price not provided for position {position.__str__()}")
+                raise ValueError(f"Underlying price not provided for position {position}")
 
             position_return = position.get_return_dollars_from_assignment(underlying_price)
-            get_logger().info(f"   Position closed by assignment: {position.__str__()}")
+            get_logger().info(f"   Position closed by assignment: {position}")
         else:
             if exit_price is None: # Allows for exit price to be 0 - possible if ATM and OTM market price are equal
                 raise ValueError("Exit price not provided for the unexpired position")

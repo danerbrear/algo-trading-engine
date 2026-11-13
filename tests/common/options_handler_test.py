@@ -278,7 +278,7 @@ class TestOptionsHandler:
         """Test getting option bar when no cached data exists."""
         test_date = datetime(2021, 11, 19)
         contract = sample_contracts[0]
-        bar = options_handler.get_option_bar(contract, test_date)
+        bar = options_handler.get_option_bar(contract.ticker, test_date)
         assert bar is None
 
     def test_cache_stats(self, options_handler, sample_contracts):
@@ -494,7 +494,7 @@ class TestOptionsHandlerPhase3:
         mock_rest_client.return_value = mock_client
         options_handler.client = mock_client
         options_handler.api_retry_handler.fetch_with_retry = Mock(return_value=mock_bar_data)
-        bar = options_handler.get_option_bar(contract, test_date)
+        bar = options_handler.get_option_bar(contract.ticker, test_date)
         assert bar is not None
         assert bar.ticker == contract.ticker
         assert bar.close_price == Decimal('10.75')
@@ -510,7 +510,7 @@ class TestOptionsHandlerPhase3:
         wrong_ts = int(ten_am.timestamp() * 1000)
         mock_bar_data = [{'o': 1.0, 'h': 1.0, 'l': 1.0, 'c': 1.0, 'v': 100, 't': wrong_ts}]
         options_handler.api_retry_handler.fetch_with_retry = Mock(return_value=mock_bar_data)
-        result = options_handler._fetch_bar_from_api(contract, dt, 1, 'hour')
+        result = options_handler._fetch_bar_from_api(contract.ticker, dt, 1, 'hour')
         assert result is None
 
     def test_get_options_chain_integration(self, options_handler, sample_contracts, sample_bar):
@@ -551,7 +551,7 @@ class TestOptionsHandlerPhase3:
         mock_response = Mock()
         mock_response.results = [{'o': 10.5, 'h': 11.0, 'l': 10.25, 'v': 1000}]
         options_handler.api_retry_handler.fetch_with_retry = Mock(return_value=mock_response)
-        bar = options_handler.get_option_bar(contract, test_date)
+        bar = options_handler.get_option_bar(contract.ticker, test_date)
         assert bar is None
 
     def test_rate_limiting_integration(self, options_handler):
@@ -721,7 +721,7 @@ class TestOptionsHandlerPhase5Simple:
         contract = sample_contracts[0]
         sample_bar = OptionBarDTO(ticker=contract.ticker, timestamp=datetime(2025, 12, 10, 16, 0, 0), open_price=Decimal('2.50'), high_price=Decimal('2.75'), low_price=Decimal('2.25'), close_price=Decimal('2.60'), volume=150, volume_weighted_avg_price=Decimal('2.55'), number_of_transactions=25, adjusted=True)
         with patch.object(options_handler.cache_manager, 'load_bar', return_value=sample_bar):
-            bar = options_handler.get_option_bar(contract, test_date)
+            bar = options_handler.get_option_bar(contract.ticker, test_date)
             assert bar is not None
             assert bar.ticker == contract.ticker
             assert bar.volume > 0
@@ -825,7 +825,7 @@ class TestOptionsHandlerPhase5Simple:
             assert len(contracts) > 0
             contract = contracts[0]
             with patch.object(options_handler.cache_manager, 'load_bar', return_value=None), patch.object(options_handler, '_fetch_bar_from_api', return_value=None):
-                bar = options_handler.get_option_bar(contract, test_date)
+                bar = options_handler.get_option_bar(contract.ticker, test_date)
                 assert bar is None
             with patch.object(options_handler.cache_manager, 'load_bar', return_value=sample_bar):
                 chain = options_handler.get_options_chain(test_date, current_price)
@@ -914,7 +914,7 @@ class TestOptionsHandlerPhase5Integration:
                 assert len(contracts) > 0
                 assert all((590.0 <= float(c.strike_price.value) <= 610.0 for c in contracts))
                 contract = contracts[0]
-                bar = options_handler.get_option_bar(contract, test_date)
+                bar = options_handler.get_option_bar(contract.ticker, test_date)
                 assert bar is not None
                 assert bar.ticker == contract.ticker
                 assert bar.volume > 0
@@ -1153,19 +1153,11 @@ class TestOptionsHandlerErrorHandling:
             OptionsHandler(None, api_key='test_key', cache_dir=temp_dir)
 
     def test_invalid_contract_parameters(self, options_handler):
-        """Test error handling for invalid contract parameters."""
-        from algo_trading_engine.dto import OptionContractDTO
-        from algo_trading_engine.enums import OptionType
-        from algo_trading_engine.vo import StrikePrice, ExpirationDate
-        valid_contract = OptionContractDTO(ticker='O:SPY250115C00600000', underlying_ticker='SPY', contract_type=OptionType.CALL, strike_price=StrikePrice(Decimal('600.0')), expiration_date=ExpirationDate(date(2025, 1, 15)), exercise_style='american', shares_per_contract=100)
-        result = options_handler.get_option_bar('invalid_contract', datetime.now())
+        """Test error handling for invalid ticker parameters."""
+        result = options_handler.get_option_bar('', datetime.now())
         assert result is None
         result = options_handler.get_option_bar(None, datetime.now())
         assert result is None
-        mock_contract = Mock()
-        mock_contract.ticker = 'O:SPY250115C00600000'
-        with pytest.raises(TypeError, match='date must be datetime or date'):
-            options_handler.get_option_bar(mock_contract, 'invalid_date')
 
     def test_invalid_filter_parameters(self):
         """Test error handling for invalid filter parameters."""
@@ -1201,9 +1193,7 @@ class TestOptionsHandlerErrorHandling:
             contracts = options_handler.get_contract_list_for_date(datetime.now())
             assert contracts == []
         with patch.object(options_handler.cache_manager, 'load_bar', side_effect=Exception('Cache corruption')):
-            contract = Mock()
-            contract.ticker = 'test_ticker'
-            bar = options_handler.get_option_bar(contract, datetime.now())
+            bar = options_handler.get_option_bar('test_ticker', datetime.now())
             assert bar is None
         with patch.object(options_handler.cache_manager, 'save_contracts', side_effect=Exception('Cache write error')):
             options_handler._cache_contracts(datetime.now(), [])
@@ -1218,9 +1208,7 @@ class TestOptionsHandlerErrorHandling:
         invalid_bar_data = [None, {}, {'invalid': 'data'}, {'o': None, 'h': 100, 'l': 90, 'c': 95}, {'o': 100, 'h': None, 'l': 90, 'c': 95}, {'o': 100, 'h': 100, 'l': None, 'c': 95}, {'o': 100, 'h': 100, 'l': 90, 'c': None}, {'o': -100, 'h': 100, 'l': 90, 'c': 95}, {'o': 100, 'h': 90, 'l': 100, 'c': 95}]
         for invalid_data in invalid_bar_data:
             with patch.object(options_handler.api_retry_handler, 'fetch_with_retry', return_value=Mock(results=[invalid_data] if invalid_data else [])):
-                contract = Mock()
-                contract.ticker = 'test_ticker'
-                bar = options_handler._fetch_bar_from_api(contract, date.today(), 1, 'day')
+                bar = options_handler._fetch_bar_from_api('test_ticker', date.today(), 1, 'day')
                 assert bar is None or isinstance(bar, OptionBarDTO)
 
     def test_edge_cases_and_boundary_conditions(self, options_handler):

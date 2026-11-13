@@ -5,6 +5,7 @@ This module tests the volume validation logic, configuration, and statistics tra
 """
 
 import pytest
+from datetime import datetime
 from unittest.mock import Mock
 import dataclasses
 
@@ -363,6 +364,7 @@ class TestVolumeValidationLogic:
         """Test volume validation with sufficient volume."""
         high_volume_option = Option(
             ticker="SPY",
+            timestamp=datetime(2024, 1, 15),
             symbol="SPY240119C00100000",
             strike=100.0,
             expiration="2024-01-19",
@@ -384,6 +386,7 @@ class TestVolumeValidationLogic:
         """Test volume validation with insufficient volume."""
         low_volume_option = Option(
             ticker="SPY",
+            timestamp=datetime(2024, 1, 15),
             symbol="SPY240119C00100000",
             strike=100.0,
             expiration="2024-01-19",
@@ -405,6 +408,7 @@ class TestVolumeValidationLogic:
         """Test volume validation with None volume."""
         none_volume_option = Option(
             ticker="SPY",
+            timestamp=datetime(2024, 1, 15),
             symbol="SPY240119C00100000",
             strike=100.0,
             expiration="2024-01-19",
@@ -425,6 +429,7 @@ class TestVolumeValidationLogic:
         """Test spread volume validation with mixed volume levels."""
         high_volume_option = Option(
             ticker="SPY",
+            timestamp=datetime(2024, 1, 15),
             symbol="SPY240119C00100000",
             strike=100.0,
             expiration="2024-01-19",
@@ -438,6 +443,7 @@ class TestVolumeValidationLogic:
         
         low_volume_option = Option(
             ticker="SPY",
+            timestamp=datetime(2024, 1, 15),
             symbol="SPY240119C00110000",
             strike=110.0,
             expiration="2024-01-19",
@@ -458,6 +464,7 @@ class TestVolumeValidationLogic:
         """Test spread volume validation with all options having sufficient volume."""
         option1 = Option(
             ticker="SPY",
+            timestamp=datetime(2024, 1, 15),
             symbol="SPY240119C00100000",
             strike=100.0,
             expiration="2024-01-19",
@@ -471,6 +478,7 @@ class TestVolumeValidationLogic:
         
         option2 = Option(
             ticker="SPY",
+            timestamp=datetime(2024, 1, 15),
             symbol="SPY240119C00110000",
             strike=110.0,
             expiration="2024-01-19",

@@ -52,7 +52,7 @@ Validation:
   - Prompt user for acceptance via `input()` (with `--yes` flag for non-interactive environments)
   - Persist accepted decision via `JsonDecisionStore`
   - Detect open positions and recommend closure:
-    - Construct a runtime `Position` from accepted decision(s) and compute exit price using `Position.calculate_exit_price()` when current `OptionChain` is available
+    - Construct a runtime `Position` from accepted decision(s) and compute exit price using `Position.exit_price_from_chain()` when current `OptionChain` is available
     - Apply existing rules: profit target, stop loss, holding period, expiration proximity
     - If enhanced volume validation is enabled, fetch current volumes via strategy helper and use current-date volume thresholds when advising closure
   - Provide an explanation/rationale string for each recommendation (probability, R/R, rule hit, volume status)
@@ -162,7 +162,7 @@ class InteractiveStrategyRecommender:
     def recommend_close_positions(self, date: datetime):
         # For each open position from store:
         #   - construct a runtime Position from the accepted DecisionRecord
-        #   - compute exit price via Position.calculate_exit_price(current_chain)
+        #   - compute exit price via Position.exit_price_from_chain(current_chain)
         #   - fetch current volumes and apply volume validation for closure
         #   - derive rationale (profit target/stop loss/holding/expiration)
         #   - prompt user; on accept, mark closed in store

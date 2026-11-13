@@ -10,6 +10,17 @@ alwaysApply: true
 ## Coding as an Agent
 
 - Prefer polymorphism over type/enum branching. When behavior differs by type, put the behavior on the type (override a method) and call it through a shared interface. Do not switch on `strategy_type`, class name, or similar discriminators in callers when a subclass method would do.
+- All prices should use the Decimal data type over float
+
+### Class member order
+
+Order members in every class as follows:
+
+1. Class attributes (annotations and constants)
+2. `__init__` and other dunder methods
+3. Properties
+4. Public methods: abstract methods first, then concrete methods. Public `@classmethod` and `@staticmethod` stay in this group
+5. Private methods, including private static and class methods
 
 ### Startup and imports
 
@@ -37,7 +48,7 @@ alwaysApply: true
 
 ---
 
-# Cursor Rules for LSTM POC Project
+# Cursor Rules for Algo Trading Engine Project
 
 ## Table of Contents
 1. [Agentic Standards](#agentic-standards)
@@ -242,18 +253,6 @@ alwaysApply: true
 - **Easy navigation**: Structure should be intuitive to navigate
 - **Clear boundaries**: Clear separation between different types of functionality
 - **Extensibility**: Structure should accommodate future additions
-
-### Security and Best Practices
-
-#### Directory Security
-- **Sensitive data**: Keep sensitive data in appropriate directories
-- **Access control**: Use appropriate file permissions
-- **Environment separation**: Separate development and production configurations
-
-#### Data Organization
-- **Input validation**: Validate data at directory boundaries
-- **Error handling**: Implement proper error handling for file operations
-- **Backup strategies**: Plan for data backup and recovery
 
 ---
 

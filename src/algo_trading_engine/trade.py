@@ -13,6 +13,8 @@ import pandas as pd
 from algo_trading_engine.logging import configure_logger, get_logger
 from algo_trading_engine.logging.logger import log_and_echo
 from algo_trading_engine._internal.common.ml_pipeline import is_credit_spread_strategy, prepare_credit_spread_backtest_data
+from algo_trading_engine._internal.util.market_clock import market_now
+from algo_trading_engine._internal.trade.live_bar import apply_live_quote
 from algo_trading_engine._internal.common.trading_engine import (
     DEFAULT_PAPER_TRADING_LSTM_LOOKBACK_DAYS,
     TradingEngine,
@@ -24,6 +26,7 @@ from algo_trading_engine._internal.trade.recommendation_engine import Interactiv
 from algo_trading_engine.backtest._strategy_builder import create_strategy_from_args
 from algo_trading_engine.data_retriever import DataRetriever
 from algo_trading_engine.database.decision_store import JsonDecisionStore
+from algo_trading_engine.models import EngineConfig
 from algo_trading_engine.models.config import PaperTradingConfig
 from algo_trading_engine.options_handler import OptionsHandler
 from algo_trading_engine.strategy import IndicatorUpdateError, Strategy
@@ -44,6 +47,7 @@ class PaperTradingEngine(TradingEngine):
     This engine runs strategies against live market data in real-time,
     simulating trades without actually executing them.
     """
+    _config: PaperTradingConfig
     
     def __init__(
         self,
@@ -74,8 +78,6 @@ class PaperTradingEngine(TradingEngine):
         # Store options_handler for use in run()
         if options_handler is not None:
             self._options_handler = options_handler
-        elif hasattr(strategy, 'options_handler'):
-            self._options_handler = strategy.options_handler
         else:
             self._options_handler = None
     
@@ -126,7 +128,7 @@ class PaperTradingEngine(TradingEngine):
         
         # Get current date. Sub-second precision cannot be represented in coarser
         # bar-index resolutions, which breaks indicator writes keyed on this date.
-        run_date = datetime.now().replace(microsecond=0)
+        run_date = market_now()
         
         # Create recommender (needed for position status checks)
         recommender = InteractiveStrategyRecommender(
@@ -157,6 +159,8 @@ class PaperTradingEngine(TradingEngine):
                     )
                 log_and_echo("")
 
+        self.update_indicators(run_date)
+
         log_and_echo(f"Running recommendation flow for {run_date.date()}")
 
         # Display capital status (recommendation-relevant)
@@ -176,33 +180,37 @@ class PaperTradingEngine(TradingEngine):
             get_logger().error(f"Failed to run recommendation engine: {e}")
             return False
     
-    def _get_strategy_name_from_class(self) -> str:
+    def update_indicators(self, date: datetime) -> None:
+        """Fill indicator values for the paper-trading run timestamp.
+
+        Historical bars are already filled by ``TradingEngine.precompute_indicators``.
+        ``date`` is ``datetime.now()``, which is not one of those bar timestamps.
         """
-        Get strategy name from strategy class for capital manager.
-        
-        Uses the same logic as InteractiveStrategyRecommender to ensure consistency.
-        
-        Returns:
-            Strategy name string (e.g., 'credit_spread', 'velocity_momentum', 'my_custom')
-        """
-        # Remove "Strategy" suffix and convert CamelCase to snake_case
-        class_name = self._strategy.__class__.__name__.replace("Strategy", "")
-        strategy_name = re.sub(r'(?<!^)(?=[A-Z])', '_', class_name).lower()
-        
-        # Map class names to config keys for built-in strategies
-        name_mapping = {
-            "credit_spread": "credit_spread",
-            "velocity_signal_momentum": "velocity_momentum",
-        }
-        
-        return name_mapping.get(strategy_name, strategy_name)
-    
+        indicators = self._strategy.indicators
+        if not indicators:
+            return
+        data = self._strategy.data
+        if data is None or data.empty:
+            raise IndicatorUpdateError(
+                f"Cannot update indicators for {date} without market data"
+            )
+        for indicator in indicators:
+            if date in indicator.get_values().index:
+                continue
+            try:
+                indicator.update(date, data)
+            except Exception as exc:
+                get_logger().error(f"Error updating indicator {indicator.name}: {exc}")
+                raise IndicatorUpdateError(
+                    f"Indicator {indicator.name} failed to update for {date}: {exc}"
+                ) from exc
+
     def get_positions(self) -> List['Position']:
         """Get current open positions."""
         return self._positions.copy()
     
     @classmethod
-    def from_config(cls, config: PaperTradingConfig) -> 'PaperTradingEngine':
+    def from_config(cls, config: EngineConfig) -> 'PaperTradingEngine':
         """
         Create PaperTradingEngine from configuration.
         
@@ -221,7 +229,10 @@ class PaperTradingEngine(TradingEngine):
         # Configure logger first so data fetch and all setup log to trade.log (not stdout)
         configure_logger("trade", log_level="info", observer=config.observer)
 
-        today = datetime.now()
+        if not isinstance(config, PaperTradingConfig):
+            raise ValueError("Must use trading config.")
+
+        today = market_now()
 
         # Internal: Create options handler (strategy needs option callables before first fetch)
         options_handler = OptionsHandler(
@@ -255,14 +266,9 @@ class PaperTradingEngine(TradingEngine):
         else:
             strategy = config.strategy_type
             strategy.symbol = config.symbol
-            if hasattr(strategy, 'get_contract_list_for_date'):
-                strategy.get_contract_list_for_date = get_contract_list_for_date
-                strategy.get_option_bar = get_option_bar
-                strategy.get_options_chain = get_options_chain
-                strategy.get_current_volumes_for_position = cls.get_current_volumes_for_position
-                strategy.compute_exit_price = cls.compute_exit_price
-            elif hasattr(strategy, 'options_handler'):
-                strategy.options_handler = options_handler
+            strategy.get_contract_list_for_date = get_contract_list_for_date
+            strategy.get_option_bar = get_option_bar
+            strategy.get_options_chain = get_options_chain
 
         strategy.use_snapshot_for_current_bar = True
 
@@ -281,11 +287,14 @@ class PaperTradingEngine(TradingEngine):
             raise ValueError(f"Failed to fetch data for {config.symbol}")
         get_logger().info(f"Fetched {len(data)} data points for {config.symbol} from {data.index[0]} to {data.index[-1]}")
 
+        live_price = retriever.get_live_price()
+        if live_price is not None:
+            data = apply_live_quote(data, live_price, today, config.bar_interval)
+
         if is_credit_spread_strategy(config.strategy_type):
             data = prepare_credit_spread_backtest_data(data, retriever, config.symbol)
 
         strategy.set_data(data, retriever.treasury_rates)
-        strategy.warm_up_indicators()
 
         engine = cls(
             strategy=strategy,
@@ -293,13 +302,32 @@ class PaperTradingEngine(TradingEngine):
             options_handler=options_handler
         )
 
-        # Inject engine methods into strategy (mirrors BacktestEngine.from_config)
-        if hasattr(strategy, 'compute_exit_price'):
-            strategy.compute_exit_price = engine.compute_exit_price
-        if hasattr(strategy, 'get_current_volumes_for_position'):
-            strategy.get_current_volumes_for_position = engine.get_current_volumes_for_position
+        # Inject bound engine methods to the strategy
+        strategy.compute_exit_price = engine.compute_exit_price
+        strategy.get_current_volumes_for_position = engine.get_current_volumes_for_position
 
         strategy.get_rt_option_bar = make_rt_option_bar(options_handler)
 
         return engine
+    
+    def _get_strategy_name_from_class(self) -> str:
+        """
+        Get strategy name from strategy class for capital manager.
+        
+        Uses the same logic as InteractiveStrategyRecommender to ensure consistency.
+        
+        Returns:
+            Strategy name string (e.g., 'credit_spread', 'velocity_momentum', 'my_custom')
+        """
+        # Remove "Strategy" suffix and convert CamelCase to snake_case
+        class_name = self._strategy.__class__.__name__.replace("Strategy", "")
+        strategy_name = re.sub(r'(?<!^)(?=[A-Z])', '_', class_name).lower()
+        
+        # Map class names to config keys for built-in strategies
+        name_mapping = {
+            "credit_spread": "credit_spread",
+            "velocity_signal_momentum": "velocity_momentum",
+        }
+        
+        return name_mapping.get(strategy_name, strategy_name)
 

@@ -40,6 +40,33 @@ class SMAIndicator(Indicator):
     def warm_up_period(self) -> int:
         return self.period
 
+    def precompute(self, data: pd.DataFrame) -> None:
+        if self.column not in data.columns:
+            raise ValueError(
+                f"Column '{self.column}' not found in data. "
+                f"Available columns: {list(data.columns)}"
+            )
+
+        self._updated_dates = set()
+        rolling = data[self.column].rolling(window=self.period).mean()
+        valid = rolling.dropna()
+        weekday_mask = pd.Series(valid.index.weekday < 5, index=valid.index)
+        valid = valid[weekday_mask]
+
+        if self.period_unit == BarTimeInterval.DAY:
+            seen_days: set = set()
+            values: dict = {}
+            for ts, val in valid.items():
+                cal_date = ts.date() if hasattr(ts, "date") else ts
+                if cal_date in seen_days:
+                    continue
+                seen_days.add(cal_date)
+                self._updated_dates.add(cal_date)
+                values[ts] = val
+            self._values = pd.Series(values, dtype=float)
+        else:
+            self._values = valid.astype(float)
+
     def update(self, date: datetime, data: pd.DataFrame) -> None:
         """
         Compute and store the SMA value for *date*.

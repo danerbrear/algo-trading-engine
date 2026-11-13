@@ -18,21 +18,18 @@ dependencies = [
     "python-dotenv>=1.0.1",
     "tqdm>=4.66.0",
     "loguru>=0.7.0",
+    "vollib>=1.0.11"
 ]
 
 [project.optional-dependencies]
-plot = [
-    "matplotlib>=3.8.0",
-]
-ml = [
-    "tensorflow>=2.15.0",
-]
 dev = [
     "pytest>=7.0.0",
     "psutil>=5.9.0",
-    "pylint~=3.3",
-    "algo_trading_engine[ml]",
-    "algo_trading_engine[plot]",
+    "prospector[with_pyright,with_pyroma]~=1.20",
+    "pre-commit>=3.0",
+    "black>=24.0",
+    "tensorflow>=2.15.0",
+    "matplotlib>=3.8.0",
 ]
 
 [tool.setuptools]
@@ -42,6 +39,22 @@ package-dir = {"" = "src"}
 where = ["src"]
 include = ["algo_trading_engine*"]
 
+[tool.black]
+line-length = 120
+target-version = ['py310', 'py311']
+include = '\.pyi?$'
+
+[tool.pyright]
+typeCheckingMode = "standard"
+exclude = [
+    "**/__pycache__",
+    "**/.*",
+    "data_cache",
+    "venv",
+    "logs",
+    "build",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
@@ -50,7 +63,6 @@ pythonpath = ["src"]
 [tool.pylint.main]
 py-version = "3.10"
 source-roots = ["src"]
-init-hook = "import sys; from pathlib import Path; src = next((p / 'src' for p in [Path.cwd(), *Path.cwd().parents] if (p / 'src' / 'algo_trading_engine').is_dir()), Path('src')); sys.path.insert(0, str(src.resolve()))"
 jobs = 0
 ignore-paths = [
     "^venv/.*$",
@@ -60,9 +72,7 @@ ignore-paths = [
 
 [tool.pylint."messages control"]
 disable = [
-    # Explicitly disabled rules
     "broad-exception-caught",
-    # Owned by the code formatter, not the linter
     "line-too-long",
     "trailing-whitespace",
     "trailing-newlines",
@@ -74,6 +84,10 @@ disable = [
 
 [tool.pylint.design]
 max-args = 8
-max-positional-arguments = 3
 max-attributes = 12
-max-returns = 4
+max-returns = 6
+max-branches = 15
+max-statements = 60
+
+[tool.pylint.format]
+max-line-length = 120

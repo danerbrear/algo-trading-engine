@@ -266,6 +266,26 @@ class CapitalManager:
         }
         return strategy_type in credit_strategies
     
+    def get_status_summary(self, strategy_name: str) -> str:
+        """Get a formatted status summary for a strategy.
+        
+        Args:
+            strategy_name: Name of the strategy
+            
+        Returns:
+            Formatted status string
+        """
+        allocated = self.get_allocated_capital(strategy_name)
+        remaining = self.get_remaining_capital(strategy_name)
+        max_allowed = self.get_max_allowed_risk(strategy_name)
+        risk_pct = self.get_max_risk_percentage(strategy_name) * 100
+        
+        return (
+            f"📊 Capital Allocation: ${allocated:,.2f} for {strategy_name}\n"
+            f"💰 Remaining Capital: ${remaining:,.2f}\n"
+            f"📈 Max Risk Per Position: ${max_allowed:,.2f} ({risk_pct:.1f}% of allocated capital)"
+        )
+    
     def _calculate_remaining_capital(self, strategy_name: str) -> float:
         """Calculate remaining capital from decisions JSON files.
         
@@ -318,24 +338,4 @@ class CapitalManager:
                     capital += exit_price
         
         return capital
-    
-    def get_status_summary(self, strategy_name: str) -> str:
-        """Get a formatted status summary for a strategy.
-        
-        Args:
-            strategy_name: Name of the strategy
-            
-        Returns:
-            Formatted status string
-        """
-        allocated = self.get_allocated_capital(strategy_name)
-        remaining = self.get_remaining_capital(strategy_name)
-        max_allowed = self.get_max_allowed_risk(strategy_name)
-        risk_pct = self.get_max_risk_percentage(strategy_name) * 100
-        
-        return (
-            f"📊 Capital Allocation: ${allocated:,.2f} for {strategy_name}\n"
-            f"💰 Remaining Capital: ${remaining:,.2f}\n"
-            f"📈 Max Risk Per Position: ${max_allowed:,.2f} ({risk_pct:.1f}% of allocated capital)"
-        )
 

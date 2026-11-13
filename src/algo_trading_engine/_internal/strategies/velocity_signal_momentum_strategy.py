@@ -58,6 +58,74 @@ class VelocitySignalMomentumStrategy(Strategy):
             # Calculate velocity changes for signal detection
             self.data['Velocity_Changes'] = self.data['MA_Velocity_15_30'].diff()
 
+    def on_new_date(self, date: datetime, positions: tuple['Position', ...], add_position: Callable[['Position'], None], remove_position: Callable[[datetime, 'Position', float, Optional[float], Optional[list[int]]], None]):
+        super().on_new_date(date, positions, add_position, remove_position)
+
+        if len(positions) == 0:
+            self._try_open_position(date, add_position)
+            
+        self._try_close_positions(date, positions, remove_position)
+
+    def on_end(self, positions: tuple['Position', ...], remove_position: Callable[[datetime, 'Position', float, Optional[float], Optional[list[int]]], None], date: datetime):
+        """End-of-run hook; plotting is handled by the engine / show_plot callers."""
+        del positions, remove_position, date
+
+    def validate_data(self, data: pd.DataFrame) -> bool:
+        """
+        Validate the data for the Velocity Signal Momentum Strategy.
+        
+        This strategy requires:
+        - Basic OHLCV data
+        - Moving averages (SMA_15, SMA_30) for velocity calculation
+        - Velocity changes data
+        
+        Args:
+            data: DataFrame with market data and features
+            
+        Returns:
+            bool: True if data is valid for this strategy, False otherwise
+        """        
+        get_logger().info(f"\n🔍 Validating data for Velocity Signal Momentum Strategy...")
+        get_logger().info(f"   Data shape: {data.shape}")
+        
+        # Check if the data has the required columns for velocity momentum strategy
+        required_columns = [
+            'Open', 'High', 'Low', 'Close', 'Volume',  # Basic OHLCV data
+        ]
+        
+        missing_columns = [col for col in required_columns if col not in data.columns]
+        if missing_columns:
+            get_logger().warning(f"⚠️  Warning: Missing required columns: {missing_columns}")
+            get_logger().info(f"   Available columns: {list(data.columns)}")
+            return False
+        else:
+            get_logger().info(f"✅ All required columns present")
+        
+        # Check if data has datetime index
+        if not isinstance(data.index, pd.DatetimeIndex):
+            get_logger().error("❌ Error: Data must have a datetime index for backtesting")
+            return False
+        
+        # Check if we have enough data for moving averages (need at least 30 days for SMA 30)
+        if len(data) < 30:
+            get_logger().warning(f"⚠️  Warning: Not enough data for velocity analysis. Need at least 30 days, got {len(data)}")
+            return False
+        
+        # Check for gaps in the data (missing trading days)
+        if len(data) > 1:
+            date_range = pd.bdate_range(start=data.index.min(), end=data.index.max())
+            expected_business_days = len(date_range)
+            actual_trading_days = len(data)
+            if actual_trading_days < expected_business_days * 0.9:  # Allow for some holidays
+                get_logger().warning(f"⚠️  Warning: Data may have gaps. Expected ~{expected_business_days} business days, got {actual_trading_days}")
+        
+        get_logger().info(f"✅ Data validation complete for Velocity Signal Momentum Strategy")
+        get_logger().info(f"   Final data shape: {data.shape}")
+        get_logger().info(f"   Date range: {data.index.min()} to {data.index.max()}")
+        get_logger().info(f"   Trading days: {len(data)}")
+        
+        return True
+
     def _recalculate_moving_averages(self):
         """Recalculate moving averages and velocity changes after data updates."""
         if self.data is not None and not self.data.empty:
@@ -70,18 +138,6 @@ class VelocitySignalMomentumStrategy(Strategy):
             
             # Calculate velocity changes for signal detection
             self.data['Velocity_Changes'] = self.data['MA_Velocity_15_30'].diff()
-
-    def on_new_date(self, date: datetime, positions: tuple['Position', ...], add_position: Callable[['Position'], None], remove_position: Callable[[datetime, 'Position', float, Optional[float], Optional[list[int]]], None]):
-        # Base class on_new_date is abstract, so no need to call super()
-
-        if len(positions) == 0:
-            self._try_open_position(date, add_position)
-            
-        self._try_close_positions(date, positions, remove_position)
-
-    def on_end(self, positions: tuple['Position', ...], remove_position: Callable[[datetime, 'Position', float, Optional[float], Optional[list[int]]], None], date: datetime):
-        """End-of-run hook; plotting is handled by the engine / show_plot callers."""
-        del positions, remove_position, date
 
     def _has_buy_signal(self, date: datetime) -> bool:
         """
@@ -96,57 +152,15 @@ class VelocitySignalMomentumStrategy(Strategy):
         """
         if self.data is None or self.data.empty:
             return False
-        
-        # Get the current date index in the data
-        current_date = datetime.now().date()
-        is_current_date = date.date() == current_date
-        
-        # If it's the current date, always fetch live price (even if date exists in cache)
-        # to ensure we're using the most recent data during market hours
-        if is_current_date:
-            live_price = self.get_current_underlying_price(date, self.symbol)
-            if live_price is not None:
-                # Check if current date already exists in data (from stale cache)
-                if date in self.data.index:
-                    # Update existing row with fresh live price
-                    self.data.loc[date, 'Close'] = live_price
-                    self.data.loc[date, 'Open'] = live_price
-                    self.data.loc[date, 'High'] = live_price
-                    self.data.loc[date, 'Low'] = live_price
-                    self.data.loc[date, 'Volume'] = 0
-                    get_logger().info(f"🔄 Updated current date {date.date()} with live price ${live_price:.2f}")
-                else:
-                    # Create a new row with the live price
-                    new_row = pd.DataFrame({
-                        'Close': [live_price],
-                        'Open': [live_price],
-                        'High': [live_price],
-                        'Low': [live_price],
-                        'Volume': [0]
-                    }, index=[date])
-                    # Append to existing data
-                    self.data = pd.concat([self.data, new_row])
-                    get_logger().info(f"📅 Fetched live price ${live_price:.2f} for current date {date.date()} and appended to data")
-                
-                # Recalculate moving averages and velocity changes for the updated data
-                self._recalculate_moving_averages()
-                current_idx = self.data.index.get_loc(date)
-            else:
-                # Fallback: if live price fetch fails, try to use cached data if available
-                if date in self.data.index:
-                    current_idx = self.data.index.get_loc(date)
-                    get_logger().warning(f"⚠️ Could not fetch live price for {date.date()}, using cached data")
-                else:
-                    # No cached data and no live price - use last available
-                    current_idx = len(self.data) - 1
-                    get_logger().warning(f"⚠️ Could not fetch live price for {date.date()}, using last available data point")
-        else:
-            # For historical dates, use cached data
-            try:
-                current_idx = self.data.index.get_loc(date)
-            except KeyError:
-                get_logger().warning("⚠️  Date not found in data")
-                return False
+
+        bar_ts = self.get_current_bar_timestamp(date)
+        if bar_ts is None:
+            return False
+        try:
+            current_idx = self.data.index.get_loc(bar_ts)
+        except KeyError:
+            get_logger().warning("⚠️  Date not found in data")
+            return False
         
         # Check if we have enough data to analyze (need at least 30 days for SMA 30)
         if current_idx < 30:
@@ -330,8 +344,8 @@ class VelocitySignalMomentumStrategy(Strategy):
             get_logger().info(f"✅ Verified: Both legs have same expiration {expiration} (vertical spread)")
             
             # Get bar data to calculate net credit (real-time snapshot when live, else historical)
-            atm_bar = self.get_current_option_bar(atm_put, date)
-            otm_bar = self.get_current_option_bar(otm_put, date)
+            atm_bar = self.get_current_option_bar(atm_put.ticker, date)
+            otm_bar = self.get_current_option_bar(otm_put.ticker, date)
             
             if not atm_bar or not otm_bar:
                 get_logger().warning("⚠️  No bar data available for credit calculation")
@@ -353,7 +367,7 @@ class VelocitySignalMomentumStrategy(Strategy):
                     strike_price=atm_strike,
                     entry_date=date,
                     entry_price=net_credit,
-                    spread_options=[atm_option, otm_option]
+                    legs=[atm_option, otm_option]
                 )
                 # Note: Do NOT set quantity here - the backtest engine will set it based on max_position_size
                 return position
@@ -535,59 +549,3 @@ class VelocitySignalMomentumStrategy(Strategy):
             return position.get_days_held(date) >= holding_period
         except Exception:
             return False
-
-    def validate_data(self, data: pd.DataFrame) -> bool:
-        """
-        Validate the data for the Velocity Signal Momentum Strategy.
-        
-        This strategy requires:
-        - Basic OHLCV data
-        - Moving averages (SMA_15, SMA_30) for velocity calculation
-        - Velocity changes data
-        
-        Args:
-            data: DataFrame with market data and features
-            
-        Returns:
-            bool: True if data is valid for this strategy, False otherwise
-        """        
-        get_logger().info(f"\n🔍 Validating data for Velocity Signal Momentum Strategy...")
-        get_logger().info(f"   Data shape: {data.shape}")
-        
-        # Check if the data has the required columns for velocity momentum strategy
-        required_columns = [
-            'Open', 'High', 'Low', 'Close', 'Volume',  # Basic OHLCV data
-        ]
-        
-        missing_columns = [col for col in required_columns if col not in data.columns]
-        if missing_columns:
-            get_logger().warning(f"⚠️  Warning: Missing required columns: {missing_columns}")
-            get_logger().info(f"   Available columns: {list(data.columns)}")
-            return False
-        else:
-            get_logger().info(f"✅ All required columns present")
-        
-        # Check if data has datetime index
-        if not isinstance(data.index, pd.DatetimeIndex):
-            get_logger().error("❌ Error: Data must have a datetime index for backtesting")
-            return False
-        
-        # Check if we have enough data for moving averages (need at least 30 days for SMA 30)
-        if len(data) < 30:
-            get_logger().warning(f"⚠️  Warning: Not enough data for velocity analysis. Need at least 30 days, got {len(data)}")
-            return False
-        
-        # Check for gaps in the data (missing trading days)
-        if len(data) > 1:
-            date_range = pd.bdate_range(start=data.index.min(), end=data.index.max())
-            expected_business_days = len(date_range)
-            actual_trading_days = len(data)
-            if actual_trading_days < expected_business_days * 0.9:  # Allow for some holidays
-                get_logger().warning(f"⚠️  Warning: Data may have gaps. Expected ~{expected_business_days} business days, got {actual_trading_days}")
-        
-        get_logger().info(f"✅ Data validation complete for Velocity Signal Momentum Strategy")
-        get_logger().info(f"   Final data shape: {data.shape}")
-        get_logger().info(f"   Date range: {data.index.min()} to {data.index.max()}")
-        get_logger().info(f"   Trading days: {len(data)}")
-        
-        return True

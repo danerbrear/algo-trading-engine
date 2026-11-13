@@ -10,6 +10,8 @@ import pytest
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch, Mock
 import pandas as pd
+from algo_trading_engine.indicators.indicator import Indicator
+from algo_trading_engine.strategy import IndicatorUpdateError, Strategy
 from algo_trading_engine.trade import PaperTradingEngine, compute_paper_trading_fetch_start_date, DEFAULT_PAPER_TRADING_LSTM_LOOKBACK_DAYS
 from algo_trading_engine.enums import BarTimeInterval
 from algo_trading_engine.models.config import PaperTradingConfig
@@ -20,7 +22,7 @@ from algo_trading_engine.vo import Option
 
 def _make_option(symbol: str, strike: float, expiration: str, opt_type: str, last: float, volume: int=100) -> Option:
     """Helper to create Option objects for testing."""
-    return Option.from_dict({'symbol': symbol, 'ticker': symbol, 'strike': strike, 'expiration': expiration, 'type': opt_type, 'last_price': last, 'bid': last - 0.1, 'ask': last + 0.1, 'volume': volume})
+    return Option.from_dict({'symbol': symbol, 'ticker': symbol, 'timestamp': datetime(2025, 8, 8), 'strike': strike, 'expiration': expiration, 'type': opt_type, 'last_price': last, 'bid': last - 0.1, 'ask': last + 0.1, 'volume': volume})
 
 @pytest.fixture
 def mock_strategy():
@@ -32,6 +34,7 @@ def mock_strategy():
     data = pd.DataFrame({'Close': [500.0] * len(dates), 'Open': [499.0] * len(dates), 'High': [501.0] * len(dates), 'Low': [498.0] * len(dates)}, index=dates)
     strategy.data = data
     strategy.set_data = Mock()
+    strategy.indicators = []
     strategy.recommend_open_position.return_value = None
     strategy.recommend_close_positions.return_value = []
     return strategy
@@ -199,6 +202,7 @@ class TestPaperTradingEngineFromConfig:
         """Test that symbol is set on strategy when strategy instance is provided."""
         mock_strategy = MagicMock()
         mock_strategy.set_data = Mock()
+        mock_strategy.indicators = []
         mock_strategy.options_handler = None
         mock_strategy.warm_up_period = 0
         mock_strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(0))
@@ -218,6 +222,7 @@ class TestPaperTradingEngineFromConfig:
         """Fetch window uses the date from compute_paper_trading_fetch_start_date."""
         mock_strategy = MagicMock()
         mock_strategy.set_data = Mock()
+        mock_strategy.indicators = []
         mock_strategy.options_handler = None
         mock_strategy.warm_up_period = 0
         mock_strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(0))
@@ -232,13 +237,53 @@ class TestPaperTradingEngineFromConfig:
         assert 'lstm_start_date' not in mock_data_retriever.call_args[1]
         mock_retriever_instance.fetch_data_for_period.assert_called_once_with('2024-06-01')
 
-    @patch('algo_trading_engine.trade.OptionsHandler')
-    @patch('algo_trading_engine.trade.DataRetriever')
-    def test_from_config_calls_warm_up_indicators(self, mock_data_retriever, _mock_options_handler):
-        """from_config must call strategy.warm_up_indicators() after set_data."""
+    @patch("algo_trading_engine.trade.apply_live_quote")
+    @patch("algo_trading_engine.trade.market_now", return_value=datetime(2026, 11, 11, 10, 30))
+    @patch("algo_trading_engine.trade.OptionsHandler")
+    @patch("algo_trading_engine.trade.DataRetriever")
+    def test_from_config_applies_live_quote_before_set_data(
+        self,
+        mock_data_retriever,
+        _mock_options_handler,
+        _mock_market_now,
+        mock_apply_live,
+    ):
+        frame = pd.DataFrame(
+            {
+                "Close": [500.0] * 2,
+                "Open": [499.0] * 2,
+                "High": [501.0] * 2,
+                "Low": [498.0] * 2,
+            },
+            index=pd.to_datetime(["2026-11-10", "2026-11-11"]),
+        )
         mock_strategy = MagicMock()
         mock_strategy.set_data = Mock()
-        mock_strategy.warm_up_indicators = Mock()
+        mock_strategy.indicators = []
+        mock_strategy.options_handler = None
+        mock_strategy.warm_up_period = 0
+        mock_strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(0))
+        mock_retriever_instance = MagicMock()
+        mock_retriever_instance.treasury_rates = None
+        mock_retriever_instance.fetch_data_for_period.return_value = frame
+        mock_retriever_instance.get_live_price.return_value = 505.0
+        mock_data_retriever.return_value = mock_retriever_instance
+        mock_apply_live.side_effect = lambda data, *_a, **_k: data
+        config = PaperTradingConfig(
+            symbol="SPY", strategy_type=mock_strategy, api_key="test_key", use_free_tier=True
+        )
+        PaperTradingEngine.from_config(config)
+        mock_apply_live.assert_called_once()
+        mock_strategy.set_data.assert_called_once()
+
+    @patch('algo_trading_engine.trade.OptionsHandler')
+    @patch('algo_trading_engine.trade.DataRetriever')
+    @patch('algo_trading_engine.trade.TradingEngine.precompute_indicators')
+    def test_from_config_precomputes_indicators(self, mock_precompute, mock_data_retriever, _mock_options_handler):
+        """from_config must precompute indicators when constructing the engine."""
+        mock_strategy = MagicMock()
+        mock_strategy.set_data = Mock()
+        mock_strategy.indicators = []
         mock_strategy.options_handler = None
         mock_strategy.warm_up_period = 0
         mock_strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(0))
@@ -249,7 +294,7 @@ class TestPaperTradingEngineFromConfig:
         config = PaperTradingConfig(symbol='SPY', strategy_type=mock_strategy, api_key='test_key', use_free_tier=True)
         PaperTradingEngine.from_config(config)
         mock_strategy.set_data.assert_called_once()
-        mock_strategy.warm_up_indicators.assert_called_once()
+        mock_precompute.assert_called_once()
 
 class TestCustomDecisionStore:
     """Test that a custom DecisionStore passed via PaperTradingConfig is used by the engine."""
@@ -336,6 +381,7 @@ class TestStrategyCallbacksFromPaperTradingEngine:
         strategy.data = pd.DataFrame({'Close': [500.0] * len(dates)}, index=dates)
         strategy.profit_target = None
         strategy.stop_loss = None
+        strategy.indicators = []
         return strategy
 
     def test_on_add_position_success_called_after_accepted_open(self, monkeypatch, tmp_path):
@@ -348,7 +394,7 @@ class TestStrategyCallbacksFromPaperTradingEngine:
 
         def fake_on_new_date(date_arg, positions, add_position, _remove_position):
             if len(positions) == 0:
-                pos = _cp(symbol='SPY', expiration_date=datetime(2025, 9, 6), strategy_type=StrategyType.PUT_CREDIT_SPREAD, strike_price=500.0, entry_date=date_arg, entry_price=1.05, spread_options=(atm, otm))
+                pos = _cp(symbol='SPY', expiration_date=datetime(2025, 9, 6), strategy_type=StrategyType.PUT_CREDIT_SPREAD, strike_price=500.0, entry_date=date_arg, entry_price=1.05, legs=(atm, otm))
                 pos.set_quantity(1)
                 add_position(pos)
         strategy.on_new_date = fake_on_new_date
@@ -398,3 +444,110 @@ class TestStrategyCallbacksFromPaperTradingEngine:
             success = engine.run()
         assert success is True
         strategy.on_add_position_success.assert_not_called()
+
+
+class _RecordingIndicator(Indicator):
+    def __init__(self, name="recording", should_fail=False):
+        super().__init__(name)
+        self.should_fail = should_fail
+        self.updates = []
+
+    @property
+    def warm_up_period(self) -> int:
+        return 1
+
+    def precompute(self, data):
+        return None
+
+    def update(self, date, data):
+        self.updates.append((date, data))
+        if self.should_fail:
+            raise ValueError(f"{self.name} failed")
+
+    def print(self):
+        return None
+
+
+class _IndicatorStrategy(Strategy):
+    def on_new_date(self, date, positions, add_position, remove_position):
+        return None
+
+    def on_end(self, positions, remove_position, date):
+        return None
+
+    def validate_data(self, data):
+        return True
+
+
+class TestPaperTradingIndicatorUpdate:
+    def _engine(self, indicator):
+        strategy = _IndicatorStrategy()
+        strategy.add_indicator(indicator)
+        dates = pd.date_range("2024-01-01", periods=5, freq="D")
+        strategy.set_data(pd.DataFrame({"Close": [1, 2, 3, 4, 5]}, index=dates))
+        config = PaperTradingConfig(symbol="SPY", strategy_type="credit_spread")
+        return PaperTradingEngine(strategy, config, options_handler=MagicMock())
+
+    def test_updates_a_timestamp_missing_from_the_precomputed_series(self):
+        indicator = _RecordingIndicator()
+        engine = self._engine(indicator)
+        run_date = datetime(2024, 6, 1, 15, 30)
+        engine.update_indicators(run_date)
+        assert indicator.updates[0][0] == run_date
+        assert indicator.updates[0][1] is engine.strategy.data
+
+    def test_skips_a_timestamp_already_precomputed(self):
+        indicator = _RecordingIndicator()
+        engine = self._engine(indicator)
+        run_date = datetime(2024, 1, 3)
+        indicator._values[run_date] = 1.0
+        engine.update_indicators(run_date)
+        assert indicator.updates == []
+
+    def test_stops_on_the_first_failure(self):
+        first = _RecordingIndicator(name="first")
+        failing = _RecordingIndicator(name="failing", should_fail=True)
+        later = _RecordingIndicator(name="later")
+        strategy = _IndicatorStrategy()
+        strategy.add_indicator(first)
+        strategy.add_indicator(failing)
+        strategy.add_indicator(later)
+        dates = pd.date_range("2024-01-01", periods=3, freq="D")
+        strategy.set_data(pd.DataFrame({"Close": [1, 2, 3]}, index=dates))
+        engine = PaperTradingEngine(
+            strategy,
+            PaperTradingConfig(symbol="SPY", strategy_type="credit_spread"),
+            options_handler=MagicMock(),
+        )
+        with pytest.raises(IndicatorUpdateError, match="failing"):
+            engine.update_indicators(datetime(2024, 6, 1))
+        assert len(first.updates) == 1
+        assert later.updates == []
+
+    def test_run_updates_indicators_before_the_recommender(self, monkeypatch, tmp_path):
+        monkeypatch.chdir(tmp_path)
+        indicator = _RecordingIndicator()
+        strategy = _IndicatorStrategy()
+        strategy.symbol = "SPY"
+        strategy.add_indicator(indicator)
+        dates = pd.date_range("2024-01-01", periods=3, freq="D")
+        strategy.set_data(pd.DataFrame({"Close": [1, 2, 3]}, index=dates))
+        config = PaperTradingConfig(
+            symbol="SPY",
+            strategy_type="credit_spread",
+            api_key="test_api_key",
+            use_free_tier=True,
+            decision_store=JsonDecisionStore(base_dir=str(tmp_path / "predictions")),
+            auto_yes=True,
+        )
+        engine = PaperTradingEngine(strategy, config, options_handler=MagicMock())
+        seen = {}
+
+        def _run(date):
+            seen["updated_before_run"] = indicator.updates[0][0] == date
+
+        with patch("algo_trading_engine.trade.InteractiveStrategyRecommender") as recommender_cls:
+            recommender_cls.return_value.run.side_effect = _run
+            recommender_cls.return_value.get_open_positions_status.return_value = []
+            assert engine.run() is True
+        assert seen["updated_before_run"] is True

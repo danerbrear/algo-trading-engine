@@ -16,9 +16,11 @@ class TestPositionStatistics:
     
     def setup_method(self):
         """Set up test fixtures"""
+        mock_strategy = Mock()
+        mock_strategy.indicators = []
         self.engine = BacktestEngine(
             data=pd.DataFrame({'Close': [100] * 10}),
-            strategy=Mock(),
+            strategy=mock_strategy,
             initial_capital=10000,
             enable_progress_tracking=False
         )
@@ -241,9 +243,11 @@ class TestPositionTracking:
     
     def test_closed_positions_tracking(self):
         """Test that closed positions are properly tracked"""
+        mock_strategy = Mock()
+        mock_strategy.indicators = []
         engine = BacktestEngine(
             data=pd.DataFrame({'Close': [100] * 10}),
-            strategy=Mock(),
+            strategy=mock_strategy,
             initial_capital=10000,
             enable_progress_tracking=False
         )
