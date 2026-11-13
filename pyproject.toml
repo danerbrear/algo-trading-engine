@@ -44,17 +44,8 @@ line-length = 120
 target-version = ['py310', 'py311']
 include = '\.pyi?$'
 
-[tool.basedpyright]
-exclude = [
-    "**/__pycache__",
-    "**/.*",
-    "data_cache",
-    "venv",
-    "logs",
-    "build",
-]
-
 [tool.pyright]
+typeCheckingMode = "standard"
 exclude = [
     "**/__pycache__",
     "**/.*",
