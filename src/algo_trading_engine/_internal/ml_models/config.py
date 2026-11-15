@@ -21,7 +21,7 @@ VOLATILITY_LOOKBACK = 60  # Days for volatility percentile calculation
 
 # Strategy Risk Parameters
 CALL_DEBIT_SPREAD_PROFIT_RATIO = 0.7  # % of call return kept after short leg
-PUT_DEBIT_SPREAD_PROFIT_RATIO = 0.7   # % of put return kept after short leg
-IRON_BUTTERFLY_LOW_VOL_THRESHOLD = 0.3   # Volatility percentile threshold for Iron Butterfly
-STRADDLE_HIGH_VOL_THRESHOLD = 0.6     # Volatility percentile threshold for Long Straddle
-STRONG_TREND_THRESHOLD = 0.02         # Stock return threshold for strong trends 
+PUT_DEBIT_SPREAD_PROFIT_RATIO = 0.7  # % of put return kept after short leg
+IRON_BUTTERFLY_LOW_VOL_THRESHOLD = 0.3  # Volatility percentile threshold for Iron Butterfly
+STRADDLE_HIGH_VOL_THRESHOLD = 0.6  # Volatility percentile threshold for Long Straddle
+STRONG_TREND_THRESHOLD = 0.02  # Stock return threshold for strong trends

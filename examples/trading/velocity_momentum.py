@@ -22,18 +22,16 @@ def main():
     """Run paper trading using the velocity momentum strategy."""
     # Get Polygon API key from environment
     polygon_api_key = os.getenv("POLYGON_API_KEY")
-    
+
     # Create configuration
     config = PaperTradingConfig(
-        symbol="SPY",
-        strategy_type="velocity_momentum",  # Built-in strategy name
-        api_key=polygon_api_key
+        symbol="SPY", strategy_type="velocity_momentum", api_key=polygon_api_key  # Built-in strategy name
     )
 
     # Create and run engine - all data fetching and setup is handled internally
     engine = PaperTradingEngine.from_config(config)
     success = engine.run()
-    
+
     if success:
         get_logger().info("Paper trading completed successfully!")
 

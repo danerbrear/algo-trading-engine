@@ -94,7 +94,7 @@ class EngineConfig(ABC):
     """Shared configuration for backtesting and paper trading engines."""
 
     symbol: str
-    strategy_type: Union[str, 'Strategy']
+    strategy_type: Union[str, "Strategy"]
     bar_interval: BarTimeInterval = BarTimeInterval.DAY
     max_position_size: Optional[float] = None
     api_key: Optional[str] = None
@@ -114,10 +114,11 @@ class EngineConfig(ABC):
 class BacktestConfig(EngineConfig):
     """
     Configuration for backtesting engine.
-    
+
     This is an immutable DTO that contains all configuration needed
     to run a backtest.
     """
+
     initial_capital: float
     start_date: datetime
     end_date: datetime
@@ -135,7 +136,7 @@ class BacktestConfig(EngineConfig):
         if self.start_date >= self.end_date:
             raise ValueError("Start date must be before end date")
         if self.volume_config is None:
-            object.__setattr__(self, 'volume_config', VolumeConfig())
+            object.__setattr__(self, "volume_config", VolumeConfig())
 
         if self.bar_interval != BarTimeInterval.DAY:
             days_diff = (self.end_date - self.start_date).days
@@ -158,12 +159,13 @@ class BacktestConfig(EngineConfig):
 class PaperTradingConfig(EngineConfig):
     """
     Configuration for paper trading engine.
-    
+
     This is an immutable DTO that contains all configuration needed
     to run paper trading. Capital allocation is managed separately
     through config/strategies/capital_allocations.json.
     """
-    decision_store: Optional['DecisionStore'] = None
+
+    decision_store: Optional["DecisionStore"] = None
     auto_yes: bool = False
 
     def __post_init__(self):

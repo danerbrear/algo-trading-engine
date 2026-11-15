@@ -25,9 +25,7 @@ class BarTimeInterval(Enum):
             if minutes < 0:
                 return day_start.replace(hour=9, minute=30, second=0, microsecond=0)
             hour_slots = minutes // 60
-            return day_start.replace(hour=9, minute=30, second=0, microsecond=0) + timedelta(
-                hours=hour_slots
-            )
+            return day_start.replace(hour=9, minute=30, second=0, microsecond=0) + timedelta(hours=hour_slots)
 
         if self == BarTimeInterval.MINUTE:
             return timestamp.replace(second=0, microsecond=0)

@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any
+
+import pandas as pd
 
 from algo_trading_engine._internal.common.progress_tracker import ProgressTracker
 
@@ -19,6 +22,14 @@ class RecordingObserver:
         self.progress_events.append((current, total, label))
 
     def result(self, stats: dict[str, str]) -> None:
+        pass
+
+    def dataframe(
+        self,
+        name: str,
+        frame: pd.DataFrame,
+        meta: dict[str, Any] | None = None,
+    ) -> None:
         pass
 
 

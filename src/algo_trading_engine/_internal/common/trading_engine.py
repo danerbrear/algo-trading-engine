@@ -64,28 +64,34 @@ def make_rt_option_bar(
 class TradingEngine(ABC):
     """
     Abstract base class for trading engines.
-    
+
     Both backtesting and paper trading engines implement this interface,
     allowing for unified usage patterns.
     """
 
-    def __init__(self, strategy: Strategy, data: pd.DataFrame, config: EngineConfig, bar_interval: Optional['BarTimeInterval'] = None):
+    def __init__(
+        self,
+        strategy: Strategy,
+        data: pd.DataFrame,
+        config: EngineConfig,
+        bar_interval: Optional["BarTimeInterval"] = None,
+    ):
         self._strategy = strategy
         self._data = data
         self._config = config
         self.bar_interval = bar_interval
-        
+
         strategy.get_current_underlying_price = self._get_current_underlying_price
         if bar_interval is not None:
             strategy.option_bar_timespan = bar_interval
 
         self.precompute_indicators()
-    
+
     @property
     def data(self) -> pd.DataFrame:
         """Get the market data."""
         return self._data
-    
+
     @property
     @abstractmethod
     def strategy(self) -> Strategy:
@@ -95,35 +101,35 @@ class TradingEngine(ABC):
     def run(self) -> bool:
         """
         Execute the trading simulation.
-        
+
         Returns:
             True if execution completed successfully, False otherwise
         """
-    
+
     @abstractmethod
     def get_positions(self) -> List[Position]:
         """
         Get current open positions.
-        
+
         Returns:
             List of currently open Position objects
         """
-    
+
     @classmethod
     @abstractmethod
-    def from_config(cls, config: Union[BacktestConfig, PaperTradingConfig]) -> 'TradingEngine':
+    def from_config(cls, config: Union[BacktestConfig, PaperTradingConfig]) -> "TradingEngine":
         """
         Create trading engine from configuration.
-        
+
         Factory method that handles all data fetching, strategy creation, and setup.
         Child projects only need to provide configuration.
-        
+
         Args:
             config: Configuration DTO (BacktestConfig or PaperTradingConfig)
-            
+
         Returns:
             Configured TradingEngine instance ready to run
-            
+
         Raises:
             ValueError: If configuration is invalid or data fetching fails
         """
@@ -143,8 +149,7 @@ class TradingEngine(ABC):
             f"Indicator precompute complete: {len(self._strategy.indicators)} indicator(s), "
             f"{len(self._data)} bar(s)"
         )
-    
-        
+
     def get_current_volumes_for_position(self, position: Position, date: Optional[datetime] = None) -> list[int]:
         """
         Return the volume already stored on each leg.
@@ -192,7 +197,7 @@ class TradingEngine(ABC):
         except Exception as e:
             get_logger().warning(f"Error computing exit price: {e}")
             return None
-    
+
     def check_univeral_close_conditions(
         self,
         date: datetime,
@@ -207,7 +212,7 @@ class TradingEngine(ABC):
         condition is logged and the position is left open.
         """
         # Get symbol from strategy if available, otherwise default to 'SPY'
-        symbol = getattr(self.strategy, 'symbol', 'SPY')
+        symbol = getattr(self.strategy, "symbol", "SPY")
         current_underlying_price = self.strategy.get_current_underlying_price(date, symbol)
         for position in self.get_positions():
             # Get current volumes for this specific position
@@ -230,7 +235,9 @@ class TradingEngine(ABC):
                 remove_position(date, position, close_price, underlying_price, current_volumes)
 
             if self._should_close_due_to_assignment(position, date):
-                get_logger().info(f"Position {position.__str__()} expired or near expiration (days to exp: {position.get_days_to_expiration(date)})")
+                get_logger().info(
+                    f"Position {position.__str__()} expired or near expiration (days to exp: {position.get_days_to_expiration(date)})"
+                )
                 close_position(0.0, current_underlying_price)
             elif self._should_close_due_to_profit_target(position, exit_price):
                 get_logger().info(f"Profit target hit for {position.__str__()} at exit {exit_price}")
@@ -242,17 +249,17 @@ class TradingEngine(ABC):
     def _get_current_underlying_price(self, date: datetime, symbol: str) -> Optional[float]:
         """
         Fetch and return the live price if the date is the current date, otherwise return last_price for the date.
-        
+
         This method is injected into strategies so they can get current underlying prices
         without needing to manage DataRetriever themselves.
-        
+
         Args:
             date: Date to get price for
             symbol: Symbol to fetch price for (e.g., 'SPY')
-            
+
         Returns:
             Current underlying price as float, or None if unavailable
-            
+
         Raises:
             ValueError: If live price fetch fails and date is current date
         """
@@ -260,13 +267,13 @@ class TradingEngine(ABC):
         if date.date() == current_date:
             try:
                 use_cache = True
-                if hasattr(self, '_config') and hasattr(self._config, 'use_cache'):
+                if hasattr(self, "_config") and hasattr(self._config, "use_cache"):
                     use_cache = self._config.use_cache
 
                 data_retriever = DataRetriever(symbol=symbol, use_cache=use_cache)
                 live_price = data_retriever.get_live_price()
             except Exception as e:
-                raise ValueError(f'Failed to fetch live price from DataRetriever: {e}') from e
+                raise ValueError(f"Failed to fetch live price from DataRetriever: {e}") from e
 
             if live_price is not None:
                 return live_price
@@ -275,14 +282,14 @@ class TradingEngine(ABC):
         else:
             # Historical date - return Close price from data
             try:
-                return float(self.data.loc[date]['Close'])
+                return float(self.data.loc[date]["Close"])
             except (KeyError, IndexError):
                 # If exact date not found, try to get closest available date
                 try:
-                    return float(self.data.loc[self.data.index <= date]['Close'].iloc[-1])
+                    return float(self.data.loc[self.data.index <= date]["Close"].iloc[-1])
                 except (IndexError, KeyError) as e:
                     raise ValueError(f"Could not find price data for date {date.date()}") from e
-    
+
     def _should_close_due_to_assignment(self, position: Position, date: datetime) -> bool:
         if UniversalCloseCondition.ASSIGNMENT not in self.strategy.universal_close_conditions:
             return False

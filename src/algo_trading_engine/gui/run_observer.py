@@ -94,9 +94,7 @@ class JsonLinesRunObserver:
             right_axis=meta.get("right_axis"),
             markers=meta.get("markers"),
             meta={
-                key: value
-                for key, value in meta.items()
-                if key not in {"title", "y_label", "right_axis", "markers"}
+                key: value for key, value in meta.items() if key not in {"title", "y_label", "right_axis", "markers"}
             },
         )
         self._send("dataframe", plot_payload(spec))

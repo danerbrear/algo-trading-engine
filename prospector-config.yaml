@@ -1,8 +1,13 @@
 output-format: yaml
 
+ignore-paths:
+  - venv
+  - build
+  - data_cache
+  - docs
+  - logs
+
 ignore-patterns:
-  - "^venv/.*$"
-  - "^build/.*$"
   - "^src/.*\\.egg-info/.*$"
 
 pylint:

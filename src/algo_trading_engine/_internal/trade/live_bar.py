@@ -45,9 +45,7 @@ def apply_live_quote(
         result.at[bar_ts, "Close"] = quote
         result.at[bar_ts, "High"] = max(float(row["High"]), quote)
         result.at[bar_ts, "Low"] = min(float(row["Low"]), quote)
-        get_logger().info(
-            f"Live quote ${quote:.2f} applied to bar {bar_ts} (close, high/low adjusted)"
-        )
+        get_logger().info(f"Live quote ${quote:.2f} applied to bar {bar_ts} (close, high/low adjusted)")
         return result
 
     new_row = pd.DataFrame(

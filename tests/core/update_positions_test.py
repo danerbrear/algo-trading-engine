@@ -1,6 +1,8 @@
 """Strategy._update_positions refreshes the quote stored on each open leg."""
+
 from datetime import datetime
 from decimal import Decimal
+from typing import Optional
 
 import pandas as pd
 
@@ -29,7 +31,18 @@ def _bar(ticker: str, close_price: str, volume: int, timestamp: datetime) -> Opt
 class _RecordingStrategy(Strategy):
     def __init__(self):
         super().__init__()
-        self.bars = {}
+        self.bars: dict[tuple[str, datetime, Optional[BarTimeInterval]], OptionBarDTO] = {}
+
+        def get_option_bar(
+            ticker: str,
+            date: datetime,
+            multiplier: Optional[int] = 1,
+            timespan: Optional[BarTimeInterval] = BarTimeInterval.DAY,
+        ) -> Optional[OptionBarDTO]:
+            del multiplier
+            return self.bars.get((ticker, date, timespan))
+
+        self.get_option_bar = get_option_bar
 
     def on_new_date(self, date, positions, add_position, remove_position):
         super().on_new_date(date, positions, add_position, remove_position)
@@ -39,10 +52,6 @@ class _RecordingStrategy(Strategy):
 
     def validate_data(self, data):
         return True
-
-    def get_option_bar(self, ticker, date, multiplier=1, timespan=BarTimeInterval.DAY):
-        del multiplier
-        return self.bars.get((ticker, date, timespan))
 
 
 def _leg(ticker: str, strike: float) -> Option:
@@ -73,12 +82,8 @@ def test_update_positions_replaces_price_timestamp_and_volume():
         entry_price=0.75,
         legs=[short_leg, long_leg],
     )
-    strategy.bars[(short_leg.ticker, as_of, BarTimeInterval.HOUR)] = _bar(
-        short_leg.ticker, "1.80", 40, as_of
-    )
-    strategy.bars[(long_leg.ticker, as_of, BarTimeInterval.HOUR)] = _bar(
-        long_leg.ticker, "0.40", 12, as_of
-    )
+    strategy.bars[(short_leg.ticker, as_of, BarTimeInterval.HOUR)] = _bar(short_leg.ticker, "1.80", 40, as_of)
+    strategy.bars[(long_leg.ticker, as_of, BarTimeInterval.HOUR)] = _bar(long_leg.ticker, "0.40", 12, as_of)
 
     assert strategy._update_positions(as_of, (position,)) is True
 
@@ -126,12 +131,8 @@ def test_compute_exit_price_uses_refreshed_leg_quotes():
         entry_price=0.75,
         legs=[short_leg, long_leg],
     )
-    strategy.bars[(short_leg.ticker, as_of, BarTimeInterval.DAY)] = _bar(
-        short_leg.ticker, "1.25", 20, as_of
-    )
-    strategy.bars[(long_leg.ticker, as_of, BarTimeInterval.DAY)] = _bar(
-        long_leg.ticker, "0.25", 20, as_of
-    )
+    strategy.bars[(short_leg.ticker, as_of, BarTimeInterval.DAY)] = _bar(short_leg.ticker, "1.25", 20, as_of)
+    strategy.bars[(long_leg.ticker, as_of, BarTimeInterval.DAY)] = _bar(long_leg.ticker, "0.25", 20, as_of)
     dates = pd.date_range("2024-02-15", periods=1)
     data = pd.DataFrame({"Close": [505.0]}, index=dates)
     engine = BacktestEngine(

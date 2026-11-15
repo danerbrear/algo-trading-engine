@@ -4,6 +4,7 @@ Velocity strategy reads the current bar from pre-loaded data (live overlay is en
 
 import unittest
 from datetime import datetime
+from typing import cast
 from unittest.mock import Mock, patch
 
 import numpy as np
@@ -27,10 +28,8 @@ class TestVelocityLivePrice(unittest.TestCase):
             },
             index=dates,
         )
-        self.bar_date = self.test_data.index[-1]
-        self.run_date = datetime(
-            self.bar_date.year, self.bar_date.month, self.bar_date.day, 15, 0, 0
-        )
+        self.bar_date = cast(pd.Timestamp, self.test_data.index[-1])
+        self.run_date = datetime(self.bar_date.year, self.bar_date.month, self.bar_date.day, 15, 0, 0)
 
     def _strategy(self) -> VelocitySignalMomentumStrategy:
         mock_options_handler = Mock()
@@ -49,7 +48,11 @@ class TestVelocityLivePrice(unittest.TestCase):
     def test_has_buy_signal_does_not_append_rows(self):
         strategy = self._strategy()
         strategy.set_data(self.test_data.copy())
-        length_before = len(strategy.data)
+        data_before = strategy.data
+        assert data_before is not None
+        length_before = len(data_before)
         with patch.object(strategy, "_check_trend_success", return_value=(False, 0, 0.0)):
             strategy._has_buy_signal(self.run_date)
-        self.assertEqual(len(strategy.data), length_before)
+        data_after = strategy.data
+        assert data_after is not None
+        self.assertEqual(len(data_after), length_before)

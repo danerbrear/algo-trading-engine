@@ -67,9 +67,7 @@ def prepare_data_for_lstm(
 
     get_logger().info("Phase 2: Applying trained HMM to LSTM data")
     if state_classifier is not None:
-        data_retriever.lstm_data["Market_State"] = state_classifier.predict_states(
-            data_retriever.lstm_data
-        )
+        data_retriever.lstm_data["Market_State"] = state_classifier.predict_states(data_retriever.lstm_data)
     else:
         get_logger().warning("No state classifier provided, skipping market state prediction")
         data_retriever.lstm_data["Market_State"] = 0
@@ -82,7 +80,9 @@ def prepare_data_for_lstm(
     return data_retriever.lstm_data
 
 
-def prepare_training_data(data_retriever: "DataRetriever", lstm_start_date: datetime, hmm_start_date: datetime) -> "MarketStateClassifier":
+def prepare_training_data(
+    data_retriever: "DataRetriever", lstm_start_date: datetime, hmm_start_date: datetime
+) -> "MarketStateClassifier":
     """
     Train HMM on historical market data and prepare LSTM feature dataset.
 
@@ -131,9 +131,7 @@ def prepare_credit_spread_backtest_data(
         enriched["Market_State"] = state_classifier.predict_states(enriched)
         get_logger().info(f"Applied HMM market states for {symbol} backtest data")
     except (FileNotFoundError, Exception) as exc:
-        get_logger().warning(
-            f"HMM model unavailable for {symbol} ({exc}); using default Market_State=0"
-        )
+        get_logger().warning(f"HMM model unavailable for {symbol} ({exc}); using default Market_State=0")
         enriched["Market_State"] = 0
 
     calendar_processor = CalendarFeatureProcessor()

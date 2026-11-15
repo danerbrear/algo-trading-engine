@@ -45,6 +45,8 @@ target-version = ['py310', 'py311']
 include = '\.pyi?$'
 
 [tool.pyright]
+venvPath = "."
+venv = "venv"
 typeCheckingMode = "standard"
 exclude = [
     "**/__pycache__",
@@ -73,6 +75,7 @@ ignore-paths = [
 [tool.pylint."messages control"]
 disable = [
     "broad-exception-caught",
+    "fixme",
     "line-too-long",
     "trailing-whitespace",
     "trailing-newlines",

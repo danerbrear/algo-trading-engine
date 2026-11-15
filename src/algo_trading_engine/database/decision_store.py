@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional, List
 import hashlib
 import json
@@ -139,7 +139,7 @@ class JsonDecisionStore(DecisionStore):
         symbol: Optional[str] = None,
     ) -> List[DecisionResponseDTO]:
         """Return all accepted decisions (both open and closed) across all files.
-        
+
         Filter by strategy_name and/or symbol if provided.
         """
         results: List[DecisionResponseDTO] = []
@@ -184,7 +184,7 @@ class JsonDecisionStore(DecisionStore):
     def _ensure_base_dir(self) -> None:
         os.makedirs(self.base_dir, exist_ok=True)
 
-    def _file_path_for_date(self, date_obj: datetime.date) -> str:
+    def _file_path_for_date(self, date_obj: date) -> str:
         fname = f"decisions_{date_obj.strftime('%Y%m%d')}.json"
         return os.path.join(self.base_dir, fname)
 
@@ -224,11 +224,9 @@ class JsonDecisionStore(DecisionStore):
         os.replace(tmp_path, path)
 
 
-def _iso_to_date(iso_str: str) -> datetime.date:
+def _iso_to_date(iso_str: str) -> date:
     # Support both date-only and full datetime strings
     try:
         return datetime.fromisoformat(iso_str).date()
     except Exception:
         return datetime.strptime(iso_str, "%Y-%m-%d").date()
-
-

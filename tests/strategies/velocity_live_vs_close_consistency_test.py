@@ -4,6 +4,7 @@ Signal consistency when live and close prices match on the same bar (engine over
 
 import unittest
 from datetime import datetime
+from typing import cast
 from unittest.mock import Mock, patch
 
 import numpy as np
@@ -28,10 +29,8 @@ class TestVelocityLiveVsCloseConsistency(unittest.TestCase):
             },
             index=dates,
         )
-        self.bar_date = self.historical_data.index[-1]
-        self.run_date = datetime(
-            self.bar_date.year, self.bar_date.month, self.bar_date.day, 15, 0, 0
-        )
+        self.bar_date = cast(pd.Timestamp, self.historical_data.index[-1])
+        self.run_date = datetime(self.bar_date.year, self.bar_date.month, self.bar_date.day, 15, 0, 0)
         self.reference_close = 605.5
 
     def _strategy_with_today_bar(self, close: float) -> VelocitySignalMomentumStrategy:

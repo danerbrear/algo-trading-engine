@@ -40,7 +40,7 @@ class _MinimalStrategy(Strategy):
     def on_new_date(self, date, positions, add_position, remove_position):
         return None
 
-    def on_end(self, positions, remove_position):
+    def on_end(self, positions, remove_position, date):
         return None
 
     def validate_data(self, data: pd.DataFrame) -> bool:

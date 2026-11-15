@@ -13,18 +13,20 @@ from datetime import datetime
 
 def _make_option(symbol: str, strike: float, expiration: str, opt_type: str, last: float) -> Option:
     """Helper to create Option objects for testing."""
-    return Option.from_dict({
-        'symbol': symbol,
-        'ticker': symbol,
-        'timestamp': datetime(2025, 8, 8),
-        'strike': strike,
-        'expiration': expiration,
-        'type': opt_type,
-        'last_price': last,
-        'bid': last - 0.1,
-        'ask': last + 0.1,
-        'volume': 100,
-    })
+    return Option.from_dict(
+        {
+            "symbol": symbol,
+            "ticker": symbol,
+            "timestamp": datetime(2025, 8, 8),
+            "strike": strike,
+            "expiration": expiration,
+            "type": opt_type,
+            "last_price": last,
+            "bid": last - 0.1,
+            "ask": last + 0.1,
+            "volume": 100,
+        }
+    )
 
 
 @pytest.fixture
@@ -32,14 +34,8 @@ def allocations_config():
     """Fixture for capital allocations config."""
     return {
         "strategies": {
-            "credit_spread": {
-                "allocated_capital": 10000.0,
-                "max_risk_percentage": 0.05
-            },
-            "velocity_momentum": {
-                "allocated_capital": 15000.0,
-                "max_risk_percentage": 0.03
-            }
+            "credit_spread": {"allocated_capital": 10000.0, "max_risk_percentage": 0.05},
+            "velocity_momentum": {"allocated_capital": 15000.0, "max_risk_percentage": 0.03},
         }
     }
 
@@ -48,7 +44,7 @@ def allocations_config():
 def temp_config_file(allocations_config, tmp_path):
     """Create a temporary config file."""
     config_path = tmp_path / "capital_allocations.json"
-    with open(config_path, 'w') as f:
+    with open(config_path, "w") as f:
         json.dump(allocations_config, f)
     return str(config_path)
 
@@ -108,34 +104,34 @@ def test_get_max_allowed_risk(capital_manager):
 def test_get_max_allowed_risk_with_open_position(allocations_config, decision_store):
     """Test max allowed risk adjusts based on remaining capital."""
     manager = CapitalManager(allocations_config, decision_store)
-    
+
     # Open a debit position that reduces remaining capital
     legs = (
-        _make_option('OPT1', 500, '2025-09-06', 'call', 20.0),
-        _make_option('OPT2', 505, '2025-09-06', 'call', 1.0),
+        _make_option("OPT1", 500, "2025-09-06", "call", 20.0),
+        _make_option("OPT2", 505, "2025-09-06", "call", 1.0),
     )
     proposal = ProposedPositionRequestDTO(
-        symbol='SPY',
+        symbol="SPY",
         strategy_type=StrategyType.LONG_CALL,
         legs=legs,
         credit=50.0,  # $5000 debit paid
         width=5.0,
         probability_of_profit=0.6,
         confidence=0.65,
-        expiration_date='2025-09-06',
+        expiration_date="2025-09-06",
         created_at=datetime.now().isoformat(),
-        strategy_name='credit_spread',
+        strategy_name="credit_spread",
     )
     record = DecisionResponseDTO(
         id=generate_decision_id(proposal, datetime.now().isoformat()),
         proposal=proposal,
         decided_at=datetime.now().isoformat(),
-        rationale='test',
+        rationale="test",
         quantity=1,
         entry_price=50.0,
     )
     decision_store.append_decision(record)
-    
+
     # Remaining capital: 10000 - 5000 = 5000
     # Max allowed risk: 5000 * 0.05 = 250
     assert manager.get_max_allowed_risk("credit_spread") == 250.0
@@ -189,34 +185,34 @@ def test_get_remaining_capital_no_decisions(capital_manager):
 def test_get_remaining_capital_with_credit_position(allocations_config, decision_store):
     """Test remaining capital with opened credit position."""
     manager = CapitalManager(allocations_config, decision_store)
-    
+
     # Create a credit spread decision
     legs = (
-        _make_option('OPT1', 500, '2025-09-06', 'put', 2.0),
-        _make_option('OPT2', 495, '2025-09-06', 'put', 1.0),
+        _make_option("OPT1", 500, "2025-09-06", "put", 2.0),
+        _make_option("OPT2", 495, "2025-09-06", "put", 1.0),
     )
     proposal = ProposedPositionRequestDTO(
-        symbol='SPY',
+        symbol="SPY",
         strategy_type=StrategyType.PUT_CREDIT_SPREAD,
         legs=legs,
         credit=1.0,
         width=5.0,
         probability_of_profit=0.6,
         confidence=0.65,
-        expiration_date='2025-09-06',
+        expiration_date="2025-09-06",
         created_at=datetime.now().isoformat(),
-        strategy_name='credit_spread',
+        strategy_name="credit_spread",
     )
     record = DecisionResponseDTO(
         id=generate_decision_id(proposal, datetime.now().isoformat()),
         proposal=proposal,
         decided_at=datetime.now().isoformat(),
-        rationale='test',
+        rationale="test",
         quantity=1,
         entry_price=1.0,
     )
     decision_store.append_decision(record)
-    
+
     # Credit spread: should add premium received (1.0 * 100 = $100)
     remaining = manager.get_remaining_capital("credit_spread")
     assert remaining == 10100.0  # 10000 + 100
@@ -225,34 +221,34 @@ def test_get_remaining_capital_with_credit_position(allocations_config, decision
 def test_get_remaining_capital_with_debit_position(allocations_config, decision_store):
     """Test remaining capital with opened debit position."""
     manager = CapitalManager(allocations_config, decision_store)
-    
+
     # Create a debit spread decision (simulated as LONG_CALL)
     legs = (
-        _make_option('OPT1', 500, '2025-09-06', 'call', 2.0),
-        _make_option('OPT2', 505, '2025-09-06', 'call', 1.0),
+        _make_option("OPT1", 500, "2025-09-06", "call", 2.0),
+        _make_option("OPT2", 505, "2025-09-06", "call", 1.0),
     )
     proposal = ProposedPositionRequestDTO(
-        symbol='SPY',
+        symbol="SPY",
         strategy_type=StrategyType.LONG_CALL,
         legs=legs,
         credit=1.0,  # Actually a debit, but credit field represents net premium
         width=5.0,
         probability_of_profit=0.6,
         confidence=0.65,
-        expiration_date='2025-09-06',
+        expiration_date="2025-09-06",
         created_at=datetime.now().isoformat(),
-        strategy_name='credit_spread',
+        strategy_name="credit_spread",
     )
     record = DecisionResponseDTO(
         id=generate_decision_id(proposal, datetime.now().isoformat()),
         proposal=proposal,
         decided_at=datetime.now().isoformat(),
-        rationale='test',
+        rationale="test",
         quantity=1,
         entry_price=1.0,
     )
     decision_store.append_decision(record)
-    
+
     # Debit strategy: should subtract premium paid (1.0 * 100 = $100)
     remaining = manager.get_remaining_capital("credit_spread")
     assert remaining == 9900.0  # 10000 - 100
@@ -261,36 +257,36 @@ def test_get_remaining_capital_with_debit_position(allocations_config, decision_
 def test_get_remaining_capital_with_closed_credit_position(allocations_config, decision_store):
     """Test remaining capital with closed credit position."""
     manager = CapitalManager(allocations_config, decision_store)
-    
+
     # Create and close a credit spread
     legs = (
-        _make_option('OPT1', 500, '2025-09-06', 'put', 2.0),
-        _make_option('OPT2', 495, '2025-09-06', 'put', 1.0),
+        _make_option("OPT1", 500, "2025-09-06", "put", 2.0),
+        _make_option("OPT2", 495, "2025-09-06", "put", 1.0),
     )
     proposal = ProposedPositionRequestDTO(
-        symbol='SPY',
+        symbol="SPY",
         strategy_type=StrategyType.PUT_CREDIT_SPREAD,
         legs=legs,
         credit=1.86,
         width=5.0,
         probability_of_profit=0.6,
         confidence=0.65,
-        expiration_date='2025-09-06',
+        expiration_date="2025-09-06",
         created_at=datetime.now().isoformat(),
-        strategy_name='credit_spread',
+        strategy_name="credit_spread",
     )
     record = DecisionResponseDTO(
         id=generate_decision_id(proposal, datetime.now().isoformat()),
         proposal=proposal,
         decided_at=datetime.now().isoformat(),
-        rationale='test',
+        rationale="test",
         quantity=1,
         entry_price=1.86,
         exit_price=2.95,  # Paid more to close (loss)
         closed_at=datetime.now().isoformat(),
     )
     decision_store.append_decision(record)
-    
+
     # Credit spread closed:
     # Opening: +$186 (received)
     # Closing: -$295 (paid to close)
@@ -302,36 +298,36 @@ def test_get_remaining_capital_with_closed_credit_position(allocations_config, d
 def test_get_remaining_capital_with_closed_debit_position(allocations_config, decision_store):
     """Test remaining capital with closed debit position."""
     manager = CapitalManager(allocations_config, decision_store)
-    
+
     # Create and close a debit position
     legs = (
-        _make_option('OPT1', 500, '2025-09-06', 'call', 2.0),
-        _make_option('OPT2', 505, '2025-09-06', 'call', 1.0),
+        _make_option("OPT1", 500, "2025-09-06", "call", 2.0),
+        _make_option("OPT2", 505, "2025-09-06", "call", 1.0),
     )
     proposal = ProposedPositionRequestDTO(
-        symbol='SPY',
+        symbol="SPY",
         strategy_type=StrategyType.LONG_CALL,
         legs=legs,
         credit=1.50,  # Net debit paid
         width=5.0,
         probability_of_profit=0.6,
         confidence=0.65,
-        expiration_date='2025-09-06',
+        expiration_date="2025-09-06",
         created_at=datetime.now().isoformat(),
-        strategy_name='credit_spread',
+        strategy_name="credit_spread",
     )
     record = DecisionResponseDTO(
         id=generate_decision_id(proposal, datetime.now().isoformat()),
         proposal=proposal,
         decided_at=datetime.now().isoformat(),
-        rationale='test',
+        rationale="test",
         quantity=1,
         entry_price=1.50,
         exit_price=2.00,  # Received when closing
         closed_at=datetime.now().isoformat(),
     )
     decision_store.append_decision(record)
-    
+
     # Debit position closed:
     # Opening: -$150 (paid)
     # Closing: +$200 (received)
@@ -343,38 +339,38 @@ def test_get_remaining_capital_with_closed_debit_position(allocations_config, de
 def test_get_remaining_capital_multiple_positions(allocations_config, decision_store):
     """Test remaining capital with multiple positions."""
     manager = CapitalManager(allocations_config, decision_store)
-    
+
     # Create multiple credit positions with different timestamps
     base_time = datetime.now()
     for i, credit in enumerate([1.0, 2.0]):
         # Use different timestamps to avoid collision
         decided_at = (base_time.replace(microsecond=i * 1000)).isoformat()
         legs = (
-            _make_option(f'OPT{i}1', 500, '2025-09-06', 'put', 2.0),
-            _make_option(f'OPT{i}2', 495, '2025-09-06', 'put', 1.0),
+            _make_option(f"OPT{i}1", 500, "2025-09-06", "put", 2.0),
+            _make_option(f"OPT{i}2", 495, "2025-09-06", "put", 1.0),
         )
         proposal = ProposedPositionRequestDTO(
-            symbol='SPY',
+            symbol="SPY",
             strategy_type=StrategyType.PUT_CREDIT_SPREAD,
             legs=legs,
             credit=credit,
             width=5.0,
             probability_of_profit=0.6,
             confidence=0.65,
-            expiration_date='2025-09-06',
+            expiration_date="2025-09-06",
             created_at=decided_at,
-            strategy_name='credit_spread',
+            strategy_name="credit_spread",
         )
         record = DecisionResponseDTO(
             id=generate_decision_id(proposal, decided_at),
             proposal=proposal,
             decided_at=decided_at,
-            rationale='test',
+            rationale="test",
             quantity=1,
             entry_price=credit,
         )
         decision_store.append_decision(record)
-    
+
     # Should have: 10000 + 100 + 200 = 10300
     remaining = manager.get_remaining_capital("credit_spread")
     assert remaining == 10300.0
@@ -392,34 +388,34 @@ def test_get_status_summary(capital_manager):
 def test_check_risk_threshold_insufficient_capital(allocations_config, decision_store):
     """Test risk check when remaining capital is insufficient due to open positions."""
     manager = CapitalManager(allocations_config, decision_store)
-    
+
     # Create a large debit position that uses most capital
     legs = (
-        _make_option('OPT1', 500, '2025-09-06', 'call', 95.0),
-        _make_option('OPT2', 505, '2025-09-06', 'call', 1.0),
+        _make_option("OPT1", 500, "2025-09-06", "call", 95.0),
+        _make_option("OPT2", 505, "2025-09-06", "call", 1.0),
     )
     proposal = ProposedPositionRequestDTO(
-        symbol='SPY',
+        symbol="SPY",
         strategy_type=StrategyType.LONG_CALL,
         legs=legs,
         credit=98.0,  # Large debit paid
         width=5.0,
         probability_of_profit=0.6,
         confidence=0.65,
-        expiration_date='2025-09-06',
+        expiration_date="2025-09-06",
         created_at=datetime.now().isoformat(),
-        strategy_name='credit_spread',
+        strategy_name="credit_spread",
     )
     record = DecisionResponseDTO(
         id=generate_decision_id(proposal, datetime.now().isoformat()),
         proposal=proposal,
         decided_at=datetime.now().isoformat(),
-        rationale='test',
+        rationale="test",
         quantity=1,
         entry_price=98.0,
     )
     decision_store.append_decision(record)
-    
+
     # Remaining capital should be 10000 - 9800 = 200
     # Max allowed risk is now 5% of remaining = 0.05 * 200 = 10
     # A new position with max_risk 600 should fail (exceeds both max allowed and remaining)
@@ -432,11 +428,11 @@ def test_ensure_config_file_exists_creates_file(tmp_path):
     """Test that ensure_config_file_exists creates a new file with correct structure."""
     config_path = tmp_path / "config" / "strategies" / "capital_allocations.json"
     assert not config_path.exists()
-    
+
     CapitalManager.ensure_config_file_exists(str(config_path))
-    
+
     assert config_path.exists()
-    with open(config_path, 'r') as f:
+    with open(config_path, "r") as f:
         config = json.load(f)
     assert config == {"strategies": {}}
 
@@ -444,20 +440,13 @@ def test_ensure_config_file_exists_creates_file(tmp_path):
 def test_ensure_config_file_exists_preserves_existing_file(tmp_path):
     """Test that ensure_config_file_exists doesn't overwrite existing file."""
     config_path = tmp_path / "capital_allocations.json"
-    existing_config = {
-        "strategies": {
-            "test_strategy": {
-                "allocated_capital": 5000.0,
-                "max_risk_percentage": 0.10
-            }
-        }
-    }
-    with open(config_path, 'w') as f:
+    existing_config = {"strategies": {"test_strategy": {"allocated_capital": 5000.0, "max_risk_percentage": 0.10}}}
+    with open(config_path, "w") as f:
         json.dump(existing_config, f)
-    
+
     CapitalManager.ensure_config_file_exists(str(config_path))
-    
-    with open(config_path, 'r') as f:
+
+    with open(config_path, "r") as f:
         config = json.load(f)
     assert config == existing_config
 
@@ -466,12 +455,12 @@ def test_ensure_config_file_exists_create_dirs_false_file_exists(tmp_path):
     """Test that ensure_config_file_exists with create_dirs=False succeeds when file exists."""
     config_path = tmp_path / "capital_allocations.json"
     existing_config = {"strategies": {"test": {"allocated_capital": 1000.0, "max_risk_percentage": 0.05}}}
-    with open(config_path, 'w') as f:
+    with open(config_path, "w") as f:
         json.dump(existing_config, f)
 
     CapitalManager.ensure_config_file_exists(str(config_path), create_dirs=False)
 
-    with open(config_path, 'r') as f:
+    with open(config_path, "r") as f:
         config = json.load(f)
     assert config == existing_config
 
@@ -494,7 +483,7 @@ def test_ensure_config_file_exists_create_dirs_true_creates_parent_dirs(tmp_path
 
     assert config_path.exists()
     assert config_path.parent.exists()
-    with open(config_path, 'r') as f:
+    with open(config_path, "r") as f:
         config = json.load(f)
     assert config == {"strategies": {}}
 
@@ -503,12 +492,12 @@ def test_ensure_strategy_exists_adds_strategy(tmp_path):
     """Test that ensure_strategy_exists adds a new strategy with defaults."""
     config_path = tmp_path / "capital_allocations.json"
     initial_config = {"strategies": {}}
-    with open(config_path, 'w') as f:
+    with open(config_path, "w") as f:
         json.dump(initial_config, f)
-    
+
     CapitalManager.ensure_strategy_exists(str(config_path), "new_strategy")
-    
-    with open(config_path, 'r') as f:
+
+    with open(config_path, "r") as f:
         config = json.load(f)
     assert "new_strategy" in config["strategies"]
     assert config["strategies"]["new_strategy"]["allocated_capital"] == 10000.0
@@ -519,17 +508,14 @@ def test_ensure_strategy_exists_with_custom_defaults(tmp_path):
     """Test that ensure_strategy_exists uses custom default values."""
     config_path = tmp_path / "capital_allocations.json"
     initial_config = {"strategies": {}}
-    with open(config_path, 'w') as f:
+    with open(config_path, "w") as f:
         json.dump(initial_config, f)
-    
+
     CapitalManager.ensure_strategy_exists(
-        str(config_path), 
-        "custom_strategy",
-        default_capital=25000.0,
-        default_max_risk_pct=0.10
+        str(config_path), "custom_strategy", default_capital=25000.0, default_max_risk_pct=0.10
     )
-    
-    with open(config_path, 'r') as f:
+
+    with open(config_path, "r") as f:
         config = json.load(f)
     assert config["strategies"]["custom_strategy"]["allocated_capital"] == 25000.0
     assert config["strategies"]["custom_strategy"]["max_risk_percentage"] == 0.10
@@ -538,20 +524,13 @@ def test_ensure_strategy_exists_with_custom_defaults(tmp_path):
 def test_ensure_strategy_exists_preserves_existing_strategy(tmp_path):
     """Test that ensure_strategy_exists doesn't overwrite existing strategy."""
     config_path = tmp_path / "capital_allocations.json"
-    initial_config = {
-        "strategies": {
-            "existing_strategy": {
-                "allocated_capital": 5000.0,
-                "max_risk_percentage": 0.03
-            }
-        }
-    }
-    with open(config_path, 'w') as f:
+    initial_config = {"strategies": {"existing_strategy": {"allocated_capital": 5000.0, "max_risk_percentage": 0.03}}}
+    with open(config_path, "w") as f:
         json.dump(initial_config, f)
-    
+
     CapitalManager.ensure_strategy_exists(str(config_path), "existing_strategy")
-    
-    with open(config_path, 'r') as f:
+
+    with open(config_path, "r") as f:
         config = json.load(f)
     # Should preserve existing values
     assert config["strategies"]["existing_strategy"]["allocated_capital"] == 5000.0
@@ -563,22 +542,16 @@ def test_ensure_strategy_exists_preserves_other_strategies(tmp_path):
     config_path = tmp_path / "capital_allocations.json"
     initial_config = {
         "strategies": {
-            "strategy_one": {
-                "allocated_capital": 5000.0,
-                "max_risk_percentage": 0.03
-            },
-            "strategy_two": {
-                "allocated_capital": 8000.0,
-                "max_risk_percentage": 0.04
-            }
+            "strategy_one": {"allocated_capital": 5000.0, "max_risk_percentage": 0.03},
+            "strategy_two": {"allocated_capital": 8000.0, "max_risk_percentage": 0.04},
         }
     }
-    with open(config_path, 'w') as f:
+    with open(config_path, "w") as f:
         json.dump(initial_config, f)
-    
+
     CapitalManager.ensure_strategy_exists(str(config_path), "strategy_three")
-    
-    with open(config_path, 'r') as f:
+
+    with open(config_path, "r") as f:
         config = json.load(f)
     # Should preserve existing strategies
     assert config["strategies"]["strategy_one"]["allocated_capital"] == 5000.0
@@ -591,11 +564,11 @@ def test_initialize_config_for_strategy_creates_everything(tmp_path):
     """Test that initialize_config_for_strategy creates file and strategy."""
     config_path = tmp_path / "config" / "strategies" / "capital_allocations.json"
     assert not config_path.exists()
-    
+
     CapitalManager.initialize_config_for_strategy(str(config_path), "new_strategy")
-    
+
     assert config_path.exists()
-    with open(config_path, 'r') as f:
+    with open(config_path, "r") as f:
         config = json.load(f)
     assert "new_strategy" in config["strategies"]
     assert config["strategies"]["new_strategy"]["allocated_capital"] == 10000.0
@@ -605,25 +578,15 @@ def test_initialize_config_for_strategy_creates_everything(tmp_path):
 def test_initialize_config_for_strategy_with_existing_file(tmp_path):
     """Test initialize_config_for_strategy with existing file."""
     config_path = tmp_path / "capital_allocations.json"
-    initial_config = {
-        "strategies": {
-            "existing_strategy": {
-                "allocated_capital": 5000.0,
-                "max_risk_percentage": 0.03
-            }
-        }
-    }
-    with open(config_path, 'w') as f:
+    initial_config = {"strategies": {"existing_strategy": {"allocated_capital": 5000.0, "max_risk_percentage": 0.03}}}
+    with open(config_path, "w") as f:
         json.dump(initial_config, f)
-    
+
     CapitalManager.initialize_config_for_strategy(
-        str(config_path), 
-        "new_strategy",
-        default_capital=15000.0,
-        default_max_risk_pct=0.08
+        str(config_path), "new_strategy", default_capital=15000.0, default_max_risk_pct=0.08
     )
-    
-    with open(config_path, 'r') as f:
+
+    with open(config_path, "r") as f:
         config = json.load(f)
     # Should preserve existing strategy
     assert config["strategies"]["existing_strategy"]["allocated_capital"] == 5000.0

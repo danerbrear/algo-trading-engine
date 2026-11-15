@@ -1,4 +1,5 @@
 """Unit tests for shared EngineConfig fields."""
+
 from datetime import datetime
 
 import pytest

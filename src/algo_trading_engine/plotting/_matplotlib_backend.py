@@ -16,11 +16,10 @@ _NON_INTERACTIVE_BACKENDS = frozenset({"agg", "svg", "pdf", "ps", "cairo", "temp
 def _import_pyplot():
     try:
         import matplotlib.pyplot as plt  # pylint: disable=import-outside-toplevel
+
         return plt
     except ImportError as exc:
-        raise ImportError(
-            "Plotting requires matplotlib. Install with: pip install algo-trading-engine[plot]"
-        ) from exc
+        raise ImportError("Plotting requires matplotlib. Install with: pip install algo-trading-engine[plot]") from exc
 
 
 def _interactive_show_requested(show: bool) -> bool:
@@ -66,11 +65,7 @@ def render_lines_on_axes(spec: PlotSpec, ax) -> None:
     frame = spec.frame
     x_values = frame[spec.x]
 
-    left_cols = [
-        col
-        for col in frame.columns
-        if col not in {spec.x, *spec.right_axis}
-    ]
+    left_cols = [col for col in frame.columns if col not in {spec.x, *spec.right_axis}]
     for col in left_cols:
         ax.plot(x_values, frame[col], label=col, linewidth=1.5)
 

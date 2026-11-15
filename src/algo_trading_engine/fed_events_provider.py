@@ -8,10 +8,16 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import pandas as pd
 
+from algo_trading_engine._internal.util.market_clock import (
+    market_index,
+    market_now,
+    market_time,
+    session_dates,
+)
 from algo_trading_engine.logging import get_logger
 
 _BASE_URL = "https://www.financecalendar.com/wp-json/fc/v1"
@@ -63,13 +69,6 @@ def _shift_months(start: date, months: int) -> date:
     return date(year, month, day)
 
 
-def _calendar_dates(index: pd.DatetimeIndex) -> pd.DatetimeIndex:
-    """Naive midnight timestamps for each bar, so intraday rows share a calendar day."""
-
-    bar_dates = index.tz_localize(None) if index.tz is not None else index
-    return pd.DatetimeIndex(pd.Timestamp(value).normalize() for value in bar_dates)
-
-
 def _history_windows(first_bar: date, last_bar: date, floor: date) -> list[tuple[date, date]]:
     """Two-month history ranges covering bars on or after `floor`.
 
@@ -102,7 +101,7 @@ def _events_from_payload(payload: dict) -> list[tuple[date, str]]:
         raw_date = event.get("date")
         if not raw_date:
             continue
-        events.append((pd.Timestamp(raw_date).date(), _event_description(event)))
+        events.append((datetime.fromisoformat(raw_date).date(), _event_description(event)))
     return events
 
 
@@ -125,9 +124,7 @@ def _next_event_for_bar(
 
     horizon_end = _shift_months(bar_date, _HORIZON_MONTHS)
     upcoming = [
-        (event_date, description)
-        for event_date, description in events
-        if bar_date <= event_date <= horizon_end
+        (event_date, description) for event_date, description in events if bar_date <= event_date <= horizon_end
     ]
     if not upcoming:
         return None, None
@@ -141,8 +138,7 @@ def _days_and_descriptions(
     floor: date,
 ) -> tuple[list[int | None], list[str | None]]:
     by_date = {
-        normalized: _next_event_for_bar(normalized.date(), events, floor)
-        for normalized in calendar_dates.unique()
+        normalized: _next_event_for_bar(normalized.date(), events, floor) for normalized in calendar_dates.unique()
     }
     days: list[int | None] = []
     descriptions: list[str | None] = []
@@ -163,22 +159,24 @@ class FedEventsProvider:
         self,
         data: pd.DataFrame,
     ) -> tuple[pd.DataFrame, bool]:
-        """Attach days-until and description columns using Finance Calendar /history."""
+        """Attach days-until and description columns using Finance Calendar /history.
 
-        if not isinstance(data, pd.DataFrame) or not isinstance(data.index, pd.DatetimeIndex):
-            get_logger().warning(
-                "Could not add fed events. Data must be a DataFrame with a DatetimeIndex."
-            )
+        ``data`` must be indexed by naive US/Eastern bar timestamps.
+        """
+
+        try:
+            calendar_dates = session_dates(market_index(data))
+        except (TypeError, ValueError) as error:
+            get_logger().warning(f"Could not add fed events. {error}")
             return data, False
 
-        calendar_dates = _calendar_dates(data.index)
         if calendar_dates.empty:
             return data.copy(), True
 
-        floor = _shift_months(date.today(), -_HISTORY_FLOOR_MONTHS)
+        floor = _shift_months(market_now().date(), -_HISTORY_FLOOR_MONTHS)
         windows = _history_windows(
-            calendar_dates.min().date(),
-            calendar_dates.max().date(),
+            market_time(calendar_dates.min()).date(),
+            market_time(calendar_dates.max()).date(),
             floor,
         )
         if not windows:
@@ -191,9 +189,7 @@ class FedEventsProvider:
         days_values, description_values = _days_and_descriptions(calendar_dates, events, floor)
         result = data.copy()
         result[_DAYS_COLUMN] = pd.Series(days_values, index=data.index, dtype="Int64")
-        result[_DESCRIPTION_COLUMN] = pd.Series(
-            description_values, index=data.index, dtype="object"
-        )
+        result[_DESCRIPTION_COLUMN] = pd.Series(description_values, index=data.index, dtype="object")
 
         get_logger().info(
             f"Attached fed event columns using {len(events)} history releases "
@@ -204,7 +200,7 @@ class FedEventsProvider:
     def get_next_fed_event(self) -> NextFedEvent | None:
         """Return the soonest upcoming fomc, cpi, or ppi release via /next."""
 
-        today = date.today()
+        today = market_now().date()
         candidates: list[NextFedEvent] = []
         for series in _FED_EVENT_SERIES:
             payload = self._fetch_next(series)
@@ -217,7 +213,7 @@ class FedEventsProvider:
             raw_date = next_event.get("date")
             if not raw_date:
                 continue
-            event_date = pd.Timestamp(raw_date).date()
+            event_date = datetime.fromisoformat(raw_date).date()
             candidates.append(
                 NextFedEvent(
                     days_until_event=(event_date - today).days,

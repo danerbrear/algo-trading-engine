@@ -5,7 +5,11 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, Optional
 from vollib.black_scholes.implied_volatility import implied_volatility
 
-from algo_trading_engine._internal.util.datetime_helpers import EXPIRATION_DATE_FORMAT, to_readable_str, to_readable_expiration_str
+from algo_trading_engine._internal.util.datetime_helpers import (
+    EXPIRATION_DATE_FORMAT,
+    to_readable_str,
+    to_readable_expiration_str,
+)
 
 from algo_trading_engine.enums import OptionType
 
@@ -51,9 +55,7 @@ class Option:
         elif hasattr(self.option_type, "value") and self.option_type.value in ("call", "put"):
             object.__setattr__(self, "option_type", OptionType(self.option_type.value))
         elif not isinstance(self.option_type, OptionType):
-            raise ValueError(
-                f"option_type must be a string or OptionType enum, got {type(self.option_type)}"
-            )
+            raise ValueError(f"option_type must be a string or OptionType enum, got {type(self.option_type)}")
 
         if isinstance(self.expiration, datetime):
             object.__setattr__(self, "expiration", to_readable_expiration_str(self.expiration))
@@ -178,9 +180,7 @@ class Option:
     @classmethod
     def from_contract_and_bar(cls, contract: OptionContractDTO, option_bar: OptionBarDTO) -> Option:
         """Create a complete option object from contract information and pricing data"""
-        option_type = (
-            OptionType.CALL if contract.contract_type.value == "call" else OptionType.PUT
-        )
+        option_type = OptionType.CALL if contract.contract_type.value == "call" else OptionType.PUT
         return cls(
             ticker=contract.ticker,
             timestamp=option_bar.timestamp,
@@ -190,9 +190,7 @@ class Option:
             option_type=option_type,
             last_price=float(option_bar.close_price),
             volume=option_bar.volume,
-            mid_price=float(option_bar.volume_weighted_avg_price)
-            if option_bar.volume_weighted_avg_price
-            else None,
+            mid_price=float(option_bar.volume_weighted_avg_price) if option_bar.volume_weighted_avg_price else None,
         )
 
     def set_bar_data(self, option_bar: OptionBarDTO) -> Option:
@@ -220,9 +218,7 @@ class Option:
                 flag="c" if self.option_type == OptionType.CALL else "p",
             )
         except Exception as exc:
-            raise ImpliedVolatilityError(
-                f"Could not calculate implied volatility for {self}: {exc}"
-            ) from exc
+            raise ImpliedVolatilityError(f"Could not calculate implied volatility for {self}: {exc}") from exc
 
 
 @dataclass(frozen=True)
@@ -241,12 +237,8 @@ class OptionChain:
     source: Optional[str] = None
 
     def __post_init__(self):
-        calls_list = [
-            opt if isinstance(opt, Option) else Option.from_dict(opt) for opt in self.calls
-        ]
-        puts_list = [
-            opt if isinstance(opt, Option) else Option.from_dict(opt) for opt in self.puts
-        ]
+        calls_list = [opt if isinstance(opt, Option) else Option.from_dict(opt) for opt in self.calls]
+        puts_list = [opt if isinstance(opt, Option) else Option.from_dict(opt) for opt in self.puts]
         object.__setattr__(self, "calls", tuple(calls_list))
         object.__setattr__(self, "puts", tuple(puts_list))
 
@@ -293,10 +285,7 @@ class OptionChain:
     def get_option_data_for_option(self, option: Option) -> Optional[Option]:
         options_list = self.calls if option.is_call else self.puts
         for current_option in options_list:
-            if (
-                current_option.strike == option.strike
-                and current_option.expiration == option.expiration
-            ):
+            if current_option.strike == option.strike and current_option.expiration == option.expiration:
                 return current_option
         return None
 

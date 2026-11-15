@@ -27,22 +27,21 @@ MyCustomStrategy = custom_strategy_module.MyCustomStrategy
 # Load environment variables from .env file
 load_dotenv()
 
+
 def main():
     """Run paper trading using the custom strategy."""
     # Get Polygon API key from environment
     polygon_api_key = os.getenv("POLYGON_API_KEY")
-    
+
     # Create configuration
     config = PaperTradingConfig(
-        symbol="SPY",
-        strategy_type=MyCustomStrategy(),  # Custom strategy instance
-        api_key=polygon_api_key
+        symbol="SPY", strategy_type=MyCustomStrategy(), api_key=polygon_api_key  # Custom strategy instance
     )
 
     # Create and run engine - all data fetching and setup is handled internally
     engine = PaperTradingEngine.from_config(config)
     success = engine.run()
-    
+
     if success:
         print("\n✅ Paper trading completed successfully!")
         print("   Check predictions/decisions/ for decision records")

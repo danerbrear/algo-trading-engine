@@ -120,6 +120,7 @@ class TestRobustSpreadExitPrice:
         )
 
         assert exit_price == pytest.approx(1.8)
+        assert exit_price is not None
         assert position.get_return_dollars(exit_price) == pytest.approx(92.0)
 
     def test_missing_bar_deep_otm_call_debit_returns_zero(self):

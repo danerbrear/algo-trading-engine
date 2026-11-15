@@ -3,8 +3,10 @@ from datetime import datetime
 from typing import Optional
 import pandas as pd
 
+
 class Indicator(ABC):
     """Base class for indicator implementations"""
+
     def __init__(self, name: str):
         self.name = name
         self._values = pd.Series(dtype=float)  # Series indexed by datetime to store historical values
@@ -31,31 +33,31 @@ class Indicator(ABC):
         """
 
     @abstractmethod
-    def update(self, date: datetime, data: pd.DataFrame) -> float:
-        """Update a value for a date"""
+    def update(self, date: datetime, data: pd.DataFrame) -> None:
+        """Update the stored indicator value for a date."""
 
     @abstractmethod
     def print(self):
         pass
-    
+
     def get_value_at(self, date: datetime) -> Optional[float]:
         """
         Get indicator value at a specific date.
-        
+
         Args:
             date: The date to get the value for
-            
+
         Returns:
             float: The indicator value at that date, or None if not found
         """
         if date in self._values.index:
             return self._values.loc[date]
         return None
-    
+
     def get_values(self) -> pd.Series:
         """
         Get all historical indicator values.
-        
+
         Returns:
             pd.Series: Series of all indicator values indexed by datetime
         """

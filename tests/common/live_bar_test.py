@@ -9,9 +9,7 @@ from algo_trading_engine.enums import BarTimeInterval
 
 
 def _sample_frame() -> pd.DataFrame:
-    idx = pd.DatetimeIndex(
-        [datetime(2026, 11, 11, 9, 30), datetime(2026, 11, 11, 10, 30)]
-    )
+    idx = pd.DatetimeIndex([datetime(2026, 11, 11, 9, 30), datetime(2026, 11, 11, 10, 30)])
     return pd.DataFrame(
         {
             "Open": [100.0, 101.0],

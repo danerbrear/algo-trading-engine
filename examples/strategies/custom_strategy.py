@@ -9,14 +9,15 @@ from algo_trading_engine.indicators import ATRIndicator
 from algo_trading_engine.enums import BarTimeInterval, StrategyType
 from algo_trading_engine.vo import StrikePrice, create_position
 
+
 class MyCustomStrategy(Strategy):
     """
     Example custom strategy using hourly bars and a simple ATR indicator.
-    
+
     This is a simple example - you would implement your own logic here.
     The Strategy base class provides the interface that BacktestEngine expects.
     """
-    
+
     def __init__(self, profit_target=0.5, stop_loss=0.6):
         """Initialize the custom strategy."""
         super().__init__(profit_target, stop_loss)
@@ -26,11 +27,11 @@ class MyCustomStrategy(Strategy):
         self.add_indicator(atr_indicator)
 
         # Add any custom initialization here
-    
+
     def on_new_date(self, date, positions, add_position, remove_position):
         """
         Called for each trading day.
-        
+
         Implement your strategy logic here:
         - Analyze current market conditions using self.data
         - Check existing positions
@@ -42,28 +43,32 @@ class MyCustomStrategy(Strategy):
         # Add new positions
         if len(positions) == 0:
             self._try_open_position(date, add_position)
-    
+
     def on_end(self, positions, remove_position, date):
         """
         Called at the end of backtest to close remaining positions.
         """
         for position in positions:
             exit_price = self.compute_exit_price(position, date)
-            symbol = getattr(position, 'symbol', getattr(self, 'symbol', 'SPY'))
-            underlying = self.get_current_underlying_price(date, symbol) if hasattr(self, 'get_current_underlying_price') else None
+            symbol = getattr(position, "symbol", getattr(self, "symbol", "SPY"))
+            underlying = (
+                self.get_current_underlying_price(date, symbol)
+                if hasattr(self, "get_current_underlying_price")
+                else None
+            )
             remove_position(date, position, exit_price if exit_price is not None else 0.0, underlying_price=underlying)
-    
+
     def validate_data(self, data):
         """
         Validate that the data has the required columns/features.
-        
+
         Returns:
             True if valid, False otherwise
         """
         # Check for required columns
-        required_columns = ['Close', 'Open', 'High', 'Low', 'Volume']
+        required_columns = ["Close", "Open", "High", "Low", "Volume"]
         return all(col in data.columns for col in required_columns)
-    
+
     def _try_open_position(self, date: datetime, add_position):
         """
         Try to open a position.
@@ -73,7 +78,10 @@ class MyCustomStrategy(Strategy):
             return
 
         expiration_range = ExpirationRangeDTO(min_days=5, max_days=10)
-        strike_range = StrikeRangeDTO(min_strike=StrikePrice(Decimal(str(current_price - 1))), max_strike=StrikePrice(Decimal(str(current_price + 1))))
+        strike_range = StrikeRangeDTO(
+            min_strike=StrikePrice(Decimal(str(current_price - 1))),
+            max_strike=StrikePrice(Decimal(str(current_price + 1))),
+        )
 
         chain = self.get_options_chain(
             date,

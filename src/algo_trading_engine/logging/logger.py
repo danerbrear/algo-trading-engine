@@ -72,9 +72,7 @@ def configure_logger(
 
     normalized = log_level.lower().strip()
     if normalized not in _LOGURU_LEVEL:
-        raise ValueError(
-            f"log_level must be one of 'debug', 'info', 'warn'; got {log_level!r}"
-        )
+        raise ValueError(f"log_level must be one of 'debug', 'info', 'warn'; got {log_level!r}")
     level = _LOGURU_LEVEL[normalized]
 
     logger.remove(None)

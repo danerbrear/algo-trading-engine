@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     from algo_trading_engine.dto import OptionBarDTO
 
 
-class Benchmark():
+class Benchmark:
     """
     Benchmark to compare returns against
     """
@@ -45,12 +45,11 @@ class Benchmark():
             return None
         return (self.end_price - self.start_price) / self.start_price * 100
 
+
 class OptionType(Enum):
     """
     Enum for option types (API symbols: P/C).
     """
+
     PUT = "P"
     CALL = "C"
-
-
-   
