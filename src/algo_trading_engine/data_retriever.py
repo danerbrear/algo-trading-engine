@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import ClassVar, Dict, Optional, cast
+from typing import ClassVar, Dict, Optional
 
 from algo_trading_engine._internal.common.cache.cache_manager import CacheManager
 from algo_trading_engine._internal.util.market_clock import (
@@ -34,9 +34,9 @@ class DataRetriever:
         """
         self.symbol = symbol
         self.bar_interval = bar_interval
-        self.data = None
-        self.hmm_data = None  # Separate data for HMM training
-        self.lstm_data = None  # Separate data for LSTM training
+        self.data: Optional[pd.DataFrame] = None
+        self.hmm_data: Optional[pd.DataFrame] = None  # Separate data for HMM training
+        self.lstm_data: Optional[pd.DataFrame] = None  # Separate data for LSTM training
         self.features = None
         self.ticker = None
         self.use_cache = use_cache
@@ -263,9 +263,9 @@ class DataRetriever:
         The pandas constructor is typed as ``Timestamp | NaT`` for every input.
         """
         parsed = pd.Timestamp(value)
-        if parsed is pd.NaT:
+        if not isinstance(parsed, pd.Timestamp) or parsed is pd.NaT:
             raise ValueError(f"Invalid timestamp: {value!r}")
-        return cast(pd.Timestamp, parsed)
+        return parsed
 
     @staticmethod
     def _read_cached_bars(cache_file: Path) -> pd.DataFrame:

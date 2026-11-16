@@ -1,6 +1,6 @@
 import time
 import requests
-from typing import Callable, Any
+from typing import Any, Callable
 
 
 class APIRetryHandler:
@@ -47,7 +47,8 @@ class APIRetryHandler:
             try:
                 return fetch_func()
             except requests.exceptions.HTTPError as e:
-                if e.response.status_code == 429:  # Rate limit exceeded
+                response = e.response
+                if response is not None and response.status_code == 429:  # Rate limit exceeded
                     if attempt < max_retries - 1:
                         print("Rate limit exceeded, will retry after delay")
                         continue

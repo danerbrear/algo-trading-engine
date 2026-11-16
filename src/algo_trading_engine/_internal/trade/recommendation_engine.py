@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timezone
-from typing import Optional, List
+from typing import List, Optional, Sequence
 
 from algo_trading_engine._internal.util.market_clock import market_now, market_time, to_market_time
 from algo_trading_engine.strategy import Strategy
@@ -69,13 +69,14 @@ class InteractiveStrategyRecommender:
             recommended_position = position
 
         def capture_remove_position(
-            _date_arg: datetime,
+            date: datetime,
             position: Position,
             exit_price: float,
             underlying_price: Optional[float] = None,
-            current_volumes: Optional[list] = None,
+            current_volumes: Optional[Sequence[int | None]] = None,
         ):
             """Capture the position closure decision from the strategy's on_new_date logic"""
+            _ = date
             positions_to_close.append(
                 {
                     "position": position,
@@ -184,7 +185,10 @@ class InteractiveStrategyRecommender:
         # Fallback to cached data if live price failed or date is not current
         if current_price is None:
             try:
-                current_price = float(self.strategy.data.loc[date]["Close"])
+                market_data = self.strategy.data
+                if market_data is None:
+                    raise ValueError("Strategy data is not set")
+                current_price = float(market_data.loc[date]["Close"])
             except Exception:
                 # try normalize date
                 try:

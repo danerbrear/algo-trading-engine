@@ -109,6 +109,18 @@ def bars_through(data: pd.DataFrame, when: datetime) -> pd.DataFrame:
     return data.loc[market_index(data) <= when]
 
 
+def label_position(index: pd.Index, key: object) -> int:
+    """Integer position of one label.
+
+    ``Index.get_loc`` is typed as ``int | slice | ndarray`` because duplicate
+    labels return a slice or array. A unique label is an int.
+    """
+    location = index.get_loc(key)
+    if isinstance(location, int):
+        return location
+    raise TypeError(f"Expected a unique index label for {key!r}")
+
+
 def session_dates(index: pd.DatetimeIndex) -> pd.DatetimeIndex:
     """Naive midnight of each bar's calendar date, so intraday bars share a day."""
     # pandas attaches ``normalize`` to DatetimeIndex dynamically, so pyright cannot see it.

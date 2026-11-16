@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Callable, Optional
+from typing import Callable, Optional, Sequence
 import pandas as pd
 
-from algo_trading_engine._internal.util.market_clock import market_index
-from algo_trading_engine.strategy import Strategy
+from algo_trading_engine._internal.util.market_clock import label_position, market_index
+from algo_trading_engine.strategy import RemovePositionCallback, Strategy
 from algo_trading_engine.indicators.sma_indicator import SMAIndicator
 from algo_trading_engine.vo import Position, create_position
 from algo_trading_engine.enums import StrategyType
@@ -29,18 +29,21 @@ class VelocitySignalMomentumStrategy(Strategy):
 
     def __init__(
         self,
-        get_contract_list_for_date: Callable,
-        get_option_bar: Callable,
-        get_options_chain: Callable,
-        stop_loss: float = None,
-        profit_target: float = None,
+        get_contract_list_for_date: Optional[Callable] = None,
+        get_option_bar: Optional[Callable] = None,
+        get_options_chain: Optional[Callable] = None,
+        stop_loss: Optional[float] = None,
+        profit_target: Optional[float] = None,
         symbol: str = "SPY",
     ):
         super().__init__(stop_loss=stop_loss, profit_target=profit_target)
 
-        self.get_contract_list_for_date = get_contract_list_for_date
-        self.get_option_bar = get_option_bar
-        self.get_options_chain = get_options_chain
+        if get_contract_list_for_date is not None:
+            self.get_contract_list_for_date = get_contract_list_for_date
+        if get_option_bar is not None:
+            self.get_option_bar = get_option_bar
+        if get_options_chain is not None:
+            self.get_options_chain = get_options_chain
         self.symbol = symbol
         self.options_data: dict[str, OptionsChainDTO] = {}
 
@@ -73,7 +76,7 @@ class VelocitySignalMomentumStrategy(Strategy):
         date: datetime,
         positions: tuple["Position", ...],
         add_position: Callable[["Position"], None],
-        remove_position: Callable[[datetime, "Position", float, Optional[float], Optional[list[int]]], None],
+        remove_position: RemovePositionCallback,
     ):
         super().on_new_date(date, positions, add_position, remove_position)
 
@@ -84,8 +87,8 @@ class VelocitySignalMomentumStrategy(Strategy):
 
     def on_end(
         self,
-        positions: tuple["Position", ...],
-        remove_position: Callable[[datetime, "Position", float, Optional[float], Optional[list[int]]], None],
+        positions: Sequence["Position"],
+        remove_position: RemovePositionCallback,
         date: datetime,
     ):
         """End-of-run hook; plotting is handled by the engine / show_plot callers."""
@@ -187,7 +190,7 @@ class VelocitySignalMomentumStrategy(Strategy):
         if bar_ts is None:
             return False
         try:
-            current_idx = self.data.index.get_loc(bar_ts)
+            current_idx = label_position(self.data.index, bar_ts)
         except KeyError:
             get_logger().warning("⚠️  Date not found in data")
             return False
@@ -538,7 +541,7 @@ class VelocitySignalMomentumStrategy(Strategy):
         self,
         date: datetime,
         positions: tuple["Position", ...],
-        remove_position: Callable[[datetime, "Position", float, Optional[float], Optional[list[int]]], None],
+        remove_position: RemovePositionCallback,
     ):
         current_underlying_price = self.get_current_underlying_price(date, self.symbol)
         get_logger().info(f"Current underlying price: {current_underlying_price}")

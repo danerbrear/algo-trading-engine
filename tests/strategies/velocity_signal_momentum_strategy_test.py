@@ -748,7 +748,7 @@ class TestVelocityStrategyMethodSignatures:
 
     def test_on_new_date_signature_matches_base_class(self):
         """Test that on_new_date can be called with the correct signature from base class"""
-        from typing import Callable, Optional
+        from typing import Optional
         from algo_trading_engine.strategy import Strategy as BaseStrategy
 
         mock_options_handler = Mock()
@@ -781,12 +781,16 @@ class TestVelocityStrategyMethodSignatures:
         assert strategy_params == base_params, f"Parameter names don't match: {strategy_params} vs {base_params}"
         base_remove_position_type = base_sig.parameters["remove_position"].annotation
         strategy_remove_position_type = strategy_sig.parameters["remove_position"].annotation
-        assert "Callable" in str(
-            base_remove_position_type
-        ), f"remove_position should be Callable, got: {base_remove_position_type}"
-        assert "Callable" in str(
-            strategy_remove_position_type
-        ), f"remove_position should be Callable, got: {strategy_remove_position_type}"
+
+        def annotation_name(annotation):
+            return annotation if isinstance(annotation, str) else annotation.__name__
+
+        assert (
+            annotation_name(base_remove_position_type) == "RemovePositionCallback"
+        ), f"remove_position should be RemovePositionCallback, got: {base_remove_position_type}"
+        assert (
+            annotation_name(strategy_remove_position_type) == "RemovePositionCallback"
+        ), f"remove_position should be RemovePositionCallback, got: {strategy_remove_position_type}"
         date = datetime(2024, 1, 25)
         positions = tuple()
 
@@ -814,7 +818,7 @@ class TestVelocityStrategyMethodSignatures:
 
     def test_on_end_signature_matches_base_class(self):
         """Test that on_end can be called with the correct signature from base class"""
-        from typing import Callable, Optional
+        from typing import Optional
         from algo_trading_engine.strategy import Strategy as BaseStrategy
 
         mock_options_handler = Mock()
@@ -849,12 +853,16 @@ class TestVelocityStrategyMethodSignatures:
         ), f"Parameter names don't match: {strategy_param_names} vs {base_param_names}"
         base_remove_position_type = base_sig.parameters["remove_position"].annotation
         strategy_remove_position_type = strategy_sig.parameters["remove_position"].annotation
-        assert "Callable" in str(
-            base_remove_position_type
-        ), f"remove_position should be Callable, got: {base_remove_position_type}"
-        assert "Callable" in str(
-            strategy_remove_position_type
-        ), f"remove_position should be Callable, got: {strategy_remove_position_type}"
+
+        def annotation_name(annotation):
+            return annotation if isinstance(annotation, str) else annotation.__name__
+
+        assert (
+            annotation_name(base_remove_position_type) == "RemovePositionCallback"
+        ), f"remove_position should be RemovePositionCallback, got: {base_remove_position_type}"
+        assert (
+            annotation_name(strategy_remove_position_type) == "RemovePositionCallback"
+        ), f"remove_position should be RemovePositionCallback, got: {strategy_remove_position_type}"
         positions = tuple()
         date = datetime(2024, 1, 25)
 
@@ -874,7 +882,8 @@ class TestVelocityStrategyMethodSignatures:
 
     def test_try_close_positions_signature(self):
         """Test that _try_close_positions uses the correct remove_position signature"""
-        from typing import Callable, Optional
+        from typing import Optional
+        from algo_trading_engine.strategy import RemovePositionCallback
 
         mock_options_handler = Mock()
         get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
@@ -901,16 +910,11 @@ class TestVelocityStrategyMethodSignatures:
 
         sig = inspect.signature(strategy._try_close_positions)
         remove_position_param = sig.parameters["remove_position"]
-        expected_type = "Callable[[datetime, 'Position', float, Optional[float], Optional[list[int]]], None]"
-        assert "datetime" in str(
-            remove_position_param.annotation
-        ), f"remove_position should accept datetime as first parameter, got: {remove_position_param.annotation}"
-        assert "Position" in str(
-            remove_position_param.annotation
-        ), f"remove_position should accept Position as second parameter, got: {remove_position_param.annotation}"
-        assert "float" in str(
-            remove_position_param.annotation
-        ), f"remove_position should accept float as third parameter, got: {remove_position_param.annotation}"
+        assert str(remove_position_param.annotation) == "RemovePositionCallback"
+        callback_params = [
+            name for name in inspect.signature(RemovePositionCallback.__call__).parameters if name != "self"
+        ]
+        assert callback_params[:3] == ["date", "position", "exit_price"]
         date = datetime(2024, 1, 25)
         positions = tuple()
 

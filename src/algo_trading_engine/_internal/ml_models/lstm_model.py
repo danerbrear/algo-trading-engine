@@ -1,5 +1,6 @@
 import tensorflow as tf
 from keras import Sequential
+from keras.models import Model
 from keras.layers import LSTM, Dense, Dropout, Input, Bidirectional, LayerNormalization
 from keras.optimizers import Adam
 from keras.callbacks import EarlyStopping
@@ -39,11 +40,11 @@ class LSTMModel:
         self.sequence_length = sequence_length
         self.n_features = n_features
         self.n_classes = 3  # 0: Hold, 1: Call Credit Spread, 2: Put Credit Spread
-        self.model = self._build_model()
+        self.model: Model = self._build_model()
         self.scaler = StandardScaler()
-        self.feature_columns = None
-        self.original_features = None
-        self.feature_recommendations = None
+        self.feature_columns: list | None = None
+        self.original_features: list | None = None
+        self.feature_recommendations: dict | None = None
 
     def prepare_data(self, data_retriever, sequence_length=60):
         """Prepare data for LSTM model with enhanced features using separate date ranges
@@ -318,26 +319,29 @@ class LSTMModel:
         Returns:
             List of features to use for model training
         """
-        if not hasattr(self, "feature_recommendations"):
+        recommendations = self.feature_recommendations
+        original_features = self.original_features
+        if recommendations is None or original_features is None:
             print("⚠️ Feature recommendations not available. Run prepare_data() first.")
             return None
 
-        if use_reduced_features and self.feature_recommendations["features_to_remove"]:
-            recommended_features = self.feature_recommendations["recommended_features"]
+        if use_reduced_features and recommendations["features_to_remove"]:
+            recommended_features = recommendations["recommended_features"]
             print(f"\n✅ Applying feature reduction: Using {len(recommended_features)} features")
             return recommended_features
         else:
-            print(f"\n📋 Using original feature set: {len(self.original_features)} features")
-            return self.original_features
+            print(f"\n📋 Using original feature set: {len(original_features)} features")
+            return original_features
 
     def train(self, X_train, y_train, epochs=EPOCHS, batch_size=BATCH_SIZE, validation_split=VALIDATION_SPLIT):
         """Train the LSTM model with early stopping and class weights"""
         # Early stopping with restoration of best weights
+        # Keras types min_delta as int because its default is 0. The configured value is 0.001.
         early_stopping = EarlyStopping(
             monitor="val_accuracy",
             patience=EARLY_STOPPING_PATIENCE,
             restore_best_weights=True,
-            min_delta=EARLY_STOPPING_MIN_DELTA,
+            min_delta=EARLY_STOPPING_MIN_DELTA,  # pyright: ignore[reportArgumentType]
         )
 
         # Calculate class weights to handle imbalance

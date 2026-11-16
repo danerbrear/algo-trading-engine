@@ -12,6 +12,8 @@ Usage:
 import sys
 import os
 import argparse
+from typing import Optional
+
 import pandas as pd
 import numpy as np
 import yfinance as yf
@@ -62,7 +64,7 @@ def fetch_vix_data(start_date: str) -> pd.DataFrame:
     return vix_data
 
 
-def calculate_features(data: pd.DataFrame, vix_data: pd.DataFrame = None, window=20) -> pd.DataFrame:
+def calculate_features(data: pd.DataFrame, vix_data: Optional[pd.DataFrame] = None, window=20) -> pd.DataFrame:
     """Calculate technical features required for MarketStateClassifier"""
     # Basic returns
     data["Returns"] = data["Close"].pct_change()
@@ -70,7 +72,10 @@ def calculate_features(data: pd.DataFrame, vix_data: pd.DataFrame = None, window
     # Volatility - use VIX Close price if available, otherwise fallback to calculated volatility
     if vix_data is not None and not vix_data.empty:
         # Merge VIX data with main data
-        vix_close = vix_data[["Close"]].rename(columns={"Close": "VIX"})
+        close_frame = vix_data[["Close"]]
+        if not isinstance(close_frame, pd.DataFrame):
+            raise TypeError("Expected VIX close prices to be a DataFrame")
+        vix_close = close_frame.rename(columns={"Close": "VIX"})
         data = data.join(vix_close, how="left")
 
         # Use VIX price as Volatility
@@ -187,7 +192,10 @@ Examples:
 
     # Analyze feature correlations
     print(f"\n📊 Feature Correlation Analysis:")
-    feature_corr = data[required_columns].corr()
+    feature_frame = data[required_columns]
+    if not isinstance(feature_frame, pd.DataFrame):
+        raise TypeError("Expected feature columns to be a DataFrame")
+    feature_corr = feature_frame.corr()
     print(f"\nCorrelation Matrix:")
     print(feature_corr.round(3))
 
@@ -195,7 +203,10 @@ Examples:
     high_corr_pairs = []
     for i, col1 in enumerate(required_columns):
         for col2 in required_columns[i + 1 :]:
-            corr = feature_corr.loc[col1, col2]
+            corr_value = feature_corr.loc[col1, col2]
+            if not isinstance(corr_value, (int, float)):
+                raise TypeError(f"Expected a numeric correlation for {col1}, {col2}")
+            corr = float(corr_value)
             if abs(corr) > 0.7:
                 high_corr_pairs.append((col1, col2, corr))
 
@@ -225,7 +236,7 @@ Examples:
 
     # Display state characteristics
     print(f"\n📈 State Characteristics:")
-    state_chars = classifier._get_state_characteristics(data, states)
+    state_chars = classifier._get_state_characteristics(data, states, optimal_states)
     for state in range(optimal_states):
         chars = state_chars[state]
         description = classifier.get_state_description(state, data, states)

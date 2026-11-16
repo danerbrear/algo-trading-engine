@@ -8,7 +8,6 @@ and hmmlearn at import time.
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import TYPE_CHECKING, Any, Optional, Tuple
 
 import pandas as pd
@@ -48,7 +47,7 @@ def load_credit_spread_models(symbol: str) -> Tuple[Any, Any]:
 
 def prepare_data_for_lstm(
     data_retriever: "DataRetriever",
-    start_date: datetime,
+    start_date: str,
     _sequence_length: int = 60,
     state_classifier: Optional["MarketStateClassifier"] = None,
 ) -> pd.DataFrame:
@@ -62,26 +61,28 @@ def prepare_data_for_lstm(
     from algo_trading_engine._internal.ml_models.calendar_features import CalendarFeatureProcessor
 
     get_logger().info(f"Phase 1: Preparing LSTM training data from {start_date}")
-    data_retriever.lstm_data = data_retriever.fetch_data_for_period(start_date)
-    data_retriever.calculate_features_for_data(data_retriever.lstm_data)
+    lstm_data = data_retriever.fetch_data_for_period(start_date)
+    data_retriever.lstm_data = lstm_data
+    data_retriever.calculate_features_for_data(lstm_data)
 
     get_logger().info("Phase 2: Applying trained HMM to LSTM data")
     if state_classifier is not None:
-        data_retriever.lstm_data["Market_State"] = state_classifier.predict_states(data_retriever.lstm_data)
+        lstm_data["Market_State"] = state_classifier.predict_states(lstm_data)
     else:
         get_logger().warning("No state classifier provided, skipping market state prediction")
-        data_retriever.lstm_data["Market_State"] = 0
+        lstm_data["Market_State"] = 0
 
     get_logger().info("Phase 3: Adding economic calendar features")
     calendar_processor = CalendarFeatureProcessor()
-    data_retriever.lstm_data = calendar_processor.calculate_all_features(data_retriever.lstm_data)
+    lstm_data = calendar_processor.calculate_all_features(lstm_data)
 
-    data_retriever.data = data_retriever.lstm_data
-    return data_retriever.lstm_data
+    data_retriever.lstm_data = lstm_data
+    data_retriever.data = lstm_data
+    return lstm_data
 
 
 def prepare_training_data(
-    data_retriever: "DataRetriever", lstm_start_date: datetime, hmm_start_date: datetime
+    data_retriever: "DataRetriever", lstm_start_date: str, hmm_start_date: str
 ) -> "MarketStateClassifier":
     """
     Train HMM on historical market data and prepare LSTM feature dataset.

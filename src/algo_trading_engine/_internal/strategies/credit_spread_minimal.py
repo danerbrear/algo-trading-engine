@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import traceback
 from datetime import datetime, date
-from typing import Callable, Optional
+from typing import Callable, Optional, Sequence
 import pandas as pd
 
-from algo_trading_engine._internal.util.market_clock import market_index, session_dates
-from algo_trading_engine.strategy import Strategy
+from algo_trading_engine._internal.util.market_clock import label_position, market_index, session_dates
+from algo_trading_engine.strategy import RemovePositionCallback, Strategy
 from algo_trading_engine.vo import Position, create_position
 from algo_trading_engine.enums import StrategyType
 from algo_trading_engine.vo import Option, TreasuryRates
@@ -16,7 +16,6 @@ from algo_trading_engine.dto import ExpirationRangeDTO, StrikeRangeDTO
 from algo_trading_engine.vo import StrikePrice, ExpirationDate
 from algo_trading_engine._internal.ml_models.lstm_model import LSTMModel
 from decimal import Decimal
-from typing import Callable
 
 
 class CreditSpreadStrategy(Strategy):
@@ -30,9 +29,9 @@ class CreditSpreadStrategy(Strategy):
 
     def __init__(
         self,
-        get_contract_list_for_date: Callable,
-        get_option_bar: Callable,
-        get_options_chain: Callable,
+        get_contract_list_for_date: Optional[Callable],
+        get_option_bar: Optional[Callable],
+        get_options_chain: Optional[Callable],
         lstm_model,
         lstm_scaler,
         symbol: str = "SPY",
@@ -43,9 +42,12 @@ class CreditSpreadStrategy(Strategy):
         self.lstm_scaler = lstm_scaler
         self.symbol = symbol
 
-        self.get_contract_list_for_date = get_contract_list_for_date
-        self.get_option_bar = get_option_bar
-        self.get_options_chain = get_options_chain
+        if get_contract_list_for_date is not None:
+            self.get_contract_list_for_date = get_contract_list_for_date
+        if get_option_bar is not None:
+            self.get_option_bar = get_option_bar
+        if get_options_chain is not None:
+            self.get_options_chain = get_options_chain
         # Store options_handler for LSTMModel compatibility (temporary bridge)
         self._options_handler = options_handler
 
@@ -58,15 +60,15 @@ class CreditSpreadStrategy(Strategy):
         # Note: LSTMModel.calculate_option_features expects OptionsHandler
         if self._options_handler is None:
             raise ValueError("options_handler is required for LSTMModel compatibility")
-        self.data = LSTMModel.calculate_option_features(self.data, self._options_handler)
-        self.data = LSTMModel.calculate_option_signals(self.data)
+        frame = LSTMModel.calculate_option_features(data, self._options_handler)
+        self.data = LSTMModel.calculate_option_signals(frame)
 
     def on_new_date(
         self,
         date: datetime,
         positions: tuple["Position", ...],
         add_position: Callable[["Position"], None],
-        remove_position: Callable[["Position"], None],
+        remove_position: RemovePositionCallback,
     ):
         """
         On new date, determine if a new position should be opened.
@@ -86,7 +88,10 @@ class CreditSpreadStrategy(Strategy):
                         # Call Credit Spread using real options data
                         position = self._create_call_credit_spread_from_chain(date, prediction)
                         if position:
-                            current_price = self.data.loc[date]["Close"]
+                            market_data = self.data
+                            if market_data is None:
+                                raise ValueError("Data not set for strategy. Call set_data() first.")
+                            current_price = market_data.loc[date]["Close"]
                             print(f"    Current price: {round(current_price, 2)}")
                             add_position(position)
                     except Exception as e:
@@ -97,7 +102,10 @@ class CreditSpreadStrategy(Strategy):
                         # Put Credit Spread using real options data
                         position = self._create_put_credit_spread_from_chain(date, prediction)
                         if position:
-                            current_price = self.data.loc[date]["Close"]
+                            market_data = self.data
+                            if market_data is None:
+                                raise ValueError("Data not set for strategy. Call set_data() first.")
+                            current_price = market_data.loc[date]["Close"]
                             print(f"    Current price: {round(current_price, 2)}")
                             add_position(position)
                     except Exception as e:
@@ -130,12 +138,16 @@ class CreditSpreadStrategy(Strategy):
                         underlying_price = self.get_current_underlying_price(date, self.symbol)
                         if underlying_price is not None:
                             print(f"    Underlying price: {underlying_price}")
+                            if exit_price is None:
+                                raise TypeError("exit_price is required")
                             remove_position(date, position, exit_price, underlying_price)
                         else:
                             print("    Failed to get underlying price")
                     elif self._profit_target_hit(position, exit_price) or self._stop_loss_hit(position, exit_price):
                         print(f"Profit target or stop loss hit for {position.__str__()}")
                         print(f"    Exit price: {exit_price} for {position.__str__()}")
+                        if exit_price is None:
+                            raise TypeError("exit_price is required")
                         remove_position(date, position, exit_price)
                     elif position.get_days_held(date) >= self.holding_period:
                         print(f"Position {position.__str__()} past holding period")
@@ -152,7 +164,7 @@ class CreditSpreadStrategy(Strategy):
         if has_error:
             self.error_count += 1
 
-    def on_end(self, positions: tuple["Position", ...], remove_position: Callable[["Position"], None], date: datetime):
+    def on_end(self, positions: Sequence["Position"], remove_position: RemovePositionCallback, date: datetime):
         """
         On end, execute strategy with enhanced current date volume validation.
         """
@@ -160,6 +172,8 @@ class CreditSpreadStrategy(Strategy):
             try:
                 underlying_price = self.get_current_underlying_price(date, self.symbol)
                 exit_price = position.exit_price_from_leg_quotes(underlying_price)
+                if exit_price is None:
+                    raise TypeError("exit_price is required")
 
                 # Fetch current date volume data for enhanced validation
                 current_volumes = self.get_current_volumes_for_position(position, date)
@@ -193,7 +207,7 @@ class CreditSpreadStrategy(Strategy):
             # strategy_int == 0 or invalid values return None (no position to open)
             return None
 
-    def get_current_volumes_for_position(self, position: Position, date: datetime) -> list[int]:
+    def get_current_volumes_for_position(self, position: Position, date: datetime | None) -> list[int | None]:
         """
         Return the volume already stored on each leg.
 
@@ -267,7 +281,11 @@ class CreditSpreadStrategy(Strategy):
                         f"❌ Found {nan_count} ({nan_pct:.1f}%) missing values in '{feature}' (exceeds {max_missing_pct_allowed}% threshold)"
                     )
                     progress_print(f"   This indicates options data is not available for too many dates.")
-                    progress_print(f"   Dates with missing data: {data[data[feature].isna()].index[:5].tolist()}")
+                    missing_index = data[data[feature].isna()].index
+                    preview = missing_index[:5]
+                    if not isinstance(preview, pd.Index):
+                        preview = missing_index
+                    progress_print(f"   Dates with missing data: {preview.tolist()}")
                     return False
                 else:
                     progress_print(
@@ -317,7 +335,7 @@ class CreditSpreadStrategy(Strategy):
         # Check for missing values in critical columns
         critical_columns = ["Close", "Volume", "Market_State"]
         for col in critical_columns:
-            if col in data.columns and data[col].isnull().any():
+            if col in data.columns and int(data[col].isnull().sum()) > 0:
                 null_count = data[col].isnull().sum()
                 progress_print(f"⚠️  Warning: {null_count} missing values found in {col}")
 
@@ -392,6 +410,8 @@ class CreditSpreadStrategy(Strategy):
                     credit = atm_call.last_price - otm_call.last_price
                     max_risk = width - credit
                     direction = "bearish"
+                    atm_option = atm_call
+                    otm_option = otm_call
                 else:  # PUT_CREDIT_SPREAD
                     atm_strike = round(current_price)
                     otm_strike = atm_strike - width
@@ -408,6 +428,8 @@ class CreditSpreadStrategy(Strategy):
                     credit = atm_put.last_price - otm_put.last_price
                     max_risk = width - credit
                     direction = "bullish"
+                    atm_option = atm_put
+                    otm_option = otm_put
 
                 if max_risk <= 0 or credit <= 0:
                     total_rejected += 1
@@ -435,8 +457,8 @@ class CreditSpreadStrategy(Strategy):
                             "width": width,
                             "atm_strike": atm_strike,
                             "otm_strike": otm_strike,
-                            "atm_option": atm_call if strategy_type == StrategyType.CALL_CREDIT_SPREAD else atm_put,
-                            "otm_option": otm_call if strategy_type == StrategyType.CALL_CREDIT_SPREAD else otm_put,
+                            "atm_option": atm_option,
+                            "otm_option": otm_option,
                             "credit": credit,
                             "max_risk": max_risk,
                             "risk_reward": risk_reward,
@@ -522,11 +544,11 @@ class CreditSpreadStrategy(Strategy):
         self,
         confidence: float,
         direction: str,
-        width: int = None,
-        atm_strike: float = None,
-        otm_strike: float = None,
-        current_price: float = None,
-        days_to_expiry: int = None,
+        width: Optional[int] = None,
+        atm_strike: Optional[float] = None,
+        otm_strike: Optional[float] = None,
+        current_price: Optional[float] = None,
+        days_to_expiry: Optional[int] = None,
     ) -> float:
         """Estimate probability of profit based on spread characteristics and model confidence"""
         base_prob = confidence
@@ -581,7 +603,8 @@ class CreditSpreadStrategy(Strategy):
                 - confidence: float (probability of the predicted strategy)
                 - probabilities: dict (probabilities for all strategies)
         """
-        if self.data is None:
+        data = self.data
+        if data is None:
             raise ValueError("Data not set for strategy. Call set_data() first.")
 
         if self.lstm_model is None:
@@ -591,23 +614,23 @@ class CreditSpreadStrategy(Strategy):
         date_key = pd.Timestamp(date)
 
         # First try exact match
-        if date_key in self.data.index:
-            date_idx = self.data.index.get_loc(date_key)
+        if date_key in data.index:
+            date_idx = label_position(data.index, date_key)
         else:
             # Try to normalize both index and date (remove time component)
             date_key = datetime(date.year, date.month, date.day)
-            index_normalized = session_dates(market_index(self.data))
+            index_normalized = session_dates(market_index(data))
 
             if date_key in index_normalized:
-                date_idx = index_normalized.get_loc(date_key)
+                date_idx = label_position(index_normalized, date_key)
             else:
                 # Provide detailed error information
                 print(f"❌ Date {date} not found in data index.")
-                print(f"   Available date range: {self.data.index.min()} to {self.data.index.max()}")
-                print(f"   Total data points: {len(self.data)}")
+                print(f"   Available date range: {data.index.min()} to {data.index.max()}")
+                print(f"   Total data points: {len(data)}")
                 print(f"   Normalized date: {date_key}")
-                print(f"   First 5 available dates: {list(self.data.index[:5])}")
-                print(f"   Last 5 available dates: {list(self.data.index[-5:])}")
+                print(f"   First 5 available dates: {list(data.index[:5])}")
+                print(f"   Last 5 available dates: {list(data.index[-5:])}")
 
                 # Check if it's a weekend or holiday
                 if date_key.weekday() >= 5:  # Saturday = 5, Sunday = 6
@@ -668,7 +691,7 @@ class CreditSpreadStrategy(Strategy):
         end_idx = date_idx + 1
 
         # Get the feature data for the sequence
-        sequence_data = self.data.iloc[start_idx:end_idx][feature_columns].copy()
+        sequence_data = data.iloc[start_idx:end_idx][feature_columns].copy()
 
         # Check if all required features are available in the sequence data
         missing_features = [col for col in feature_columns if col not in sequence_data.columns]
@@ -729,7 +752,7 @@ class CreditSpreadStrategy(Strategy):
             print(f"Error making LSTM prediction: {e}")
             raise ValueError(f"Error making LSTM prediction: {e}")
 
-    def _create_call_credit_spread_from_chain(self, date: datetime, prediction: dict) -> Position:
+    def _create_call_credit_spread_from_chain(self, date: datetime, prediction: dict) -> Optional[Position]:
         """Create a call credit spread using the options chain data"""
         current_price = self.get_current_underlying_price(date, self.symbol)
         if current_price is None:
@@ -778,7 +801,7 @@ class CreditSpreadStrategy(Strategy):
 
         return position
 
-    def _create_put_credit_spread_from_chain(self, date: datetime, prediction: dict) -> Position:
+    def _create_put_credit_spread_from_chain(self, date: datetime, prediction: dict) -> Optional[Position]:
         """Create a put credit spread using the options chain data"""
 
         current_price = self.get_current_underlying_price(date, self.symbol)
@@ -882,7 +905,7 @@ class CreditSpreadStrategy(Strategy):
         # Return the closest OTM put (highest strike below ATM)
         return max(otm_puts, key=lambda opt: opt.strike)
 
-    def _ensure_volume_data(self, option: Option, date: datetime) -> Option:
+    def _ensure_volume_data(self, option: Option, date: datetime) -> Optional[Option]:
         """
         Ensure option has volume data, fetch if missing.
 

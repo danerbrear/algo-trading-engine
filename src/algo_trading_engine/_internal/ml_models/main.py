@@ -3,7 +3,6 @@ from .lstm_model import LSTMModel
 import argparse
 import os
 import pickle
-from typing import cast
 
 import numpy as np
 import pandas as pd
@@ -36,21 +35,23 @@ class StockPredictor:
             sequence_length: Length of sequences for LSTM
         """
         self.sequence_length = sequence_length
-        self.hmm_start_date = hmm_start_date
-        self.lstm_start_date = lstm_start_date
+        self.hmm_start_date: str = hmm_start_date
+        self.lstm_start_date: str = lstm_start_date
         self.data_retriever = DataRetriever(symbol=symbol)
         self.model = None
-        self.X_train = None
-        self.y_train = None
-        self.X_test = None
-        self.y_test = None
+        self.X_train: np.ndarray | None = None
+        self.y_train: np.ndarray | None = None
+        self.X_test: np.ndarray | None = None
+        self.y_test: np.ndarray | None = None
         self.analyzer = None
         self.state_classifier = None  # Will be set during prepare_data()
 
     def prepare_data(self):
         """Prepare the data for training"""
         self.state_classifier = prepare_training_data(
-            self.data_retriever, lstm_start_date=self.lstm_start_date, hmm_start_date=self.hmm_start_date
+            self.data_retriever,
+            lstm_start_date=self.lstm_start_date,
+            hmm_start_date=self.hmm_start_date,
         )
         print(f"✅ HMM model trained with {self.state_classifier.n_states} optimal states")
 
@@ -79,31 +80,37 @@ class StockPredictor:
         """Evaluate the model and make predictions"""
         if self.lstm_model is None:
             raise ValueError("Model not trained. Call train_model() first.")
+        x_train = self.X_train
+        y_train = self.y_train
+        x_test = self.X_test
+        y_test = self.y_test
+        if x_train is None or y_train is None or x_test is None or y_test is None:
+            raise ValueError("Data not prepared. Call prepare_data() first.")
 
         # Make predictions
-        train_predictions = self.lstm_model.predict(self.X_train)
-        test_predictions = self.lstm_model.predict(self.X_test)
+        train_predictions = self.lstm_model.predict(x_train)
+        test_predictions = self.lstm_model.predict(x_test)
 
         # Get prediction probabilities
-        train_probs = self.lstm_model.predict_proba(self.X_train)
-        test_probs = self.lstm_model.predict_proba(self.X_test)
+        train_probs = self.lstm_model.predict_proba(x_train)
+        test_probs = self.lstm_model.predict_proba(x_test)
 
         # Calculate metrics
-        train_accuracy = np.mean(train_predictions == self.y_train)
-        test_accuracy = np.mean(test_predictions == self.y_test)
+        train_accuracy = np.mean(train_predictions == y_train)
+        test_accuracy = np.mean(test_predictions == y_test)
 
         # Define class labels for the 3-class strategy system
         class_labels = ["Hold", "Call Credit Spread", "Put Credit Spread"]
 
         # Get unique classes in the test set
-        unique_classes = np.unique(np.concatenate([self.y_test, test_predictions]))
+        unique_classes = np.unique(np.concatenate([y_test, test_predictions]))
         used_labels = [class_labels[int(i)] for i in unique_classes]
 
         # Generate classification report
-        test_report = classification_report(self.y_test, test_predictions, target_names=used_labels)
+        test_report = classification_report(y_test, test_predictions, target_names=used_labels)
 
         # Generate confusion matrix
-        conf_matrix = confusion_matrix(self.y_test, test_predictions)
+        conf_matrix = confusion_matrix(y_test, test_predictions)
 
         return {
             "train_predictions": train_predictions,
@@ -123,12 +130,14 @@ class StockPredictor:
         Returns:
             tuple: (predicted_returns, actual_stock_returns) both as numpy arrays
         """
-        if self.lstm_model is None or self.X_test is None:
+        x_train = self.X_train
+        x_test = self.X_test
+        if self.lstm_model is None or x_train is None or x_test is None:
             return None, None
 
         try:
             # Get predicted strategy labels for test data
-            test_predictions = self.lstm_model.predict(self.X_test)
+            test_predictions = self.lstm_model.predict(x_test)
 
             # Get the corresponding dates and strategy returns from the data retriever
             # We need to access the LSTM data that was used for testing
@@ -140,12 +149,12 @@ class StockPredictor:
             if not isinstance(lstm_data, pd.DataFrame):
                 return None, None
 
-            lstm_frame = cast(pd.DataFrame, lstm_data)
+            lstm_frame = lstm_data
 
             # Calculate the starting index for test data in the original dataset
             # Test data starts after training data + sequence length
-            total_samples = len(self.X_train) + len(self.X_test)
-            train_size = len(self.X_train)
+            total_samples = len(x_train) + len(x_test)
+            train_size = len(x_train)
             sequence_length = self.sequence_length
 
             # The test data starts at: sequence_length + train_size

@@ -57,7 +57,12 @@ class ProgressTracker:
             # Force refresh the progress bar to redraw it at the bottom
             self.pbar.refresh()
 
-    def update(self, current_date: datetime = None, additional_info: Dict[str, Any] = None, summary_info: str = ""):
+    def update(
+        self,
+        current_date: Optional[datetime] = None,
+        additional_info: Optional[Dict[str, Any]] = None,
+        summary_info: str = "",
+    ):
         """Update progress with current date and additional information"""
         with self._lock:
             if current_date:

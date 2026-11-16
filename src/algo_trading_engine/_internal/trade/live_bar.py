@@ -56,7 +56,7 @@ def apply_live_quote(
             "Close": [quote],
             "Volume": [0],
         },
-        index=[bar_ts],
+        index=pd.DatetimeIndex([bar_ts]),
     )
     result = pd.concat([result, new_row]).sort_index()
     get_logger().info(f"Live quote ${quote:.2f} appended as new bar at {bar_ts}")

@@ -5,7 +5,7 @@ This module contains static utility methods for common options operations
 as specified in features/improved_data_fetching.md Phase 4.
 """
 
-from typing import Callable, List, Tuple, Optional, Dict, Any
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from decimal import Decimal
 from datetime import date, datetime
 
@@ -880,7 +880,7 @@ class OptionsRetrieverHelper:
         contracts: List[OptionContractDTO],
         current_price: float,
         expiration: str,
-        get_bar_fn: Optional[Callable[["OptionContractDTO", datetime], Optional["OptionBarDTO"]]],
+        get_bar_fn: Optional[Callable[..., Optional["OptionBarDTO"]]],
         date: datetime,
         min_spread_width: int = 4,
         max_spread_width: int = 10,
@@ -936,6 +936,9 @@ class OptionsRetrieverHelper:
             itm_contract, _ = OptionsRetrieverHelper.find_atm_contracts(contracts_for_expiration, current_price)
 
         if not itm_contract:
+            return None
+
+        if get_bar_fn is None:
             return None
 
         best_spread = None

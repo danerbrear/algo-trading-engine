@@ -6,7 +6,7 @@ trading strategies with flexible parameter selection and validation.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Type, List, Callable
+from typing import Callable, Dict, List, Optional, Type
 
 from algo_trading_engine._internal.common.ml_pipeline import load_credit_spread_models
 from algo_trading_engine.strategy import Strategy
@@ -29,18 +29,27 @@ class StrategyBuilder(ABC):
         get_contract_list_for_date: Callable,
         get_option_bar: Callable,
         get_options_chain: Callable,
-        get_current_volumes_for_position: Callable,
+        get_current_volumes_for_position: Optional[Callable] = None,
+        compute_exit_price: Optional[Callable] = None,
         options_handler=None,
-    ):
+    ) -> "StrategyBuilder":
         """Set the options callables (methods from OptionsHandler as callables)"""
+        ...
 
     @abstractmethod
-    def set_stop_loss(self, stop_loss: float):
+    def set_stop_loss(self, stop_loss: float) -> "StrategyBuilder":
         """Set the stop loss"""
+        ...
 
     @abstractmethod
-    def set_profit_target(self, profit_target: float):
+    def set_profit_target(self, profit_target: float) -> "StrategyBuilder":
         """Set the profit target"""
+        ...
+
+    @abstractmethod
+    def set_symbol(self, symbol: str) -> "StrategyBuilder":
+        """Set the symbol traded by the strategy."""
+        ...
 
     @abstractmethod
     def build(self) -> Strategy:
@@ -79,10 +88,10 @@ class CreditSpreadStrategyBuilder(StrategyBuilder):
         get_contract_list_for_date: Callable,
         get_option_bar: Callable,
         get_options_chain: Callable,
-        get_current_volumes_for_position: Callable = None,
-        compute_exit_price: Callable = None,
+        get_current_volumes_for_position: Optional[Callable] = None,
+        compute_exit_price: Optional[Callable] = None,
         options_handler=None,
-    ):
+    ) -> "StrategyBuilder":
         """Set the options callables (methods from OptionsHandler as callables)
 
         Note: get_current_volumes_for_position and compute_exit_price are injected from the engine after creation,
@@ -96,11 +105,11 @@ class CreditSpreadStrategyBuilder(StrategyBuilder):
         self._options_handler = options_handler
         return self
 
-    def set_stop_loss(self, stop_loss: float):
+    def set_stop_loss(self, stop_loss: float) -> "StrategyBuilder":
         self._stop_loss = stop_loss
         return self
 
-    def set_profit_target(self, profit_target: float):
+    def set_profit_target(self, profit_target: float) -> "StrategyBuilder":
         self._profit_target = profit_target
         return self
 
@@ -158,10 +167,10 @@ class VelocitySignalMomentumStrategyBuilder(StrategyBuilder):
         get_contract_list_for_date: Callable,
         get_option_bar: Callable,
         get_options_chain: Callable,
-        get_current_volumes_for_position: Callable = None,
-        compute_exit_price: Callable = None,
+        get_current_volumes_for_position: Optional[Callable] = None,
+        compute_exit_price: Optional[Callable] = None,
         options_handler=None,
-    ):
+    ) -> "StrategyBuilder":
         """Set the options callables (methods from OptionsHandler as callables)
 
         Note: get_current_volumes_for_position and compute_exit_price are injected from the engine after creation,
@@ -174,11 +183,11 @@ class VelocitySignalMomentumStrategyBuilder(StrategyBuilder):
         self._compute_exit_price = compute_exit_price
         return self
 
-    def set_stop_loss(self, stop_loss: float):
+    def set_stop_loss(self, stop_loss: float) -> "StrategyBuilder":
         self._stop_loss = stop_loss
         return self
 
-    def set_profit_target(self, profit_target: float):
+    def set_profit_target(self, profit_target: float) -> "StrategyBuilder":
         self._profit_target = profit_target
         return self
 

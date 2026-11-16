@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Sequence
+from collections.abc import Hashable, Sequence
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -24,7 +25,7 @@ def _ensure_x_column(frame: pd.DataFrame, x: str) -> pd.DataFrame:
                 raise ValueError("Plot DataFrame requires a DatetimeIndex or a 'timestamp' column")
             result = result.reset_index()
             index_name = result.columns[0]
-            if index_name != "timestamp":
+            if isinstance(index_name, Hashable) and index_name != "timestamp":
                 result = result.rename(columns={index_name: "timestamp"})
             result["timestamp"] = pd.to_datetime(result["timestamp"])
         else:

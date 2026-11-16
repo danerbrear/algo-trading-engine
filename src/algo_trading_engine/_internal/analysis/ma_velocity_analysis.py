@@ -10,7 +10,7 @@ trading strategy, position management, or actual trades.
 
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Optional, Tuple
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 
@@ -68,7 +68,7 @@ class MAVelocityAnalyzer:
         self.start_date = six_months_ago.strftime("%Y-%m-%d")
         self.symbol = symbol
         self.data_retriever = DataRetriever(symbol=symbol)
-        self.data = None
+        self.data: Optional[pd.DataFrame] = None
         self.trend_signals = []
 
     def load_data(self) -> pd.DataFrame:
@@ -81,16 +81,17 @@ class MAVelocityAnalyzer:
         print(f"📊 Loading {self.symbol} data from {self.start_date}...")
 
         # Fetch data using the existing data retriever
-        self.data = self.data_retriever.fetch_data_for_period(self.start_date)
+        data = self.data_retriever.fetch_data_for_period(self.start_date)
+        self.data = data
 
         # Ensure we have Close prices
-        if "Close" not in self.data.columns:
+        if "Close" not in data.columns:
             raise ValueError("No Close price data available")
 
-        print(f"✅ Loaded {len(self.data)} days of {self.symbol} data")
-        print(f"   Date range: {self.data.index[0]} to {self.data.index[-1]}")
+        print(f"✅ Loaded {len(data)} days of {self.symbol} data")
+        print(f"   Date range: {data.index[0]} to {data.index[-1]}")
 
-        return self.data
+        return data
 
     def calculate_moving_averages(
         self, data: pd.DataFrame, short_periods: List[int], long_periods: List[int]
@@ -244,7 +245,7 @@ class MAVelocityAnalyzer:
         return results
 
     def find_optimal_ma_combinations(
-        self, short_periods: List[int] = None, long_periods: List[int] = None
+        self, short_periods: Optional[List[int]] = None, long_periods: Optional[List[int]] = None
     ) -> Dict[str, MAVelocityResult]:
         """
         Find the optimal MA combinations for upward and downward trends.
@@ -262,11 +263,10 @@ class MAVelocityAnalyzer:
             long_periods = [20, 25, 30, 50, 100, 200]
 
         # Load data if not already loaded
-        if self.data is None:
-            self.load_data()
+        data = self.data if self.data is not None else self.load_data()
 
         # Calculate moving averages
-        data_with_ma = self.calculate_moving_averages(self.data, short_periods, long_periods)
+        data_with_ma = self.calculate_moving_averages(data, short_periods, long_periods)
 
         # Identify trend signals
         signals = self.identify_trend_signals(data_with_ma, short_periods, long_periods)
@@ -299,9 +299,10 @@ class MAVelocityAnalyzer:
         report.append("=" * 80)
         report.append("MOVING AVERAGE VELOCITY/ELASTICITY ANALYSIS REPORT")
         report.append("=" * 80)
+        data = self._loaded_data()
         report.append(f"Symbol: {self.symbol}")
-        report.append(f"Analysis Period: {self.start_date} to {market_time(self.data.index[-1]).strftime('%Y-%m-%d')}")
-        report.append(f"Total Trading Days: {len(self.data)}")
+        report.append(f"Analysis Period: {self.start_date} to {market_time(data.index[-1]).strftime('%Y-%m-%d')}")
+        report.append(f"Total Trading Days: {len(data)}")
         report.append(f"Total Trend Signals: {len(self.trend_signals)}")
         report.append("")
 
@@ -475,13 +476,20 @@ class MAVelocityAnalyzer:
 
         return False, 0, 0.0
 
+    def _loaded_data(self) -> pd.DataFrame:
+        data = self.data
+        if data is None:
+            raise ValueError("Data is not loaded. Call load_data() first.")
+        return data
+
     def _ensure_ma_columns(self, short_ma: int, long_ma: int) -> tuple[str, str]:
         short_ma_col = f"SMA_{short_ma}"
         long_ma_col = f"SMA_{long_ma}"
-        if short_ma_col not in self.data.columns:
-            self.data[short_ma_col] = self.data["Close"].rolling(window=short_ma, min_periods=short_ma).mean()
-        if long_ma_col not in self.data.columns:
-            self.data[long_ma_col] = self.data["Close"].rolling(window=long_ma, min_periods=long_ma).mean()
+        data = self._loaded_data()
+        if short_ma_col not in data.columns:
+            data[short_ma_col] = data["Close"].rolling(window=short_ma, min_periods=short_ma).mean()
+        if long_ma_col not in data.columns:
+            data[long_ma_col] = data["Close"].rolling(window=long_ma, min_periods=long_ma).mean()
         return short_ma_col, long_ma_col
 
     def _price_ma_spec(
@@ -492,18 +500,20 @@ class MAVelocityAnalyzer:
         title: str,
     ):
         short_ma_col, long_ma_col = self._ensure_ma_columns(result.short_ma, result.long_ma)
+        data = self._loaded_data()
         frame = pd.DataFrame(
             {
-                "timestamp": pd.to_datetime(self.data.index),
-                f"{self.symbol} Close": self.data["Close"].values,
-                f"SMA {result.short_ma}": self.data[short_ma_col].values,
-                f"SMA {result.long_ma}": self.data[long_ma_col].values,
+                "timestamp": pd.to_datetime(data.index),
+                f"{self.symbol} Close": data["Close"].values,
+                f"SMA {result.short_ma}": data[short_ma_col].values,
+                f"SMA {result.long_ma}": data[long_ma_col].values,
             }
         )
         return build_plot_spec(frame, name=name, title=title, y_label="Price")
 
     def _signal_marker_frames(self, signals: List[TrendSignal]) -> dict[str, pd.DataFrame]:
         markers: dict[str, pd.DataFrame] = {}
+        data = self._loaded_data()
         for signal_type, label in (("up", "Up signals"), ("down", "Down signals")):
             subset = [signal for signal in signals if signal.signal_type == signal_type]
             if not subset:
@@ -511,16 +521,17 @@ class MAVelocityAnalyzer:
             markers[label] = pd.DataFrame(
                 {
                     "timestamp": pd.to_datetime([signal.signal_date for signal in subset]),
-                    label: [self.data.loc[signal.signal_date, "Close"] for signal in subset],
+                    label: [data.loc[signal.signal_date, "Close"] for signal in subset],
                 }
             )
         return markers
 
     def _signal_spec(self, signals: List[TrendSignal], *, name: str, title: str):
+        data = self._loaded_data()
         frame = pd.DataFrame(
             {
-                "timestamp": pd.to_datetime(self.data.index),
-                f"{self.symbol} Close": self.data["Close"].values,
+                "timestamp": pd.to_datetime(data.index),
+                f"{self.symbol} Close": data["Close"].values,
             }
         )
         return build_plot_spec(

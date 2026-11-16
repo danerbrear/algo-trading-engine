@@ -32,6 +32,7 @@ class DataProvider(Protocol):
         Returns:
             DataFrame with OHLCV data indexed by date
         """
+        ...
 
     def get_current_price(self, symbol: str) -> float:
         """
@@ -45,6 +46,7 @@ class DataProvider(Protocol):
         Returns:
             Current price as float
         """
+        ...
 
     def get_option_chain(self, symbol: str, date: datetime) -> Optional[OptionChain]:
         """

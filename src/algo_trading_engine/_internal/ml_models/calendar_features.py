@@ -1,6 +1,7 @@
-import pandas as pd
-import numpy as np
 from pathlib import Path
+
+import numpy as np
+import pandas as pd
 
 
 class CalendarFeatureProcessor:
@@ -398,7 +399,10 @@ class CalendarFeatureProcessor:
             event_filter = event_type
 
         event_mask = df["Event"].str.contains(event_filter, na=False)
-        events = df[event_mask].copy()
+        selected = df[event_mask].copy()
+        if not isinstance(selected, pd.DataFrame):
+            raise TypeError("Expected calendar events to be a DataFrame")
+        events = selected
 
         # Convert date column to datetime
         events["Date"] = pd.to_datetime(events["Date"], format="%Y/%m/%d")

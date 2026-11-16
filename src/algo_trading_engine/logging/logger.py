@@ -102,7 +102,10 @@ def configure_logger(
 
         def _forward_to_observer(message) -> None:
             record = message.record
-            _active_observer.log(record["level"].name, record["message"])
+            active = _active_observer
+            if active is None:
+                return
+            active.log(record["level"].name, record["message"])
 
         _observer_sink_id = logger.add(_forward_to_observer, level=level)
 

@@ -3,7 +3,7 @@ import os
 import sys
 import traceback
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import List, Optional, Sequence, Union
 
 import numpy as np
 import pandas as pd
@@ -28,7 +28,7 @@ from algo_trading_engine.gui import RunObserver
 from ._strategy_builder import StrategyFactory, create_strategy_from_args
 from algo_trading_engine._internal.common.trading_engine import TradingEngine
 from algo_trading_engine._internal.util.market_clock import market_index, market_now, market_time
-from algo_trading_engine.models.config import BacktestConfig as BacktestConfigDTO
+from algo_trading_engine.models.config import BacktestConfig as BacktestConfigDTO, PaperTradingConfig
 from algo_trading_engine.models.metrics import PerformanceMetrics, PositionStats
 
 
@@ -44,15 +44,15 @@ class BacktestEngine(TradingEngine):
         initial_capital: float = 100000,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
-        max_position_size: float = None,
-        volume_config: VolumeConfig = None,
+        max_position_size: Optional[float] = None,
+        volume_config: Optional[VolumeConfig] = None,
         enable_progress_tracking: bool = True,
         quiet_mode: bool = True,
         bar_interval=None,
-        benchmark_data: pd.DataFrame = None,
+        benchmark_data: Optional[pd.DataFrame] = None,
         observer: RunObserver | None = None,
         plot_config=None,
-        config: EngineConfig = None,
+        config: Optional[EngineConfig] = None,
     ):
         super().__init__(strategy, data, config=config, bar_interval=bar_interval)
         self._capital = initial_capital
@@ -105,7 +105,7 @@ class BacktestEngine(TradingEngine):
         self._capital = value
 
     @classmethod
-    def from_config(cls, config: BacktestConfigDTO) -> "BacktestEngine":
+    def from_config(cls, config: Union[BacktestConfigDTO, PaperTradingConfig]) -> "BacktestEngine":
         """
         Create BacktestEngine from configuration.
 
@@ -121,6 +121,8 @@ class BacktestEngine(TradingEngine):
         Raises:
             ValueError: If configuration is invalid or data fetching fails
         """
+        if not isinstance(config, BacktestConfigDTO):
+            raise TypeError("BacktestEngine.from_config requires BacktestConfig")
         log_level = "info" if config.quiet_mode else "debug"
         configure_logger("backtest", log_level=log_level, observer=config.observer)
 
@@ -161,7 +163,7 @@ class BacktestEngine(TradingEngine):
                 strategy.get_options_chain = get_options_chain
             elif hasattr(strategy, "options_handler"):
                 # Backward compatibility: if strategy still uses options_handler, inject it
-                strategy.options_handler = options_handler
+                setattr(strategy, "options_handler", options_handler)
 
         strategy.use_snapshot_for_current_bar = False
 
@@ -415,9 +417,14 @@ class BacktestEngine(TradingEngine):
 
         expected_value = self._calculate_overall_statistics().expected_value if self.closed_positions else None
 
+        benchmark_return_pct = self.benchmark.get_return_percentage()
+        if benchmark_return_pct is None:
+            raise ValueError("Benchmark end price is not set")
+        benchmark_return = self.benchmark.get_return_dollars()
+
         log_and_echo("Backtest Results Summary:")
-        log_and_echo(f"   Benchmark return: {self.benchmark.get_return_percentage():+.2f}%")
-        log_and_echo(f"   Benchmark return dollars: ${self.benchmark.get_return_dollars():+.2f}")
+        log_and_echo(f"   Benchmark return: {benchmark_return_pct:+.2f}%")
+        log_and_echo(f"   Benchmark return dollars: ${benchmark_return:+.2f}")
         log_and_echo(f"   Trading Days: {len(self.data.index)}")
         log_and_echo(f"   Total positions: {self.total_positions}")
         log_and_echo(f"   Final capital: ${self.capital:.2f}")
@@ -449,8 +456,8 @@ class BacktestEngine(TradingEngine):
         if self.observer is not None:
             self.observer.result(
                 {
-                    "benchmark_return_pct": f"{self.benchmark.get_return_percentage():+.2f}%",
-                    "benchmark_return_dollars": f"${self.benchmark.get_return_dollars():+.2f}",
+                    "benchmark_return_pct": f"{benchmark_return_pct:+.2f}%",
+                    "benchmark_return_dollars": f"${benchmark_return:+.2f}",
                     "trading_days": str(len(self.data.index)),
                     "total_positions": str(self.total_positions),
                     "final_capital": f"${self.capital:.2f}",
@@ -489,7 +496,7 @@ class BacktestEngine(TradingEngine):
         # Capital is starting equity + realized P&L only; no cash-flow adjustment at open.
         # Position sizing already gatekeeps capacity via max risk.
         max_risk = position.max_risk_dollars_per_contract()
-        if max_risk is not None and self.capital < max_risk * position.quantity:
+        if max_risk is not None and self.capital < max_risk * position_size:
             raise ValueError("Not enough capital to add position")
 
         get_logger().info(f"Adding position: {position.__str__()}")
@@ -505,7 +512,7 @@ class BacktestEngine(TradingEngine):
         position: Position,
         exit_price: float,
         underlying_price: Optional[float] = None,
-        current_volumes: Optional[list[int]] = None,
+        current_volumes: Optional[Sequence[int | None]] = None,
     ):
         """
         Remove a position from the positions list with enhanced current date volume validation.

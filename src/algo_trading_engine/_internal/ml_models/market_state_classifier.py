@@ -20,11 +20,18 @@ class HMMStateClassifier(BaseEstimator, ClassifierMixin):
         return self
 
     def predict(self, X):
-        return self.model.predict(X)
+        model = self.model
+        if model is None:
+            raise RuntimeError("HMM model is not fitted")
+        return model.predict(X)
 
-    def score(self, X, y=None):
-        """Return negative log likelihood score (higher is better for sklearn)"""
-        return self.model.score(X)
+    def score(self, X, y=None, sample_weight=None):
+        """Return negative log likelihood score (higher is better for sklearn)."""
+        del y, sample_weight
+        model = self.model
+        if model is None:
+            raise RuntimeError("HMM model is not fitted")
+        return model.score(X)
 
 
 class MarketStateClassifier:
@@ -139,8 +146,11 @@ class MarketStateClassifier:
             print(f"\nSelected {best_n_states} states with score {best_score:.2f}")
 
             # Print characteristics of each state
-            states = self.hmm_model.predict(scaled_features)
-            state_characteristics = self._get_state_characteristics(data, states)
+            hmm_model = self.hmm_model
+            if hmm_model is None:
+                raise RuntimeError("HMM model was not fitted")
+            states = hmm_model.predict(scaled_features)
+            state_characteristics = self._get_state_characteristics(data, states, best_n_states)
 
             for state in range(best_n_states):
                 print(f"\nState {state} characteristics:")
@@ -156,7 +166,8 @@ class MarketStateClassifier:
 
     def predict_states(self, data):
         """Predict market states for given data"""
-        if self.hmm_model is None or not self.is_trained:
+        hmm_model = self.hmm_model
+        if hmm_model is None or not self.is_trained:
             raise ValueError("Model not trained. Call train_hmm_model first.")
 
         # Note: Price_to_SMA20 used in HMM but excluded from LSTM to avoid correlation
@@ -165,7 +176,7 @@ class MarketStateClassifier:
         )
 
         scaled_features = self.scaler.transform(feature_matrix)
-        return self.hmm_model.predict(scaled_features)
+        return hmm_model.predict(scaled_features)
 
     def get_state_description(self, state_id, data, states):
         """Generate description for each state based on its characteristics"""
@@ -189,10 +200,10 @@ class MarketStateClassifier:
             f"Price {price_trend}, Moving Averages trending {ma_trend}"
         )
 
-    def _get_state_characteristics(self, data, states):
+    def _get_state_characteristics(self, data, states, n_states: int):
         """Calculate characteristics for each state"""
         state_chars = {}
-        for state in range(self.n_states):
+        for state in range(n_states):
             state_data = data[states == state]
             state_chars[state] = {
                 "proportion": len(state_data) / len(data),

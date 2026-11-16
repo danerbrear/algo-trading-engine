@@ -158,11 +158,11 @@ class Position(ABC):
         """Set the quantity for a position."""
         self.quantity = quantity
 
-    def profit_target_hit(self, profit_target: float, exit_price: float) -> bool:
+    def profit_target_hit(self, profit_target: float, exit_price: Optional[float]) -> bool:
         """Check if the profit target has been hit for a position."""
         return self._get_return(exit_price) >= profit_target if exit_price is not None else False
 
-    def stop_loss_hit(self, stop_loss: float, exit_price: float) -> bool:
+    def stop_loss_hit(self, stop_loss: float, exit_price: Optional[float]) -> bool:
         """Check if the stop loss has been hit for a position."""
         return self._get_return(exit_price) <= -stop_loss if exit_price is not None else False
 

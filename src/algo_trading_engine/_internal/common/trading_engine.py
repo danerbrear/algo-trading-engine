@@ -6,11 +6,12 @@ and concrete implementations for backtesting and paper trading.
 """
 
 from abc import ABC, abstractmethod
-from typing import Callable, List, Optional, Union
+from typing import Callable, List, Optional, Sequence, Union
 from datetime import datetime, timedelta
 import pandas as pd
 
 from algo_trading_engine import DataRetriever, Strategy
+from algo_trading_engine.strategy import RemovePositionCallback
 from algo_trading_engine._internal.util.market_clock import market_now
 from algo_trading_engine.logging import get_logger
 from algo_trading_engine.enums import BarTimeInterval, UniversalCloseCondition
@@ -73,7 +74,7 @@ class TradingEngine(ABC):
         self,
         strategy: Strategy,
         data: pd.DataFrame,
-        config: EngineConfig,
+        config: Optional[EngineConfig],
         bar_interval: Optional["BarTimeInterval"] = None,
     ):
         self._strategy = strategy
@@ -150,7 +151,7 @@ class TradingEngine(ABC):
             f"{len(self._data)} bar(s)"
         )
 
-    def get_current_volumes_for_position(self, position: Position, date: Optional[datetime] = None) -> list[int]:
+    def get_current_volumes_for_position(self, position: Position, date: Optional[datetime] = None) -> list[int | None]:
         """
         Return the volume already stored on each leg.
 
@@ -160,7 +161,7 @@ class TradingEngine(ABC):
         if not getattr(position, "legs", None):
             return []
 
-        current_volumes = []
+        current_volumes: list[Optional[int]] = []
         as_of = date.date() if date is not None else None
         for option in position.legs:
             volume = getattr(option, "volume", None)
@@ -201,9 +202,7 @@ class TradingEngine(ABC):
     def check_univeral_close_conditions(
         self,
         date: datetime,
-        remove_position: Optional[
-            Callable[[datetime, Position, float, Optional[float], Optional[list[int]]], None]
-        ] = None,
+        remove_position: Optional[RemovePositionCallback] = None,
     ) -> None:
         """
         Check if the position should be closed due to universal close conditions.
@@ -225,7 +224,7 @@ class TradingEngine(ABC):
                 close_price: float,
                 underlying_price: Optional[float] = None,
                 position: Position = position,
-                current_volumes: Optional[list[int]] = current_volumes,
+                current_volumes: Optional[Sequence[Optional[int]]] = current_volumes,
             ) -> None:
                 if remove_position is None:
                     get_logger().warning(
@@ -267,8 +266,9 @@ class TradingEngine(ABC):
         if date.date() == current_date:
             try:
                 use_cache = True
-                if hasattr(self, "_config") and hasattr(self._config, "use_cache"):
-                    use_cache = self._config.use_cache
+                config = self._config
+                if config is not None and hasattr(config, "use_cache"):
+                    use_cache = config.use_cache
 
                 data_retriever = DataRetriever(symbol=symbol, use_cache=use_cache)
                 live_price = data_retriever.get_live_price()

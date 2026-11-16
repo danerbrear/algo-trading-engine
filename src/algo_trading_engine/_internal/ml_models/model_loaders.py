@@ -63,9 +63,11 @@ def load_lstm_model(model_dir, return_lstm_instance=False):
     try:
         # Deferred: keras/TensorFlow ship in the optional [ml] extra.
         # pylint: disable-next=import-outside-toplevel
-        import keras
+        from keras.models import Model, load_model
 
-        keras_model = keras.models.load_model(lstm_path)
+        keras_model = load_model(lstm_path)
+        if not isinstance(keras_model, Model):
+            raise TypeError(f"Loaded keras file is not a Model: {type(keras_model)!r}")
         print(f"LSTM model loaded from {lstm_path}")
         scaler = None
         scaler_path = os.path.join(model_dir, "lstm_scaler.pkl")

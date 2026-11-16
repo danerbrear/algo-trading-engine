@@ -19,7 +19,7 @@ def build_equity_curve_dataframe(
     """
     sorted_positions = sorted(closed_positions, key=lambda p: p["exit_date"])
     if not sorted_positions:
-        return pd.DataFrame(columns=["timestamp", "equity"])
+        return pd.DataFrame(columns=pd.Index(["timestamp", "equity"]))
 
     rows: list[dict[str, Any]] = []
     start_date = sorted_positions[0]["exit_date"] - timedelta(days=1)

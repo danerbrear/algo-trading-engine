@@ -7,7 +7,7 @@ This module provides the abstract base class that all trading strategies must im
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 import math
-from typing import Callable, Optional, List, Iterable, TYPE_CHECKING
+from typing import Any, Callable, Iterable, List, Optional, Protocol, Sequence, TYPE_CHECKING
 import pandas as pd
 
 from algo_trading_engine._internal.util.market_clock import market_index, market_time
@@ -19,20 +19,32 @@ from algo_trading_engine.enums import BarTimeInterval, UniversalCloseCondition
 if TYPE_CHECKING:
     from algo_trading_engine.plotting.config import PlotConfig
     from algo_trading_engine.vo import Position
-    from algo_trading_engine.dto import (
-        OptionContractDTO,
-        OptionBarDTO,
-        OptionsChainDTO,
-        ExpirationRangeDTO,
-        StrikeRangeDTO,
-    )
+    from algo_trading_engine.dto import OptionBarDTO
 
 
-class _NotImplementedCallback:  # pylint: disable=too-few-public-methods
+class _NotImplementedCallback:
     """Callable stub that is not a function, so instance access does not bind it."""
 
     def __call__(self, *_args, **_kwargs):
         raise NotImplementedError("This logic must be overridden.")
+
+
+class RemovePositionCallback(Protocol):
+    """Close callback injected by a trading engine.
+
+    ``underlying_price`` and ``current_volumes`` are optional, matching
+    ``BacktestEngine._remove_position``.
+    """
+
+    def __call__(
+        self,
+        date: datetime,
+        position: "Position",
+        exit_price: float,
+        underlying_price: Optional[float] = None,
+        current_volumes: Optional[Sequence[Optional[int]]] = None,
+    ) -> None:
+        """Close ``position`` at ``exit_price``."""
 
 
 class IndicatorUpdateError(RuntimeError):
@@ -69,31 +81,14 @@ class Strategy(ABC):
     symbol: str
 
     # Callables for options trading strategies. Default to a raising stub until injected.
-    get_contract_list_for_date: Optional[
-        Callable[[datetime, Optional["StrikeRangeDTO"], Optional["ExpirationRangeDTO"]], List["OptionContractDTO"]]
-    ] = _NotImplementedCallback()
-    get_option_bar: Optional[
-        Callable[[str, datetime, Optional[int], Optional["BarTimeInterval"]], Optional["OptionBarDTO"]]
-    ] = _NotImplementedCallback()
-    get_rt_option_bar: Optional[Callable[[str], Optional["OptionBarDTO"]]] = _NotImplementedCallback()
-    get_options_chain: Optional[
-        Callable[
-            [
-                datetime,
-                float,
-                Optional["StrikeRangeDTO"],
-                Optional["ExpirationRangeDTO"],
-                Optional[BarTimeInterval],
-                Optional[int],
-            ],
-            "OptionsChainDTO",
-        ]
-    ] = _NotImplementedCallback()
-    get_current_volumes_for_position: Optional[Callable[["Position", Optional[datetime]], Optional[List[int]]]] = (
-        _NotImplementedCallback()
-    )
-    compute_exit_price: Optional[Callable[["Position", datetime], Optional[float]]] = _NotImplementedCallback()
-    get_position_size: Optional[Callable[["Position", float], int]] = _NotImplementedCallback()
+    # Callable[..., Any] matches keyword calls and injected handlers without changing the stub.
+    get_contract_list_for_date: Callable[..., Any] = _NotImplementedCallback()
+    get_option_bar: Callable[..., Any] = _NotImplementedCallback()
+    get_rt_option_bar: Callable[..., Any] = _NotImplementedCallback()
+    get_options_chain: Callable[..., Any] = _NotImplementedCallback()
+    get_current_volumes_for_position: Callable[..., Any] = _NotImplementedCallback()
+    compute_exit_price: Callable[..., Any] = _NotImplementedCallback()
+    get_position_size: Callable[..., Any] = _NotImplementedCallback()
 
     def __init__(
         self,
@@ -145,7 +140,7 @@ class Strategy(ABC):
         date: datetime,
         positions: tuple["Position", ...],
         add_position: Callable[["Position"], None],
-        remove_position: Callable[[datetime, "Position", float, Optional[float], Optional[list[int]]], None],
+        remove_position: RemovePositionCallback,
     ) -> None:
         """
         Called for each trading day to execute strategy logic.
@@ -163,8 +158,8 @@ class Strategy(ABC):
     @abstractmethod
     def on_end(
         self,
-        positions: tuple["Position", ...],
-        remove_position: Callable[[datetime, "Position", float, Optional[float], Optional[list[int]]], None],
+        positions: Sequence["Position"],
+        remove_position: RemovePositionCallback,
         date: datetime,
     ) -> None:
         """
@@ -291,7 +286,7 @@ class Strategy(ABC):
         position: "Position",
         exit_price: float,
         underlying_price: float | None = None,
-        current_volumes: Optional[list[int]] = None,
+        current_volumes: Optional[Sequence[Optional[int]]] = None,
     ):
         """
         Callback function for when a position is removed successfully via the TradingEngine.
@@ -355,7 +350,7 @@ class Strategy(ABC):
         """Set the stop loss for the strategy."""
         self.stop_loss = stop_loss
 
-    def _profit_target_hit(self, position: "Position", exit_price: float) -> bool:
+    def _profit_target_hit(self, position: "Position", exit_price: Optional[float]) -> bool:
         """
         Check if the profit target has been hit for a position.
 
@@ -370,7 +365,7 @@ class Strategy(ABC):
             return False
         return position.profit_target_hit(self.profit_target, exit_price)
 
-    def _stop_loss_hit(self, position: "Position", exit_price: float) -> bool:
+    def _stop_loss_hit(self, position: "Position", exit_price: Optional[float]) -> bool:
         """
         Check if the stop loss has been hit for a position.
 
