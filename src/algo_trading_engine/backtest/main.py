@@ -3,7 +3,7 @@ import os
 import sys
 import traceback
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import List, Optional, Sequence, Union
 
 import numpy as np
 import pandas as pd
@@ -14,7 +14,10 @@ from algo_trading_engine.strategy import Strategy
 from ._models import Benchmark
 from algo_trading_engine.vo import Position
 from algo_trading_engine.data_retriever import DataRetriever
-from algo_trading_engine._internal.common.ml_pipeline import is_credit_spread_strategy, prepare_credit_spread_backtest_data
+from algo_trading_engine._internal.common.ml_pipeline import (
+    is_credit_spread_strategy,
+    prepare_credit_spread_backtest_data,
+)
 from algo_trading_engine.enums import BarTimeInterval
 from algo_trading_engine.models.config import VolumeConfig, VolumeStats
 from algo_trading_engine.models import EngineConfig, OverallPerformanceStats, StrategyPerformanceStats
@@ -24,32 +27,39 @@ from algo_trading_engine._internal.common.progress_tracker import ProgressTracke
 from algo_trading_engine.gui import RunObserver
 from ._strategy_builder import StrategyFactory, create_strategy_from_args
 from algo_trading_engine._internal.common.trading_engine import TradingEngine
-from algo_trading_engine.models.config import BacktestConfig as BacktestConfigDTO
+from algo_trading_engine._internal.util.market_clock import market_index, market_now, market_time
+from algo_trading_engine.models.config import BacktestConfig as BacktestConfigDTO, PaperTradingConfig
 from algo_trading_engine.models.metrics import PerformanceMetrics, PositionStats
+
 
 class BacktestEngine(TradingEngine):
     """
     BacktestEngine is a class that runs a backtest on a given dataset and model.
     """
 
-    def __init__(self, data: pd.DataFrame, strategy: Strategy, initial_capital: float = 100000,
-                 start_date: datetime = datetime.now(),
-                 end_date: datetime = datetime.now(),
-                 max_position_size: float = None,
-                 volume_config: VolumeConfig = None,
-                 enable_progress_tracking: bool = True,
-                 quiet_mode: bool = True,
-                 bar_interval = None,
-                 benchmark_data: pd.DataFrame = None,
-                 observer: RunObserver | None = None,
-                 plot_config=None,
-                 config: EngineConfig = None
-                 ):
+    def __init__(
+        self,
+        data: pd.DataFrame,
+        strategy: Strategy,
+        initial_capital: float = 100000,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        max_position_size: Optional[float] = None,
+        volume_config: Optional[VolumeConfig] = None,
+        enable_progress_tracking: bool = True,
+        quiet_mode: bool = True,
+        bar_interval=None,
+        benchmark_data: Optional[pd.DataFrame] = None,
+        observer: RunObserver | None = None,
+        plot_config=None,
+        config: Optional[EngineConfig] = None,
+    ):
         super().__init__(strategy, data, config=config, bar_interval=bar_interval)
         self._capital = initial_capital
         self.initial_capital = initial_capital  # Store initial capital for reporting
-        self.start_date = start_date
-        self.end_date = end_date
+        # Naive US/Eastern, like the bar index they are compared against.
+        self.start_date = start_date if start_date is not None else market_now()
+        self.end_date = end_date if end_date is not None else market_now()
         self.positions = []
         self.total_positions = 0
         self.benchmark = Benchmark(initial_capital)
@@ -57,18 +67,20 @@ class BacktestEngine(TradingEngine):
         self.max_position_size = max_position_size
         self.daily_returns = []  # Track daily returns for Sharpe Ratio calculation
         self.previous_capital = initial_capital  # Track previous day's capital
-        
+
         # Volume validation configuration and statistics
         self.volume_config = volume_config or VolumeConfig(min_volume=10)
-        self.volume_stats = VolumeStats(options_checked=0, positions_rejected_volume=0, positions_rejected_closure_volume=0, skipped_closures=0)
-        
+        self.volume_stats = VolumeStats(
+            options_checked=0, positions_rejected_volume=0, positions_rejected_closure_volume=0, skipped_closures=0
+        )
+
         # Progress tracking
         self.enable_progress_tracking = enable_progress_tracking
         self.quiet_mode = quiet_mode
         self.progress_tracker = None
         self.observer = observer
         self.plot_config = plot_config
-        
+
         # Position tracking for statistics
         self.closed_positions = []
 
@@ -76,52 +88,49 @@ class BacktestEngine(TradingEngine):
     def strategy(self) -> Strategy:
         """Get the strategy being used by this engine."""
         return self._strategy
-    
+
     @strategy.setter
     def strategy(self, value: Strategy):
         """Set the strategy for this engine."""
         self._strategy = value
-    
+
     @property
     def capital(self) -> float:
         """Get current capital."""
         return self._capital
-    
+
     @capital.setter
     def capital(self, value: float):
         """Set the capital for this engine."""
         self._capital = value
 
     @classmethod
-    def from_config(cls, config: BacktestConfigDTO) -> 'BacktestEngine':
+    def from_config(cls, config: Union[BacktestConfigDTO, PaperTradingConfig]) -> "BacktestEngine":
         """
         Create BacktestEngine from configuration.
-        
+
         Handles all data fetching, strategy creation, and setup internally.
         Child projects only need to provide configuration.
-        
+
         Args:
             config: BacktestConfig DTO with all necessary parameters
-            
+
         Returns:
             Configured BacktestEngine instance ready to run
-            
+
         Raises:
             ValueError: If configuration is invalid or data fetching fails
         """
+        if not isinstance(config, BacktestConfigDTO):
+            raise TypeError("BacktestEngine.from_config requires BacktestConfig")
         log_level = "info" if config.quiet_mode else "debug"
         configure_logger("backtest", log_level=log_level, observer=config.observer)
 
-        retriever = DataRetriever(
-            symbol=config.symbol,
-            bar_interval=config.bar_interval
-        )
+        retriever = DataRetriever(symbol=config.symbol, bar_interval=config.bar_interval)
 
         # Internal: Create options handler
         options_handler = OptionsHandler(
-            symbol=config.symbol,
-            api_key=config.api_key,
-            use_free_tier=config.use_free_tier
+            symbol=config.symbol, api_key=config.api_key, use_free_tier=config.use_free_tier
         )
 
         # Internal: Extract methods as callables (no imports needed by child repos)
@@ -140,7 +149,7 @@ class BacktestEngine(TradingEngine):
                 get_options_chain=get_options_chain,
                 options_handler=options_handler,  # Needed for CreditSpreadStrategy with LSTM
                 stop_loss=config.stop_loss,
-                profit_target=config.profit_target
+                profit_target=config.profit_target,
             )
             if strategy is None:
                 raise ValueError(f"Failed to create strategy: {config.strategy_type}")
@@ -148,24 +157,26 @@ class BacktestEngine(TradingEngine):
             # Strategy instance provided - inject callables if strategy expects them
             strategy = config.strategy_type
             strategy.symbol = config.symbol
-            if hasattr(strategy, 'get_contract_list_for_date'):
+            if hasattr(strategy, "get_contract_list_for_date"):
                 strategy.get_contract_list_for_date = get_contract_list_for_date
                 strategy.get_option_bar = get_option_bar
                 strategy.get_options_chain = get_options_chain
-            elif hasattr(strategy, 'options_handler'):
+            elif hasattr(strategy, "options_handler"):
                 # Backward compatibility: if strategy still uses options_handler, inject it
-                strategy.options_handler = options_handler
+                setattr(strategy, "options_handler", options_handler)
 
         strategy.use_snapshot_for_current_bar = False
 
         # Internal: Fetch data for backtest period
         data = retriever.fetch_data_for_period(
             (config.start_date - strategy.get_warm_up_period_timedelta(config.bar_interval)).strftime("%Y-%m-%d"),
-            config.end_date.strftime("%Y-%m-%d")
+            config.end_date.strftime("%Y-%m-%d"),
         )
 
         if data is None or len(data) == 0:
-            raise ValueError(f"Failed to fetch data for {config.symbol} from {config.start_date.date()} to {config.end_date.date()}")
+            raise ValueError(
+                f"Failed to fetch data for {config.symbol} from {config.start_date.date()} to {config.end_date.date()}"
+            )
 
         if is_credit_spread_strategy(config.strategy_type):
             data = prepare_credit_spread_backtest_data(data, retriever, config.symbol)
@@ -181,13 +192,9 @@ class BacktestEngine(TradingEngine):
         # Fetch separate benchmark data if benchmark_ticker differs from trading symbol
         benchmark_data = None
         if config.benchmark_ticker and config.benchmark_ticker != config.symbol:
-            benchmark_retriever = DataRetriever(
-                symbol=config.benchmark_ticker,
-                bar_interval=config.bar_interval
-            )
+            benchmark_retriever = DataRetriever(symbol=config.benchmark_ticker, bar_interval=config.bar_interval)
             benchmark_data = benchmark_retriever.fetch_data_for_period(
-                config.start_date.strftime("%Y-%m-%d"),
-                config.end_date.strftime("%Y-%m-%d")
+                config.start_date.strftime("%Y-%m-%d"), config.end_date.strftime("%Y-%m-%d")
             )
             if benchmark_data is None or len(benchmark_data) == 0:
                 get_logger().warning(
@@ -213,15 +220,15 @@ class BacktestEngine(TradingEngine):
             benchmark_data=benchmark_data,
             observer=config.observer,
             plot_config=config.plot_config,
-            config=config
+            config=config,
         )
-        
+
         # Inject engine methods into strategy
-        if hasattr(strategy, 'compute_exit_price'):
+        if hasattr(strategy, "compute_exit_price"):
             strategy.compute_exit_price = engine.compute_exit_price
-        if hasattr(strategy, 'get_current_volumes_for_position'):
+        if hasattr(strategy, "get_current_volumes_for_position"):
             strategy.get_current_volumes_for_position = engine.get_current_volumes_for_position
-        
+
         return engine
 
     def run(self) -> bool:
@@ -250,9 +257,9 @@ class BacktestEngine(TradingEngine):
         benchmark_ts_end = pd.Timestamp(self.end_date)
         benchmark_range = benchmark_source.loc[benchmark_ts_start:benchmark_ts_end].index
         if len(benchmark_range) > 0:
-            self.benchmark.set_start_price(benchmark_source.loc[benchmark_range[0], 'Close'])
+            self.benchmark.set_start_price(benchmark_source.loc[benchmark_range[0], "Close"])
         else:
-            self.benchmark.set_start_price(self.data.loc[date_range[0], 'Close'])
+            self.benchmark.set_start_price(self.data.loc[date_range[0], "Close"])
 
         # Initialize progress tracker if enabled
         if self.enable_progress_tracking:
@@ -291,135 +298,43 @@ class BacktestEngine(TradingEngine):
 
         return True
 
-    def _end(self):
-        """
-        On end, execute strategy and close any remaining positions.
-        """
-        get_logger().info(f"Closing backtest - {len(self.positions)} positions remaining")
-
-        # Get the last available price from benchmark data (or trading data as fallback)
-        benchmark_source = self.benchmark_data if self.benchmark_data is not None else self.data
-        last_date = self.data.index[-1]
-        last_price = self.data.loc[last_date, 'Close']
-
-        benchmark_ts_end = pd.Timestamp(self.end_date)
-        benchmark_end_range = benchmark_source.loc[:benchmark_ts_end].index
-        if len(benchmark_end_range) > 0:
-            benchmark_end_price = benchmark_source.loc[benchmark_end_range[-1], 'Close']
-        else:
-            benchmark_end_price = last_price
-        self.benchmark.set_end_price(benchmark_end_price)
-
-        get_logger().info(f"   Last trading date: {last_date.date()}")
-        get_logger().info(f"   Last closing price: ${last_price:.2f}")
-
-        self.strategy.on_end(self.positions, self._remove_position, last_date)
-
-        # Calculate final performance metrics
-        initial_capital = self.initial_capital  # Use the initial capital from the constructor
-        final_return = self.capital - initial_capital
-        final_return_pct = (final_return / initial_capital) * 100
-        
-        # Calculate Sharpe Ratio
-        sharpe_ratio = self._calculate_sharpe_ratio()
-        
-        # Close progress tracker if it exists
-        if self.progress_tracker:
-            self.progress_tracker.close()
-            set_global_progress_tracker(None)
-        
-        # Volume validation statistics
-        if self.volume_config.enable_volume_validation:
-            volume_summary = self.volume_stats.get_summary()
-            get_logger().info("Volume Validation Statistics:")
-            get_logger().info(f"   Options checked: {volume_summary['options_checked']}")
-            get_logger().info(f"   Position opens rejected due to volume: {volume_summary['positions_rejected_volume']}")
-            get_logger().info(f"   Position closures rejected due to volume: {volume_summary['positions_rejected_closure_volume']}")
-            get_logger().info(f"   Skipped closures: {volume_summary['skipped_closures']}")
-            get_logger().info(f"   Total rejections: {volume_summary['total_rejections']}")
-            get_logger().info(f"   Volume rejection rate: {volume_summary['rejection_rate']:.1f}%")
-        
-        # Position performance statistics
-        if self.closed_positions:
-            self._print_position_statistics()
-        
-        expected_value = self._calculate_overall_statistics().expected_value if self.closed_positions else None
-
-        log_and_echo("Backtest Results Summary:")
-        log_and_echo(f"   Benchmark return: {self.benchmark.get_return_percentage():+.2f}%")
-        log_and_echo(f"   Benchmark return dollars: ${self.benchmark.get_return_dollars():+.2f}")
-        log_and_echo(f"   Trading Days: {len(self.data.index)}")
-        log_and_echo(f"   Total positions: {self.total_positions}")
-        log_and_echo(f"   Final capital: ${self.capital:.2f}")
-        log_and_echo(f"   Total Return: ${final_return:+,.2f} ({final_return_pct:+.2f}%)")
-        log_and_echo(f"   Sharpe Ratio: {sharpe_ratio:.3f}")
-        log_and_echo(f"   Expected value: {'N/A' if expected_value is None else f'${expected_value:+,.2f}'}")
-
-        if self.closed_positions:
-            from algo_trading_engine.backtest._equity import build_equity_curve_dataframe  # pylint: disable=import-outside-toplevel
-            from algo_trading_engine.plotting import build_plot_spec, show_plot  # pylint: disable=import-outside-toplevel
-            from algo_trading_engine.plotting.spec import EQUITY_CURVE_NAME  # pylint: disable=import-outside-toplevel
-
-            frame = build_equity_curve_dataframe(self.closed_positions, self.initial_capital)
-            if not frame.empty:
-                spec = build_plot_spec(
-                    frame,
-                    name=EQUITY_CURVE_NAME,
-                    title="Equity Curve",
-                    y_label="Equity ($)",
-                )
-                strategy_specs = list(self.plot_config.specs or []) if self.plot_config is not None else []
-                show_plot([*strategy_specs, spec], config=self.plot_config)
-
-        if self.observer is not None:
-            self.observer.result({
-                "benchmark_return_pct": f"{self.benchmark.get_return_percentage():+.2f}%",
-                "benchmark_return_dollars": f"${self.benchmark.get_return_dollars():+.2f}",
-                "trading_days": str(len(self.data.index)),
-                "total_positions": str(self.total_positions),
-                "final_capital": f"${self.capital:.2f}",
-                "total_return": f"${final_return:+,.2f} ({final_return_pct:+.2f}%)",
-                "sharpe_ratio": f"{sharpe_ratio:.3f}",
-                "expected_value": "N/A" if expected_value is None else f"${expected_value:+,.2f}",
-            })
-    
     def get_performance_metrics(self) -> PerformanceMetrics:
         """
         Get performance statistics for the backtest.
-        
+
         Returns:
             PerformanceMetrics object with all performance data
         """
         # Calculate overall stats
         overall_stats = self._calculate_overall_statistics()
         strategy_stats = self._calculate_strategy_statistics()
-        
+
         # Calculate final return
         final_return = self.capital - self.initial_capital
         final_return_pct = (final_return / self.initial_capital) * 100
-        
+
         # Calculate Sharpe Ratio
         sharpe_ratio = self._calculate_sharpe_ratio()
-        
+
         # Calculate max drawdown
         max_drawdown = overall_stats.max_drawdown
-        
+
         # Convert closed positions to PositionStats
         position_stats_list = []
         for pos in self.closed_positions:
             position_stats = PositionStats(
-                strategy_type=pos['strategy_type'],
-                entry_date=pos['entry_date'],
-                exit_date=pos['exit_date'],
-                entry_price=pos['entry_price'],
-                exit_price=pos['exit_price'],
-                return_dollars=pos['return_dollars'],
-                return_percentage=pos['return_percentage'],
-                days_held=pos['days_held'],
-                max_risk=pos['max_risk']
+                strategy_type=pos["strategy_type"],
+                entry_date=pos["entry_date"],
+                exit_date=pos["exit_date"],
+                entry_price=pos["entry_price"],
+                exit_price=pos["exit_price"],
+                return_dollars=pos["return_dollars"],
+                return_percentage=pos["return_percentage"],
+                days_held=pos["days_held"],
+                max_risk=pos["max_risk"],
             )
             position_stats_list.append(position_stats)
-        
+
         return PerformanceMetrics(
             total_return=final_return,
             total_return_pct=final_return_pct,
@@ -434,46 +349,154 @@ class BacktestEngine(TradingEngine):
             benchmark_return_pct=self.benchmark.get_return_percentage(),
             expected_value=overall_stats.expected_value,
         )
-    
+
     def get_positions(self) -> List[Position]:
         """
         Get current open positions.
-        
+
         Returns:
             List of currently open Position objects
         """
         return self.positions.copy()
+
+    def _end(self):
+        """
+        On end, execute strategy and close any remaining positions.
+        """
+        get_logger().info(f"Closing backtest - {len(self.positions)} positions remaining")
+
+        # Get the last available price from benchmark data (or trading data as fallback)
+        benchmark_source = self.benchmark_data if self.benchmark_data is not None else self.data
+        last_date = market_time(market_index(self.data)[-1])
+        last_price = self.data.loc[last_date, "Close"]
+
+        benchmark_ts_end = pd.Timestamp(self.end_date)
+        benchmark_end_range = benchmark_source.loc[:benchmark_ts_end].index
+        if len(benchmark_end_range) > 0:
+            benchmark_end_price = benchmark_source.loc[benchmark_end_range[-1], "Close"]
+        else:
+            benchmark_end_price = last_price
+        self.benchmark.set_end_price(benchmark_end_price)
+
+        get_logger().info(f"   Last trading date: {last_date.date()}")
+        get_logger().info(f"   Last closing price: ${last_price:.2f}")
+
+        self.strategy.on_end(self.positions, self._remove_position, last_date)
+
+        # Calculate final performance metrics
+        initial_capital = self.initial_capital  # Use the initial capital from the constructor
+        final_return = self.capital - initial_capital
+        final_return_pct = (final_return / initial_capital) * 100
+
+        # Calculate Sharpe Ratio
+        sharpe_ratio = self._calculate_sharpe_ratio()
+
+        # Close progress tracker if it exists
+        if self.progress_tracker:
+            self.progress_tracker.close()
+            set_global_progress_tracker(None)
+
+        # Volume validation statistics
+        if self.volume_config.enable_volume_validation:
+            volume_summary = self.volume_stats.get_summary()
+            get_logger().info("Volume Validation Statistics:")
+            get_logger().info(f"   Options checked: {volume_summary['options_checked']}")
+            get_logger().info(
+                f"   Position opens rejected due to volume: {volume_summary['positions_rejected_volume']}"
+            )
+            get_logger().info(
+                f"   Position closures rejected due to volume: {volume_summary['positions_rejected_closure_volume']}"
+            )
+            get_logger().info(f"   Skipped closures: {volume_summary['skipped_closures']}")
+            get_logger().info(f"   Total rejections: {volume_summary['total_rejections']}")
+            get_logger().info(f"   Volume rejection rate: {volume_summary['rejection_rate']:.1f}%")
+
+        # Position performance statistics
+        if self.closed_positions:
+            self._print_position_statistics()
+
+        expected_value = self._calculate_overall_statistics().expected_value if self.closed_positions else None
+
+        benchmark_return_pct = self.benchmark.get_return_percentage()
+        if benchmark_return_pct is None:
+            raise ValueError("Benchmark end price is not set")
+        benchmark_return = self.benchmark.get_return_dollars()
+
+        log_and_echo("Backtest Results Summary:")
+        log_and_echo(f"   Benchmark return: {benchmark_return_pct:+.2f}%")
+        log_and_echo(f"   Benchmark return dollars: ${benchmark_return:+.2f}")
+        log_and_echo(f"   Trading Days: {len(self.data.index)}")
+        log_and_echo(f"   Total positions: {self.total_positions}")
+        log_and_echo(f"   Final capital: ${self.capital:.2f}")
+        log_and_echo(f"   Total Return: ${final_return:+,.2f} ({final_return_pct:+.2f}%)")
+        log_and_echo(f"   Sharpe Ratio: {sharpe_ratio:.3f}")
+        log_and_echo(f"   Expected value: {'N/A' if expected_value is None else f'${expected_value:+,.2f}'}")
+
+        if self.closed_positions:
+            from algo_trading_engine.backtest._equity import (
+                build_equity_curve_dataframe,
+            )  # pylint: disable=import-outside-toplevel
+            from algo_trading_engine.plotting import (
+                build_plot_spec,
+                show_plot,
+            )  # pylint: disable=import-outside-toplevel
+            from algo_trading_engine.plotting.spec import EQUITY_CURVE_NAME  # pylint: disable=import-outside-toplevel
+
+            frame = build_equity_curve_dataframe(self.closed_positions, self.initial_capital)
+            if not frame.empty:
+                spec = build_plot_spec(
+                    frame,
+                    name=EQUITY_CURVE_NAME,
+                    title="Equity Curve",
+                    y_label="Equity ($)",
+                )
+                strategy_specs = list(self.plot_config.specs or []) if self.plot_config is not None else []
+                show_plot([*strategy_specs, spec], config=self.plot_config)
+
+        if self.observer is not None:
+            self.observer.result(
+                {
+                    "benchmark_return_pct": f"{benchmark_return_pct:+.2f}%",
+                    "benchmark_return_dollars": f"${benchmark_return:+.2f}",
+                    "trading_days": str(len(self.data.index)),
+                    "total_positions": str(self.total_positions),
+                    "final_capital": f"${self.capital:.2f}",
+                    "total_return": f"${final_return:+,.2f} ({final_return_pct:+.2f}%)",
+                    "sharpe_ratio": f"{sharpe_ratio:.3f}",
+                    "expected_value": "N/A" if expected_value is None else f"${expected_value:+,.2f}",
+                }
+            )
 
     def _add_position(self, position: Position):
         """
         Add a position to the positions. Rejects positions with insufficient volume and determines position size based
         on capital provided to the backtest.
         """
-        
+
         # Volume validation - check all options in the spread
-        if self.volume_config.enable_volume_validation and position.spread_options:
-            for option in position.spread_options:
+        if self.volume_config.enable_volume_validation and position.legs:
+            for option in position.legs:
                 if not self._validate_option_volume(option):
                     get_logger().warning(f"Volume validation failed: {option.symbol} has insufficient volume")
                     self.volume_stats = self.volume_stats.increment_rejected_positions()
                     return  # Reject the position
 
         try:
-            position_size = self.strategy.get_position_size(position, self.capital) 
+            position_size = self.strategy.get_position_size(position, self.capital)
         except NotImplementedError:
             # Intentional default capability
             position_size = self._get_position_size(position)
-        
+
         if position_size == 0:
             get_logger().info("Not enough capital to add position. Position size is 0.")
             return
-        
+
         position.set_quantity(position_size)
 
         # Capital is starting equity + realized P&L only; no cash-flow adjustment at open.
         # Position sizing already gatekeeps capacity via max risk.
         max_risk = position.max_risk_dollars_per_contract()
-        if max_risk is not None and self.capital < max_risk * position.quantity:
+        if max_risk is not None and self.capital < max_risk * position_size:
             raise ValueError("Not enough capital to add position")
 
         get_logger().info(f"Adding position: {position.__str__()}")
@@ -483,33 +506,42 @@ class BacktestEngine(TradingEngine):
 
         self.strategy.on_add_position_success(position)
 
-    def _remove_position(self, date: datetime, position: Position, exit_price: float, underlying_price: float = None, current_volumes: list[int] = None):
+    def _remove_position(
+        self,
+        date: datetime,
+        position: Position,
+        exit_price: float,
+        underlying_price: Optional[float] = None,
+        current_volumes: Optional[Sequence[int | None]] = None,
+    ):
         """
         Remove a position from the positions list with enhanced current date volume validation.
-        
+
         Args:
             date: Date at which the position is being closed
             position: Position to remove
             exit_price: Price at which the position is being closed
             underlying_price: Price of the underlying at the time of exit
-            current_volumes: List of current volume data for each option in position.spread_options
+            current_volumes: List of current volume data for each option in position.legs
         """
         # Enhanced volume validation - check all options in the spread with current date data
-        if self.volume_config.enable_volume_validation and position.spread_options and current_volumes:
+        if self.volume_config.enable_volume_validation and position.legs and current_volumes:
             volume_validation_failed = False
             failed_options = []
-            
+
             # Increment options checked counter for each option in the spread
-            for option in position.spread_options:
+            for option in position.legs:
                 self.volume_stats = self.volume_stats.increment_options_checked()
-            
-            for option, current_volume in zip(position.spread_options, current_volumes):
+
+            for option, current_volume in zip(position.legs, current_volumes):
                 if current_volume is None or current_volume < self.volume_config.min_volume:
                     volume_validation_failed = True
                     failed_options.append(option.symbol)
-            
+
             if volume_validation_failed:
-                get_logger().warning(f"Volume validation failed for position closure: {', '.join(failed_options)} have insufficient volume")
+                get_logger().warning(
+                    f"Volume validation failed for position closure: {', '.join(failed_options)} have insufficient volume"
+                )
                 self.volume_stats = self.volume_stats.increment_rejected_closures()
 
                 # Skip closing the position for this date due to insufficient volume unless expired
@@ -518,17 +550,17 @@ class BacktestEngine(TradingEngine):
                     return  # Skip closure and keep position open
 
         if position not in self.positions:
-            raise ValueError(f"Could not find position to close within open positions. {position.__str__()}")
+            raise ValueError(f"Could not find position to close within open positions. {position}")
 
         # Calculate the return for this position due to assignment
         if position.get_days_to_expiration(date) < 1:
             if underlying_price is None:
-                raise ValueError(f"Underlying price not provided for position {position.__str__()}")
+                raise ValueError(f"Underlying price not provided for position {position}")
 
             position_return = position.get_return_dollars_from_assignment(underlying_price)
-            get_logger().info(f"   Position closed by assignment: {position.__str__()}")
+            get_logger().info(f"   Position closed by assignment: {position}")
         else:
-            if exit_price is None: # Allows for exit price to be 0 - possible if ATM and OTM market price are equal
+            if exit_price is None:  # Allows for exit price to be 0 - possible if ATM and OTM market price are equal
                 raise ValueError("Exit price not provided for the unexpired position")
             position_return = position.get_return_dollars(exit_price)
 
@@ -544,21 +576,21 @@ class BacktestEngine(TradingEngine):
         max_risk = position.max_risk_dollars_per_contract()
         return_pct = (position_return / max_risk) * 100 if (position.quantity and max_risk is not None) else 0
         closed_position_data = {
-            'strategy_type': position.strategy_type,
-            'entry_date': position.entry_date,
-            'exit_date': date,
-            'entry_price': position.entry_price,
-            'exit_price': exit_price,
-            'return_dollars': position_return,
-            'return_percentage': return_pct,
-            'days_held': position.get_days_held(date),
-            'max_risk': max_risk
+            "strategy_type": position.strategy_type,
+            "entry_date": position.entry_date,
+            "exit_date": date,
+            "entry_price": position.entry_price,
+            "exit_price": exit_price,
+            "return_dollars": position_return,
+            "return_percentage": return_pct,
+            "days_held": position.get_days_held(date),
+            "max_risk": max_risk,
         }
         self.closed_positions.append(closed_position_data)
-        
+
         # Remove the position
         self.positions.remove(position)
-        
+
         # Log the position closure
         get_logger().info(f"   Position closed: {position.__str__()}")
         get_logger().info(f"     Entry: ${position.entry_price:.2f} | Exit: ${exit_price:.2f}")
@@ -573,49 +605,49 @@ class BacktestEngine(TradingEngine):
         """
         if self.max_position_size is None:
             return 1
-        
+
         max_position_capital = self.capital * self.max_position_size
         max_risk = position.max_risk_dollars_per_contract()
         if max_risk is None or max_risk <= 0:
             return 1
         return int(max_position_capital / max_risk)
-    
+
     def _calculate_sharpe_ratio(self) -> float:
         """
         Calculate the Sharpe Ratio based on daily returns.
-        
+
         Returns:
             float: Sharpe Ratio (annualized)
         """
         if not self.daily_returns:
             return 0.0
-        
+
         # Convert daily returns to numpy array
         returns = np.array(self.daily_returns)
-        
+
         # Calculate mean and standard deviation of returns
         mean_return = np.mean(returns)
         std_return = np.std(returns, ddof=1)  # Use sample standard deviation
-        
+
         # Avoid division by zero
         if std_return == 0:
             return 0.0
-        
+
         # Calculate Sharpe Ratio (assuming risk-free rate of 0 for simplicity)
         # Annualize by multiplying by sqrt(252) for trading days
         sharpe_ratio = (mean_return / std_return) * np.sqrt(252)
-        
+
         return sharpe_ratio
-    
+
     def _validate_option_volume(self, option) -> bool:
         """
         Validate if an option has sufficient volume for trading.
-        
+
         Note: Data fetching is handled by the Strategy class. This method
         only validates the volume data that is already present in the option.
         """
         self.volume_stats = self.volume_stats.increment_options_checked()
-        
+
         if option.volume is None:
             return False
         return option.volume >= self.volume_config.min_volume
@@ -628,17 +660,17 @@ class BacktestEngine(TradingEngine):
         overall_stats.print_summary()
         for stats in strategy_stats:
             stats.print_summary()
-    
-    def _calculate_overall_statistics(self) -> 'OverallPerformanceStats':
+
+    def _calculate_overall_statistics(self) -> "OverallPerformanceStats":
         """Calculate overall performance statistics"""
         total_positions = len(self.closed_positions)
-        total_return = sum(pos['return_dollars'] for pos in self.closed_positions)
-        winning_positions = [pos for pos in self.closed_positions if pos['return_dollars'] > 0]
-        
+        total_return = sum(pos["return_dollars"] for pos in self.closed_positions)
+        winning_positions = [pos for pos in self.closed_positions if pos["return_dollars"] > 0]
+
         win_rate = len(winning_positions) / total_positions * 100 if total_positions > 0 else 0
         avg_return = total_return / total_positions if total_positions > 0 else 0
         min_dd, mean_dd, max_dd = self._calculate_drawdown_stats(self.closed_positions, self.initial_capital)
-        
+
         return OverallPerformanceStats(
             total_positions=total_positions,
             win_rate=win_rate,
@@ -649,28 +681,28 @@ class BacktestEngine(TradingEngine):
             max_drawdown=max_dd,
             expected_value=self._calculate_expected_value(self.closed_positions),
         )
-    
-    def _calculate_strategy_statistics(self) -> List['StrategyPerformanceStats']:
+
+    def _calculate_strategy_statistics(self) -> List["StrategyPerformanceStats"]:
         """Calculate performance statistics for each strategy type"""
         strategy_data = {}
-        
+
         # Group positions by strategy type
         for pos in self.closed_positions:
-            strategy_type = pos['strategy_type']
+            strategy_type = pos["strategy_type"]
             if strategy_type not in strategy_data:
                 strategy_data[strategy_type] = []
             strategy_data[strategy_type].append(pos)
-        
+
         # Calculate statistics for each strategy
         strategy_stats = []
         for strategy_type, positions in strategy_data.items():
-            total_return = sum(pos['return_dollars'] for pos in positions)
-            winning_positions = [pos for pos in positions if pos['return_dollars'] > 0]
-            
+            total_return = sum(pos["return_dollars"] for pos in positions)
+            winning_positions = [pos for pos in positions if pos["return_dollars"] > 0]
+
             win_rate = len(winning_positions) / len(positions) * 100 if positions else 0
             avg_return = total_return / len(positions) if positions else 0
             min_dd, mean_dd, max_dd = self._calculate_drawdown_stats(positions, self.initial_capital)
-            
+
             stats = StrategyPerformanceStats(
                 strategy_type=strategy_type,
                 positions_count=len(positions),
@@ -683,9 +715,9 @@ class BacktestEngine(TradingEngine):
                 expected_value=self._calculate_expected_value(positions),
             )
             strategy_stats.append(stats)
-        
+
         return strategy_stats
-    
+
     def _calculate_expected_value(self, positions: List[dict]) -> Optional[float]:
         """Expectancy in dollars per trade from the closed-position results.
 
@@ -695,8 +727,8 @@ class BacktestEngine(TradingEngine):
         """
         if not positions:
             return None
-        wins = [pos['return_dollars'] for pos in positions if pos['return_dollars'] > 0]
-        losses = [pos['return_dollars'] for pos in positions if pos['return_dollars'] < 0]
+        wins = [pos["return_dollars"] for pos in positions if pos["return_dollars"] > 0]
+        losses = [pos["return_dollars"] for pos in positions if pos["return_dollars"] < 0]
         count = len(positions)
         win_rate = len(wins) / count
         loss_rate = len(losses) / count
@@ -707,83 +739,103 @@ class BacktestEngine(TradingEngine):
     def _calculate_drawdown_stats(self, positions: List[dict], initial_capital: float) -> tuple[float, float, float]:
         """
         Calculate drawdown statistics from closed positions.
-        
+
         Returns:
             Tuple of (min_drawdown, mean_drawdown, max_drawdown) as percentages
         """
         if not positions:
             return 0.0, 0.0, 0.0
-        
+
         drawdowns = []
         peak_capital = initial_capital
         current_capital = initial_capital
-        
+
         for pos in positions:
-            current_capital += pos['return_dollars']
+            current_capital += pos["return_dollars"]
             if current_capital > peak_capital:
                 peak_capital = current_capital
-            
+
             # Only calculate drawdown if we have a positive peak and current value is below peak
             if peak_capital > 0 and current_capital < peak_capital:
                 drawdown = (peak_capital - current_capital) / peak_capital * 100
                 drawdowns.append(drawdown)
-        
+
         if not drawdowns:
             return 0.0, 0.0, 0.0
-        
+
         min_dd = min(drawdowns)
         mean_dd = sum(drawdowns) / len(drawdowns)
         max_dd = max(drawdowns)
-        
+
         return min_dd, mean_dd, max_dd
-    
+
     def _handle_insufficient_volume_closure(self, position: Position, date: datetime) -> bool:
         """
         Handle position closure when volume is insufficient.
-        
+
         Args:
             position: The position to close
             date: The date of closure
-            
+
         Returns:
             bool: True if closure should be skipped, False if closure should proceed
         """
         if self.volume_config.skip_closure_on_insufficient_volume:
-            get_logger().warning(f"Skipping closure of position {position.__str__()} for {date.date()} due to insufficient volume")
+            get_logger().warning(
+                f"Skipping closure of position {position.__str__()} for {date.date()} due to insufficient volume"
+            )
             self.volume_stats = self.volume_stats.increment_skipped_closures()
             return True
         else:
-            get_logger().warning(f"Proceeding with closure of position {position.__str__()} despite insufficient volume")
+            get_logger().warning(
+                f"Proceeding with closure of position {position.__str__()} despite insufficient volume"
+            )
             return False
+
 
 def parse_arguments():
     """Parse command line arguments for backtest configuration"""
-    parser = argparse.ArgumentParser(description='Run backtest with specified strategy')
-    parser.add_argument('--strategy', 
-                       choices=StrategyFactory.get_available_strategies(),
-                       default='credit_spread',
-                       help='Strategy to use for backtesting')
-    parser.add_argument('--stop-loss', type=float, default=None,
-                       help='Stop loss percentage')
-    parser.add_argument('--profit-target', type=float, default=None,
-                       help='Profit target percentage')
-    parser.add_argument('--initial-capital', type=float, default=3000,
-                       help='Initial capital for backtesting')
-    parser.add_argument('--max-position-size', type=float, default=0.40,
-                       help='Maximum position size as fraction of capital')
-    parser.add_argument('--start-date', type=str, default=None,
-                       help='Start date for backtest (YYYY-MM-DD). Defaults to one year before today if not provided.')
-    parser.add_argument('--end-date', type=str, default=None,
-                       help='End date for backtest (YYYY-MM-DD). Defaults to today if not provided.')
-    parser.add_argument('--symbol', type=str, default='SPY',
-                       help='Symbol to trade')
-    parser.add_argument('--benchmark', type=str, default=None,
-                       help='Benchmark ticker for buy-and-hold comparison (defaults to trading symbol)')
-    parser.add_argument('--verbose', action='store_true', default=False,
-                       help='Run in quiet mode')
-    parser.add_argument('-f', '--free', action='store_true', default=False,
-                       help='Use free tier rate limiting (13 second timeout between API requests)')
-    
+    parser = argparse.ArgumentParser(description="Run backtest with specified strategy")
+    parser.add_argument(
+        "--strategy",
+        choices=StrategyFactory.get_available_strategies(),
+        default="credit_spread",
+        help="Strategy to use for backtesting",
+    )
+    parser.add_argument("--stop-loss", type=float, default=None, help="Stop loss percentage")
+    parser.add_argument("--profit-target", type=float, default=None, help="Profit target percentage")
+    parser.add_argument("--initial-capital", type=float, default=3000, help="Initial capital for backtesting")
+    parser.add_argument(
+        "--max-position-size", type=float, default=0.40, help="Maximum position size as fraction of capital"
+    )
+    parser.add_argument(
+        "--start-date",
+        type=str,
+        default=None,
+        help="Start date for backtest (YYYY-MM-DD). Defaults to one year before today if not provided.",
+    )
+    parser.add_argument(
+        "--end-date",
+        type=str,
+        default=None,
+        help="End date for backtest (YYYY-MM-DD). Defaults to today if not provided.",
+    )
+    parser.add_argument("--symbol", type=str, default="SPY", help="Symbol to trade")
+    parser.add_argument(
+        "--benchmark",
+        type=str,
+        default=None,
+        help="Benchmark ticker for buy-and-hold comparison (defaults to trading symbol)",
+    )
+    parser.add_argument("--verbose", action="store_true", default=False, help="Run in quiet mode")
+    parser.add_argument(
+        "-f",
+        "--free",
+        action="store_true",
+        default=False,
+        help="Use free tier rate limiting (13 second timeout between API requests)",
+    )
+
     return parser.parse_args()
 
 
@@ -791,24 +843,24 @@ def main():
     """Main entry point for backtest CLI."""
     # Parse command line arguments
     args = parse_arguments()
-    
+
     # Set default dates if not provided
-    today = datetime.now()
+    today = market_now()
     if args.start_date is None:
         # Default to one year before today
         start_date = today - timedelta(days=365)
     else:
-        start_date = datetime.strptime(args.start_date, '%Y-%m-%d')
-    
+        start_date = datetime.strptime(args.start_date, "%Y-%m-%d")
+
     if args.end_date is None:
         # Default to today
         end_date = today
     else:
-        end_date = datetime.strptime(args.end_date, '%Y-%m-%d')
-    
+        end_date = datetime.strptime(args.end_date, "%Y-%m-%d")
+
     # Get API key from environment
     api_key = os.getenv("POLYGON_API_KEY")
-    
+
     # Create configuration using BacktestConfig (same as examples)
     config = BacktestConfigDTO(
         initial_capital=args.initial_capital,
@@ -822,9 +874,9 @@ def main():
         quiet_mode=not args.verbose,
         stop_loss=args.stop_loss,
         profit_target=args.profit_target,
-        benchmark_ticker=args.benchmark
+        benchmark_ticker=args.benchmark,
     )
-    
+
     # CLI startup lines to stdout so user sees them; run() configures logger and logs to backtest.log
     print(f"Starting backtest with strategy: {args.strategy}")
     print(f"   Date range: {start_date.date()} to {end_date.date()}")

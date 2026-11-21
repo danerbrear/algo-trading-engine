@@ -7,9 +7,10 @@ This module provides the abstract base class that all trading strategies must im
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 import math
-from typing import Callable, Optional, List, Iterable, TYPE_CHECKING
+from typing import Any, Callable, Iterable, List, Optional, Protocol, Sequence, TYPE_CHECKING
 import pandas as pd
 
+from algo_trading_engine._internal.util.market_clock import market_index, market_time
 from algo_trading_engine.logging import get_logger
 from algo_trading_engine.vo import TreasuryRates
 from algo_trading_engine.indicators.indicator import Indicator
@@ -18,17 +19,32 @@ from algo_trading_engine.enums import BarTimeInterval, UniversalCloseCondition
 if TYPE_CHECKING:
     from algo_trading_engine.plotting.config import PlotConfig
     from algo_trading_engine.vo import Position
-    from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO, OptionsChainDTO, ExpirationRangeDTO, StrikeRangeDTO
+    from algo_trading_engine.dto import OptionBarDTO
 
 
-class _NotImplementedCallback:  # pylint: disable=too-few-public-methods
+class _NotImplementedCallback:
     """Callable stub that is not a function, so instance access does not bind it."""
 
     def __call__(self, *_args, **_kwargs):
         raise NotImplementedError("This logic must be overridden.")
 
 
-_raise_not_implemented = _NotImplementedCallback()
+class RemovePositionCallback(Protocol):
+    """Close callback injected by a trading engine.
+
+    ``underlying_price`` and ``current_volumes`` are optional, matching
+    ``BacktestEngine._remove_position``.
+    """
+
+    def __call__(
+        self,
+        date: datetime,
+        position: "Position",
+        exit_price: float,
+        underlying_price: Optional[float] = None,
+        current_volumes: Optional[Sequence[Optional[int]]] = None,
+    ) -> None:
+        """Close ``position`` at ``exit_price``."""
 
 
 class IndicatorUpdateError(RuntimeError):
@@ -42,15 +58,15 @@ class IndicatorUpdateError(RuntimeError):
 class Strategy(ABC):
     """
     Abstract base class for trading strategies.
-    
+
     All trading strategies must inherit from this class and implement
     the required abstract methods.
-    
+
     Options Trading Callables:
         Strategies that trade options can expect the following callables as instance
         attributes. Each defaults to a raising stub until the strategy builder or engine
         replaces it:
-        
+
         - get_contract_list_for_date: Get list of option contracts for a specific date and symbol
         - get_option_bar: Get historical bar data for an option contract on a specific date (/aggs)
         - get_rt_option_bar: Get near-real-time bar data for an option contract via Polygon
@@ -61,26 +77,29 @@ class Strategy(ABC):
         - compute_exit_price: Compute the exit price for a position on a specific date
         - get_position_size: Size a position from available capital
     """
-    
+
+    symbol: str
+
     # Callables for options trading strategies. Default to a raising stub until injected.
-    get_contract_list_for_date: Callable[[datetime, str], List['OptionContractDTO']] = _raise_not_implemented
-    get_option_bar: Callable[['OptionContractDTO', datetime], Optional['OptionBarDTO']] = _raise_not_implemented
-    get_rt_option_bar: Callable[['OptionContractDTO'], Optional['OptionBarDTO']] = _raise_not_implemented
-    get_options_chain: Callable[[str, datetime, Optional['ExpirationRangeDTO'], Optional['StrikeRangeDTO'], Optional[BarTimeInterval], Optional[int]], 'OptionsChainDTO'] = _raise_not_implemented
-    get_current_volumes_for_position: Callable[['Position', datetime], Optional[List[int]]] = _raise_not_implemented
-    compute_exit_price: Callable[['Position', datetime], Optional[float]] = _raise_not_implemented
-    get_position_size: Callable[['Position', float], int] = _raise_not_implemented
+    # Callable[..., Any] matches keyword calls and injected handlers without changing the stub.
+    get_contract_list_for_date: Callable[..., Any] = _NotImplementedCallback()
+    get_option_bar: Callable[..., Any] = _NotImplementedCallback()
+    get_rt_option_bar: Callable[..., Any] = _NotImplementedCallback()
+    get_options_chain: Callable[..., Any] = _NotImplementedCallback()
+    get_current_volumes_for_position: Callable[..., Any] = _NotImplementedCallback()
+    compute_exit_price: Callable[..., Any] = _NotImplementedCallback()
+    get_position_size: Callable[..., Any] = _NotImplementedCallback()
 
     def __init__(
         self,
-        profit_target: float = None,
-        stop_loss: float = None,
+        profit_target: float | None = None,
+        stop_loss: float | None = None,
         universal_close_conditions: Optional[Iterable[UniversalCloseCondition]] = None,
         use_snapshot_for_current_bar: bool = False,
     ):
         """
         Initialize the strategy.
-        
+
         Args:
             profit_target: Optional profit target percentage (e.g., 0.5 for 50%)
             stop_loss: Optional stop loss percentage (e.g., 0.6 for 60%)
@@ -101,24 +120,7 @@ class Strategy(ABC):
         self.treasury_data: Optional[TreasuryRates] = None
         self.plot_config: Optional["PlotConfig"] = None
         self.indicators: List[Indicator] = []
-        self._indicator_error: Optional[Exception] = None
-        self._failed_indicator_name: Optional[str] = None
-
-    def get_current_option_bar(
-        self,
-        contract: 'OptionContractDTO',
-        date: datetime,
-        timespan: BarTimeInterval = BarTimeInterval.DAY,
-    ) -> Optional['OptionBarDTO']:
-        """
-        Fetch an option bar for current valuation.
-
-        When ``use_snapshot_for_current_bar`` is set, use the near-real-time Polygon snapshot
-        (dateless). Otherwise use the historical /aggs bar for ``date`` at the given ``timespan``.
-        """
-        if self.use_snapshot_for_current_bar:
-            return self.get_rt_option_bar(contract)
-        return self.get_option_bar(contract, date, timespan=timespan)
+        self.option_bar_timespan = BarTimeInterval.DAY
 
     @property
     def warm_up_period(self) -> int:
@@ -132,34 +134,17 @@ class Strategy(ABC):
             return 0
         return max(indicator.warm_up_period for indicator in self.indicators)
 
-    def get_warm_up_period_timedelta(self, bar_interval: BarTimeInterval) -> timedelta:
-        """
-        Time delta representing the warm-up period.
-        """
-        warm_up_period = self.warm_up_period * 2.0 # 2.0 is a factor to account for the fact that the warm-up period is a bar count, not a wall-clock time
-        if bar_interval == BarTimeInterval.DAY:
-            return timedelta(days=warm_up_period)
-        elif bar_interval == BarTimeInterval.HOUR:
-            if warm_up_period <= 0:
-                return timedelta(0)
-            trading_days = math.ceil(
-                warm_up_period / 7
-            )
-            return timedelta(days=trading_days)
-        else:
-            raise ValueError(f"Unsupported bar interval: {bar_interval}")
-        
     @abstractmethod
     def on_new_date(
         self,
         date: datetime,
-        positions: tuple['Position', ...],
-        add_position: Callable[['Position'], None],
-        remove_position: Callable[[datetime, 'Position', float, Optional[float], Optional[list[int]]], None]
+        positions: tuple["Position", ...],
+        add_position: Callable[["Position"], None],
+        remove_position: RemovePositionCallback,
     ) -> None:
         """
         Called for each trading day to execute strategy logic.
-        
+
         Args:
             date: Current trading date
             positions: Tuple of currently open positions
@@ -167,23 +152,19 @@ class Strategy(ABC):
             remove_position: Callback function to remove/close a position
                 Signature: (date, position, exit_price, underlying_price=None, current_volumes=None)
         """
-        if not self._update_indicators(date):
-            get_logger().error(f"Error updating indicators for date {date}, aborting execution")
-            raise IndicatorUpdateError(
-                f"Indicator {self._failed_indicator_name} failed to update for {date}: "
-                f"{self._indicator_error}"
-            ) from self._indicator_error
+        if not self._update_positions(date, positions):
+            get_logger().warning("Error updating positions.")
 
     @abstractmethod
     def on_end(
         self,
-        positions: tuple['Position', ...],
-        remove_position: Callable[[datetime, 'Position', float, Optional[float], Optional[list[int]]], None],
-        date: datetime
+        positions: Sequence["Position"],
+        remove_position: RemovePositionCallback,
+        date: datetime,
     ) -> None:
         """
         Called at the end of backtest/paper trading to close remaining positions.
-        
+
         Args:
             positions: Tuple of currently open positions
             remove_position: Callback function to remove/close a position
@@ -194,24 +175,61 @@ class Strategy(ABC):
     def validate_data(self, data: pd.DataFrame) -> bool:
         """
         Validate that the provided data meets the strategy's requirements.
-        
+
         Args:
             data: DataFrame with market data and features
-            
+
         Returns:
             True if data is valid, False otherwise
         """
 
+    def get_current_option_bar(
+        self,
+        ticker: str,
+        date: datetime,
+        timespan: BarTimeInterval = BarTimeInterval.DAY,
+    ) -> Optional["OptionBarDTO"]:
+        """
+        Fetch an option bar for current valuation.
+
+        When ``use_snapshot_for_current_bar`` is set, use the near-real-time Polygon snapshot
+        (dateless). Otherwise use the historical /aggs bar for ``date`` at the given ``timespan``.
+        """
+        if self.use_snapshot_for_current_bar and self.get_rt_option_bar:
+            return self.get_rt_option_bar(ticker)
+
+        if self.get_option_bar:
+            return self.get_option_bar(ticker, date, 1, timespan)
+
+        return None
+
+    def get_warm_up_period_timedelta(self, bar_interval: BarTimeInterval) -> timedelta:
+        """
+        Time delta representing the warm-up period.
+        """
+        warm_up_period = (
+            self.warm_up_period * 2.0
+        )  # 2.0 is a factor to account for the fact that the warm-up period is a bar count, not a wall-clock time
+        if bar_interval == BarTimeInterval.DAY:
+            return timedelta(days=warm_up_period)
+        elif bar_interval == BarTimeInterval.HOUR:
+            if warm_up_period <= 0:
+                return timedelta(0)
+            trading_days = math.ceil(warm_up_period / 7)
+            return timedelta(days=trading_days)
+        else:
+            raise ValueError(f"Unsupported bar interval: {bar_interval}")
+
     def add_indicator(self, indicator: Indicator) -> None:
         """
         Add an indicator to the strategy.
-        
+
         This allows indicators to be added after strategy initialization,
         which is useful for dynamic indicator configuration.
-        
+
         Args:
             indicator: Indicator instance to add
-            
+
         Example:
             strategy = MyStrategy()
             atr = ATRIndicator(period=14)
@@ -224,13 +242,13 @@ class Strategy(ABC):
     def get_indicator(self, indicator_class: type) -> Optional[Indicator]:
         """
         Get an indicator by class type.
-        
+
         Args:
             indicator_class: The indicator class to search for (e.g., ATRIndicator)
-            
+
         Returns:
             Indicator instance if found, None otherwise
-            
+
         Example:
             atr = self.get_indicator(ATRIndicator)
             if atr:
@@ -262,7 +280,14 @@ class Strategy(ABC):
                 return indicator
         return None
 
-    def on_remove_position_success(self, date: datetime, position: 'Position', exit_price: float, underlying_price: float = None, current_volumes: list[int] = None):
+    def on_remove_position_success(
+        self,
+        date: datetime,
+        position: "Position",
+        exit_price: float,
+        underlying_price: float | None = None,
+        current_volumes: Optional[Sequence[Optional[int]]] = None,
+    ):
         """
         Callback function for when a position is removed successfully via the TradingEngine.
 
@@ -271,10 +296,10 @@ class Strategy(ABC):
             position: Position to remove
             exit_price: Price at which the position is being closed
             underlying_price: Price of the underlying at the time of exit
-            current_volumes: List of current volume data for each option in position.spread_options
+            current_volumes: List of current volume data for each option in position.legs
         """
 
-    def on_add_position_success(self, position: 'Position'):
+    def on_add_position_success(self, position: "Position"):
         """
         Callback function for when a position is added successfully via the TradingEngine.
 
@@ -288,14 +313,28 @@ class Strategy(ABC):
         """
         raise NotImplementedError("get_current_underlying_price is not implemented in the base Strategy class.")
 
+    def get_current_bar_timestamp(self, date: datetime) -> Optional[datetime]:
+        """Most recent bar in ``data`` at or before ``date``."""
+        if self.data is None or self.data.empty:
+            return None
+
+        index = market_index(self.data)
+        candidates = index[index <= date]
+        return market_time(candidates[-1] if len(candidates) > 0 else index[-1])
+
     def set_data(self, data: pd.DataFrame, treasury_data: Optional[TreasuryRates] = None):
         """
         Set the market data for the strategy.
-        
+
         Args:
-            data: DataFrame with market data
+            data: DataFrame with market data, indexed by naive US/Eastern bar timestamps
             treasury_data: Optional treasury rates data
+
+        Raises:
+            TypeError: If ``data`` is not indexed by a DatetimeIndex
+            ValueError: If the index is tz-aware
         """
+        market_index(data)
         self.data = data
         self.treasury_data = treasury_data
 
@@ -311,14 +350,14 @@ class Strategy(ABC):
         """Set the stop loss for the strategy."""
         self.stop_loss = stop_loss
 
-    def _profit_target_hit(self, position: 'Position', exit_price: float) -> bool:
+    def _profit_target_hit(self, position: "Position", exit_price: Optional[float]) -> bool:
         """
         Check if the profit target has been hit for a position.
-        
+
         Args:
             position: Position to check
             exit_price: Current exit price
-            
+
         Returns:
             True if profit target hit, False otherwise
         """
@@ -326,14 +365,14 @@ class Strategy(ABC):
             return False
         return position.profit_target_hit(self.profit_target, exit_price)
 
-    def _stop_loss_hit(self, position: 'Position', exit_price: float) -> bool:
+    def _stop_loss_hit(self, position: "Position", exit_price: Optional[float]) -> bool:
         """
         Check if the stop loss has been hit for a position.
-        
+
         Args:
             position: Position to check
             exit_price: Current exit price
-            
+
         Returns:
             True if stop loss hit, False otherwise
         """
@@ -341,52 +380,32 @@ class Strategy(ABC):
             return False
         return position.stop_loss_hit(self.stop_loss, exit_price)
 
-    def warm_up_indicators(self) -> None:
-        """Replay historical bars through all indicators so they have values
-        at every datetime, matching backtest behavior.
+    def _update_positions(self, date: datetime, positions: tuple["Position", ...]) -> bool:
+        """Replace each open leg's quote and timestamp with the current option bar.
 
-        Should be called after set_data() and before the first on_new_date() in
-        contexts where the engine does not iterate through every bar (e.g. paper
-        trading, Lambda).
-
-        Raises:
-            ValueError: If indicators are registered but no data is available.
+        A leg with no bar keeps its previous quote. Returns False when any leg
+        could not be refreshed.
         """
-        if not self.indicators:
-            return
-        if self.data is None or self.data.empty:
-            raise ValueError(
-                "Cannot warm up indicators without data. "
-                "Call set_data() before warm_up_indicators()."
-            )
-        for date in self.data.index:
-            for indicator in self.indicators:
-                indicator.update(date, self.data)
-        get_logger().info(
-            f"Indicator warm-up complete: {len(self.indicators)} indicator(s), "
-            f"{len(self.data)} bar(s)"
-        )
-
-    def _update_indicators(self, date: datetime) -> bool:
-        """
-        Update the indicators for the strategy.
-        
-        Args:
-            date: Current date
-
-        Returns:
-            True if indicators were updated, False otherwise
-        """
-        self._indicator_error = None
-        self._failed_indicator_name = None
-        for indicator in self.indicators:
-            try:
-                if date in indicator.get_values().index:
+        updated = True
+        for position in positions:
+            refreshed_legs: list = []
+            for option in position.legs:
+                try:
+                    bar = self.get_current_option_bar(
+                        option.ticker,
+                        date,
+                        timespan=self.option_bar_timespan,
+                    )
+                except Exception as exc:
+                    get_logger().warning(f"Error refreshing {getattr(option, 'ticker', option)} on {date}: {exc}")
+                    refreshed_legs.append(option)
+                    updated = False
                     continue
-                indicator.update(date, self.data)
-            except Exception as e:
-                get_logger().error(f"Error updating indicator {indicator.name}: {e}")
-                self._failed_indicator_name = indicator.name
-                self._indicator_error = e
-                return False
-        return True
+                if bar is None:
+                    get_logger().warning(f"No option bar for {getattr(option, 'ticker', option)} on {date.date()}")
+                    refreshed_legs.append(option)
+                    updated = False
+                    continue
+                refreshed_legs.append(option.set_bar_data(bar))
+            position.legs = refreshed_legs
+        return updated

@@ -1,12 +1,19 @@
 """
 Unit tests for SMAIndicator
 """
+
 import pytest
 from datetime import datetime
+from typing import cast
 import pandas as pd
 
 from algo_trading_engine.indicators.sma_indicator import SMAIndicator
 from algo_trading_engine.enums import BarTimeInterval
+
+
+def _as_datetime(value: object) -> datetime:
+    assert isinstance(value, datetime)
+    return value
 
 
 class TestSMAIndicatorInitialization:
@@ -40,7 +47,7 @@ class TestSMAIndicatorInitialization:
 
     def test_invalid_period_none_raises_error(self):
         with pytest.raises(ValueError, match="Period must be a positive integer"):
-            SMAIndicator(period=None)
+            SMAIndicator(period=cast(int, None))
 
 
 class TestSMAIndicatorDailyBars:
@@ -234,10 +241,7 @@ class TestSMAIndicatorDailyDedup:
 
     def _hourly_data(self) -> pd.DataFrame:
         """Hourly bars spanning four days — enough for a period-3 daily SMA"""
-        days = [
-            pd.date_range(start=f"2024-01-0{d} 09:00", periods=7, freq="h")
-            for d in range(1, 5)
-        ]
+        days = [pd.date_range(start=f"2024-01-0{d} 09:00", periods=7, freq="h") for d in range(1, 5)]
         all_dates = days[0].append(days[1:])
         closes = [100.0 + i for i in range(len(all_dates))]
         return pd.DataFrame({"Close": closes}, index=all_dates)
@@ -353,7 +357,7 @@ class TestSMAGetValueAtBehavior:
         data = self._hourly_data()
         for date in data.index:
             sma.update(date, data)
-        for bar in data.index[sma.warm_up_period - 1:]:
+        for bar in data.index[sma.warm_up_period - 1 :]:
             assert sma.get_value_at(bar) is not None
 
     def test_single_update_only_stores_one_value(self):
@@ -361,7 +365,7 @@ class TestSMAGetValueAtBehavior:
         sma = SMAIndicator(period=5, period_unit=BarTimeInterval.HOUR)
         data = self._hourly_data()
         latest = data.index[-1]
-        sma.update(latest, data)
+        sma.update(_as_datetime(latest), data)
         stored = sma.get_values()
         assert len(stored) == 1
         assert latest in stored.index
@@ -370,5 +374,67 @@ class TestSMAGetValueAtBehavior:
         """A single update at the latest bar does not populate earlier bars."""
         sma = SMAIndicator(period=5, period_unit=BarTimeInterval.HOUR)
         data = self._hourly_data()
-        sma.update(data.index[-1], data)
-        assert sma.get_value_at(data.index[5]) is None
+        sma.update(_as_datetime(data.index[-1]), data)
+        assert sma.get_value_at(_as_datetime(data.index[5])) is None
+
+
+class TestSMAIndicatorPrecompute:
+    def test_precompute_matches_iterative_update(self):
+        dates = pd.date_range(start="2024-01-01", periods=10, freq="D")
+        data = pd.DataFrame({"Close": [float(i) for i in range(10)]}, index=dates)
+        iterative = SMAIndicator(period=3)
+        for ts in data.index:
+            iterative.update(ts, data)
+        vectorized = SMAIndicator(period=3)
+        vectorized.precompute(data)
+        for ts in data.index[iterative.warm_up_period - 1 :]:
+            assert iterative.get_value_at(ts) == pytest.approx(vectorized.get_value_at(ts))
+
+    def test_precompute_skips_weekends(self):
+        dates = pd.DatetimeIndex(
+            [
+                datetime(2024, 1, 5),
+                datetime(2024, 1, 6),
+                datetime(2024, 1, 8),
+            ]
+        )
+        data = pd.DataFrame({"Close": [10.0, 11.0, 12.0]}, index=dates)
+        indicator = SMAIndicator(period=1)
+        indicator.precompute(data)
+        assert datetime(2024, 1, 6) not in indicator.get_values().index
+
+    def test_update_after_precompute_appends_new_bar(self):
+        dates = pd.date_range(start="2024-01-01", periods=5, freq="D")
+        data = pd.DataFrame({"Close": [1.0, 2.0, 3.0, 4.0, 5.0]}, index=dates)
+        indicator = SMAIndicator(period=3)
+        indicator.precompute(data.iloc[:4])
+        new_date = _as_datetime(dates[4])
+        indicator.update(new_date, data)
+        assert indicator.get_value_at(new_date) == pytest.approx(4.0)
+
+    def test_precompute_missing_column_raises_error(self):
+        dates = pd.date_range(start="2024-01-01", periods=3, freq="D")
+        data = pd.DataFrame({"Close": [10.0, 20.0, 30.0]}, index=dates)
+        indicator = SMAIndicator(period=3, column="NonExistent")
+
+        with pytest.raises(ValueError, match="Column 'NonExistent' not found"):
+            indicator.precompute(data)
+
+    def test_duplicate_column_raises_type_error(self):
+        dates = pd.date_range(start="2024-01-01", periods=2, freq="D")
+        data = pd.DataFrame([[1.0, 2.0], [3.0, 4.0]], columns=pd.Index(["Close", "Close"]), index=dates)
+        indicator = SMAIndicator(period=2)
+
+        with pytest.raises(TypeError, match="did not resolve to a series"):
+            indicator.precompute(data)
+
+    def test_precompute_rejects_bars_that_are_not_naive_eastern(self):
+        indicator = SMAIndicator(period=2)
+        closes = {"Close": [10.0, 20.0, 30.0]}
+
+        with pytest.raises(TypeError, match="Expected a DatetimeIndex"):
+            indicator.precompute(pd.DataFrame(closes))
+
+        aware = pd.date_range(start="2024-01-02", periods=3, freq="D", tz="UTC")
+        with pytest.raises(ValueError, match="naive US/Eastern"):
+            indicator.precompute(pd.DataFrame(closes, index=aware))

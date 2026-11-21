@@ -66,9 +66,7 @@ class TestUniversalCloseConditionsGating(unittest.TestCase):
         position = Mock()
         position.profit_target_hit = Mock(return_value=True)
 
-        self.assertFalse(
-            self.engine_cls._should_close_due_to_profit_target(engine, position, 0.5)
-        )
+        self.assertFalse(self.engine_cls._should_close_due_to_profit_target(engine, position, 0.5))
 
     def test_profit_target_applies_when_included(self):
         strategy = MinimalStrategy(profit_target=0.5)
@@ -76,9 +74,7 @@ class TestUniversalCloseConditionsGating(unittest.TestCase):
         position = Mock()
         position.profit_target_hit = Mock(return_value=True)
 
-        self.assertTrue(
-            self.engine_cls._should_close_due_to_profit_target(engine, position, 0.5)
-        )
+        self.assertTrue(self.engine_cls._should_close_due_to_profit_target(engine, position, 0.5))
 
 
 if __name__ == "__main__":

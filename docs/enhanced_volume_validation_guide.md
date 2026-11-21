@@ -52,11 +52,11 @@ def get_current_volumes_for_position(self, position: Position, date: datetime) -
         date: The current date for volume validation
         
     Returns:
-        list[int]: List of current volume values for each option in position.spread_options
+        list[int]: List of current volume values for each option in position.legs
     """
     current_volumes = []
     
-    for option in position.spread_options:
+    for option in position.legs:
         try:
             # Fetch fresh data from API for the current date
             fresh_option = self.options_handler.get_specific_option_contract(
@@ -91,7 +91,7 @@ def on_end(self, positions: tuple['Position', ...], remove_position: Callable[['
     for position in positions:
         try:
             # Calculate the return for this position
-            exit_price = position.calculate_exit_price(self.options_data[date.strftime('%Y-%m-%d')])
+            exit_price = position.exit_price_from_chain(self.options_data[date.strftime('%Y-%m-%d')])
 
             # Fetch current date volume data for enhanced validation
             current_volumes = self.get_current_volumes_for_position(position, date)
@@ -119,14 +119,14 @@ def _remove_position(self, date: datetime, position: Position, exit_price: float
         position: Position to remove
         exit_price: Price at which the position is being closed
         underlying_price: Price of the underlying at the time of exit
-        current_volumes: List of current volume data for each option in position.spread_options
+        current_volumes: List of current volume data for each option in position.legs
     """
     # Enhanced volume validation - check all options in the spread with current date data
-    if self.volume_config.enable_volume_validation and position.spread_options and current_volumes:
+    if self.volume_config.enable_volume_validation and position.legs and current_volumes:
         volume_validation_failed = False
         failed_options = []
         
-        for option, current_volume in zip(position.spread_options, current_volumes):
+        for option, current_volume in zip(position.legs, current_volumes):
             if current_volume is None or current_volume < self.volume_config.min_volume:
                 volume_validation_failed = True
                 failed_options.append(option.symbol)

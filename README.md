@@ -126,6 +126,7 @@ config = BacktestConfig(
 - **Minute bars**: Max 59 days (yfinance limit), ~390x more data points than daily
 - **Cache structure**: Interval-specific subdirectories (`daily/`, `hourly/`, `minute/`)
 - **Performance**: Daily bars are fastest; minute bars require significantly more processing
+- **Time zone**: Every bar timestamp and every `data_cache` entry is **naive US/Eastern** (`America/New_York` wall time, `tzinfo=None`). Convert only at provider edges via `_internal/util/market_clock.py` (`to_market_index` / `to_market_dates` / `from_epoch_ms` in; `to_epoch_ms` / `to_system_time` out). Do not use `datetime.now()` or `date.today()` for trading logic—use `market_now()` / `market_today()`.
 
 See [examples/backtest/](examples/backtest/) for complete examples of each interval type.
 

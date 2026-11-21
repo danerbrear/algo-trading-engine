@@ -1,0 +1,33 @@
+output-format: yaml
+
+ignore-paths:
+  - venv
+  - build
+  - data_cache
+  - docs
+  - logs
+
+ignore-patterns:
+  - "^src/.*\\.egg-info/.*$"
+
+pylint:
+  run: true
+  disable:
+    - C
+    - R
+
+pyright:
+  run: true
+
+pycodestyle:
+  run: false
+
+
+pyroma:
+  run: true
+
+pydocstyle:
+  run: false
+
+pyflakes:
+  run: false

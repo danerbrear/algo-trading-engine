@@ -22,6 +22,8 @@ from algo_trading_engine.plotting import PlotConfig
 # Import custom strategy using absolute path
 strategy_path = Path(__file__).parent.parent / "strategies" / "custom_strategy.py"
 spec = importlib.util.spec_from_file_location("custom_strategy", strategy_path)
+if spec is None or spec.loader is None:
+    raise ImportError(f"Could not load custom strategy from {strategy_path}")
 custom_strategy_module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(custom_strategy_module)
 MyCustomStrategy = custom_strategy_module.MyCustomStrategy
@@ -34,13 +36,10 @@ def main():
     """Run backtest using a custom strategy instance."""
     # Get Polygon API key from environment
     polygon_api_key = os.getenv("POLYGON_API_KEY")
-    
+
     # Create your custom strategy instance
-    custom_strategy = MyCustomStrategy(
-        profit_target=0.5,
-        stop_loss=0.6
-    )
-    
+    custom_strategy = MyCustomStrategy(profit_target=0.5, stop_loss=0.6)
+
     # Create configuration with strategy instance
     # Note: strategy_type can be either a string (built-in) or a Strategy instance (custom)
     config = BacktestConfig(
@@ -53,7 +52,7 @@ def main():
         api_key=polygon_api_key,
         bar_interval=BarTimeInterval.HOUR,
         plot_config=PlotConfig(enabled=False),
-        quiet_mode=False
+        quiet_mode=False,
     )
 
     # Create and run engine - all data fetching and setup is handled internally

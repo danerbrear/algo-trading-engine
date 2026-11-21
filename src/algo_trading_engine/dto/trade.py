@@ -45,15 +45,30 @@ class ProposedPositionRequestDTO:
 
     @staticmethod
     def from_dict(data: dict) -> "ProposedPositionRequestDTO":
+        created_at = str(data["created_at"])
         return ProposedPositionRequestDTO(
             symbol=data["symbol"],
             strategy_type=StrategyType(data["strategy_type"]),
-            legs=tuple(Option.from_dict(opt) for opt in data.get("legs", [])),
+            legs=tuple(
+                Option.from_dict(ProposedPositionRequestDTO._with_quote_time(leg, created_at))
+                for leg in data.get("legs", [])
+            ),
             credit=float(data["credit"]),
             width=float(data["width"]),
             probability_of_profit=float(data["probability_of_profit"]),
             confidence=float(data["confidence"]),
             expiration_date=str(data["expiration_date"]),
-            created_at=str(data["created_at"]),
+            created_at=created_at,
             strategy_name=data.get("strategy_name", "unknown"),
         )
+
+    @staticmethod
+    def _with_quote_time(leg: dict, created_at: str) -> dict:
+        """Use the proposal time when a stored leg has no quote timestamp.
+
+        Decisions saved before legs carried ``timestamp`` still have
+        ``created_at`` for the moment the quote was recorded.
+        """
+        if leg.get("timestamp"):
+            return leg
+        return {**leg, "timestamp": created_at}
