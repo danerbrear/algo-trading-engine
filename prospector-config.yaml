@@ -12,6 +12,9 @@ ignore-patterns:
 
 pylint:
   run: true
+  disable:
+    - C
+    - R
 
 pycodestyle:
   run: false
