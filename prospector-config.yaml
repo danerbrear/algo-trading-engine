@@ -16,11 +16,12 @@ pylint:
     - C
     - R
 
+pyright:
+  run: true
+
 pycodestyle:
   run: false
 
-pyright:
-  run: true
 
 pyroma:
   run: true

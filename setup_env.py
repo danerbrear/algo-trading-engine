@@ -15,7 +15,7 @@ Requirements:
 - Polygon.io API key (for market data)
 
 Usage:
-    python3 setup.py
+    python3 setup_env.py
 """
 
 import os
@@ -35,9 +35,9 @@ def check_python_version():
         print("  - yfinance 1.0+ (better rate limit handling)")
         print("  - Modern Python syntax support")
         print("\nPlease upgrade Python or use Python 3.10+ to run this script:")
-        print("  python3.10 setup.py")
+        print("  python3.10 setup_env.py")
         print("  # or")
-        print("  python3.11 setup.py")
+        print("  python3.11 setup_env.py")
         print()
         sys.exit(1)
     else:
@@ -68,7 +68,7 @@ def create_venv():
             pip_path = venv_path / "bin" / "pip"
 
         # Check Python version
-        result = subprocess.run([str(python_path), "--version"], capture_output=True, text=True)
+        result = subprocess.run([str(python_path), "--version"], capture_output=True, text=True, check=True)
         python_version = result.stdout.strip()
         print(f"Using {python_version}")
 
@@ -143,7 +143,7 @@ def setup_env_file():
         model_path = input(f"Enter model save base path (press Enter for default: {default_model_path}): ").strip()
         if not model_path:
             model_path = default_model_path
-        with open(env_path, "w") as f:
+        with open(env_path, "w", encoding="utf-8") as f:
             f.write(f"POLYGON_API_KEY={polygon_key}\n")
             f.write(f"MODEL_SAVE_BASE_PATH={model_path}\n")
         print(".env file created successfully!")
@@ -152,7 +152,7 @@ def setup_env_file():
         update = input("Would you like to update the API keys or model path? (y/n): ").strip().lower()
         if update == "y":
             # Read existing env file
-            with open(env_path, "r") as f:
+            with open(env_path, "r", encoding="utf-8") as f:
                 env_vars = dict(line.strip().split("=", 1) for line in f if line.strip() and not line.startswith("#"))
             # Update API keys
             polygon_key = input("Enter your Polygon.io API key (press Enter to keep existing): ").strip()
@@ -164,7 +164,7 @@ def setup_env_file():
             if model_path:
                 env_vars["MODEL_SAVE_BASE_PATH"] = model_path
             # Write back to env file
-            with open(env_path, "w") as f:
+            with open(env_path, "w", encoding="utf-8") as f:
                 for key, value in env_vars.items():
                     f.write(f"{key}={value}\n")
             print(".env file updated successfully!")

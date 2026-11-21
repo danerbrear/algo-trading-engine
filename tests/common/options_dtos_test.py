@@ -9,6 +9,7 @@ from datetime import datetime, date, timedelta
 from decimal import Decimal
 from dataclasses import FrozenInstanceError
 
+from algo_trading_engine._internal.util.market_clock import market_now
 from algo_trading_engine.vo import StrikePrice, ExpirationDate
 from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO, StrikeRangeDTO, ExpirationRangeDTO, OptionsChainDTO
 from algo_trading_engine.enums import OptionType
@@ -101,11 +102,12 @@ class TestExpirationDate:
 
     def test_days_to_expiration(self):
         """Test days to expiration calculation."""
-        future_date = date.today() + timedelta(days=30)
+        current_date = market_now().date()
+        future_date = current_date + timedelta(days=30)
         exp_date = ExpirationDate(future_date)
 
         assert exp_date.days_to_expiration() == 30
-        assert exp_date.days_to_expiration(date.today() + timedelta(days=10)) == 20
+        assert exp_date.days_to_expiration(current_date + timedelta(days=10)) == 20
 
     def test_is_weekly(self):
         """Test weekly expiration detection."""
@@ -223,7 +225,7 @@ class TestOptionContractDTO:
     def test_days_to_expiration(self):
         """Test days to expiration calculation."""
         strike = StrikePrice(Decimal("100"))
-        future_date = date.today() + timedelta(days=30)
+        future_date = market_now().date() + timedelta(days=30)
         exp_date = ExpirationDate(future_date)
 
         contract = OptionContractDTO(

@@ -161,7 +161,7 @@ Public imports come from `algo_trading_engine` and these subpackages:
 ```bash
 git clone <repository-url>
 cd algo-trading-engine
-python setup.py
+python setup_env.py
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
