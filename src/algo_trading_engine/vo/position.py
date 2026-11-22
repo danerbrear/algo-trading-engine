@@ -46,7 +46,7 @@ class Position(ABC):
         strike_price: float,
         entry_date: datetime,
         entry_price: float,
-        legs: list[Option] = [],
+        legs: Optional[list[Option]] = None,
     ):
         self.symbol = symbol
         self.expiration_date = expiration_date
@@ -61,53 +61,24 @@ class Position(ABC):
         """
         Check if two positions are equal based on key attributes.
 
-        Two positions are considered equal if they have:
-        - Same symbol
-        - Same strategy type
-        - Same strike price
-        - Same expiration date
-        - Same entry date
-        - Same exit date (if both have one)
-        - Same legs (if both have them)
-
-        Args:
-            other: Another Position object to compare against
-
-        Returns:
-            bool: True if positions are equal, False otherwise
+        Two positions are equal when symbol, strategy type, strike, expiration,
+        entry date, exit date, and legs all match.
         """
         if not isinstance(other, Position):
             return False
 
-        # Compare basic attributes
-        if (
-            self.symbol != other.symbol
-            or self.strategy_type != other.strategy_type
-            or self.strike_price != other.strike_price
-            or self.expiration_date != other.expiration_date
-            or self.entry_date != other.entry_date
-        ):
+        same_identity = (
+            self.symbol == other.symbol
+            and self.strategy_type == other.strategy_type
+            and self.strike_price == other.strike_price
+            and self.expiration_date == other.expiration_date
+            and self.entry_date == other.entry_date
+            and getattr(self, "exit_date", None) == getattr(other, "exit_date", None)
+        )
+        if not same_identity or len(self.legs) != len(other.legs):
             return False
 
-        # Compare exit dates when present on concrete position types
-        self_exit = getattr(self, "exit_date", None)
-        other_exit = getattr(other, "exit_date", None)
-        if self_exit != other_exit:
-            return False
-
-        # Compare legs if both have them
-        if self.legs and other.legs:
-            if len(self.legs) != len(other.legs):
-                return False
-            # Compare each leg using Option's __eq__ method
-            for self_opt, other_opt in zip(self.legs, other.legs):
-                if self_opt != other_opt:
-                    return False
-        elif self.legs or other.legs:
-            # One has legs, the other does not
-            return False
-
-        return True
+        return all(self_opt == other_opt for self_opt, other_opt in zip(self.legs, other.legs))
 
     def __str__(self) -> str:
         return f"{self.strategy_type.value} {self.symbol} {self.strike_price} @ {self.entry_price:.2f} x{self.quantity} (Open, expires {to_readable_expiration_str(self.expiration_date)})"
@@ -236,7 +207,7 @@ class Position(ABC):
         """Calculate percentage return for this position."""
 
 
-class SpreadPosition(Position):
+class SpreadPosition(Position, ABC):
     """
     Abstract base for two-leg option spread positions.
 
@@ -284,8 +255,8 @@ class SpreadPosition(Position):
         if current_atm_price is None or current_otm_price is None:
             get_logger().warning(
                 "Missing current option data for {} or {}",
-                atm_option.__str__(),
-                otm_option.__str__(),
+                str(atm_option),
+                str(otm_option),
             )
 
         get_logger().debug(f"Current ATM price: {current_atm_price}, Current OTM price: {current_otm_price}")
@@ -325,43 +296,26 @@ class SpreadPosition(Position):
 
         return self._resolve_spread_value(current_atm_price, current_otm_price, underlying_price)
 
-    def _options_match(self, bar: "OptionBarDTO", option: Option) -> bool:
-        """
-        Check if an OptionBarDTO matches an Option by either ticker match OR
-        (expiration, strike, type) match.
-        """
-        if bar.ticker == option.ticker:
+    def _options_match(self, option_bar: "OptionBarDTO", option: Option) -> bool:
+        """Match an option bar to an option by ticker, or by expiration, strike, and type."""
+        if option_bar.ticker == option.ticker:
             return True
 
-        bar_expiration = bar.timestamp.date()
-        option_expiration = datetime.strptime(option.expiration, "%Y-%m-%d").date()
-        if bar_expiration != option_expiration:
+        if option_bar.timestamp.date() != datetime.strptime(option.expiration, "%Y-%m-%d").date():
+            return False
+
+        ticker = option_bar.ticker
+        option_type_code = "C" if "C" in ticker else "P" if "P" in ticker else ""
+        type_pos = ticker.find(option_type_code) if option_type_code else -1
+        strike_str = ticker[type_pos + 1 :] if type_pos != -1 else ""
+        if option_type_code != option.option_type.value or len(strike_str) < 8:
             return False
 
         try:
-            if "C" in bar.ticker:
-                option_type_in_ticker = "C"
-            elif "P" in bar.ticker:
-                option_type_in_ticker = "P"
-            else:
-                return False
-
-            if option_type_in_ticker != option.option_type.value:
-                return False
-
-            type_pos = bar.ticker.find(option_type_in_ticker)
-            if type_pos == -1:
-                return False
-
-            strike_str = bar.ticker[type_pos + 1 :]
-            if len(strike_str) >= 8:
-                strike_from_ticker = float(strike_str[:8]) / 1000
-                return abs(strike_from_ticker - option.strike) < 0.001
-
-        except (ValueError, IndexError):
+            strike_from_ticker = float(strike_str[:8]) / 1000
+        except ValueError:
             return False
-
-        return False
+        return abs(strike_from_ticker - option.strike) < 0.001
 
     def _resolve_spread_value(
         self,
@@ -438,7 +392,7 @@ class SpreadPosition(Position):
             return 0.0
 
         get_logger().warning(
-            "Cannot safely resolve spread value for {} {} near the money " "(raw={}, strikes={}/{}, underlying={})",
+            "Cannot safely resolve spread value for {} {} near the money (raw={}, strikes={}/{}, underlying={})",
             self.symbol,
             self.strategy_type.value,
             raw_value,
@@ -957,6 +911,18 @@ class ShortPutPosition(Position):
         )
 
 
+_POSITION_CLASSES: dict[StrategyType, type[Position]] = {
+    StrategyType.CALL_CREDIT_SPREAD: CreditSpreadPosition,
+    StrategyType.PUT_CREDIT_SPREAD: CreditSpreadPosition,
+    StrategyType.CALL_DEBIT_SPREAD: DebitSpreadPosition,
+    StrategyType.PUT_DEBIT_SPREAD: DebitSpreadPosition,
+    StrategyType.LONG_CALL: LongCallPosition,
+    StrategyType.SHORT_CALL: ShortCallPosition,
+    StrategyType.LONG_PUT: LongPutPosition,
+    StrategyType.SHORT_PUT: ShortPutPosition,
+}
+
+
 def create_position(
     symbol: str,
     expiration_date: datetime,
@@ -964,7 +930,7 @@ def create_position(
     strike_price: float,
     entry_date: datetime,
     entry_price: float,
-    legs: list[Option] = [],
+    legs: Optional[list[Option]] = None,
 ) -> Position:
     """
     Factory function to create appropriate Position subclass based on strategy_type.
@@ -984,18 +950,15 @@ def create_position(
     Raises:
         ValueError: If strategy type is unknown
     """
-
-    if strategy_type in [StrategyType.CALL_CREDIT_SPREAD, StrategyType.PUT_CREDIT_SPREAD]:
-        return CreditSpreadPosition(symbol, expiration_date, strategy_type, strike_price, entry_date, entry_price, legs)
-    elif strategy_type in [StrategyType.CALL_DEBIT_SPREAD, StrategyType.PUT_DEBIT_SPREAD]:
-        return DebitSpreadPosition(symbol, expiration_date, strategy_type, strike_price, entry_date, entry_price, legs)
-    elif strategy_type == StrategyType.LONG_CALL:
-        return LongCallPosition(symbol, expiration_date, strategy_type, strike_price, entry_date, entry_price, legs)
-    elif strategy_type == StrategyType.SHORT_CALL:
-        return ShortCallPosition(symbol, expiration_date, strategy_type, strike_price, entry_date, entry_price, legs)
-    elif strategy_type == StrategyType.LONG_PUT:
-        return LongPutPosition(symbol, expiration_date, strategy_type, strike_price, entry_date, entry_price, legs)
-    elif strategy_type == StrategyType.SHORT_PUT:
-        return ShortPutPosition(symbol, expiration_date, strategy_type, strike_price, entry_date, entry_price, legs)
-    else:
+    position_class = _POSITION_CLASSES.get(strategy_type)
+    if position_class is None:
         raise ValueError(f"Unknown strategy type: {strategy_type}")
+    return position_class(
+        symbol,
+        expiration_date,
+        strategy_type,
+        strike_price,
+        entry_date,
+        entry_price=entry_price,
+        legs=legs,
+    )

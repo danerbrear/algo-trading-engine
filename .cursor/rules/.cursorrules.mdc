@@ -13,6 +13,13 @@ alwaysApply: true
 - All prices should use the Decimal data type over float
 - Write every nullable type as `Optional[T]` from `typing`. Do not write `T | None`, including inside another generic. `Optional[Sequence[Optional[int]]]` is the form to use; `Optional[Sequence[int | None]]` and `float | None` are not. Apply this to every new or edited annotation, not only to top-level parameters.
 
+### Too many positional arguments
+
+When fixing pylint `too-many-positional-arguments`:
+
+- Optional arguments are never positional. Put `*` before the first optional parameter so callers pass them by keyword.
+- If required arguments still exceed the limit after optional arguments are keyword-only, group those required arguments into a class. Do not use `*` to make required arguments keyword-only.
+
 ### Class member order
 
 Order members in every class as follows:

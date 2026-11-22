@@ -1,3 +1,5 @@
+"""Momentum strategy that sells put credit spreads when short-term moving averages accelerate."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -10,7 +12,7 @@ from algo_trading_engine.indicators.sma_indicator import SMAIndicator
 from algo_trading_engine.vo import Position, create_position
 from algo_trading_engine.enums import StrategyType
 from algo_trading_engine.vo import Option, TreasuryRates
-from algo_trading_engine.dto import ExpirationRangeDTO, OptionsChainDTO, StrikeRangeDTO
+from algo_trading_engine.dto import ExpirationRangeDTO, OptionContractDTO, OptionsChainDTO, StrikeRangeDTO
 from algo_trading_engine.vo import StrikePrice
 from algo_trading_engine.logging import get_logger
 from algo_trading_engine.options_helpers import OptionsRetrieverHelper
@@ -109,7 +111,7 @@ class VelocitySignalMomentumStrategy(Strategy):
         Returns:
             bool: True if data is valid for this strategy, False otherwise
         """
-        get_logger().info(f"\n🔍 Validating data for Velocity Signal Momentum Strategy...")
+        get_logger().info("\n🔍 Validating data for Velocity Signal Momentum Strategy...")
         get_logger().info(f"   Data shape: {data.shape}")
 
         # Check if the data has the required columns for velocity momentum strategy
@@ -126,8 +128,8 @@ class VelocitySignalMomentumStrategy(Strategy):
             get_logger().warning(f"⚠️  Warning: Missing required columns: {missing_columns}")
             get_logger().info(f"   Available columns: {list(data.columns)}")
             return False
-        else:
-            get_logger().info(f"✅ All required columns present")
+
+        get_logger().info("✅ All required columns present")
 
         try:
             market_index(data)
@@ -152,7 +154,7 @@ class VelocitySignalMomentumStrategy(Strategy):
                     f"⚠️  Warning: Data may have gaps. Expected ~{expected_business_days} business days, got {actual_trading_days}"
                 )
 
-        get_logger().info(f"✅ Data validation complete for Velocity Signal Momentum Strategy")
+        get_logger().info("✅ Data validation complete for Velocity Signal Momentum Strategy")
         get_logger().info(f"   Final data shape: {data.shape}")
         get_logger().info(f"   Date range: {data.index.min()} to {data.index.max()}")
         get_logger().info(f"   Trading days: {len(data)}")
@@ -296,7 +298,7 @@ class VelocitySignalMomentumStrategy(Strategy):
 
     def _create_put_credit_spread(self, date: datetime, current_price: float, expiration: str) -> Optional[Position]:
         """
-        Create a test ATM/+10 put credit spread.
+        Create a ATM/+10 put credit spread.
 
         Args:
             date: Current date
@@ -304,112 +306,118 @@ class VelocitySignalMomentumStrategy(Strategy):
             expiration: Target expiration date string (YYYY-MM-DD)
 
         Returns:
-            Position: Test position for evaluation, or None if creation fails
+            Position: Position for evaluation, or None if creation fails
         """
         try:
-            # Get list of contracts for the date
-            expiration_range = ExpirationRangeDTO(min_days=5, max_days=10)
-
-            # Add strike range filter to prevent super far ITM contracts
-            strike_range = StrikeRangeDTO(
-                min_strike=StrikePrice(Decimal(str(current_price - 7))),  # current_price - 7 (width of 6 + buffer)
-                max_strike=StrikePrice(Decimal(str(current_price + 1))),  # current_price + 1
-            )
-
-            contracts = self.get_contract_list_for_date(
-                date, strike_range=strike_range, expiration_range=expiration_range
-            )
-
-            if not contracts:
-                get_logger().warning("⚠️  No contracts found for the date")
+            contracts = self._contracts_for_put_spread(date, current_price, expiration)
+            if contracts is None:
                 return None
-
-            # CRITICAL: Filter for contracts with the specific expiration FIRST
-            # This ensures both legs have the same expiration (vertical spread, not diagonal)
-            contracts_for_expiration = [c for c in contracts if str(c.expiration_date) == expiration]
-
-            if not contracts_for_expiration:
-                get_logger().warning(f"⚠️  No contracts found for target expiration {expiration}")
+            selected = self._select_put_spread_legs(contracts, current_price, expiration)
+            if selected is None:
                 return None
-
-            get_logger().info(f"✅ Found {len(contracts_for_expiration)} contracts for expiration {expiration}")
-
-            # Find ATM put option from contracts with the target expiration
-            atm_strike = round(current_price)
-            atm_call, atm_put = OptionsRetrieverHelper.find_atm_contracts(contracts_for_expiration, current_price)
-
-            if not atm_put:
-                get_logger().warning(f"⚠️  No ATM put found for expiration {expiration}")
-                return None
-
-            get_logger().info(
-                f"Found ATM put: {atm_put.ticker} @ ${atm_put.strike_price.value} exp {atm_put.expiration_date}"
-            )
-
-            # Find OTM put (-6 strike for 6-point width) from the same expiration
-            otm_strike = atm_strike - 6
-
-            # Filter for puts only (already filtered by expiration)
-            # Use .value comparison to handle test isolation issues where enum identity might differ
-            puts_for_expiration = [c for c in contracts_for_expiration if c.contract_type.value == OptionType.PUT.value]
-
-            if not puts_for_expiration:
-                get_logger().warning(f"⚠️  No put contracts found for expiration {expiration}")
-                return None
-
-            # Find the put with the closest strike to the target OTM strike
-            otm_put = min(puts_for_expiration, key=lambda put: abs(float(put.strike_price.value) - otm_strike))
-
-            min_difference = abs(float(otm_put.strike_price.value) - otm_strike)
-            get_logger().info(
-                f"Found OTM put: {otm_put.ticker} @ ${otm_put.strike_price.value} exp {otm_put.expiration_date} (strike difference: {min_difference})"
-            )
-
-            # Verify both legs have the same expiration (vertical spread check)
-            if str(atm_put.expiration_date) != str(otm_put.expiration_date):
-                get_logger().error(
-                    f"❌ ERROR: Expiration mismatch! ATM: {atm_put.expiration_date}, OTM: {otm_put.expiration_date}"
-                )
-                get_logger().error("❌ This would create a diagonal spread, not a vertical spread. Rejecting position.")
-                return None
-
-            get_logger().info(f"✅ Verified: Both legs have same expiration {expiration} (vertical spread)")
-
-            # Get bar data to calculate net credit (real-time snapshot when live, else historical)
-            atm_bar = self.get_current_option_bar(atm_put.ticker, date)
-            otm_bar = self.get_current_option_bar(otm_put.ticker, date)
-
-            if not atm_bar or not otm_bar:
-                get_logger().warning("⚠️  No bar data available for credit calculation")
-                return None
-
-            # Calculate net credit (sell ATM, buy OTM)
-            net_credit = float(atm_bar.close_price) - float(otm_bar.close_price)
-
-            if net_credit > 0:  # Only consider if we receive a credit
-                # Convert OptionContractDTO to Option using the new conversion method
-                atm_option = Option.from_contract_and_bar(atm_put, atm_bar)
-                otm_option = Option.from_contract_and_bar(otm_put, otm_bar)
-
-                # Create test position
-                position = create_position(
-                    symbol=self.symbol,
-                    expiration_date=datetime.strptime(expiration, "%Y-%m-%d"),
-                    strategy_type=StrategyType.PUT_CREDIT_SPREAD,
-                    strike_price=atm_strike,
-                    entry_date=date,
-                    entry_price=net_credit,
-                    legs=[atm_option, otm_option],
-                )
-                # Note: Do NOT set quantity here - the backtest engine will set it based on max_position_size
-                return position
-            else:
-                get_logger().warning(f"⚠️  Negative credit: {net_credit:.2f}")
-                return None
-
-        except Exception as e:
-            get_logger().warning(f"⚠️  Error creating test put credit spread: {e}")
+            atm_put, otm_put, atm_strike = selected
+            return self._put_spread_position(date, expiration, atm_put, otm_put, atm_strike)
+        except Exception as error:
+            get_logger().warning(f"⚠️  Error creating put credit spread: {error}")
             return None
+
+    def _contracts_for_put_spread(
+        self, date: datetime, current_price: float, expiration: str
+    ) -> Optional[list[OptionContractDTO]]:
+        """Contracts for one expiration, limited to strikes near the underlying."""
+        expiration_range = ExpirationRangeDTO(min_days=5, max_days=10)
+        strike_range = StrikeRangeDTO(
+            min_strike=StrikePrice(Decimal(str(current_price - 7))),
+            max_strike=StrikePrice(Decimal(str(current_price + 1))),
+        )
+        contracts = self.get_contract_list_for_date(date, strike_range=strike_range, expiration_range=expiration_range)
+        if not contracts:
+            get_logger().warning("⚠️  No contracts found for the date")
+            return None
+
+        # Both legs must share this expiration so the result is a vertical spread.
+        contracts_for_expiration = [contract for contract in contracts if str(contract.expiration_date) == expiration]
+        if not contracts_for_expiration:
+            get_logger().warning(f"⚠️  No contracts found for target expiration {expiration}")
+            return None
+
+        get_logger().info(f"✅ Found {len(contracts_for_expiration)} contracts for expiration {expiration}")
+        return contracts_for_expiration
+
+    def _select_put_spread_legs(
+        self,
+        contracts_for_expiration: Sequence[OptionContractDTO],
+        current_price: float,
+        expiration: str,
+    ) -> Optional[tuple[OptionContractDTO, OptionContractDTO, float]]:
+        """ATM short put and the put nearest six points below it, from the same expiration."""
+        atm_strike = round(current_price)
+        atm_put = OptionsRetrieverHelper.find_atm_contracts(contracts_for_expiration, current_price)[1]
+        if not atm_put:
+            get_logger().warning(f"⚠️  No ATM put found for expiration {expiration}")
+            return None
+
+        get_logger().info(
+            f"Found ATM put: {atm_put.ticker} @ ${atm_put.strike_price.value} exp {atm_put.expiration_date}"
+        )
+
+        otm_strike = atm_strike - 6
+        # Compare .value so tests stay isolated when enum identity differs across imports.
+        puts_for_expiration = [
+            contract for contract in contracts_for_expiration if contract.contract_type.value == OptionType.PUT.value
+        ]
+        if not puts_for_expiration:
+            get_logger().warning(f"⚠️  No put contracts found for expiration {expiration}")
+            return None
+
+        otm_put = min(puts_for_expiration, key=lambda put: abs(float(put.strike_price.value) - otm_strike))
+        min_difference = abs(float(otm_put.strike_price.value) - otm_strike)
+        get_logger().info(
+            f"Found OTM put: {otm_put.ticker} @ ${otm_put.strike_price.value} "
+            f"exp {otm_put.expiration_date} (strike difference: {min_difference})"
+        )
+
+        if str(atm_put.expiration_date) != str(otm_put.expiration_date):
+            get_logger().error(
+                f"❌ ERROR: Expiration mismatch! ATM: {atm_put.expiration_date}, OTM: {otm_put.expiration_date}"
+            )
+            get_logger().error("❌ This would create a diagonal spread, not a vertical spread. Rejecting position.")
+            return None
+
+        get_logger().info(f"✅ Verified: Both legs have same expiration {expiration} (vertical spread)")
+        return atm_put, otm_put, float(atm_strike)
+
+    def _put_spread_position(
+        self,
+        date: datetime,
+        expiration: str,
+        atm_put: OptionContractDTO,
+        otm_put: OptionContractDTO,
+        atm_strike: float,
+    ) -> Optional[Position]:
+        """Build the credit-spread position from the two legs. Quantity is set by the engine."""
+        atm_bar = self.get_current_option_bar(atm_put.ticker, date)
+        otm_bar = self.get_current_option_bar(otm_put.ticker, date)
+        if not atm_bar or not otm_bar:
+            get_logger().warning("⚠️  No bar data available for credit calculation")
+            return None
+
+        net_credit = float(atm_bar.close_price) - float(otm_bar.close_price)
+        if net_credit <= 0:
+            get_logger().warning(f"⚠️  Negative credit: {net_credit:.2f}")
+            return None
+
+        atm_option = Option.from_contract_and_bar(atm_put, atm_bar)
+        otm_option = Option.from_contract_and_bar(otm_put, otm_bar)
+        return create_position(
+            symbol=self.symbol,
+            expiration_date=datetime.strptime(expiration, "%Y-%m-%d"),
+            strategy_type=StrategyType.PUT_CREDIT_SPREAD,
+            strike_price=atm_strike,
+            entry_date=date,
+            entry_price=net_credit,
+            legs=[atm_option, otm_option],
+        )
 
     def _get_risk_free_rate(self, date: datetime) -> float:
         """
@@ -476,9 +484,9 @@ class VelocitySignalMomentumStrategy(Strategy):
             )
             self.options_data[date_key] = live_chain
             return live_chain
-        else:
-            get_logger().warning(f"⚠️  Live option chain fetch returned empty data")
-            return None
+
+        get_logger().warning("⚠️  Live option chain fetch returned empty data")
+        return None
 
     def _select_week_expiration(self, date: datetime) -> Optional[str]:
         """
@@ -550,7 +558,7 @@ class VelocitySignalMomentumStrategy(Strategy):
         for position in positions:
             days_held = position.get_days_held(date) if hasattr(position, "get_days_held") else 0
             days_to_exp = position.get_days_to_expiration(date) if hasattr(position, "get_days_to_expiration") else 0
-            get_logger().info(f"🔍 Position {position.__str__()} - Days held: {days_held}, Days to exp: {days_to_exp}")
+            get_logger().info(f"🔍 Position {str(position)} - Days held: {days_held}, Days to exp: {days_to_exp}")
 
             # Compute exit price for stop/holding decisions
             exit_price = self.compute_exit_price(position, date)
@@ -559,13 +567,13 @@ class VelocitySignalMomentumStrategy(Strategy):
                 continue
             if exit_price is not None:
                 exit_price = self._sanitize_exit_price(exit_price)
-                get_logger().info(f"💰 Calculated exit price for {position.__str__()}: {exit_price}")
+                get_logger().info(f"💰 Calculated exit price for {str(position)}: {exit_price}")
 
             # Holding period
             if self._should_close_due_to_holding(position, date, self.holding_period):
                 if exit_price is not None:
                     get_logger().info(
-                        f"Holding period met for {position.__str__()} at exit {exit_price} (held {days_held} days, target: {self.holding_period})"
+                        f"Holding period met for {str(position)} at exit {exit_price} (held {days_held} days, target: {self.holding_period})"
                     )
                     current_volumes = self.get_current_volumes_for_position(position, date)
                     remove_position(
@@ -577,12 +585,12 @@ class VelocitySignalMomentumStrategy(Strategy):
                     )
                 else:
                     get_logger().warning(
-                        f"⚠️  No exit price available for {position.__str__()} on {date}. Skipping holding-period close."
+                        f"⚠️  No exit price available for {str(position)} on {date}. Skipping holding-period close."
                     )
             else:
                 # Position not closed - show why
                 get_logger().info(
-                    f"📋 Position {position.__str__()} remains open - Days held: {days_held}/{self.holding_period}, Days to exp: {days_to_exp}"
+                    f"📋 Position {str(position)} remains open - Days held: {days_held}/{self.holding_period}, Days to exp: {days_to_exp}"
                 )
                 get_logger().info(
                     f"🤖 Strategy decision: Position does not meet closing criteria (holding period: {self.holding_period} days, stop loss, or expiration)"

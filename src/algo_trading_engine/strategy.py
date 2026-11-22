@@ -76,6 +76,7 @@ class Strategy(ABC):
         - get_current_volumes_for_position: Get current volumes for an open position (position, date)
         - compute_exit_price: Compute the exit price for a position on a specific date
         - get_position_size: Size a position from available capital
+        - get_current_underlying_price: Underlying price for a date and symbol, assigned by the trading engine
     """
 
     symbol: str
@@ -89,6 +90,7 @@ class Strategy(ABC):
     get_current_volumes_for_position: Callable[..., Any] = _NotImplementedCallback()
     compute_exit_price: Callable[..., Any] = _NotImplementedCallback()
     get_position_size: Callable[..., Any] = _NotImplementedCallback()
+    get_current_underlying_price: Callable[[datetime, str], Optional[float]] = _NotImplementedCallback()
 
     def __init__(
         self,
@@ -306,12 +308,6 @@ class Strategy(ABC):
         Args:
             position: Position to add
         """
-
-    def get_current_underlying_price(self, date: datetime, symbol: str) -> Optional[float]:
-        """
-        Get the current underlying price for a given date and symbol. Assigned via the TradingEngine.
-        """
-        raise NotImplementedError("get_current_underlying_price is not implemented in the base Strategy class.")
 
     def get_current_bar_timestamp(self, date: datetime) -> Optional[datetime]:
         """Most recent bar in ``data`` at or before ``date``."""

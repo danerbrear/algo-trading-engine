@@ -5,7 +5,7 @@ This module contains static utility methods for common options operations
 as specified in features/improved_data_fetching.md Phase 4.
 """
 
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 from decimal import Decimal
 from datetime import date, datetime
 
@@ -56,13 +56,13 @@ class OptionsRetrieverHelper:
 
     @staticmethod
     def find_atm_contracts(
-        contracts: List[OptionContractDTO], current_price: float
+        contracts: Sequence[OptionContractDTO], current_price: float
     ) -> Tuple[Optional[OptionContractDTO], Optional[OptionContractDTO]]:
         """
         Find ATM call and put contracts.
 
         Args:
-            contracts: List of option contracts
+            contracts: Option contracts to search
             current_price: Current underlying price
 
         Returns:
@@ -830,7 +830,8 @@ class OptionsRetrieverHelper:
 
             # Find the contract with the closest strike to the target OTM strike
             otm_contract = min(
-                contracts_for_expiration, key=lambda c: abs(float(c.strike_price.value) - target_otm_strike)
+                contracts_for_expiration,
+                key=lambda c, target_strike=target_otm_strike: abs(float(c.strike_price.value) - target_strike),
             )
 
             strike_difference = abs(float(otm_contract.strike_price.value) - target_otm_strike)
@@ -955,7 +956,8 @@ class OptionsRetrieverHelper:
 
             # Find the contract with the closest strike to the target OTM strike
             otm_contract = min(
-                contracts_for_expiration, key=lambda c: abs(float(c.strike_price.value) - target_otm_strike)
+                contracts_for_expiration,
+                key=lambda c, target_strike=target_otm_strike: abs(float(c.strike_price.value) - target_strike),
             )
 
             strike_difference = abs(float(otm_contract.strike_price.value) - target_otm_strike)
