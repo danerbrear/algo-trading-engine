@@ -358,7 +358,8 @@ class LSTMModel:
             validation_split=validation_split,
             callbacks=[early_stopping],
             class_weight=class_weights,
-            verbose=1,
+            # Keras types verbose as str because its default is "auto". 1 is a valid mode.
+            verbose=1,  # pyright: ignore[reportArgumentType]
         )
         return history
 
@@ -372,7 +373,13 @@ class LSTMModel:
 
     def evaluate(self, X_test, y_test):
         """Evaluate the model performance"""
-        return self.model.evaluate(X_test, y_test, batch_size=128, verbose=1)
+        # Keras types verbose as str because its default is "auto". 1 is a valid mode.
+        return self.model.evaluate(
+            X_test,
+            y_test,
+            batch_size=128,
+            verbose=1,  # pyright: ignore[reportArgumentType]
+        )
 
     @staticmethod
     def calculate_option_signals(data, holding_period: int = 15, min_return_threshold: float = 0.08):
@@ -663,8 +670,12 @@ class LSTMModel:
         # Use fixed learning rate with Adam optimizer
         optimizer = Adam(learning_rate=LEARNING_RATE)
 
+        # Keras types jit_compile as str because its default is "auto". True forces XLA.
         model.compile(
-            optimizer=optimizer, loss="sparse_categorical_crossentropy", metrics=["accuracy"], jit_compile=True
+            optimizer=optimizer,
+            loss="sparse_categorical_crossentropy",
+            metrics=["accuracy"],
+            jit_compile=True,  # pyright: ignore[reportArgumentType]
         )
         return model
 

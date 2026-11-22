@@ -223,8 +223,8 @@ class MAVelocityAnalyzer:
             success_rate = len(successful_signals) / len(group_signals)
 
             if successful_signals:
-                avg_duration = np.mean([s.trend_duration for s in successful_signals])
-                avg_return = np.mean([s.trend_return for s in successful_signals])
+                avg_duration = float(np.mean([s.trend_duration for s in successful_signals]))
+                avg_return = float(np.mean([s.trend_return for s in successful_signals]))
             else:
                 avg_duration = 0.0
                 avg_return = 0.0
