@@ -52,19 +52,19 @@ class CacheManager:
         cache_path = self.get_cache_path(filename, *subdirs)
         return cache_path.exists()
 
-    def get_date_cache_path(self, date: datetime, suffix: str = "", *subdirs: str) -> Path:
+    def get_date_cache_path(self, date: datetime, suffix: str, *subdirs: str) -> Path:
         """Get cache path for a specific date"""
         date_str = date.strftime("%Y-%m-%d")
         filename = f"{date_str}{suffix}.pkl"
         return self.get_cache_path(filename, *subdirs)
 
-    def save_date_to_cache(self, date: datetime, data: Any, suffix: str = "", *subdirs: str) -> None:
+    def save_date_to_cache(self, date: datetime, data: Any, suffix: str, *subdirs: str) -> None:
         """Save data to cache with date-based filename"""
         cache_path = self.get_date_cache_path(date, suffix, *subdirs)
         with open(cache_path, "wb") as f:
             pickle.dump(data, f)
 
-    def load_date_from_cache(self, date: datetime, suffix: str = "", *subdirs: str) -> Optional[Any]:
+    def load_date_from_cache(self, date: datetime, suffix: str, *subdirs: str) -> Optional[Any]:
         """Load data from cache with date-based filename"""
         cache_path = self.get_date_cache_path(date, suffix, *subdirs)
         if cache_path.exists():

@@ -368,7 +368,7 @@ class CalendarFeatureProcessor:
                 print(f"⚠️  Warning: {event_type} calendar data not found. Tried these paths:")
                 for i, path in enumerate(possible_paths, 1):
                     print(f"   {i}. {path}")
-                print(f"   Please ensure the file exists at one of these locations.")
+                print("   Please ensure the file exists at one of these locations.")
         else:
             event_calendar_data_path = Path(calendar_data_path)
 

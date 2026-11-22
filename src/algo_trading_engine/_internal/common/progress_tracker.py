@@ -143,7 +143,6 @@ def set_global_progress_tracker(tracker: Optional[ProgressTracker]):
 
 def get_global_progress_tracker() -> Optional[ProgressTracker]:
     """Get the global progress tracker instance"""
-    global _global_progress_tracker
     with _tracker_lock:
         return _global_progress_tracker
 

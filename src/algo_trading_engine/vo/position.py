@@ -202,6 +202,10 @@ class Position(ABC):
 
         return (max_profit_val * probability_of_profit) - (max_loss_val * (1 - probability_of_profit))
 
+    def get_return(self, exit_price: float) -> float:
+        """Percentage return for this position."""
+        return self._get_return(exit_price)
+
     @abstractmethod
     def _get_return(self, exit_price: float) -> float:
         """Calculate percentage return for this position."""

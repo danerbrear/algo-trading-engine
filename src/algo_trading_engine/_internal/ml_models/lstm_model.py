@@ -31,7 +31,7 @@ if physical_devices:
     try:
         for device in physical_devices:
             tf.config.experimental.set_memory_growth(device, True)
-    except:
+    except Exception:
         print("GPU memory growth setting failed. Using default configuration.")
 
 
@@ -111,18 +111,18 @@ class LSTMModel:
         )
 
         # Ask user if they want to apply feature reduction
-        print(f"\n🤔 Would you like to use the recommended reduced feature set?")
+        print("\n🤔 Would you like to use the recommended reduced feature set?")
         print(f"   Current features: {len(self.feature_columns)}")
         if self.feature_recommendations["features_to_remove"]:
             print(f"   Recommended features: {len(self.feature_recommendations['recommended_features'])}")
             print(f"   Potential reduction: {self.feature_recommendations['reduction_percentage']:.1f}%")
-            print(f"   Note: You can modify this by editing the feature_columns list in prepare_data()")
+            print("   Note: You can modify this by editing the feature_columns list in prepare_data()")
 
         # Scale features (using original feature set for now - user can modify based on recommendations)
         features = self.scaler.fit_transform(data_retriever.lstm_data[self.feature_columns])
 
         # Critical: Check for NaN or infinite values that cause training to fail
-        print(f"🔍 Data validation:")
+        print("🔍 Data validation:")
         print(f"   NaN values in features: {np.isnan(features).sum()}")
         print(f"   Infinite values in features: {np.isinf(features).sum()}")
         print(f"   NaN values in labels: {data_retriever.lstm_data['Option_Signal'].isna().sum()}")
@@ -154,7 +154,7 @@ class LSTMModel:
         X_test = X[train_size:]
         y_test = y[train_size:]
 
-        print(f"✅ Data preparation complete:")
+        print("✅ Data preparation complete:")
         print(f"   🏋️ Training samples: {len(X_train)}")
         print(f"   🧪 Testing samples: {len(X_test)}")
         print(f"   📊 Features per sample: {len(self.feature_columns)}")
@@ -187,8 +187,8 @@ class LSTMModel:
                 if abs(corr) > threshold:
                     high_corr_pairs.append(
                         {
-                            "feature1": correlation_matrix.columns[i],
-                            "feature2": correlation_matrix.columns[j],
+                            "feature1": col1,
+                            "feature2": col2,
                             "correlation": corr,
                         }
                     )
@@ -214,7 +214,7 @@ class LSTMModel:
             print(f"✅ No highly correlated features found (threshold: {threshold})")
 
         # Additional analysis: Feature statistics
-        print(f"\n📊 Feature Statistics:")
+        print("\n📊 Feature Statistics:")
         print("   Feature                Mean        Std       Min       Max     NaN%")
         print("   " + "=" * 70)
 
@@ -239,7 +239,7 @@ class LSTMModel:
         Returns:
             Dictionary with recommendations for feature reduction
         """
-        print(f"\n🎯 Feature Reduction Recommendations:")
+        print("\n🎯 Feature Reduction Recommendations:")
 
         if not correlation_pairs:
             print("✅ No highly correlated features detected. Current feature set appears optimal.")

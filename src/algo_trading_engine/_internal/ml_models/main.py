@@ -153,7 +153,6 @@ class StockPredictor:
 
             # Calculate the starting index for test data in the original dataset
             # Test data starts after training data + sequence length
-            total_samples = len(x_train) + len(x_test)
             train_size = len(x_train)
             sequence_length = self.sequence_length
 
@@ -308,12 +307,12 @@ Use the get_state_description() method with your data to see state details.
 
         # Save info to timestamped folder
         info_path = os.path.join(timestamp_dir, "hmm_model_info.txt")
-        with open(info_path, "w") as f:
+        with open(info_path, "w", encoding="utf-8") as f:
             f.write(info_content)
 
         # Save info to latest folder
         info_latest_path = os.path.join(latest_dir, "hmm_model_info.txt")
-        with open(info_latest_path, "w") as f:
+        with open(info_latest_path, "w", encoding="utf-8") as f:
             f.write(info_content)
 
         print(f"✅ HMM model info saved to {info_path} and {info_latest_path}")

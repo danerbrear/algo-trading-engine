@@ -58,7 +58,7 @@ def main():
     print("🚀 Moving Average Velocity Analysis")
     print("=" * 50)
     print(f"Symbol: {args.symbol}")
-    print(f"Analysis Period: Last 6 months")
+    print("Analysis Period: Last 6 months")
     print(f"Short MA Periods: {args.short_periods}")
     print(f"Long MA Periods: {args.long_periods}")
     print(f"Trend Duration Range: {args.min_duration}-{args.max_duration} days")

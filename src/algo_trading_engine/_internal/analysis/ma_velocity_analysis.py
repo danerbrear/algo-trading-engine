@@ -333,7 +333,7 @@ class MAVelocityAnalyzer:
             report.append(f"    Total Return: {longest_up_trend.trend_return:.2%}")
             report.append(f"    MA Combination: SMA {longest_up_trend.short_ma}/{longest_up_trend.long_ma}")
         else:
-            report.append(f"  Longest Upward Trend: No successful upward trends found")
+            report.append("  Longest Upward Trend: No successful upward trends found")
 
         if successful_down_signals:
             longest_down_trend = max(successful_down_signals, key=lambda x: x.trend_duration)
@@ -342,7 +342,7 @@ class MAVelocityAnalyzer:
             report.append(f"    Total Return: {longest_down_trend.trend_return:.2%}")
             report.append(f"    MA Combination: SMA {longest_down_trend.short_ma}/{longest_down_trend.long_ma}")
         else:
-            report.append(f"  Longest Downward Trend: No successful downward trends found")
+            report.append("  Longest Downward Trend: No successful downward trends found")
         report.append("")
 
         # Optimal combinations

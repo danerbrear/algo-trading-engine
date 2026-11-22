@@ -118,7 +118,7 @@ class InteractiveStrategyRecommender:
                 continue
             try:
                 pnl_dollars = position.get_return_dollars(exit_price)
-                pnl_pct = position._get_return(exit_price)
+                pnl_pct = position.get_return(exit_price)
             except Exception:
                 pnl_dollars = None
                 pnl_pct = None
@@ -401,16 +401,10 @@ class InteractiveStrategyRecommender:
         # Compute P&L
         try:
             pnl_dollars = position.get_return_dollars(exit_price)
-            pnl_pct = position._get_return(exit_price)
+            pnl_pct = position.get_return(exit_price)
         except Exception:
             pnl_dollars = None
             pnl_pct = None
-        try:
-            days_held = position.get_days_held(
-                datetime.fromisoformat(position.entry_date.isoformat())
-            )  # keep type happy
-        except Exception:
-            days_held = None
         return (
             f"{position.__str__()}\n" f"Exit price: ${exit_price:.2f}\n" f"P&L: ${pnl_dollars:.2f} ({pnl_pct:.1%})\n"
             if pnl_dollars is not None and pnl_pct is not None

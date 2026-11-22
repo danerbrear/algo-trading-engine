@@ -45,7 +45,7 @@ def main():
     # Create and run engine using from_config (same as examples)
     print(f"🚀 Starting paper trading with strategy: {args.strategy}")
     print(f"   Symbol: {args.symbol}")
-    print(f"   Capital managed via config/strategies/capital_allocations.json")
+    print("   Capital managed via config/strategies/capital_allocations.json")
     print(f"   Max position size: {args.max_position_size * 100:.1f}%")
     if args.stop_loss:
         print(f"   Stop loss: {args.stop_loss * 100:.1f}%")

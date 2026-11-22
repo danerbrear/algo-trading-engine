@@ -150,7 +150,7 @@ class MarketStateClassifier:
             if hmm_model is None:
                 raise RuntimeError("HMM model was not fitted")
             states = hmm_model.predict(scaled_features)
-            state_characteristics = self._get_state_characteristics(data, states, best_n_states)
+            state_characteristics = self.get_state_characteristics(data, states, best_n_states)
 
             for state in range(best_n_states):
                 print(f"\nState {state} characteristics:")
@@ -200,7 +200,7 @@ class MarketStateClassifier:
             f"Price {price_trend}, Moving Averages trending {ma_trend}"
         )
 
-    def _get_state_characteristics(self, data, states, n_states: int):
+    def get_state_characteristics(self, data, states, n_states: int):
         """Calculate characteristics for each state"""
         state_chars = {}
         for state in range(n_states):

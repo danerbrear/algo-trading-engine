@@ -59,7 +59,7 @@ class CapitalManager:
         if not path.exists():
             raise FileNotFoundError(f"Capital allocation config not found: {config_path}")
 
-        with open(path, "r") as f:
+        with open(path, "r", encoding="utf-8") as f:
             config = json.load(f)
 
         return cls(config, decision_store)
@@ -89,7 +89,7 @@ class CapitalManager:
         # Create file with default structure if it doesn't exist
         if not path.exists():
             default_config = {"strategies": {}}
-            with open(path, "w") as f:
+            with open(path, "w", encoding="utf-8") as f:
                 json.dump(default_config, f, indent=2)
 
     @staticmethod
@@ -112,7 +112,7 @@ class CapitalManager:
         path = Path(config_path)
 
         # Load current config
-        with open(path, "r") as f:
+        with open(path, "r", encoding="utf-8") as f:
             config = json.load(f)
 
         # Check if strategy exists
@@ -126,7 +126,7 @@ class CapitalManager:
             config["strategies"] = strategies
 
             # Write back to file
-            with open(path, "w") as f:
+            with open(path, "w", encoding="utf-8") as f:
                 json.dump(config, f, indent=2)
         elif strategy_name not in strategies and not create_dirs:
             raise FileNotFoundError(f"Strategy '{strategy_name}' not found in capital allocation config: {config_path}")

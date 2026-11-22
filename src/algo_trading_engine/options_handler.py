@@ -180,7 +180,7 @@ class OptionsHandler:
                 return filtered_cached
             else:
                 progress_print(
-                    f"⚠️  Cached contracts don't fully satisfy filtering criteria, fetching additional contracts from API..."
+                    "⚠️  Cached contracts don't fully satisfy filtering criteria, fetching additional contracts from API..."
                 )
         else:
             progress_print(f"🔄 No cached contracts found for {self.symbol} on {date_obj}, fetching from API...")
@@ -479,6 +479,23 @@ class OptionsHandler:
 
         return filtered_contracts
 
+    def _options_contract_query_params(self, date_obj: date, strike_range, expiration_range):
+        """Polygon list-contracts filters for strike and expiration."""
+        params = {}
+        if strike_range:
+            if strike_range.min_strike:
+                params["strike_price.gte"] = float(strike_range.min_strike.value)
+            if strike_range.max_strike:
+                params["strike_price.lte"] = float(strike_range.max_strike.value)
+        if expiration_range:
+            if expiration_range.min_days is not None:
+                min_expiry = date_obj + timedelta(days=expiration_range.min_days)
+                params["expiration_date.gte"] = min_expiry.strftime("%Y-%m-%d")
+            if expiration_range.max_days is not None:
+                max_expiry = date_obj + timedelta(days=expiration_range.max_days)
+                params["expiration_date.lte"] = max_expiry.strftime("%Y-%m-%d")
+        return params
+
     def _fetch_contracts_from_api(
         self,
         date_obj: date,
@@ -494,24 +511,7 @@ class OptionsHandler:
                 return []
 
             def fetch_func():
-                # Build parameters for API call
-                params = {}
-
-                # Add strike price filters if provided
-                if strike_range:
-                    if strike_range.min_strike:
-                        params["strike_price.gte"] = float(strike_range.min_strike.value)
-                    if strike_range.max_strike:
-                        params["strike_price.lte"] = float(strike_range.max_strike.value)
-
-                # Add expiration date filters if provided
-                if expiration_range:
-                    if expiration_range.min_days is not None:
-                        min_expiry = date_obj + timedelta(days=expiration_range.min_days)
-                        params["expiration_date.gte"] = min_expiry.strftime("%Y-%m-%d")
-                    if expiration_range.max_days is not None:
-                        max_expiry = date_obj + timedelta(days=expiration_range.max_days)
-                        params["expiration_date.lte"] = max_expiry.strftime("%Y-%m-%d")
+                params = self._options_contract_query_params(date_obj, strike_range, expiration_range)
 
                 # Use the list options contracts API with date filtering
                 contracts_response = self.client.list_options_contracts(

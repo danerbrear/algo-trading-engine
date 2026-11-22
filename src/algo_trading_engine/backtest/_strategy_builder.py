@@ -34,22 +34,18 @@ class StrategyBuilder(ABC):
         options_handler=None,
     ) -> "StrategyBuilder":
         """Set the options callables (methods from OptionsHandler as callables)"""
-        ...
 
     @abstractmethod
     def set_stop_loss(self, stop_loss: float) -> "StrategyBuilder":
         """Set the stop loss"""
-        ...
 
     @abstractmethod
     def set_profit_target(self, profit_target: float) -> "StrategyBuilder":
         """Set the profit target"""
-        ...
 
     @abstractmethod
     def set_symbol(self, symbol: str) -> "StrategyBuilder":
         """Set the symbol traded by the strategy."""
-        ...
 
     @abstractmethod
     def build(self) -> Strategy:
@@ -127,7 +123,7 @@ class CreditSpreadStrategyBuilder(StrategyBuilder):
             try:
                 self._lstm_model, self._lstm_scaler = load_credit_spread_models(self._symbol)
             except Exception as e:
-                raise ValueError(f"Failed to load LSTM model for symbol {self._symbol}: {e}")
+                raise ValueError(f"Failed to load LSTM model for symbol {self._symbol}: {e}") from e
 
         strategy = CreditSpreadStrategy(
             get_contract_list_for_date=self._get_contract_list_for_date,

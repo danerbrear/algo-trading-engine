@@ -84,11 +84,11 @@ def calculate_features(data: pd.DataFrame, vix_data: Optional[pd.DataFrame] = No
         # Drop VIX column as we've copied it to Volatility
         data.drop(columns=["VIX"], inplace=True, errors="ignore")
 
-        print(f"✅ Using VIX price for Volatility feature")
+        print("✅ Using VIX price for Volatility feature")
     else:
         # Fallback to calculated volatility
         data["Volatility"] = data["Returns"].rolling(window=window, min_periods=1).std()
-        print(f"⚠️  VIX data not available, using calculated volatility")
+        print("⚠️  VIX data not available, using calculated volatility")
 
     # Trend indicators
     data["SMA20"] = data["Close"].rolling(window=window, min_periods=1).mean()
@@ -172,11 +172,11 @@ Examples:
         vix_data = fetch_vix_data(args.start_date)
     except Exception as e:
         print(f"⚠️  Warning: Could not fetch VIX data: {e}")
-        print(f"   Falling back to calculated volatility")
+        print("   Falling back to calculated volatility")
         vix_data = None
 
     # Calculate required features
-    print(f"\n📊 Calculating features...")
+    print("\n📊 Calculating features...")
     data = calculate_features(data, vix_data=vix_data)
 
     if len(data) < 50:
@@ -191,12 +191,12 @@ Examples:
         raise ValueError(f"Missing required columns: {missing_columns}")
 
     # Analyze feature correlations
-    print(f"\n📊 Feature Correlation Analysis:")
+    print("\n📊 Feature Correlation Analysis:")
     feature_frame = data[required_columns]
     if not isinstance(feature_frame, pd.DataFrame):
         raise TypeError("Expected feature columns to be a DataFrame")
     feature_corr = feature_frame.corr()
-    print(f"\nCorrelation Matrix:")
+    print("\nCorrelation Matrix:")
     print(feature_corr.round(3))
 
     # Identify high correlations
@@ -211,32 +211,32 @@ Examples:
                 high_corr_pairs.append((col1, col2, corr))
 
     if high_corr_pairs:
-        print(f"\n⚠️  High correlations (>0.7) detected:")
+        print("\n⚠️  High correlations (>0.7) detected:")
         for col1, col2, corr in high_corr_pairs:
             print(f"  {col1} ↔ {col2}: {corr:.3f}")
-        print(f"  (Consider removing one if correlation >0.8)")
+        print("  (Consider removing one if correlation >0.8)")
     else:
-        print(f"\n✅ No high correlations detected - features are well-separated")
+        print("\n✅ No high correlations detected - features are well-separated")
 
     # Train the classifier
-    print(f"\n🎯 Training MarketStateClassifier...")
+    print("\n🎯 Training MarketStateClassifier...")
     classifier = MarketStateClassifier(max_states=args.max_states)
     optimal_states = classifier.train_hmm_model(data)
 
     # Predict states on the training data
-    print(f"\n🔮 Predicting market states...")
+    print("\n🔮 Predicting market states...")
     states = classifier.predict_states(data)
 
     # Display state distribution
-    print(f"\n📊 State Distribution:")
+    print("\n📊 State Distribution:")
     unique, counts = np.unique(states, return_counts=True)
     for state, count in zip(unique, counts):
         percentage = (count / len(states)) * 100
         print(f"  State {state}: {count:4d} samples ({percentage:5.2f}%)")
 
     # Display state characteristics
-    print(f"\n📈 State Characteristics:")
-    state_chars = classifier._get_state_characteristics(data, states, optimal_states)
+    print("\n📈 State Characteristics:")
+    state_chars = classifier.get_state_characteristics(data, states, optimal_states)
     for state in range(optimal_states):
         chars = state_chars[state]
         description = classifier.get_state_description(state, data, states)
@@ -245,7 +245,7 @@ Examples:
         print(f"  Avg Return: {chars['avg_return']:.4%}")
         print(f"  Volatility: {chars['volatility']:.4f}")
 
-    print(f"\n✅ Market state classification complete!")
+    print("\n✅ Market state classification complete!")
     return classifier
 
 

@@ -25,13 +25,13 @@ def examine_cache_file(filepath):
             print(f"📅 Date range: {data.index[0]} to {data.index[-1]}")
             print(f"📋 Columns: {list(data.columns)}")
 
-            print(f"\n📊 First 5 rows:")
+            print("\n📊 First 5 rows:")
             print(data.head())
 
-            print(f"\n📊 Last 5 rows:")
+            print("\n📊 Last 5 rows:")
             print(data.tail())
 
-            print(f"\n📈 Summary statistics:")
+            print("\n📈 Summary statistics:")
             print(data.describe())
 
         else:

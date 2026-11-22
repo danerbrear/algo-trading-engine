@@ -216,6 +216,7 @@ class TradingEngine(ABC):
         for position in self.get_positions():
             # Get current volumes for this specific position
             current_volumes = self.get_current_volumes_for_position(position, date)
+            volume_snapshot = tuple(current_volumes) if current_volumes is not None else None
 
             # Compute exit price for profit target and stop loss checks
             exit_price = self.compute_exit_price(position, date)
@@ -224,7 +225,7 @@ class TradingEngine(ABC):
                 close_price: float,
                 underlying_price: Optional[float] = None,
                 position: Position = position,
-                current_volumes: Optional[Sequence[Optional[int]]] = current_volumes,
+                current_volumes: Optional[Sequence[Optional[int]]] = volume_snapshot,
             ) -> None:
                 if remove_position is None:
                     get_logger().warning(
@@ -235,14 +236,14 @@ class TradingEngine(ABC):
 
             if self._should_close_due_to_assignment(position, date):
                 get_logger().info(
-                    f"Position {position.__str__()} expired or near expiration (days to exp: {position.get_days_to_expiration(date)})"
+                    f"Position {str(position)} expired or near expiration (days to exp: {position.get_days_to_expiration(date)})"
                 )
                 close_position(0.0, current_underlying_price)
             elif self._should_close_due_to_profit_target(position, exit_price):
-                get_logger().info(f"Profit target hit for {position.__str__()} at exit {exit_price}")
+                get_logger().info(f"Profit target hit for {str(position)} at exit {exit_price}")
                 close_position(exit_price if exit_price is not None else 0.0)
             elif self._should_close_due_to_stop(position, exit_price):
-                get_logger().info(f"Stop loss hit for {position.__str__()} at exit {exit_price}")
+                get_logger().info(f"Stop loss hit for {str(position)} at exit {exit_price}")
                 close_position(exit_price if exit_price is not None else 0.0)
 
     def _get_current_underlying_price(self, date: datetime, symbol: str) -> Optional[float]:
