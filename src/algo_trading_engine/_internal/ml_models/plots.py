@@ -75,7 +75,9 @@ class ModelPlotter:
         show_plot(spec, config=self.plot_config)
 
     def plot_training_history(self, history):
-        loss_frame = pd.DataFrame({"epoch": np.arange(len(history.history["loss"])), "Training Loss": history.history["loss"]})
+        loss_frame = pd.DataFrame(
+            {"epoch": np.arange(len(history.history["loss"])), "Training Loss": history.history["loss"]}
+        )
         if "val_loss" in history.history:
             loss_frame["Validation Loss"] = history.history["val_loss"]
         accuracy_frame = pd.DataFrame(

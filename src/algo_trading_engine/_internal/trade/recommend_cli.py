@@ -13,11 +13,18 @@ def main():
     parser = argparse.ArgumentParser(description="Run interactive recommendation flow for a given date")
     parser.add_argument("--symbol", default="SPY", help="Symbol to trade")
     parser.add_argument("--strategy", default="credit_spread", help="Strategy to run (default: credit_spread)")
-    parser.add_argument("--max-position-size", type=float, default=0.40, help="Maximum position size as fraction of capital")
+    parser.add_argument(
+        "--max-position-size", type=float, default=0.40, help="Maximum position size as fraction of capital"
+    )
     parser.add_argument("--stop-loss", type=float, default=None, help="Stop loss percentage")
     parser.add_argument("--profit-target", type=float, default=None, help="Profit target percentage")
-    parser.add_argument('-f', '--free', action='store_true', default=False,
-                       help='Use free tier rate limiting (13 second timeout between API requests)')
+    parser.add_argument(
+        "-f",
+        "--free",
+        action="store_true",
+        default=False,
+        help="Use free tier rate limiting (13 second timeout between API requests)",
+    )
     args = parser.parse_args()
 
     # Get API key from environment
@@ -32,13 +39,13 @@ def main():
         api_key=api_key,
         use_free_tier=args.free,
         stop_loss=args.stop_loss,
-        profit_target=args.profit_target
+        profit_target=args.profit_target,
     )
 
     # Create and run engine using from_config (same as examples)
     print(f"🚀 Starting paper trading with strategy: {args.strategy}")
     print(f"   Symbol: {args.symbol}")
-    print(f"   Capital managed via config/strategies/capital_allocations.json")
+    print("   Capital managed via config/strategies/capital_allocations.json")
     print(f"   Max position size: {args.max_position_size * 100:.1f}%")
     if args.stop_loss:
         print(f"   Stop loss: {args.stop_loss * 100:.1f}%")
@@ -49,7 +56,7 @@ def main():
     try:
         engine = PaperTradingEngine.from_config(config)
         success = engine.run()
-        
+
         if success:
             print("✅ Paper trading completed successfully!")
         else:
@@ -59,6 +66,7 @@ def main():
         print(f"❌ Error during paper trading: {e}")
         traceback.print_exc()
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

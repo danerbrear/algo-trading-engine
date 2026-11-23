@@ -8,4 +8,3 @@ strategies by inheriting from the Strategy base class:
 
 # This package is for internal use only - no exports via __all__
 __all__ = []
-

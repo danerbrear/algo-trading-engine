@@ -36,16 +36,16 @@ def sample_contract():
 
 def _make_snapshot(
     *,
-    day_close=None,
-    day_open=10.0,
-    day_high=11.0,
-    day_low=9.5,
-    day_volume=42,
-    day_vwap=10.25,
-    include_day=False,
-    underlying_price=None,
-    strike_price=450.0,
-    contract_type="call",
+    day_close: float | None = None,
+    day_open: float | None = 10.0,
+    day_high: float | None = 11.0,
+    day_low: float | None = 9.5,
+    day_volume: int = 42,
+    day_vwap: float | None = 10.25,
+    include_day: bool = False,
+    underlying_price: float | None = None,
+    strike_price: float = 450.0,
+    contract_type: str = "call",
 ):
     day = None
     if include_day or day_close is not None:
@@ -146,17 +146,17 @@ class TestGetOptionSnapshot:
     def test_returns_bar_from_snapshot(self, mock_fetch, options_handler, sample_contract):
         mock_fetch.return_value = _make_snapshot(day_close=3.25)
 
-        bar = options_handler.get_option_snapshot(sample_contract)
+        bar = options_handler.get_option_snapshot(sample_contract.ticker)
 
         assert bar is not None
         assert bar.close_price == Decimal("3.25")
-        mock_fetch.assert_called_once_with(sample_contract)
+        mock_fetch.assert_called_once_with(sample_contract.ticker)
 
     @patch.object(OptionsHandler, "_fetch_snapshot_from_api", return_value=None)
     def test_returns_none_when_api_returns_nothing(self, _mock_fetch, options_handler, sample_contract):
-        assert options_handler.get_option_snapshot(sample_contract) is None
+        assert options_handler.get_option_snapshot(sample_contract.ticker) is None
 
     @patch.object(OptionsHandler, "_fetch_snapshot_from_api")
     def test_returns_none_when_conversion_fails(self, mock_fetch, options_handler, sample_contract):
         mock_fetch.return_value = _make_snapshot()
-        assert options_handler.get_option_snapshot(sample_contract) is None
+        assert options_handler.get_option_snapshot(sample_contract.ticker) is None

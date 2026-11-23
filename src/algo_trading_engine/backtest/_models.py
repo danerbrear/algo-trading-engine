@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-from typing import Dict, Optional, List, TYPE_CHECKING
-from datetime import datetime
+from typing import Optional, TYPE_CHECKING
 from enum import Enum
 
 if TYPE_CHECKING:
     from algo_trading_engine.dto import OptionBarDTO
 
 
-class Benchmark():
+class Benchmark:
     """
     Benchmark to compare returns against
     """
@@ -16,7 +15,7 @@ class Benchmark():
     def __init__(self, initial_capital: float):
         self.initial_capital = initial_capital
         self.start_price = 0.0
-        self.end_price = None
+        self.end_price: Optional[float] = None
 
     def set_start_price(self, start_price: float):
         """
@@ -34,10 +33,13 @@ class Benchmark():
         """
         Get the return for the benchmark.
         """
+        end_price = self.end_price
+        if end_price is None:
+            raise ValueError("End price is not set")
         shares = self.initial_capital / self.start_price
-        return (self.end_price - self.start_price) * shares
+        return (end_price - self.start_price) * shares
 
-    def get_return_percentage(self) -> float:
+    def get_return_percentage(self) -> Optional[float]:
         """
         Get the return for the benchmark.
         """
@@ -45,12 +47,11 @@ class Benchmark():
             return None
         return (self.end_price - self.start_price) / self.start_price * 100
 
+
 class OptionType(Enum):
     """
     Enum for option types (API symbols: P/C).
     """
+
     PUT = "P"
     CALL = "C"
-
-
-   

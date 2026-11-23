@@ -22,7 +22,7 @@ def main():
     """Run backtest using the velocity momentum strategy."""
     # Get Polygon API key from environment
     polygon_api_key = os.getenv("POLYGON_API_KEY")
-    
+
     # Create configuration
     config = BacktestConfig(
         initial_capital=3000,
@@ -38,6 +38,7 @@ def main():
     # Create and run engine - all data fetching and setup is handled internally
     engine = BacktestEngine.from_config(config)
     engine.run()
+
 
 if __name__ == "__main__":
     main()

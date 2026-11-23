@@ -36,7 +36,7 @@ class ProgressTracker:
             unit=self.unit,
             position=0,
             leave=True,
-            bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]',
+            bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]",
             dynamic_ncols=True,
             miniters=1,
             file=sys.stdout,
@@ -46,17 +46,7 @@ class ProgressTracker:
             smoothing=0.1,  # Smooth ETA calculations
             disable=observer is not None,
         )
-        
-    def _count_trading_days(self, start_date: datetime, end_date: datetime) -> int:
-        """Count number of trading days between two dates (excluding weekends)"""
-        days = 0
-        current_date = start_date
-        while current_date <= end_date:
-            if current_date.weekday() < 5:  # 0-4 are weekdays
-                days += 1
-            current_date += timedelta(days=1)
-        return days
-    
+
     def write(self, message: str):
         """Write a message above the progress bar with thread safety"""
         with self._lock:
@@ -66,16 +56,21 @@ class ProgressTracker:
             tqdm.write(message, file=sys.stdout)
             # Force refresh the progress bar to redraw it at the bottom
             self.pbar.refresh()
-    
-    def update(self, current_date: datetime = None, additional_info: Dict[str, Any] = None, summary_info: str = ""):
+
+    def update(
+        self,
+        current_date: Optional[datetime] = None,
+        additional_info: Optional[Dict[str, Any]] = None,
+        summary_info: str = "",
+    ):
         """Update progress with current date and additional information"""
         with self._lock:
             if current_date:
                 self.processed_dates += 1
-                
+
                 # Calculate progress percentage
                 date_progress = (self.processed_dates / self.total_dates) * 100
-                
+
                 # Update progress bar description with compact format
                 # For intraday bars, show timestamp; for daily, show just date
                 if self.unit == "bar":
@@ -86,7 +81,7 @@ class ProgressTracker:
 
                 if self.observer is not None:
                     self.observer.progress(self.processed_dates, self.total_dates, desc)
-                
+
                 # Show summary info in postfix (key strike prices, etc.)
                 if summary_info:
                     self.pbar.set_postfix_str(summary_info)
@@ -94,25 +89,25 @@ class ProgressTracker:
                     # Create a compact postfix
                     postfix_str = f"calls: {additional_info.get('calls', 0)}, puts: {additional_info.get('puts', 0)}"
                     self.pbar.set_postfix_str(postfix_str)
-            
+
             # API call tracking removed - only track dates
-            
+
             # Update progress bar position
             self.pbar.n = self.processed_dates
             self.pbar.refresh()
-    
+
     def get_progress_stats(self) -> Dict[str, Any]:
         """Get current progress statistics"""
         elapsed_time = time() - self.start_time
         avg_time_per_date = elapsed_time / self.processed_dates if self.processed_dates > 0 else 0
-        
+
         return {
-            'elapsed_time': elapsed_time,
-            'avg_time_per_date': avg_time_per_date,
-            'processed_dates': self.processed_dates,
-            'total_dates': self.total_dates
+            "elapsed_time": elapsed_time,
+            "avg_time_per_date": avg_time_per_date,
+            "processed_dates": self.processed_dates,
+            "total_dates": self.total_dates,
         }
-    
+
     def close(self):
         """Close progress bar and log final summary to the log file (no stdout)."""
         with self._lock:
@@ -123,9 +118,21 @@ class ProgressTracker:
             log.info(f"   Total time: {timedelta(seconds=int(stats['elapsed_time']))}")
             log.info(f"   Average time per {self.unit}: {stats['avg_time_per_date']:.2f} seconds")
 
+    def _count_trading_days(self, start_date: datetime, end_date: datetime) -> int:
+        """Count number of trading days between two dates (excluding weekends)"""
+        days = 0
+        current_date = start_date
+        while current_date <= end_date:
+            if current_date.weekday() < 5:  # 0-4 are weekdays
+                days += 1
+            current_date += timedelta(days=1)
+        return days
+
+
 # Global progress tracker instance for use across modules
 _global_progress_tracker: Optional[ProgressTracker] = None
 _tracker_lock = threading.Lock()
+
 
 def set_global_progress_tracker(tracker: Optional[ProgressTracker]):
     """Set the global progress tracker instance"""
@@ -133,11 +140,12 @@ def set_global_progress_tracker(tracker: Optional[ProgressTracker]):
     with _tracker_lock:
         _global_progress_tracker = tracker
 
+
 def get_global_progress_tracker() -> Optional[ProgressTracker]:
     """Get the global progress tracker instance"""
-    global _global_progress_tracker
     with _tracker_lock:
         return _global_progress_tracker
+
 
 def progress_print(message: str, force: bool = False):
     """
@@ -151,7 +159,8 @@ def progress_print(message: str, force: bool = False):
     else:
         log.debug(message)
 
+
 def is_quiet_mode() -> bool:
     """Check if we're in quiet mode"""
     tracker = get_global_progress_tracker()
-    return tracker is not None and tracker.quiet_mode 
+    return tracker is not None and tracker.quiet_mode

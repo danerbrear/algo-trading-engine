@@ -10,6 +10,26 @@ alwaysApply: true
 ## Coding as an Agent
 
 - Prefer polymorphism over type/enum branching. When behavior differs by type, put the behavior on the type (override a method) and call it through a shared interface. Do not switch on `strategy_type`, class name, or similar discriminators in callers when a subclass method would do.
+- All prices should use the Decimal data type over float
+- Write every nullable type as `Optional[T]` from `typing`. Do not write `T | None`, including inside another generic. `Optional[Sequence[Optional[int]]]` is the form to use; `Optional[Sequence[int | None]]` and `float | None` are not. Apply this to every new or edited annotation, not only to top-level parameters.
+
+### Too many positional arguments
+
+When fixing pylint `too-many-positional-arguments`:
+
+- Optional arguments are never positional. Put `*` before the first optional parameter so callers pass them by keyword.
+- If required arguments still exceed the limit after optional arguments are keyword-only, group those required arguments into a class. Do not use `*` to make required arguments keyword-only.
+- Define that class or Protocol as a nested class on the class that owns the parameters. Callers use `Owner.Nested` through the owner they already import. Inside the owner class, annotate it as `"Owner.Nested"`.
+
+### Class member order
+
+Order members in every class as follows:
+
+1. Class attributes (annotations and constants)
+2. `__init__` and other dunder methods
+3. Properties
+4. Public methods: abstract methods first, then concrete methods. Public `@classmethod` and `@staticmethod` stay in this group
+5. Private methods, including private static and class methods
 
 ### Startup and imports
 
@@ -37,7 +57,7 @@ alwaysApply: true
 
 ---
 
-# Cursor Rules for LSTM POC Project
+# Cursor Rules for Algo Trading Engine Project
 
 ## Table of Contents
 1. [Agentic Standards](#agentic-standards)
@@ -242,18 +262,6 @@ alwaysApply: true
 - **Easy navigation**: Structure should be intuitive to navigate
 - **Clear boundaries**: Clear separation between different types of functionality
 - **Extensibility**: Structure should accommodate future additions
-
-### Security and Best Practices
-
-#### Directory Security
-- **Sensitive data**: Keep sensitive data in appropriate directories
-- **Access control**: Use appropriate file permissions
-- **Environment separation**: Separate development and production configurations
-
-#### Data Organization
-- **Input validation**: Validate data at directory boundaries
-- **Error handling**: Implement proper error handling for file operations
-- **Backup strategies**: Plan for data backup and recovery
 
 ---
 

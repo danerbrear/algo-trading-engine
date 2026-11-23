@@ -6,6 +6,8 @@ from decimal import Decimal
 
 import pandas as pd
 
+from algo_trading_engine._internal.util.market_clock import market_index, market_time
+
 
 @dataclass(frozen=True)
 class TreasuryRates:
@@ -70,7 +72,8 @@ class TreasuryRates:
         return Decimal("0.0")
 
     def get_date_range(self) -> tuple[datetime, datetime]:
-        return self.rates_data.index.min(), self.rates_data.index.max()
+        index = market_index(self.rates_data)
+        return market_time(index.min()), market_time(index.max())
 
     def is_empty(self) -> bool:
         return len(self.rates_data) == 0

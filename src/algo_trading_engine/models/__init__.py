@@ -20,14 +20,13 @@ from .metrics import (
 )
 
 __all__ = [
-    'EngineConfig',
-    'BacktestConfig',
-    'PaperTradingConfig',
-    'VolumeConfig',
-    'VolumeStats',
-    'PerformanceMetrics',
-    'PositionStats',
-    'StrategyPerformanceStats',
-    'OverallPerformanceStats',
+    "EngineConfig",
+    "BacktestConfig",
+    "PaperTradingConfig",
+    "VolumeConfig",
+    "VolumeStats",
+    "PerformanceMetrics",
+    "PositionStats",
+    "StrategyPerformanceStats",
+    "OverallPerformanceStats",
 ]
-

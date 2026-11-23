@@ -1,23 +1,31 @@
+from algo_trading_engine._internal.util.market_clock import (
+    bars_through,
+    market_index,
+    market_time,
+    session_dates,
+)
 from algo_trading_engine.logging import get_logger
 from algo_trading_engine.indicators.indicator import Indicator
-from datetime import datetime
+from datetime import datetime, timedelta
 import pandas as pd
 
 from algo_trading_engine.enums import BarTimeInterval
+
 
 class ATRIndicator(Indicator):
     """
     ATRIndicator is an indicator that calculates the average true range (ATR) of a stock.
     Answers the question: "How noisy or volatile is the stock right now?"
     """
+
     def __init__(self, period: int, period_unit: BarTimeInterval = BarTimeInterval.DAY, reset_daily: bool = False):
         """
         Initialize the ATR indicator.
-        
+
         Args:
             period: Number of bars to use for ATR calculation
             period_unit: Time interval for bars (DAY, HOUR, MINUTE)
-            reset_daily: If True and period_unit is intraday (HOUR/MINUTE), only use bars 
+            reset_daily: If True and period_unit is intraday (HOUR/MINUTE), only use bars
                         from the current trading day. ATR resets at the start of each new day.
                         If False, uses rolling window across all bars regardless of day boundaries.
         """
@@ -25,7 +33,7 @@ class ATRIndicator(Indicator):
 
         if period is None or period <= 0:
             raise ValueError("Period must be a positive integer")
-        
+
         self.period = period
         self.period_unit = period_unit
         self.reset_daily = reset_daily
@@ -36,13 +44,38 @@ class ATRIndicator(Indicator):
     def warm_up_period(self) -> int:
         return self.period + 1
 
+    def precompute(self, data: pd.DataFrame) -> None:
+        required = {"High", "Low", "Close"}
+        missing = required - set(data.columns)
+        if missing:
+            raise ValueError(f"Missing OHLC columns for ATR: {sorted(missing)}")
+
+        self._values = pd.Series(dtype=float)
+        self._current_atr = None
+        self._current_date = None
+
+        if self.reset_daily and self._is_intraday():
+            segments: list[pd.Series] = []
+            for _day, group in data.groupby(session_dates(market_index(data))):
+                segments.append(self._wilder_atr_series(group))
+            if segments:
+                combined = pd.concat(segments).sort_index()
+                self._values = combined.dropna().astype(float)
+        else:
+            atr_series = self._wilder_atr_series(data)
+            self._values = atr_series.dropna().astype(float)
+
+        if len(self._values) > 0:
+            self._current_atr = float(self._values.iloc[-1])
+            self._current_date = market_time(self._values.index[-1]).date()
+
     def update(self, date: datetime, data: pd.DataFrame) -> None:
         """
         Update the ATR indicator for a given bar of data.
-        
+
         Args:
             date: The current date/time to update the indicator for
-            data: DataFrame with OHLCV data indexed by datetime.
+            data: DataFrame with OHLCV data indexed by naive US/Eastern bar timestamps.
                   Columns: ['Open', 'High', 'Low', 'Close', 'Volume']
                   The data should contain historical bars up to and including the current date.
         """
@@ -52,50 +85,49 @@ class ATRIndicator(Indicator):
             # New trading day - reset ATR
             self._current_atr = None
             self._current_date = current_day
-        
-        # If it's a weekend and the data doesn't have that weekend date, 
+
+        # If it's a weekend and the data doesn't have that weekend date,
         # use the most recent trading day (Friday)
         filter_date = date
         if date.weekday() >= 5 and date not in data.index:  # 5 = Saturday, 6 = Sunday
             # Calculate days back to Friday
             days_back = date.weekday() - 4  # 4 = Friday
-            filter_date = date - pd.Timedelta(days=days_back)
-        
+            filter_date = date - timedelta(days=days_back)
+
         # Filter data up to the current/adjusted date
-        data_up_to_date = data[data.index <= filter_date]
-        
+        data_up_to_date = bars_through(data, filter_date)
+
         # If reset_daily is True and we're using intraday bars, only use today's bars
-        filter_day = None
         if self.reset_daily and self._is_intraday():
             # Use the adjusted filter date's day for intraday filtering
-            filter_day = filter_date.date() if hasattr(filter_date, 'date') else filter_date
-            data_up_to_date = data_up_to_date[data_up_to_date.index.date == filter_day]
-        
+            session = datetime(filter_date.year, filter_date.month, filter_date.day)
+            data_up_to_date = data_up_to_date.loc[session_dates(market_index(data_up_to_date)) == session]
+
         # Need at least 2 bars to calculate TR (need previous close). During
         # warm-up the backtest may call update before enough history exists — no-op.
         if len(data_up_to_date) < 2:
             return
-        
+
         # Calculate the true range for the current bar
-        current_high = data_up_to_date['High'].iloc[-1]
-        current_low = data_up_to_date['Low'].iloc[-1]
-        previous_close = data_up_to_date['Close'].iloc[-2]
-        
+        current_high = data_up_to_date["High"].iloc[-1]
+        current_low = data_up_to_date["Low"].iloc[-1]
+        previous_close = data_up_to_date["Close"].iloc[-2]
+
         tr = self._calculate_true_range(current_high, current_low, previous_close)
-        
+
         # Initialize ATR if this is the first calculation
         if self._current_atr is None:
             # Need 'period' bars to initialize
             if len(data_up_to_date) < self.period + 1:  # +1 because we need a previous close
                 get_logger().debug(f"Warming up - not enough data to calculate ATR for {date}")
                 return
-            
+
             # Calculate initial ATR as simple average of first 'period' TRs
             true_ranges = []
             for i in range(1, self.period + 1):
-                h = data_up_to_date['High'].iloc[i]
-                l = data_up_to_date['Low'].iloc[i]
-                pc = data_up_to_date['Close'].iloc[i-1]
+                h = data_up_to_date["High"].iloc[i]
+                l = data_up_to_date["Low"].iloc[i]
+                pc = data_up_to_date["Close"].iloc[i - 1]
                 tr_i = self._calculate_true_range(h, l, pc)
                 true_ranges.append(tr_i)
             self._current_atr = sum(true_ranges) / len(true_ranges)
@@ -103,17 +135,42 @@ class ATRIndicator(Indicator):
             # Use Wilder's smoothing method
             # ATR = [(Prior ATR × (n-1)) + Current TR] / n
             self._current_atr = ((self._current_atr * (self.period - 1)) + tr) / self.period
-        
+
         # Store the calculated value in the historical series
         self._values[date] = self._current_atr
-    
+
     def print(self):
         print(f"{self.name}: {self.value}")
+
+    def _wilder_atr_series(self, data: pd.DataFrame) -> pd.Series:
+        """Wilder ATR aligned with per-bar ``update()`` semantics."""
+        high = data["High"]
+        low = data["Low"]
+        close = data["Close"]
+        prev_close = close.shift(1)
+        tr = pd.concat(
+            [high - low, (high - prev_close).abs(), (low - prev_close).abs()],
+            axis=1,
+        ).max(axis=1)
+
+        atr = pd.Series(index=data.index, dtype=float)
+        n = len(data)
+        if n < self.period + 1:
+            return atr
+
+        current_atr = float(tr.iloc[1 : self.period + 1].mean())
+        atr.iloc[self.period] = current_atr
+
+        for i in range(self.period + 1, n):
+            current_atr = ((current_atr * (self.period - 1)) + float(tr.iloc[i])) / self.period
+            atr.iloc[i] = current_atr
+
+        return atr
 
     def _is_intraday(self) -> bool:
         """
         Check if the period unit is intraday (HOUR or MINUTE).
-        
+
         Returns:
             bool: True if period_unit is HOUR or MINUTE, False otherwise
         """
@@ -122,22 +179,18 @@ class ATRIndicator(Indicator):
     def _calculate_true_range(self, high: float, low: float, previous_close: float) -> float:
         """
         Calculate the true range for a given bar.
-        
+
         True Range is the greatest of:
         1. Current High - Current Low
         2. |Current High - Previous Close|
         3. |Current Low - Previous Close|
-        
+
         Args:
             high: Current bar's high price
             low: Current bar's low price
             previous_close: Previous bar's close price
-            
+
         Returns:
             float: The true range value
         """
-        return max(
-            high - low,
-            abs(high - previous_close),
-            abs(low - previous_close)
-        )
+        return max(high - low, abs(high - previous_close), abs(low - previous_close))

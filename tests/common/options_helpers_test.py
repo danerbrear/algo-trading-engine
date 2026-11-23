@@ -4,6 +4,7 @@ Tests for Phase 4 OptionsRetrieverHelper strategy-specific methods.
 This module tests the new strategy-specific helper methods added in Phase 4
 of the OptionsHandler refactoring.
 """
+
 import pytest
 import pandas as pd
 from datetime import datetime, date, timedelta
@@ -11,9 +12,10 @@ from decimal import Decimal
 from typing import List, Dict
 from algo_trading_engine.options_helpers import OptionsRetrieverHelper
 from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO
-from algo_trading_engine.vo import StrikePrice, ExpirationDate
+from algo_trading_engine.vo import ExpirationDate, SpreadPosition, StrikePrice
 from algo_trading_engine.enums import OptionType, StrategyType
 from algo_trading_engine.enums import BarTimeInterval
+
 
 class TestOptionsRetrieverHelperPhase4:
     """Test cases for Phase 4 strategy-specific helper methods."""
@@ -26,18 +28,130 @@ class TestOptionsRetrieverHelperPhase4:
         if days_until_friday == 0:
             days_until_friday = 7
         future_date = today + timedelta(days=days_until_friday)
-        return [OptionContractDTO(ticker='O:SPY250929C00580000', underlying_ticker='SPY', contract_type=OptionType.CALL, strike_price=StrikePrice(580.0), expiration_date=ExpirationDate(future_date), exercise_style='american', shares_per_contract=100, primary_exchange='BATO', cfi='OCASPS', additional_underlyings=None), OptionContractDTO(ticker='O:SPY250929C00600000', underlying_ticker='SPY', contract_type=OptionType.CALL, strike_price=StrikePrice(600.0), expiration_date=ExpirationDate(future_date), exercise_style='american', shares_per_contract=100, primary_exchange='BATO', cfi='OCASPS', additional_underlyings=None), OptionContractDTO(ticker='O:SPY250929C00605000', underlying_ticker='SPY', contract_type=OptionType.CALL, strike_price=StrikePrice(605.0), expiration_date=ExpirationDate(future_date), exercise_style='american', shares_per_contract=100, primary_exchange='BATO', cfi='OCASPS', additional_underlyings=None), OptionContractDTO(ticker='O:SPY250929P00580000', underlying_ticker='SPY', contract_type=OptionType.PUT, strike_price=StrikePrice(580.0), expiration_date=ExpirationDate(future_date), exercise_style='american', shares_per_contract=100, primary_exchange='BATO', cfi='OCASPS', additional_underlyings=None), OptionContractDTO(ticker='O:SPY250929P00600000', underlying_ticker='SPY', contract_type=OptionType.PUT, strike_price=StrikePrice(600.0), expiration_date=ExpirationDate(future_date), exercise_style='american', shares_per_contract=100, primary_exchange='BATO', cfi='OCASPS', additional_underlyings=None), OptionContractDTO(ticker='O:SPY250929P00605000', underlying_ticker='SPY', contract_type=OptionType.PUT, strike_price=StrikePrice(605.0), expiration_date=ExpirationDate(future_date), exercise_style='american', shares_per_contract=100, primary_exchange='BATO', cfi='OCASPS', additional_underlyings=None)]
+        return [
+            OptionContractDTO(
+                ticker="O:SPY250929C00580000",
+                underlying_ticker="SPY",
+                contract_type=OptionType.CALL,
+                strike_price=StrikePrice(Decimal("580")),
+                expiration_date=ExpirationDate(future_date),
+                exercise_style="american",
+                shares_per_contract=100,
+                primary_exchange="BATO",
+                cfi="OCASPS",
+                additional_underlyings=None,
+            ),
+            OptionContractDTO(
+                ticker="O:SPY250929C00600000",
+                underlying_ticker="SPY",
+                contract_type=OptionType.CALL,
+                strike_price=StrikePrice(Decimal("600")),
+                expiration_date=ExpirationDate(future_date),
+                exercise_style="american",
+                shares_per_contract=100,
+                primary_exchange="BATO",
+                cfi="OCASPS",
+                additional_underlyings=None,
+            ),
+            OptionContractDTO(
+                ticker="O:SPY250929C00605000",
+                underlying_ticker="SPY",
+                contract_type=OptionType.CALL,
+                strike_price=StrikePrice(Decimal("605")),
+                expiration_date=ExpirationDate(future_date),
+                exercise_style="american",
+                shares_per_contract=100,
+                primary_exchange="BATO",
+                cfi="OCASPS",
+                additional_underlyings=None,
+            ),
+            OptionContractDTO(
+                ticker="O:SPY250929P00580000",
+                underlying_ticker="SPY",
+                contract_type=OptionType.PUT,
+                strike_price=StrikePrice(Decimal("580")),
+                expiration_date=ExpirationDate(future_date),
+                exercise_style="american",
+                shares_per_contract=100,
+                primary_exchange="BATO",
+                cfi="OCASPS",
+                additional_underlyings=None,
+            ),
+            OptionContractDTO(
+                ticker="O:SPY250929P00600000",
+                underlying_ticker="SPY",
+                contract_type=OptionType.PUT,
+                strike_price=StrikePrice(Decimal("600")),
+                expiration_date=ExpirationDate(future_date),
+                exercise_style="american",
+                shares_per_contract=100,
+                primary_exchange="BATO",
+                cfi="OCASPS",
+                additional_underlyings=None,
+            ),
+            OptionContractDTO(
+                ticker="O:SPY250929P00605000",
+                underlying_ticker="SPY",
+                contract_type=OptionType.PUT,
+                strike_price=StrikePrice(Decimal("605")),
+                expiration_date=ExpirationDate(future_date),
+                exercise_style="american",
+                shares_per_contract=100,
+                primary_exchange="BATO",
+                cfi="OCASPS",
+                additional_underlyings=None,
+            ),
+        ]
 
     @pytest.fixture
     def sample_bars(self):
         """Create sample bar data for testing."""
-        return {'O:SPY250929C00580000': OptionBarDTO(ticker='O:SPY250929C00580000', timestamp=datetime.now(), open_price=Decimal('15.50'), high_price=Decimal('16.00'), low_price=Decimal('15.25'), close_price=Decimal('15.75'), volume=150, volume_weighted_avg_price=Decimal('15.60'), number_of_transactions=25, adjusted=True), 'O:SPY250929C00600000': OptionBarDTO(ticker='O:SPY250929C00600000', timestamp=datetime.now(), open_price=Decimal('10.50'), high_price=Decimal('11.00'), low_price=Decimal('10.25'), close_price=Decimal('10.75'), volume=200, volume_weighted_avg_price=Decimal('10.60'), number_of_transactions=30, adjusted=True), 'O:SPY250929P00600000': OptionBarDTO(ticker='O:SPY250929P00600000', timestamp=datetime.now(), open_price=Decimal('8.50'), high_price=Decimal('9.00'), low_price=Decimal('8.25'), close_price=Decimal('8.75'), volume=50, volume_weighted_avg_price=Decimal('8.60'), number_of_transactions=15, adjusted=True)}
+        return {
+            "O:SPY250929C00580000": OptionBarDTO(
+                ticker="O:SPY250929C00580000",
+                timestamp=datetime.now(),
+                open_price=Decimal("15.50"),
+                high_price=Decimal("16.00"),
+                low_price=Decimal("15.25"),
+                close_price=Decimal("15.75"),
+                volume=150,
+                volume_weighted_avg_price=Decimal("15.60"),
+                number_of_transactions=25,
+                adjusted=True,
+            ),
+            "O:SPY250929C00600000": OptionBarDTO(
+                ticker="O:SPY250929C00600000",
+                timestamp=datetime.now(),
+                open_price=Decimal("10.50"),
+                high_price=Decimal("11.00"),
+                low_price=Decimal("10.25"),
+                close_price=Decimal("10.75"),
+                volume=200,
+                volume_weighted_avg_price=Decimal("10.60"),
+                number_of_transactions=30,
+                adjusted=True,
+            ),
+            "O:SPY250929P00600000": OptionBarDTO(
+                ticker="O:SPY250929P00600000",
+                timestamp=datetime.now(),
+                open_price=Decimal("8.50"),
+                high_price=Decimal("9.00"),
+                low_price=Decimal("8.25"),
+                close_price=Decimal("8.75"),
+                volume=50,
+                volume_weighted_avg_price=Decimal("8.60"),
+                number_of_transactions=15,
+                adjusted=True,
+            ),
+        }
 
     def test_find_credit_spread_legs_call(self, sample_contracts):
         """Test finding call credit spread legs."""
         current_price = 600.0
         expiration_date = str(sample_contracts[0].expiration_date)
-        short_leg, long_leg = OptionsRetrieverHelper.find_credit_spread_legs(sample_contracts, current_price, expiration_date, OptionType.CALL, spread_width=5)
+        short_leg, long_leg = OptionsRetrieverHelper.find_credit_spread_legs(
+            sample_contracts, current_price, expiration_date, OptionType.CALL, spread_width=5
+        )
         assert short_leg is not None
         assert long_leg is not None
         assert short_leg.contract_type == OptionType.CALL
@@ -49,7 +163,9 @@ class TestOptionsRetrieverHelperPhase4:
         """Test finding put credit spread legs."""
         current_price = 600.0
         expiration_date = str(sample_contracts[0].expiration_date)
-        short_leg, long_leg = OptionsRetrieverHelper.find_credit_spread_legs(sample_contracts, current_price, expiration_date, OptionType.PUT, spread_width=5)
+        short_leg, long_leg = OptionsRetrieverHelper.find_credit_spread_legs(
+            sample_contracts, current_price, expiration_date, OptionType.PUT, spread_width=5
+        )
         assert short_leg is not None
         assert long_leg is not None
         assert short_leg.contract_type == OptionType.PUT
@@ -60,7 +176,9 @@ class TestOptionsRetrieverHelperPhase4:
     def test_find_credit_spread_legs_insufficient_contracts(self):
         """Test finding credit spread legs with insufficient contracts."""
         contracts = []
-        short_leg, long_leg = OptionsRetrieverHelper.find_credit_spread_legs(contracts, 600.0, '2025-09-29', OptionType.CALL, spread_width=5)
+        short_leg, long_leg = OptionsRetrieverHelper.find_credit_spread_legs(
+            contracts, 600.0, "2025-09-29", OptionType.CALL, spread_width=5
+        )
         assert short_leg is None
         assert long_leg is None
 
@@ -82,6 +200,7 @@ class TestOptionsRetrieverHelperPhase4:
     def test_find_optimal_expiration_no_match(self, sample_contracts):
         """Test finding optimal expiration with no matching dates."""
         from datetime import date
+
         today = date.today()
         fixture_exp_date = sample_contracts[0].expiration_date.date
         days_to_fixture = (fixture_exp_date - today).days
@@ -91,7 +210,9 @@ class TestOptionsRetrieverHelperPhase4:
         else:
             min_days = 1
             max_days = 5
-        optimal_exp = OptionsRetrieverHelper.find_optimal_expiration(sample_contracts, min_days=min_days, max_days=max_days)
+        optimal_exp = OptionsRetrieverHelper.find_optimal_expiration(
+            sample_contracts, min_days=min_days, max_days=max_days
+        )
         assert optimal_exp is None
 
     def test_calculate_implied_volatility_rank(self):
@@ -147,7 +268,7 @@ class TestOptionsRetrieverHelperPhase4:
             pd.DataFrame({"implied_volatility": [0.20, 0.20, 0.20]}),
             window=3,
         )
-        assert flat["implied_volatility_rank"].isna().all()
+        assert bool(flat["implied_volatility_rank"].isna().all())
 
     def test_calculate_implied_volatility_rank_half_null_window(self):
         """Test NaN when half the window is null, and a rank when fewer are null."""
@@ -155,7 +276,7 @@ class TestOptionsRetrieverHelperPhase4:
             pd.DataFrame({"implied_volatility": [0.10, float("nan"), float("nan"), 0.40]}),
             window=4,
         )
-        assert half_null["implied_volatility_rank"].isna().all()
+        assert bool(half_null["implied_volatility_rank"].isna().all())
 
         ranked = OptionsRetrieverHelper.calculate_implied_volatility_rank(
             pd.DataFrame({"implied_volatility": [0.10, 0.20, float("nan"), 0.40]}),
@@ -175,15 +296,19 @@ class TestOptionsRetrieverHelperPhase4:
 
     def test_find_high_volume_contracts(self, sample_contracts, sample_bars):
         """Test finding high volume contracts."""
-        high_volume_contracts = OptionsRetrieverHelper.find_high_volume_contracts(sample_contracts, sample_bars, min_volume=100)
+        high_volume_contracts = OptionsRetrieverHelper.find_high_volume_contracts(
+            sample_contracts, sample_bars, min_volume=100
+        )
         assert len(high_volume_contracts) == 2
         tickers = [c.ticker for c in high_volume_contracts]
-        assert 'O:SPY250929C00580000' in tickers
-        assert 'O:SPY250929C00600000' in tickers
+        assert "O:SPY250929C00580000" in tickers
+        assert "O:SPY250929C00600000" in tickers
 
     def test_find_high_volume_contracts_no_matches(self, sample_contracts, sample_bars):
         """Test finding high volume contracts with high threshold."""
-        high_volume_contracts = OptionsRetrieverHelper.find_high_volume_contracts(sample_contracts, sample_bars, min_volume=1000)
+        high_volume_contracts = OptionsRetrieverHelper.find_high_volume_contracts(
+            sample_contracts, sample_bars, min_volume=1000
+        )
         assert len(high_volume_contracts) == 0
 
     def test_calculate_delta_exposure(self, sample_contracts):
@@ -196,8 +321,14 @@ class TestOptionsRetrieverHelperPhase4:
         """Test finding iron condor legs."""
         current_price = 600.0
         expiration_date = str(sample_contracts[0].expiration_date)
-        put_long, put_short, call_short, call_long = OptionsRetrieverHelper.find_iron_condor_legs(sample_contracts, current_price, expiration_date, spread_width=5)
+        put_long, put_short, call_short, call_long = OptionsRetrieverHelper.find_iron_condor_legs(
+            sample_contracts, current_price, expiration_date, spread_width=5
+        )
         assert all([put_long, put_short, call_short, call_long])
+        assert put_long is not None
+        assert put_short is not None
+        assert call_short is not None
+        assert call_long is not None
         assert put_long.contract_type == OptionType.PUT
         assert put_short.contract_type == OptionType.PUT
         assert call_short.contract_type == OptionType.CALL
@@ -206,7 +337,9 @@ class TestOptionsRetrieverHelperPhase4:
     def test_find_iron_condor_legs_insufficient_contracts(self):
         """Test finding iron condor legs with insufficient contracts."""
         contracts = []
-        put_long, put_short, call_short, call_long = OptionsRetrieverHelper.find_iron_condor_legs(contracts, 600.0, '2025-09-29', spread_width=5)
+        put_long, put_short, call_short, call_long = OptionsRetrieverHelper.find_iron_condor_legs(
+            contracts, 600.0, "2025-09-29", spread_width=5
+        )
         assert all([put_long is None, put_short is None, call_short is None, call_long is None])
 
     def test_calculate_breakeven_points_call(self, sample_contracts):
@@ -245,10 +378,24 @@ class TestOptionsRetrieverHelperPhase4:
             first_day = next_month
             first_friday = first_day + timedelta(days=(4 - first_day.weekday()) % 7)
             third_friday = first_friday + timedelta(days=14)
-        monthly_contracts = [OptionContractDTO(ticker='O:SPY250929C00600000', underlying_ticker='SPY', contract_type=OptionType.CALL, strike_price=StrikePrice(600.0), expiration_date=ExpirationDate(third_friday), exercise_style='american', shares_per_contract=100, primary_exchange='BATO', cfi='OCASPS', additional_underlyings=None)]
+        monthly_contracts = [
+            OptionContractDTO(
+                ticker="O:SPY250929C00600000",
+                underlying_ticker="SPY",
+                contract_type=OptionType.CALL,
+                strike_price=StrikePrice(Decimal("600")),
+                expiration_date=ExpirationDate(third_friday),
+                exercise_style="american",
+                shares_per_contract=100,
+                primary_exchange="BATO",
+                cfi="OCASPS",
+                additional_underlyings=None,
+            )
+        ]
         monthly_expirations = OptionsRetrieverHelper.find_monthly_expirations(monthly_contracts)
         assert len(monthly_expirations) == 1
         assert monthly_expirations[0] == str(monthly_contracts[0].expiration_date)
+
 
 class TestOptionsRetrieverHelperIntegration:
     """Integration tests for OptionsRetrieverHelper with real-world scenarios."""
@@ -256,10 +403,49 @@ class TestOptionsRetrieverHelperIntegration:
     def test_complete_credit_spread_analysis(self):
         """Test complete credit spread analysis workflow."""
         future_date = date.today() + timedelta(days=30)
-        contracts = [OptionContractDTO(ticker='O:SPY250929C00595000', underlying_ticker='SPY', contract_type=OptionType.CALL, strike_price=StrikePrice(595.0), expiration_date=ExpirationDate(future_date), exercise_style='american', shares_per_contract=100, primary_exchange='BATO', cfi='OCASPS', additional_underlyings=None), OptionContractDTO(ticker='O:SPY250929C00600000', underlying_ticker='SPY', contract_type=OptionType.CALL, strike_price=StrikePrice(600.0), expiration_date=ExpirationDate(future_date), exercise_style='american', shares_per_contract=100, primary_exchange='BATO', cfi='OCASPS', additional_underlyings=None), OptionContractDTO(ticker='O:SPY250929C00605000', underlying_ticker='SPY', contract_type=OptionType.CALL, strike_price=StrikePrice(605.0), expiration_date=ExpirationDate(future_date), exercise_style='american', shares_per_contract=100, primary_exchange='BATO', cfi='OCASPS', additional_underlyings=None)]
+        contracts = [
+            OptionContractDTO(
+                ticker="O:SPY250929C00595000",
+                underlying_ticker="SPY",
+                contract_type=OptionType.CALL,
+                strike_price=StrikePrice(Decimal("595")),
+                expiration_date=ExpirationDate(future_date),
+                exercise_style="american",
+                shares_per_contract=100,
+                primary_exchange="BATO",
+                cfi="OCASPS",
+                additional_underlyings=None,
+            ),
+            OptionContractDTO(
+                ticker="O:SPY250929C00600000",
+                underlying_ticker="SPY",
+                contract_type=OptionType.CALL,
+                strike_price=StrikePrice(Decimal("600")),
+                expiration_date=ExpirationDate(future_date),
+                exercise_style="american",
+                shares_per_contract=100,
+                primary_exchange="BATO",
+                cfi="OCASPS",
+                additional_underlyings=None,
+            ),
+            OptionContractDTO(
+                ticker="O:SPY250929C00605000",
+                underlying_ticker="SPY",
+                contract_type=OptionType.CALL,
+                strike_price=StrikePrice(Decimal("605")),
+                expiration_date=ExpirationDate(future_date),
+                exercise_style="american",
+                shares_per_contract=100,
+                primary_exchange="BATO",
+                cfi="OCASPS",
+                additional_underlyings=None,
+            ),
+        ]
         current_price = 600.0
         expiration_date = str(future_date)
-        short_leg, long_leg = OptionsRetrieverHelper.find_credit_spread_legs(contracts, current_price, expiration_date, OptionType.CALL, spread_width=5)
+        short_leg, long_leg = OptionsRetrieverHelper.find_credit_spread_legs(
+            contracts, current_price, expiration_date, OptionType.CALL, spread_width=5
+        )
         assert short_leg is not None
         assert long_leg is not None
         short_premium = 2.5
@@ -271,6 +457,7 @@ class TestOptionsRetrieverHelperIntegration:
         spread_width = abs(float(short_leg.strike_price.value) - float(long_leg.strike_price.value))
         assert spread_width == 5.0
 
+
 class TestCreditSpreadMaxCreditWidth:
     """Test cases for find_credit_spread_max_credit_width."""
 
@@ -280,9 +467,35 @@ class TestCreditSpreadMaxCreditWidth:
         future_date = date.today() + timedelta(days=30)
         contracts = []
         for strike in range(595, 611):
-            contracts.append(OptionContractDTO(ticker=f'O:SPY250929P00{strike}000', underlying_ticker='SPY', contract_type=OptionType.PUT, strike_price=StrikePrice(float(strike)), expiration_date=ExpirationDate(future_date), exercise_style='american', shares_per_contract=100, primary_exchange='BATO', cfi='OCASPS', additional_underlyings=None))
+            contracts.append(
+                OptionContractDTO(
+                    ticker=f"O:SPY250929P00{strike}000",
+                    underlying_ticker="SPY",
+                    contract_type=OptionType.PUT,
+                    strike_price=StrikePrice(Decimal(strike)),
+                    expiration_date=ExpirationDate(future_date),
+                    exercise_style="american",
+                    shares_per_contract=100,
+                    primary_exchange="BATO",
+                    cfi="OCASPS",
+                    additional_underlyings=None,
+                )
+            )
         for strike in range(595, 611):
-            contracts.append(OptionContractDTO(ticker=f'O:SPY250929C00{strike}000', underlying_ticker='SPY', contract_type=OptionType.CALL, strike_price=StrikePrice(float(strike)), expiration_date=ExpirationDate(future_date), exercise_style='american', shares_per_contract=100, primary_exchange='BATO', cfi='OCASPS', additional_underlyings=None))
+            contracts.append(
+                OptionContractDTO(
+                    ticker=f"O:SPY250929C00{strike}000",
+                    underlying_ticker="SPY",
+                    contract_type=OptionType.CALL,
+                    strike_price=StrikePrice(Decimal(strike)),
+                    expiration_date=ExpirationDate(future_date),
+                    exercise_style="american",
+                    shares_per_contract=100,
+                    primary_exchange="BATO",
+                    cfi="OCASPS",
+                    additional_underlyings=None,
+                )
+            )
         return (contracts, str(future_date))
 
     def test_find_credit_spread_put_happy_path(self, sample_contracts):
@@ -295,29 +508,50 @@ class TestCreditSpreadMaxCreditWidth:
             strike = float(contract.strike_price.value)
             if contract.contract_type == OptionType.PUT:
                 if strike == 600:
-                    premium = Decimal('10.00')
+                    premium = Decimal("10.00")
                 elif strike == 596:
-                    premium = Decimal('7.00')
+                    premium = Decimal("7.00")
                 elif strike == 595:
-                    premium = Decimal('6.50')
+                    premium = Decimal("6.50")
                 elif strike == 594:
-                    premium = Decimal('6.00')
+                    premium = Decimal("6.00")
                 else:
-                    premium = Decimal('5.00')
+                    premium = Decimal("5.00")
             else:
                 return None
-            return OptionBarDTO(ticker=contract.ticker, timestamp=date, open_price=premium, high_price=premium, low_price=premium, close_price=premium, volume=100, volume_weighted_avg_price=premium, number_of_transactions=10, adjusted=True)
-        result = OptionsRetrieverHelper.find_credit_spread_max_credit_width(contracts, current_price, expiration, get_bar_fn, test_date, min_spread_width=4, max_spread_width=6, option_type=OptionType.PUT)
+            return OptionBarDTO(
+                ticker=contract.ticker,
+                timestamp=date,
+                open_price=premium,
+                high_price=premium,
+                low_price=premium,
+                close_price=premium,
+                volume=100,
+                volume_weighted_avg_price=premium,
+                number_of_transactions=10,
+                adjusted=True,
+            )
+
+        result = OptionsRetrieverHelper.find_credit_spread_max_credit_width(
+            contracts,
+            current_price,
+            expiration,
+            get_bar_fn,
+            test_date,
+            min_spread_width=4,
+            max_spread_width=6,
+            option_type=OptionType.PUT,
+        )
         assert result is not None
-        assert result['atm_contract'] is not None
-        assert result['otm_contract'] is not None
-        assert result['atm_contract'].contract_type == OptionType.PUT
-        assert result['otm_contract'].contract_type == OptionType.PUT
-        assert result['credit'] > 0
-        assert result['width'] >= 4
-        assert result['width'] <= 6
-        assert result['credit_width_ratio'] > 0
-        assert result['credit_width_ratio'] == result['credit'] / result['width']
+        assert result["atm_contract"] is not None
+        assert result["otm_contract"] is not None
+        assert result["atm_contract"].contract_type == OptionType.PUT
+        assert result["otm_contract"].contract_type == OptionType.PUT
+        assert result["credit"] > 0
+        assert result["width"] >= 4
+        assert result["width"] <= 6
+        assert result["credit_width_ratio"] > 0
+        assert result["credit_width_ratio"] == result["credit"] / result["width"]
 
     def test_find_credit_spread_call_happy_path(self, sample_contracts):
         """Test finding best CALL credit spread with valid data."""
@@ -329,34 +563,59 @@ class TestCreditSpreadMaxCreditWidth:
             strike = float(contract.strike_price.value)
             if contract.contract_type == OptionType.CALL:
                 if strike == 600:
-                    premium = Decimal('10.00')
+                    premium = Decimal("10.00")
                 elif strike == 604:
-                    premium = Decimal('7.00')
+                    premium = Decimal("7.00")
                 elif strike == 605:
-                    premium = Decimal('6.50')
+                    premium = Decimal("6.50")
                 elif strike == 606:
-                    premium = Decimal('6.00')
+                    premium = Decimal("6.00")
                 else:
-                    premium = Decimal('5.00')
+                    premium = Decimal("5.00")
             else:
                 return None
-            return OptionBarDTO(ticker=contract.ticker, timestamp=date, open_price=premium, high_price=premium, low_price=premium, close_price=premium, volume=100, volume_weighted_avg_price=premium, number_of_transactions=10, adjusted=True)
-        result = OptionsRetrieverHelper.find_credit_spread_max_credit_width(contracts, current_price, expiration, get_bar_fn, test_date, min_spread_width=4, max_spread_width=6, option_type=OptionType.CALL)
+            return OptionBarDTO(
+                ticker=contract.ticker,
+                timestamp=date,
+                open_price=premium,
+                high_price=premium,
+                low_price=premium,
+                close_price=premium,
+                volume=100,
+                volume_weighted_avg_price=premium,
+                number_of_transactions=10,
+                adjusted=True,
+            )
+
+        result = OptionsRetrieverHelper.find_credit_spread_max_credit_width(
+            contracts,
+            current_price,
+            expiration,
+            get_bar_fn,
+            test_date,
+            min_spread_width=4,
+            max_spread_width=6,
+            option_type=OptionType.CALL,
+        )
         assert result is not None
-        assert result['atm_contract'].contract_type == OptionType.CALL
-        assert result['otm_contract'].contract_type == OptionType.CALL
-        assert result['credit'] > 0
-        assert result['width'] >= 4
+        assert result["atm_contract"].contract_type == OptionType.CALL
+        assert result["otm_contract"].contract_type == OptionType.CALL
+        assert result["credit"] > 0
+        assert result["width"] >= 4
 
     def test_find_credit_spread_no_contracts(self):
         """Test with empty contract list."""
-        result = OptionsRetrieverHelper.find_credit_spread_max_credit_width([], 600.0, '2025-09-29', lambda c, d: None, datetime.now())
+        result = OptionsRetrieverHelper.find_credit_spread_max_credit_width(
+            [], 600.0, "2025-09-29", lambda c, d: None, datetime.now()
+        )
         assert result is None
 
     def test_find_credit_spread_no_bar_data(self, sample_contracts):
         """Test when bar data is unavailable."""
         contracts, expiration = sample_contracts
-        result = OptionsRetrieverHelper.find_credit_spread_max_credit_width(contracts, 600.0, expiration, lambda c, d: None, datetime.now())
+        result = OptionsRetrieverHelper.find_credit_spread_max_credit_width(
+            contracts, 600.0, expiration, lambda c, d: None, datetime.now()
+        )
         assert result is None
 
     def test_find_credit_spread_negative_credit(self, sample_contracts):
@@ -368,13 +627,27 @@ class TestCreditSpreadMaxCreditWidth:
             strike = float(contract.strike_price.value)
             if contract.contract_type == OptionType.PUT:
                 if strike == 600:
-                    premium = Decimal('5.00')
+                    premium = Decimal("5.00")
                 else:
-                    premium = Decimal('10.00')
+                    premium = Decimal("10.00")
             else:
                 return None
-            return OptionBarDTO(ticker=contract.ticker, timestamp=date, open_price=premium, high_price=premium, low_price=premium, close_price=premium, volume=100, volume_weighted_avg_price=premium, number_of_transactions=10, adjusted=True)
-        result = OptionsRetrieverHelper.find_credit_spread_max_credit_width(contracts, 600.0, expiration, get_bar_fn, test_date, option_type=OptionType.PUT)
+            return OptionBarDTO(
+                ticker=contract.ticker,
+                timestamp=date,
+                open_price=premium,
+                high_price=premium,
+                low_price=premium,
+                close_price=premium,
+                volume=100,
+                volume_weighted_avg_price=premium,
+                number_of_transactions=10,
+                adjusted=True,
+            )
+
+        result = OptionsRetrieverHelper.find_credit_spread_max_credit_width(
+            contracts, 600.0, expiration, get_bar_fn, test_date, option_type=OptionType.PUT
+        )
         assert result is None
 
     def test_find_credit_spread_optimization(self, sample_contracts):
@@ -387,22 +660,44 @@ class TestCreditSpreadMaxCreditWidth:
             strike = float(contract.strike_price.value)
             if contract.contract_type == OptionType.PUT:
                 if strike == 600:
-                    premium = Decimal('10.00')
+                    premium = Decimal("10.00")
                 elif strike == 596:
-                    premium = Decimal('7.00')
+                    premium = Decimal("7.00")
                 elif strike == 595:
-                    premium = Decimal('6.00')
+                    premium = Decimal("6.00")
                 elif strike == 594:
-                    premium = Decimal('5.50')
+                    premium = Decimal("5.50")
                 else:
-                    premium = Decimal('5.00')
+                    premium = Decimal("5.00")
             else:
                 return None
-            return OptionBarDTO(ticker=contract.ticker, timestamp=date, open_price=premium, high_price=premium, low_price=premium, close_price=premium, volume=100, volume_weighted_avg_price=premium, number_of_transactions=10, adjusted=True)
-        result = OptionsRetrieverHelper.find_credit_spread_max_credit_width(contracts, current_price, expiration, get_bar_fn, test_date, min_spread_width=4, max_spread_width=6, option_type=OptionType.PUT)
+            return OptionBarDTO(
+                ticker=contract.ticker,
+                timestamp=date,
+                open_price=premium,
+                high_price=premium,
+                low_price=premium,
+                close_price=premium,
+                volume=100,
+                volume_weighted_avg_price=premium,
+                number_of_transactions=10,
+                adjusted=True,
+            )
+
+        result = OptionsRetrieverHelper.find_credit_spread_max_credit_width(
+            contracts,
+            current_price,
+            expiration,
+            get_bar_fn,
+            test_date,
+            min_spread_width=4,
+            max_spread_width=6,
+            option_type=OptionType.PUT,
+        )
         assert result is not None
-        assert result['width'] == 5.0
-        assert abs(result['credit_width_ratio'] - 0.8) < 0.01
+        assert result["width"] == 5.0
+        assert abs(result["credit_width_ratio"] - 0.8) < 0.01
+
 
 class TestDebitSpreadMaxRewardRisk:
     """Test cases for find_debit_spread_max_reward_risk."""
@@ -413,9 +708,35 @@ class TestDebitSpreadMaxRewardRisk:
         future_date = date.today() + timedelta(days=30)
         contracts = []
         for strike in range(595, 611):
-            contracts.append(OptionContractDTO(ticker=f'O:SPY250929C00{strike}000', underlying_ticker='SPY', contract_type=OptionType.CALL, strike_price=StrikePrice(float(strike)), expiration_date=ExpirationDate(future_date), exercise_style='american', shares_per_contract=100, primary_exchange='BATO', cfi='OCASPS', additional_underlyings=None))
+            contracts.append(
+                OptionContractDTO(
+                    ticker=f"O:SPY250929C00{strike}000",
+                    underlying_ticker="SPY",
+                    contract_type=OptionType.CALL,
+                    strike_price=StrikePrice(Decimal(strike)),
+                    expiration_date=ExpirationDate(future_date),
+                    exercise_style="american",
+                    shares_per_contract=100,
+                    primary_exchange="BATO",
+                    cfi="OCASPS",
+                    additional_underlyings=None,
+                )
+            )
         for strike in range(595, 611):
-            contracts.append(OptionContractDTO(ticker=f'O:SPY250929P00{strike}000', underlying_ticker='SPY', contract_type=OptionType.PUT, strike_price=StrikePrice(float(strike)), expiration_date=ExpirationDate(future_date), exercise_style='american', shares_per_contract=100, primary_exchange='BATO', cfi='OCASPS', additional_underlyings=None))
+            contracts.append(
+                OptionContractDTO(
+                    ticker=f"O:SPY250929P00{strike}000",
+                    underlying_ticker="SPY",
+                    contract_type=OptionType.PUT,
+                    strike_price=StrikePrice(Decimal(strike)),
+                    expiration_date=ExpirationDate(future_date),
+                    exercise_style="american",
+                    shares_per_contract=100,
+                    primary_exchange="BATO",
+                    cfi="OCASPS",
+                    additional_underlyings=None,
+                )
+            )
         return (contracts, str(future_date))
 
     def test_find_debit_spread_call_happy_path(self, sample_contracts):
@@ -429,28 +750,54 @@ class TestDebitSpreadMaxRewardRisk:
             strike = float(contract.strike_price.value)
             if contract.contract_type == OptionType.CALL:
                 if strike == 600:
-                    premium = Decimal('10.00')
+                    premium = Decimal("10.00")
                 elif strike == 604:
-                    premium = Decimal('7.00')
+                    premium = Decimal("7.00")
                 elif strike == 605:
-                    premium = Decimal('6.00')
+                    premium = Decimal("6.00")
                 elif strike == 606:
-                    premium = Decimal('5.00')
+                    premium = Decimal("5.00")
                 else:
-                    premium = Decimal('4.00')
+                    premium = Decimal("4.00")
             else:
                 return None
-            return OptionBarDTO(ticker=contract.ticker, timestamp=date, open_price=premium, high_price=premium, low_price=premium, close_price=premium, volume=100, volume_weighted_avg_price=premium, number_of_transactions=10, adjusted=True)
-        result = OptionsRetrieverHelper.find_debit_spread_max_reward_risk(contracts, current_price, expiration, get_bar_fn, test_date, min_spread_width=4, max_spread_width=6, option_type=OptionType.CALL)
+            return OptionBarDTO(
+                ticker=contract.ticker,
+                timestamp=date,
+                open_price=premium,
+                high_price=premium,
+                low_price=premium,
+                close_price=premium,
+                volume=100,
+                volume_weighted_avg_price=premium,
+                number_of_transactions=10,
+                adjusted=True,
+            )
+
+        result = OptionsRetrieverHelper.find_debit_spread_max_reward_risk(
+            contracts,
+            current_price,
+            expiration,
+            get_bar_fn,
+            test_date,
+            min_spread_width=4,
+            max_spread_width=6,
+            option_type=OptionType.CALL,
+        )
         assert result is not None
+        assert isinstance(result, SpreadPosition)
         assert result.strategy_type == StrategyType.CALL_DEBIT_SPREAD
         assert result.entry_price > 0
-        assert len(result.spread_options) == 2
-        assert result.spread_options[0].symbol == 'SPY'
-        assert result.spread_options[1].symbol == 'SPY'
-        assert result.max_profit() > 0
+        assert len(result.legs) == 2
+        assert result.legs[0].symbol == "SPY"
+        assert result.legs[1].symbol == "SPY"
+        max_profit = result.max_profit()
+        assert max_profit is not None
+        assert max_profit > 0
         assert result.max_loss_per_share() == result.entry_price
-        assert result.risk_reward_ratio() > 0
+        risk_reward = result.risk_reward_ratio()
+        assert risk_reward is not None
+        assert risk_reward > 0
         assert result.spread_width() >= 4
         assert result.spread_width() <= 6
 
@@ -465,28 +812,53 @@ class TestDebitSpreadMaxRewardRisk:
             strike = float(contract.strike_price.value)
             if contract.contract_type == OptionType.PUT:
                 if strike == 600:
-                    premium = Decimal('10.00')
+                    premium = Decimal("10.00")
                 elif strike == 596:
-                    premium = Decimal('7.00')
+                    premium = Decimal("7.00")
                 elif strike == 595:
-                    premium = Decimal('6.00')
+                    premium = Decimal("6.00")
                 elif strike == 594:
-                    premium = Decimal('5.00')
+                    premium = Decimal("5.00")
                 else:
-                    premium = Decimal('4.00')
+                    premium = Decimal("4.00")
             else:
                 return None
-            return OptionBarDTO(ticker=contract.ticker, timestamp=date, open_price=premium, high_price=premium, low_price=premium, close_price=premium, volume=100, volume_weighted_avg_price=premium, number_of_transactions=10, adjusted=True)
-        result = OptionsRetrieverHelper.find_debit_spread_max_reward_risk(contracts, current_price, expiration, get_bar_fn, test_date, min_spread_width=4, max_spread_width=6, option_type=OptionType.PUT)
+            return OptionBarDTO(
+                ticker=contract.ticker,
+                timestamp=date,
+                open_price=premium,
+                high_price=premium,
+                low_price=premium,
+                close_price=premium,
+                volume=100,
+                volume_weighted_avg_price=premium,
+                number_of_transactions=10,
+                adjusted=True,
+            )
+
+        result = OptionsRetrieverHelper.find_debit_spread_max_reward_risk(
+            contracts,
+            current_price,
+            expiration,
+            get_bar_fn,
+            test_date,
+            min_spread_width=4,
+            max_spread_width=6,
+            option_type=OptionType.PUT,
+        )
         assert result is not None
         assert result.strategy_type == StrategyType.PUT_DEBIT_SPREAD
-        assert len(result.spread_options) == 2
+        assert len(result.legs) == 2
         assert result.entry_price > 0
-        assert result.max_profit() > 0
+        max_profit = result.max_profit()
+        assert max_profit is not None
+        assert max_profit > 0
 
     def test_find_debit_spread_no_contracts(self):
         """Test with empty contract list."""
-        result = OptionsRetrieverHelper.find_debit_spread_max_reward_risk([], 600.0, '2025-09-29', lambda c, d: None, datetime.now())
+        result = OptionsRetrieverHelper.find_debit_spread_max_reward_risk(
+            [], 600.0, "2025-09-29", lambda c, d: None, datetime.now()
+        )
         assert result is None
 
     def test_find_debit_spread_no_bar_data(self, sample_contracts):
@@ -496,7 +868,10 @@ class TestDebitSpreadMaxRewardRisk:
         def get_bar_fn(_contract, _date, multiplier=1, timespan=None):
             _ = multiplier, timespan
             return None
-        result = OptionsRetrieverHelper.find_debit_spread_max_reward_risk(contracts, 600.0, expiration, get_bar_fn, datetime.now())
+
+        result = OptionsRetrieverHelper.find_debit_spread_max_reward_risk(
+            contracts, 600.0, expiration, get_bar_fn, datetime.now()
+        )
         assert result is None
 
     def test_find_debit_spread_negative_debit(self, sample_contracts):
@@ -511,8 +886,22 @@ class TestDebitSpreadMaxRewardRisk:
                 premium = Decimal(str(strike))
             else:
                 return None
-            return OptionBarDTO(ticker=contract.ticker, timestamp=date, open_price=premium, high_price=premium, low_price=premium, close_price=premium, volume=100, volume_weighted_avg_price=premium, number_of_transactions=10, adjusted=True)
-        result = OptionsRetrieverHelper.find_debit_spread_max_reward_risk(contracts, 600.0, expiration, get_bar_fn, test_date, option_type=OptionType.CALL)
+            return OptionBarDTO(
+                ticker=contract.ticker,
+                timestamp=date,
+                open_price=premium,
+                high_price=premium,
+                low_price=premium,
+                close_price=premium,
+                volume=100,
+                volume_weighted_avg_price=premium,
+                number_of_transactions=10,
+                adjusted=True,
+            )
+
+        result = OptionsRetrieverHelper.find_debit_spread_max_reward_risk(
+            contracts, 600.0, expiration, get_bar_fn, test_date, option_type=OptionType.CALL
+        )
         assert result is None
 
     def test_find_debit_spread_zero_max_profit(self, sample_contracts):
@@ -525,13 +914,34 @@ class TestDebitSpreadMaxRewardRisk:
             strike = float(contract.strike_price.value)
             if contract.contract_type == OptionType.CALL:
                 if strike == 600:
-                    premium = Decimal('10.00')
+                    premium = Decimal("10.00")
                 else:
-                    premium = Decimal('6.00')
+                    premium = Decimal("6.00")
             else:
                 return None
-            return OptionBarDTO(ticker=contract.ticker, timestamp=date, open_price=premium, high_price=premium, low_price=premium, close_price=premium, volume=100, volume_weighted_avg_price=premium, number_of_transactions=10, adjusted=True)
-        result = OptionsRetrieverHelper.find_debit_spread_max_reward_risk(contracts, 600.0, expiration, get_bar_fn, test_date, min_spread_width=4, max_spread_width=4, option_type=OptionType.CALL)
+            return OptionBarDTO(
+                ticker=contract.ticker,
+                timestamp=date,
+                open_price=premium,
+                high_price=premium,
+                low_price=premium,
+                close_price=premium,
+                volume=100,
+                volume_weighted_avg_price=premium,
+                number_of_transactions=10,
+                adjusted=True,
+            )
+
+        result = OptionsRetrieverHelper.find_debit_spread_max_reward_risk(
+            contracts,
+            600.0,
+            expiration,
+            get_bar_fn,
+            test_date,
+            min_spread_width=4,
+            max_spread_width=4,
+            option_type=OptionType.CALL,
+        )
         assert result is None
 
     def test_find_debit_spread_optimization(self, sample_contracts):
@@ -545,22 +955,46 @@ class TestDebitSpreadMaxRewardRisk:
             strike = float(contract.strike_price.value)
             if contract.contract_type == OptionType.CALL:
                 if strike == 600:
-                    premium = Decimal('10.00')
+                    premium = Decimal("10.00")
                 elif strike == 604:
-                    premium = Decimal('7.00')
+                    premium = Decimal("7.00")
                 elif strike == 605:
-                    premium = Decimal('6.00')
+                    premium = Decimal("6.00")
                 elif strike == 606:
-                    premium = Decimal('5.00')
+                    premium = Decimal("5.00")
                 else:
-                    premium = Decimal('4.00')
+                    premium = Decimal("4.00")
             else:
                 return None
-            return OptionBarDTO(ticker=contract.ticker, timestamp=date, open_price=premium, high_price=premium, low_price=premium, close_price=premium, volume=100, volume_weighted_avg_price=premium, number_of_transactions=10, adjusted=True)
-        result = OptionsRetrieverHelper.find_debit_spread_max_reward_risk(contracts, current_price, expiration, get_bar_fn, test_date, min_spread_width=4, max_spread_width=6, option_type=OptionType.CALL)
+            return OptionBarDTO(
+                ticker=contract.ticker,
+                timestamp=date,
+                open_price=premium,
+                high_price=premium,
+                low_price=premium,
+                close_price=premium,
+                volume=100,
+                volume_weighted_avg_price=premium,
+                number_of_transactions=10,
+                adjusted=True,
+            )
+
+        result = OptionsRetrieverHelper.find_debit_spread_max_reward_risk(
+            contracts,
+            current_price,
+            expiration,
+            get_bar_fn,
+            test_date,
+            min_spread_width=4,
+            max_spread_width=6,
+            option_type=OptionType.CALL,
+        )
         assert result is not None
+        assert isinstance(result, SpreadPosition)
         assert result.spread_width() == 4.0
-        assert abs(result.risk_reward_ratio() - 3.0) < 0.01
+        risk_reward = result.risk_reward_ratio()
+        assert risk_reward is not None
+        assert abs(risk_reward - 3.0) < 0.01
 
     def test_find_debit_spread_realistic_scenario(self, sample_contracts):
         """Test with realistic option pricing scenario."""
@@ -577,16 +1011,51 @@ class TestDebitSpreadMaxRewardRisk:
                 premium = Decimal(str(intrinsic + time_value))
             else:
                 return None
-            return OptionBarDTO(ticker=contract.ticker, timestamp=date, open_price=premium, high_price=premium, low_price=premium, close_price=premium, volume=100, volume_weighted_avg_price=premium, number_of_transactions=10, adjusted=True)
-        result = OptionsRetrieverHelper.find_debit_spread_max_reward_risk(contracts, current_price, expiration, get_bar_fn, test_date, min_spread_width=4, max_spread_width=10, option_type=OptionType.CALL)
-        assert result is not None
-        assert result.entry_price > 0
-        assert result.max_profit() > 0
-        assert result.max_loss_per_share() > 0
-        assert result.risk_reward_ratio() > 0
-        assert abs(result.max_profit() - (result.spread_width() - result.entry_price)) < 0.01
+            return OptionBarDTO(
+                ticker=contract.ticker,
+                timestamp=date,
+                open_price=premium,
+                high_price=premium,
+                low_price=premium,
+                close_price=premium,
+                volume=100,
+                volume_weighted_avg_price=premium,
+                number_of_transactions=10,
+                adjusted=True,
+            )
 
-    @pytest.mark.parametrize('bar_datetime,timespan', [(datetime(2025, 1, 10), BarTimeInterval.DAY), (datetime(2025, 1, 10, 9, 30), BarTimeInterval.HOUR), (datetime(2025, 1, 10, 9, 31), BarTimeInterval.MINUTE)])
+        result = OptionsRetrieverHelper.find_debit_spread_max_reward_risk(
+            contracts,
+            current_price,
+            expiration,
+            get_bar_fn,
+            test_date,
+            min_spread_width=4,
+            max_spread_width=10,
+            option_type=OptionType.CALL,
+        )
+        assert result is not None
+        assert isinstance(result, SpreadPosition)
+        assert result.entry_price > 0
+        max_profit = result.max_profit()
+        assert max_profit is not None
+        assert max_profit > 0
+        max_loss = result.max_loss_per_share()
+        assert max_loss is not None
+        assert max_loss > 0
+        risk_reward = result.risk_reward_ratio()
+        assert risk_reward is not None
+        assert risk_reward > 0
+        assert abs(max_profit - (result.spread_width() - result.entry_price)) < 0.01
+
+    @pytest.mark.parametrize(
+        "bar_datetime,timespan",
+        [
+            (datetime(2025, 1, 10), BarTimeInterval.DAY),
+            (datetime(2025, 1, 10, 9, 30), BarTimeInterval.HOUR),
+            (datetime(2025, 1, 10, 9, 31), BarTimeInterval.MINUTE),
+        ],
+    )
     def test_find_debit_spread_works_with_any_bar_interval(self, sample_contracts, bar_datetime, timespan):
         """Validate find_debit_spread_max_reward_risk returns a debit spread for bars from any time interval."""
         contracts, expiration = sample_contracts
@@ -597,23 +1066,47 @@ class TestDebitSpreadMaxRewardRisk:
             strike = float(contract.strike_price.value)
             if contract.contract_type == OptionType.CALL:
                 if strike == 600:
-                    premium = Decimal('10.00')
+                    premium = Decimal("10.00")
                 elif strike == 604:
-                    premium = Decimal('7.00')
+                    premium = Decimal("7.00")
                 elif strike == 605:
-                    premium = Decimal('6.00')
+                    premium = Decimal("6.00")
                 elif strike == 606:
-                    premium = Decimal('5.00')
+                    premium = Decimal("5.00")
                 else:
-                    premium = Decimal('4.00')
+                    premium = Decimal("4.00")
             else:
                 return None
-            return OptionBarDTO(ticker=contract.ticker, timestamp=date, open_price=premium, high_price=premium, low_price=premium, close_price=premium, volume=100, volume_weighted_avg_price=premium, number_of_transactions=10, adjusted=True)
-        result = OptionsRetrieverHelper.find_debit_spread_max_reward_risk(contracts, current_price, expiration, get_bar_fn, bar_datetime, min_spread_width=4, max_spread_width=6, option_type=OptionType.CALL, timespan=timespan)
+            return OptionBarDTO(
+                ticker=contract.ticker,
+                timestamp=date,
+                open_price=premium,
+                high_price=premium,
+                low_price=premium,
+                close_price=premium,
+                volume=100,
+                volume_weighted_avg_price=premium,
+                number_of_transactions=10,
+                adjusted=True,
+            )
+
+        result = OptionsRetrieverHelper.find_debit_spread_max_reward_risk(
+            contracts,
+            current_price,
+            expiration,
+            get_bar_fn,
+            bar_datetime,
+            min_spread_width=4,
+            max_spread_width=6,
+            option_type=OptionType.CALL,
+            timespan=timespan,
+        )
         assert result is not None
         assert result.strategy_type == StrategyType.CALL_DEBIT_SPREAD
         assert result.entry_date == bar_datetime
         assert result.entry_price > 0
-        assert len(result.spread_options) == 2
-        assert result.max_profit() > 0
+        assert len(result.legs) == 2
+        max_profit = result.max_profit()
+        assert max_profit is not None
+        assert max_profit > 0
         assert result.max_loss_per_share() == result.entry_price

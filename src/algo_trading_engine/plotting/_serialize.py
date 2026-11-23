@@ -18,14 +18,19 @@ def _coerce_equity_curve(frame: pd.DataFrame) -> pd.DataFrame:
     return coerced.loc[:, ["timestamp", "equity"]]
 
 
+def _split_json(frame: pd.DataFrame) -> Any:
+    encoded = frame.to_json(orient="split", date_format="iso")
+    if not isinstance(encoded, str):
+        raise ValueError("Plot frame serialization did not produce JSON")
+    return json.loads(encoded)
+
+
 def coerce_plot_frame(name: str, frame: pd.DataFrame) -> pd.DataFrame:
     """Validate and coerce a plot frame for wire transport."""
     if name == EQUITY_CURVE_NAME:
         missing = [col for col in ("timestamp", "equity") if col not in frame.columns]
         if missing:
-            raise ValueError(
-                f"DataFrame '{name}' missing columns: {', '.join(missing)}"
-            )
+            raise ValueError(f"DataFrame '{name}' missing columns: {', '.join(missing)}")
         return _coerce_equity_curve(frame)
 
     if "timestamp" not in frame.columns:
@@ -34,7 +39,10 @@ def coerce_plot_frame(name: str, frame: pd.DataFrame) -> pd.DataFrame:
     coerced["timestamp"] = pd.to_datetime(coerced["timestamp"])
     for column in coerced.columns:
         if column != "timestamp":
-            coerced[column] = pd.to_numeric(coerced[column], errors="coerce").astype(float)
+            numeric = pd.to_numeric(coerced[column], errors="coerce")
+            if not isinstance(numeric, pd.Series):
+                raise TypeError(f"Column '{column}' did not convert to a numeric series")
+            coerced[column] = numeric.astype(float)
     return coerced
 
 
@@ -44,7 +52,7 @@ def plot_payload(spec: PlotSpec) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "name": spec.name,
         "orient": "split",
-        "data": json.loads(validated.to_json(orient="split", date_format="iso")),
+        "data": _split_json(validated),
     }
     if spec.title:
         payload["title"] = spec.title
@@ -54,8 +62,7 @@ def plot_payload(spec: PlotSpec) -> dict[str, Any]:
         payload["right_axis"] = list(spec.right_axis)
     if spec.markers:
         payload["markers"] = {
-            key: json.loads(coerce_plot_frame(spec.name, marker).to_json(orient="split", date_format="iso"))
-            for key, marker in spec.markers.items()
+            key: _split_json(coerce_plot_frame(spec.name, marker)) for key, marker in spec.markers.items()
         }
     if spec.meta:
         payload["meta"] = spec.meta

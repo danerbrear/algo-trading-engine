@@ -16,7 +16,7 @@ def load_hmm_model(model_dir):
 
     Raises:
         FileNotFoundError: If the HMM model file is not found
-        Exception: If there's an error loading the model
+        RuntimeError: If there's an error loading the model
     """
     hmm_path = os.path.join(model_dir, "hmm_model.pkl")
     if not os.path.exists(hmm_path):
@@ -39,7 +39,7 @@ def load_hmm_model(model_dir):
         print(f"   Number of states: {hmm_model.n_states}")
         return hmm_model
     except Exception as e:
-        raise Exception(f"Error loading HMM model from {hmm_path}: {str(e)}") from e
+        raise RuntimeError(f"Error loading HMM model from {hmm_path}: {str(e)}") from e
 
 
 def load_lstm_model(model_dir, return_lstm_instance=False):
@@ -55,7 +55,7 @@ def load_lstm_model(model_dir, return_lstm_instance=False):
 
     Raises:
         FileNotFoundError: If the LSTM model file is not found
-        Exception: If there's an error loading the model
+        RuntimeError: If there's an error loading the model
     """
     lstm_path = os.path.join(model_dir, "model.keras")
     if not os.path.exists(lstm_path):
@@ -63,9 +63,11 @@ def load_lstm_model(model_dir, return_lstm_instance=False):
     try:
         # Deferred: keras/TensorFlow ship in the optional [ml] extra.
         # pylint: disable-next=import-outside-toplevel
-        import keras
+        from keras.models import Model, load_model
 
-        keras_model = keras.models.load_model(lstm_path)
+        keras_model = load_model(lstm_path)
+        if not isinstance(keras_model, Model):
+            raise TypeError(f"Loaded keras file is not a Model: {type(keras_model)!r}")
         print(f"LSTM model loaded from {lstm_path}")
         scaler = None
         scaler_path = os.path.join(model_dir, "lstm_scaler.pkl")
@@ -85,7 +87,7 @@ def load_lstm_model(model_dir, return_lstm_instance=False):
             return lstm_instance, scaler
         return keras_model, scaler
     except Exception as e:
-        raise Exception(f"Error loading LSTM model from {lstm_path}: {str(e)}") from e
+        raise RuntimeError(f"Error loading LSTM model from {lstm_path}: {str(e)}") from e
 
 
 def get_model_directory(symbol="SPY", mode="lstm_poc", base_path=None):

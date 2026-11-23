@@ -15,11 +15,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 
 def test_data_retriever_import_does_not_load_sklearn_subprocess():
     """Verify a fresh interpreter does not load sklearn with DataRetriever alone."""
-    code = (
-        "import sys\n"
-        "import algo_trading_engine.data_retriever\n"
-        "print('sklearn' in sys.modules)\n"
-    )
+    code = "import sys\n" "import algo_trading_engine.data_retriever\n" "print('sklearn' in sys.modules)\n"
     result = subprocess.run(
         [sys.executable, "-c", code],
         cwd=_REPO_ROOT,
@@ -59,15 +55,19 @@ def test_prepare_credit_spread_backtest_data_applies_market_state():
     mock_classifier = MagicMock()
     mock_classifier.predict_states.return_value = pd.Series([1] * len(dates), index=dates)
 
-    with patch(
-        "algo_trading_engine._internal.ml_models.model_loaders.get_model_directory",
-        return_value="/tmp/models",
-    ), patch(
-        "algo_trading_engine._internal.ml_models.model_loaders.load_hmm_model",
-        return_value=mock_classifier,
-    ), patch(
-        "algo_trading_engine._internal.ml_models.calendar_features.CalendarFeatureProcessor"
-    ) as mock_calendar_cls:
+    with (
+        patch(
+            "algo_trading_engine._internal.ml_models.model_loaders.get_model_directory",
+            return_value="/tmp/models",
+        ),
+        patch(
+            "algo_trading_engine._internal.ml_models.model_loaders.load_hmm_model",
+            return_value=mock_classifier,
+        ),
+        patch(
+            "algo_trading_engine._internal.ml_models.calendar_features.CalendarFeatureProcessor"
+        ) as mock_calendar_cls,
+    ):
         mock_calendar_cls.return_value.calculate_all_features.side_effect = lambda df: df
 
         result = prepare_credit_spread_backtest_data(data, retriever, "SPY")

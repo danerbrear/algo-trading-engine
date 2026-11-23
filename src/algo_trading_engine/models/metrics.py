@@ -9,24 +9,24 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from algo_trading_engine.logging.logger import log_and_echo
 
-# StrategyType is not imported here to avoid circular imports
-# With __future__.annotations, all type hints are strings, so no runtime import needed
-# Type checkers will resolve 'StrategyType' from algo_trading_engine.vo.option
+if TYPE_CHECKING:
+    from algo_trading_engine.enums import StrategyType
 
 
 @dataclass(frozen=True)
 class PositionStats:
     """
     Statistics for a single closed position.
-    
+
     This is an immutable value object representing performance
     metrics for one position.
     """
-    strategy_type: 'StrategyType'
+
+    strategy_type: "StrategyType"
     entry_date: datetime
     exit_date: datetime
     entry_price: float
@@ -35,7 +35,7 @@ class PositionStats:
     return_percentage: float
     days_held: int
     max_risk: Optional[float]  # None for positions with unlimited risk
-    
+
     def __post_init__(self):
         """Validate position stats after initialization."""
         if self.entry_date > self.exit_date:
@@ -46,19 +46,22 @@ class PositionStats:
     def print_summary(self) -> None:
         """Print a human-readable summary of this position's stats."""
         max_risk_str = f"${self.max_risk:.2f}" if self.max_risk is not None else "unlimited"
-        log_and_echo(f"  {self.strategy_type.value}: entry {self.entry_date.date()} -> exit {self.exit_date.date()}, "
-                     f"P&L ${self.return_dollars:+,.2f} ({self.return_percentage:+.2f}%), days held {self.days_held}, max risk {max_risk_str}")
+        log_and_echo(
+            f"  {self.strategy_type.value}: entry {self.entry_date.date()} -> exit {self.exit_date.date()}, "
+            f"P&L ${self.return_dollars:+,.2f} ({self.return_percentage:+.2f}%), days held {self.days_held}, max risk {max_risk_str}"
+        )
 
 
 @dataclass(frozen=True)
 class StrategyPerformanceStats:
     """
     Performance statistics for a specific strategy type.
-    
+
     This aggregates performance metrics for all positions
     of a particular strategy type.
     """
-    strategy_type: 'StrategyType'
+
+    strategy_type: "StrategyType"
     positions_count: int
     win_rate: float  # Percentage (0-100)
     total_pnl: float
@@ -67,7 +70,7 @@ class StrategyPerformanceStats:
     mean_drawdown: float
     max_drawdown: float
     expected_value: Optional[float] = None  # (win rate × avg win) − (loss rate × avg loss)
-    
+
     def __post_init__(self):
         """Validate strategy stats after initialization."""
         if self.positions_count < 0:
@@ -77,24 +80,27 @@ class StrategyPerformanceStats:
 
     def print_summary(self) -> None:
         """Print a human-readable summary of this strategy's performance."""
-        name = self.strategy_type.value.replace('_', ' ').title()
+        name = self.strategy_type.value.replace("_", " ").title()
         log_and_echo(f"  {name}:")
         log_and_echo(f"    Positions: {self.positions_count}")
         log_and_echo(f"    Win rate: {self.win_rate:.1f}%")
         log_and_echo(f"    Total P&L: ${self.total_pnl:+,.2f}")
         log_and_echo(f"    Avg return: ${self.average_return:+,.2f}")
         log_and_echo(f"    Expected value: {'N/A' if self.expected_value is None else f'${self.expected_value:+,.2f}'}")
-        log_and_echo(f"    Drawdowns: min {self.min_drawdown:.2f}% / mean {self.mean_drawdown:.2f}% / max {self.max_drawdown:.2f}%")
+        log_and_echo(
+            f"    Drawdowns: min {self.min_drawdown:.2f}% / mean {self.mean_drawdown:.2f}% / max {self.max_drawdown:.2f}%"
+        )
 
 
 @dataclass(frozen=True)
 class OverallPerformanceStats:
     """
     Overall performance statistics across all strategies.
-    
+
     This aggregates performance metrics for all positions
     regardless of strategy type.
     """
+
     total_positions: int
     win_rate: float  # Percentage (0-100)
     total_pnl: float
@@ -103,7 +109,7 @@ class OverallPerformanceStats:
     mean_drawdown: float
     max_drawdown: float
     expected_value: Optional[float] = None  # (win rate × avg win) − (loss rate × avg loss)
-    
+
     def __post_init__(self):
         """Validate overall stats after initialization."""
         if self.total_positions < 0:
@@ -119,17 +125,20 @@ class OverallPerformanceStats:
         log_and_echo(f"    Total P&L: ${self.total_pnl:+,.2f}")
         log_and_echo(f"    Avg return: ${self.average_return:+,.2f}")
         log_and_echo(f"    Expected value: {'N/A' if self.expected_value is None else f'${self.expected_value:+,.2f}'}")
-        log_and_echo(f"    Drawdowns: min {self.min_drawdown:.2f}% / mean {self.mean_drawdown:.2f}% / max {self.max_drawdown:.2f}%")
+        log_and_echo(
+            f"    Drawdowns: min {self.min_drawdown:.2f}% / mean {self.mean_drawdown:.2f}% / max {self.max_drawdown:.2f}%"
+        )
 
 
 @dataclass(frozen=True)
 class PerformanceMetrics:
     """
     Complete performance metrics for a trading session.
-    
+
     This is the main value object returned by engines to report
     overall performance.
     """
+
     total_return: float  # Dollar return
     total_return_pct: float  # Percentage return
     sharpe_ratio: float
@@ -142,7 +151,7 @@ class PerformanceMetrics:
     benchmark_return: Optional[float] = None  # Dollar return
     benchmark_return_pct: Optional[float] = None  # Percentage return
     expected_value: Optional[float] = None  # (win rate × avg win) − (loss rate × avg loss)
-    
+
     def __post_init__(self):
         """Validate performance metrics after initialization."""
         if self.total_positions < 0:
@@ -178,4 +187,3 @@ class PerformanceMetrics:
             log_and_echo("Closed positions:")
             for p in self.closed_positions:
                 p.print_summary()
-

@@ -8,6 +8,7 @@ from io import StringIO
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -73,9 +74,7 @@ def test_show_plot_routes_to_observer(tmp_path):
 
     frame = pd.DataFrame({"timestamp": pd.to_datetime(["2024-01-01"]), "equity": [3000.0]})
     spec = build_plot_spec(frame, name=EQUITY_CURVE_NAME)
-    with patch(
-        "algo_trading_engine.plotting._matplotlib_backend.render_lines_figure"
-    ) as mock_render:
+    with patch("algo_trading_engine.plotting._matplotlib_backend.render_lines_figure") as mock_render:
         show_plot(spec, config=None)
         mock_render.assert_not_called()
 
@@ -91,9 +90,7 @@ def test_show_plot_renders_single_spec_when_config_is_none():
         name="price",
         x="index",
     )
-    with patch(
-        "algo_trading_engine.plotting._matplotlib_backend.render_lines_figure"
-    ) as mock_render:
+    with patch("algo_trading_engine.plotting._matplotlib_backend.render_lines_figure") as mock_render:
         show_plot(spec, config=None)
         mock_render.assert_called_once()
 
@@ -111,11 +108,10 @@ def test_show_plot_opens_one_figure_per_spec_when_config_is_none():
             x="index",
         ),
     ]
-    with patch(
-        "algo_trading_engine.plotting._matplotlib_backend.render_lines_figure"
-    ) as mock_render, patch(
-        "algo_trading_engine.plotting._matplotlib_backend.show_open_figures"
-    ) as mock_show:
+    with (
+        patch("algo_trading_engine.plotting._matplotlib_backend.render_lines_figure") as mock_render,
+        patch("algo_trading_engine.plotting._matplotlib_backend.show_open_figures") as mock_show,
+    ):
         show_plot(specs, config=None)
         assert mock_render.call_count == 2
         assert all(call.kwargs["close"] is False for call in mock_render.call_args_list)
@@ -128,9 +124,7 @@ def test_show_plot_skips_when_disabled():
         name="price",
         x="index",
     )
-    with patch(
-        "algo_trading_engine.plotting._matplotlib_backend.render_lines_figure"
-    ) as mock_render:
+    with patch("algo_trading_engine.plotting._matplotlib_backend.render_lines_figure") as mock_render:
         show_plot(spec, config=PlotConfig(enabled=False))
         mock_render.assert_not_called()
 
@@ -141,23 +135,19 @@ def test_show_plot_renders_when_enabled():
         name="price",
         x="index",
     )
-    with patch(
-        "algo_trading_engine.plotting._matplotlib_backend.render_lines_figure"
-    ) as mock_render:
+    with patch("algo_trading_engine.plotting._matplotlib_backend.render_lines_figure") as mock_render:
         show_plot(spec, config=PlotConfig(enabled=True))
         mock_render.assert_called_once()
 
 
 def test_show_plot_heatmap_when_enabled():
     spec = HeatmapSpec(
-        matrix=[[1, 0], [0, 1]],
+        matrix=np.array([[1, 0], [0, 1]]),
         row_labels=("a", "b"),
         col_labels=("a", "b"),
         name="heatmap",
     )
-    with patch(
-        "algo_trading_engine.plotting._matplotlib_backend.render_heatmap_figure"
-    ) as mock_render:
+    with patch("algo_trading_engine.plotting._matplotlib_backend.render_heatmap_figure") as mock_render:
         show_plot(spec, config=PlotConfig(enabled=True))
         mock_render.assert_called_once()
 
@@ -170,9 +160,7 @@ def test_show_plot_import_error_hint():
     )
 
     def _raise_plot_install_error():
-        raise ImportError(
-            "Plotting requires matplotlib. Install with: pip install algo-trading-engine[plot]"
-        )
+        raise ImportError("Plotting requires matplotlib. Install with: pip install algo-trading-engine[plot]")
 
     with patch(
         "algo_trading_engine.plotting._matplotlib_backend._import_pyplot",
@@ -226,7 +214,7 @@ def test_backend_smoke_render_grid(tmp_path, backend):
 def test_backend_smoke_render_heatmap(tmp_path, backend):
     os.environ["MPLBACKEND"] = backend
     spec = HeatmapSpec(
-        matrix=[[1, 0], [0, 2]],
+        matrix=np.array([[1, 0], [0, 2]]),
         row_labels=("t0", "t1"),
         col_labels=("p0", "p1"),
         name="smoke_heatmap",

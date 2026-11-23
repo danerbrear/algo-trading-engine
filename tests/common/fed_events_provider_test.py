@@ -2,7 +2,7 @@
 
 import calendar
 import json
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -15,7 +15,8 @@ from algo_trading_engine.fed_events_provider import (
     _http_get,
 )
 
-_FROZEN_TODAY = date(2024, 7, 15)
+_FROZEN_NOW = datetime(2024, 7, 15, 10, 0)
+_FROZEN_TODAY = _FROZEN_NOW.date()
 _SERIES = ("fomc", "cpi", "ppi")
 
 
@@ -92,9 +93,20 @@ class TestAddFedEventsDataIndex:
         assert success is False
         fetch_history.assert_not_called()
 
-    @patch("algo_trading_engine.fed_events_provider.date", side_effect=date)
-    def test_accepts_datetime_index_with_empty_history(self, mock_date, provider):
-        mock_date.today.return_value = _FROZEN_TODAY
+    def test_rejects_tz_aware_index(self, provider):
+        """Bars must already be naive US/Eastern; a tz-aware index is not silently stripped."""
+        index = pd.date_range("2024-06-03 09:30", periods=1, tz="America/Chicago")
+        data = pd.DataFrame({"Close": [1.0]}, index=index)
+
+        with patch.object(provider, "_fetch_history") as fetch_history:
+            result, success = provider.add_fed_events_data(data)
+
+        assert result is data
+        assert success is False
+        fetch_history.assert_not_called()
+
+    @patch("algo_trading_engine.fed_events_provider.market_now", return_value=_FROZEN_NOW)
+    def test_accepts_datetime_index_with_empty_history(self, _mock_market_now, provider):
         data = pd.DataFrame({"Close": [1.0]}, index=pd.date_range("2024-06-01", periods=1))
 
         def fake_history(series, *, window_from, window_to):
@@ -108,9 +120,8 @@ class TestAddFedEventsDataIndex:
         assert result["Fed Event Description"].iloc[0] is None
         assert fetch_history.call_count == len(_SERIES)
 
-    @patch("algo_trading_engine.fed_events_provider.date", side_effect=date)
-    def test_same_day_event_is_zero(self, mock_date, provider):
-        mock_date.today.return_value = _FROZEN_TODAY
+    @patch("algo_trading_engine.fed_events_provider.market_now", return_value=_FROZEN_NOW)
+    def test_same_day_event_is_zero(self, _mock_market_now, provider):
         data = pd.DataFrame(
             {"Close": [1.0, 1.0, 1.0]},
             index=pd.to_datetime(["2024-06-01", "2024-06-03", "2024-06-04"]),
@@ -135,9 +146,8 @@ class TestAddFedEventsDataIndex:
         assert list(result["Days Until Fed Event"]) == [2, 0, 6]
         assert list(result["Fed Event Description"]) == ["US CPI", "US CPI", "US PPI"]
 
-    @patch("algo_trading_engine.fed_events_provider.date", side_effect=date)
-    def test_no_event_within_two_months_is_none(self, mock_date, provider):
-        mock_date.today.return_value = _FROZEN_TODAY
+    @patch("algo_trading_engine.fed_events_provider.market_now", return_value=_FROZEN_NOW)
+    def test_no_event_within_two_months_is_none(self, _mock_market_now, provider):
         data = pd.DataFrame({"Close": [1.0]}, index=pd.to_datetime(["2024-06-01"]))
 
         with patch.object(
@@ -151,12 +161,9 @@ class TestAddFedEventsDataIndex:
         assert pd.isna(result["Days Until Fed Event"].iloc[0])
         assert result["Fed Event Description"].iloc[0] is None
 
-    @patch("algo_trading_engine.fed_events_provider.date", side_effect=date)
-    def test_hourly_bars_share_daily_values(self, mock_date, provider):
-        mock_date.today.return_value = _FROZEN_TODAY
-        index = pd.to_datetime(
-            ["2024-06-03 09:30:00", "2024-06-03 10:30:00", "2024-06-04 09:30:00"]
-        )
+    @patch("algo_trading_engine.fed_events_provider.market_now", return_value=_FROZEN_NOW)
+    def test_hourly_bars_share_daily_values(self, _mock_market_now, provider):
+        index = pd.to_datetime(["2024-06-03 09:30:00", "2024-06-03 10:30:00", "2024-06-04 09:30:00"])
         data = pd.DataFrame({"Close": [1.0, 1.0, 1.0]}, index=index)
 
         def fake_history(series, *, window_from, window_to):
@@ -170,14 +177,11 @@ class TestAddFedEventsDataIndex:
         assert success is True
         assert list(result["Days Until Fed Event"]) == [0, 0, pd.NA]
         assert list(result["Fed Event Description"]) == ["US CPI", "US CPI", None]
-        history_from_dates = {
-            call.kwargs["window_from"] for call in fetch_history.call_args_list
-        }
+        history_from_dates = {call.kwargs["window_from"] for call in fetch_history.call_args_list}
         assert history_from_dates == {date(2024, 6, 3)}
 
-    @patch("algo_trading_engine.fed_events_provider.date", side_effect=date)
-    def test_history_from_clamped_to_six_month_floor(self, mock_date, provider):
-        mock_date.today.return_value = _FROZEN_TODAY
+    @patch("algo_trading_engine.fed_events_provider.market_now", return_value=_FROZEN_NOW)
+    def test_history_from_clamped_to_six_month_floor(self, _mock_market_now, provider):
         floor = _six_months_before(_FROZEN_TODAY)
         data = pd.DataFrame(
             {"Close": [1.0, 1.0]},
@@ -194,9 +198,8 @@ class TestAddFedEventsDataIndex:
         first_window_from = fetch_history.call_args_list[0].kwargs["window_from"]
         assert first_window_from == floor
 
-    @patch("algo_trading_engine.fed_events_provider.date", side_effect=date)
-    def test_history_to_is_two_months_after_from(self, mock_date, provider):
-        mock_date.today.return_value = _FROZEN_TODAY
+    @patch("algo_trading_engine.fed_events_provider.market_now", return_value=_FROZEN_NOW)
+    def test_history_to_is_two_months_after_from(self, _mock_market_now, provider):
         data = pd.DataFrame({"Close": [1.0]}, index=pd.to_datetime(["2024-06-01"]))
 
         with patch.object(provider, "_fetch_history", return_value=_history_payload([])) as fetch_history:
@@ -205,9 +208,8 @@ class TestAddFedEventsDataIndex:
         window_to = fetch_history.call_args.kwargs["window_to"]
         assert window_to == date(2024, 8, 1)
 
-    @patch("algo_trading_engine.fed_events_provider.date", side_effect=date)
-    def test_long_frame_steps_history_windows(self, mock_date, provider):
-        mock_date.today.return_value = _FROZEN_TODAY
+    @patch("algo_trading_engine.fed_events_provider.market_now", return_value=_FROZEN_NOW)
+    def test_long_frame_steps_history_windows(self, _mock_market_now, provider):
         floor = _six_months_before(_FROZEN_TODAY)
         data_long = pd.DataFrame(
             {"Close": [1.0, 1.0]},
@@ -222,9 +224,8 @@ class TestAddFedEventsDataIndex:
 
         assert fetch_history.call_count == len(_SERIES) * len(windows)
 
-    @patch("algo_trading_engine.fed_events_provider.date", side_effect=date)
-    def test_all_history_failures_return_original(self, mock_date, provider):
-        mock_date.today.return_value = _FROZEN_TODAY
+    @patch("algo_trading_engine.fed_events_provider.market_now", return_value=_FROZEN_NOW)
+    def test_all_history_failures_return_original(self, _mock_market_now, provider):
         data = pd.DataFrame({"Close": [1.0]}, index=pd.to_datetime(["2024-06-01"]))
 
         with patch.object(provider, "_fetch_history", return_value=None):
@@ -235,9 +236,9 @@ class TestAddFedEventsDataIndex:
 
 
 class TestGetNextFedEvent:
-    @patch("algo_trading_engine.fed_events_provider.date", side_effect=date)
-    def test_returns_soonest_series(self, mock_date, provider):
-        mock_date.today.return_value = date(2024, 7, 1)
+    @patch("algo_trading_engine.fed_events_provider.market_now", return_value=_FROZEN_NOW)
+    def test_returns_soonest_series(self, mock_market_now, provider):
+        mock_market_now.return_value = datetime(2024, 7, 1, 10, 0)
         with patch.object(
             provider,
             "_fetch_next",
