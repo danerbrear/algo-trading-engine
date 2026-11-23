@@ -17,7 +17,7 @@ from algo_trading_engine.backtest._strategy_builder import StrategyFactory
 from algo_trading_engine.backtest.main import BacktestEngine
 from algo_trading_engine.dto import OptionBarDTO, OptionContractDTO
 from algo_trading_engine.enums import OptionType, StrategyType
-from algo_trading_engine.strategy import RemovePositionCallback, Strategy
+from algo_trading_engine.strategy import Strategy
 from algo_trading_engine.vo import ExpirationDate, Option, Position, StrikePrice, TreasuryRates, create_position
 
 
@@ -34,7 +34,8 @@ def _new_strategy(**kwargs) -> VelocitySignalMomentumStrategy:
 
 def _annotation_name(annotation):
     """Return the readable name of a type annotation."""
-    return annotation if isinstance(annotation, str) else annotation.__name__
+    name = annotation if isinstance(annotation, str) else annotation.__name__
+    return name.rsplit(".", 1)[-1]
 
 
 def _close_price(frame: pd.DataFrame):
@@ -54,7 +55,7 @@ def _ignore_remove_position(
     underlying_price: Optional[float] = None,
     current_volumes: Optional[Sequence[Optional[int]]] = None,
 ) -> None:
-    """Close callback whose parameters match RemovePositionCallback."""
+    """Close callback whose parameters match Strategy.RemovePositionCallback."""
     _ = date, position, exit_price, underlying_price, current_volumes
 
 
@@ -804,9 +805,9 @@ class TestVelocityStrategyMethodSignatures:
         strategy.set_data(data)
         signature = inspect.signature(strategy._try_close_positions)
         remove_position_param = signature.parameters["remove_position"]
-        assert str(remove_position_param.annotation) == "RemovePositionCallback"
+        assert str(remove_position_param.annotation) == "Strategy.RemovePositionCallback"
         callback_params = [
-            name for name in inspect.signature(RemovePositionCallback.__call__).parameters if name != "self"
+            name for name in inspect.signature(Strategy.RemovePositionCallback.__call__).parameters if name != "self"
         ]
         assert callback_params[:3] == ["date", "position", "exit_price"]
         strategy.get_option_bar = Mock(return_value=None)

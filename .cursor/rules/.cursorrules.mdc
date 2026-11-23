@@ -19,6 +19,7 @@ When fixing pylint `too-many-positional-arguments`:
 
 - Optional arguments are never positional. Put `*` before the first optional parameter so callers pass them by keyword.
 - If required arguments still exceed the limit after optional arguments are keyword-only, group those required arguments into a class. Do not use `*` to make required arguments keyword-only.
+- Define that class or Protocol as a nested class on the class that owns the parameters. Callers use `Owner.Nested` through the owner they already import. Inside the owner class, annotate it as `"Owner.Nested"`.
 
 ### Class member order
 

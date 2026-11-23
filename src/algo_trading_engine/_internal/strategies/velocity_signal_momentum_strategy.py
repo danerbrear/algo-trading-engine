@@ -7,7 +7,7 @@ from typing import Callable, Optional, Sequence
 import pandas as pd
 
 from algo_trading_engine._internal.util.market_clock import label_position, market_index
-from algo_trading_engine.strategy import RemovePositionCallback, Strategy
+from algo_trading_engine.strategy import Strategy
 from algo_trading_engine.indicators.sma_indicator import SMAIndicator
 from algo_trading_engine.vo import Position, create_position
 from algo_trading_engine.enums import StrategyType
@@ -78,7 +78,7 @@ class VelocitySignalMomentumStrategy(Strategy):
         date: datetime,
         positions: tuple["Position", ...],
         add_position: Callable[["Position"], None],
-        remove_position: RemovePositionCallback,
+        remove_position: Strategy.RemovePositionCallback,
     ):
         super().on_new_date(date, positions, add_position, remove_position)
 
@@ -90,7 +90,7 @@ class VelocitySignalMomentumStrategy(Strategy):
     def on_end(
         self,
         positions: Sequence["Position"],
-        remove_position: RemovePositionCallback,
+        remove_position: Strategy.RemovePositionCallback,
         date: datetime,
     ):
         """End-of-run hook; plotting is handled by the engine / show_plot callers."""
@@ -549,7 +549,7 @@ class VelocitySignalMomentumStrategy(Strategy):
         self,
         date: datetime,
         positions: tuple["Position", ...],
-        remove_position: RemovePositionCallback,
+        remove_position: Strategy.RemovePositionCallback,
     ):
         current_underlying_price = self.get_current_underlying_price(date, self.symbol)
         get_logger().info(f"Current underlying price: {current_underlying_price}")

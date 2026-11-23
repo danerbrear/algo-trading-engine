@@ -6,7 +6,7 @@ from typing import Callable, Optional, Sequence
 import pandas as pd
 
 from algo_trading_engine._internal.util.market_clock import label_position, market_index, session_dates
-from algo_trading_engine.strategy import RemovePositionCallback, Strategy
+from algo_trading_engine.strategy import Strategy
 from algo_trading_engine.vo import Position, create_position
 from algo_trading_engine.enums import StrategyType
 from algo_trading_engine.vo import Option, TreasuryRates
@@ -68,7 +68,7 @@ class CreditSpreadStrategy(Strategy):
         date: datetime,
         positions: tuple["Position", ...],
         add_position: Callable[["Position"], None],
-        remove_position: RemovePositionCallback,
+        remove_position: Strategy.RemovePositionCallback,
     ):
         """
         On new date, determine if a new position should be opened.
@@ -84,7 +84,7 @@ class CreditSpreadStrategy(Strategy):
         if has_error:
             self.error_count += 1
 
-    def on_end(self, positions: Sequence["Position"], remove_position: RemovePositionCallback, date: datetime):
+    def on_end(self, positions: Sequence["Position"], remove_position: Strategy.RemovePositionCallback, date: datetime):
         """
         On end, execute strategy with enhanced current date volume validation.
         """
@@ -305,7 +305,7 @@ class CreditSpreadStrategy(Strategy):
         self,
         date: datetime,
         positions: tuple["Position", ...],
-        remove_position: RemovePositionCallback,
+        remove_position: Strategy.RemovePositionCallback,
     ) -> bool:
         """Apply close rules to open positions. Returns True when a close check fails."""
         has_error = False
@@ -336,7 +336,7 @@ class CreditSpreadStrategy(Strategy):
         date: datetime,
         position: "Position",
         exit_price,
-        remove_position: RemovePositionCallback,
+        remove_position: Strategy.RemovePositionCallback,
     ) -> bool:
         """Close the position when a rule is met. Returns True when closing raises."""
         try:

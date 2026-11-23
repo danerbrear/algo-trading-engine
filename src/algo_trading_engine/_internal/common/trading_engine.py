@@ -11,7 +11,6 @@ from datetime import datetime, timedelta
 import pandas as pd
 
 from algo_trading_engine import DataRetriever, Strategy
-from algo_trading_engine.strategy import RemovePositionCallback
 from algo_trading_engine._internal.util.market_clock import market_now
 from algo_trading_engine.logging import get_logger
 from algo_trading_engine.enums import BarTimeInterval, UniversalCloseCondition
@@ -202,7 +201,7 @@ class TradingEngine(ABC):
     def check_univeral_close_conditions(
         self,
         date: datetime,
-        remove_position: Optional[RemovePositionCallback] = None,
+        remove_position: Optional[Strategy.RemovePositionCallback] = None,
     ) -> None:
         """
         Check if the position should be closed due to universal close conditions.

@@ -29,24 +29,6 @@ class _NotImplementedCallback:
         raise NotImplementedError("This logic must be overridden.")
 
 
-class RemovePositionCallback(Protocol):
-    """Close callback injected by a trading engine.
-
-    ``underlying_price`` and ``current_volumes`` are optional, matching
-    ``BacktestEngine._remove_position``.
-    """
-
-    def __call__(
-        self,
-        date: datetime,
-        position: "Position",
-        exit_price: float,
-        underlying_price: Optional[float] = None,
-        current_volumes: Optional[Sequence[Optional[int]]] = None,
-    ) -> None:
-        """Close ``position`` at ``exit_price``."""
-
-
 class IndicatorUpdateError(RuntimeError):
     """Raised when an indicator fails to update for the current date.
 
@@ -77,7 +59,26 @@ class Strategy(ABC):
         - compute_exit_price: Compute the exit price for a position on a specific date
         - get_position_size: Size a position from available capital
         - get_current_underlying_price: Underlying price for a date and symbol, assigned by the trading engine
+
+    RemovePositionCallback is the close callback passed to ``on_new_date`` and ``on_end``.
     """
+
+    class RemovePositionCallback(Protocol):
+        """Close callback injected by a trading engine.
+
+        ``underlying_price`` and ``current_volumes`` are optional, matching
+        ``BacktestEngine._remove_position``.
+        """
+
+        def __call__(
+            self,
+            date: datetime,
+            position: "Position",
+            exit_price: float,
+            underlying_price: Optional[float] = None,
+            current_volumes: Optional[Sequence[Optional[int]]] = None,
+        ) -> None:
+            """Close ``position`` at ``exit_price``."""
 
     symbol: str
 
@@ -142,7 +143,7 @@ class Strategy(ABC):
         date: datetime,
         positions: tuple["Position", ...],
         add_position: Callable[["Position"], None],
-        remove_position: RemovePositionCallback,
+        remove_position: "Strategy.RemovePositionCallback",
     ) -> None:
         """
         Called for each trading day to execute strategy logic.
@@ -161,7 +162,7 @@ class Strategy(ABC):
     def on_end(
         self,
         positions: Sequence["Position"],
-        remove_position: RemovePositionCallback,
+        remove_position: "Strategy.RemovePositionCallback",
         date: datetime,
     ) -> None:
         """
