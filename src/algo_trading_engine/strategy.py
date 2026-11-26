@@ -19,7 +19,7 @@ from typing import (
     TYPE_CHECKING,
 )
 import pandas as pd
-from pandera import DataFrameSchema
+from pandera.pandas import DataFrameSchema
 
 from algo_trading_engine._internal.util.market_clock import market_index, market_time
 from algo_trading_engine.logging import get_logger
@@ -143,6 +143,7 @@ class Strategy(ABC):
         self.plot_config: Optional["PlotConfig"] = None
         self.indicators: List[Indicator] = []
         self.option_bar_timespan = BarTimeInterval.DAY
+
         universe_set = getattr(type(self), "universe_set", None)
         if not universe_set:
             raise TypeError(f"{type(self).__name__} must define a non-empty class attribute universe_set")

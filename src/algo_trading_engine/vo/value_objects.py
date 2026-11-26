@@ -14,6 +14,7 @@ from decimal import Decimal
 from typing import Optional
 
 from algo_trading_engine._internal.util.market_clock import market_now
+from algo_trading_engine._internal.util.date_formats import DateFormats
 from algo_trading_engine.enums import OptionType, MarketStateType, SignalType
 
 
@@ -71,7 +72,7 @@ class ExpirationDate:
         pass
 
     def __str__(self) -> str:
-        return self.date.strftime("%Y-%m-%d")
+        return self.date.strftime(DateFormats.EXPIRATION)
 
     def __repr__(self) -> str:
         return f"ExpirationDate({self.date})"

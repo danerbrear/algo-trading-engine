@@ -12,6 +12,7 @@ from decimal import Decimal
 from algo_trading_engine.dto import StrikeRangeDTO, ExpirationRangeDTO
 from algo_trading_engine.vo import StrikePrice
 from algo_trading_engine.vo import Option
+from algo_trading_engine._internal.util.date_formats import DateFormats
 from sklearn.preprocessing import StandardScaler
 from .config import (
     EPOCHS,
@@ -532,7 +533,7 @@ class LSTMModel:
 
         # Process each date in the data
         for current_date in data.index:
-            date_key = current_date.strftime("%Y-%m-%d")
+            date_key = current_date.strftime(DateFormats.ISO_DATE)
 
             try:
                 # Get current price

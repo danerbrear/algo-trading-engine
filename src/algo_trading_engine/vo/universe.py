@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
 import pandas as pd
-from pandera import Column, DataFrameSchema
+from pandera.pandas import Column, DataFrameSchema
 
 from algo_trading_engine._internal.util.market_clock import market_index, market_time
 from algo_trading_engine.enums import BarTimeInterval

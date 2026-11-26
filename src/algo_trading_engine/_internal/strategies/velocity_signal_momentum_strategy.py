@@ -7,18 +7,18 @@ from typing import Callable, Optional, Sequence
 import pandas as pd
 
 from algo_trading_engine._internal.util.market_clock import label_position, market_index
+from algo_trading_engine._internal.util.date_formats import DateFormats
 from algo_trading_engine.data_retriever import DataRetriever
 from algo_trading_engine.strategy import Strategy
 from algo_trading_engine.vo.universe import PostLoadCallback, UniverseSet
 from algo_trading_engine.indicators.sma_indicator import SMAIndicator
 from algo_trading_engine.vo import Position, create_position
-from algo_trading_engine.enums import StrategyType
+from algo_trading_engine.enums import OptionType, StrategyType
 from algo_trading_engine.vo import Option, TreasuryRates
 from algo_trading_engine.dto import ExpirationRangeDTO, OptionContractDTO, OptionsChainDTO, StrikeRangeDTO
 from algo_trading_engine.vo import StrikePrice
 from algo_trading_engine.logging import get_logger
 from algo_trading_engine.options_helpers import OptionsRetrieverHelper
-from algo_trading_engine.enums import OptionType
 from decimal import Decimal
 
 
@@ -417,7 +417,7 @@ class VelocitySignalMomentumStrategy(Strategy):
         otm_option = Option.from_contract_and_bar(otm_put, otm_bar)
         return create_position(
             symbol=symbol,
-            expiration_date=datetime.strptime(expiration, "%Y-%m-%d"),
+            expiration_date=datetime.strptime(expiration, DateFormats.EXPIRATION),
             strategy_type=StrategyType.PUT_CREDIT_SPREAD,
             strike_price=atm_strike,
             entry_date=date,
@@ -446,7 +446,7 @@ class VelocitySignalMomentumStrategy(Strategy):
         # Standard expiration target ~1 week
         if not self._has_buy_signal(date, symbol):
             return
-        get_logger().info(f"📈 Buy signal detected for {date.strftime('%Y-%m-%d')}")
+        get_logger().info(f"📈 Buy signal detected for {date.strftime(DateFormats.ISO_DATE)}")
 
         current_price = self.get_current_underlying_price(date, symbol)
         if current_price is None:
@@ -472,7 +472,7 @@ class VelocitySignalMomentumStrategy(Strategy):
         add_position(position)
 
     def _get_option_chain(self, date: datetime, current_price: float, symbol: str) -> Optional[OptionsChainDTO]:
-        date_key = date.strftime("%Y-%m-%d")
+        date_key = date.strftime(DateFormats.ISO_DATE)
 
         expiration_range = ExpirationRangeDTO(min_days=5, max_days=10)
 
@@ -499,12 +499,12 @@ class VelocitySignalMomentumStrategy(Strategy):
         Select the best expiration date for the strategy using options_retriever.
         Prefer expirations 5-10 days out, else nearest > 0 days, target 7 days.
         """
-        get_logger().info(f"🔍 _select_week_expiration called for {date.strftime('%Y-%m-%d')}")
+        get_logger().info(f"🔍 _select_week_expiration called for {date.strftime(DateFormats.ISO_DATE)}")
         target_days = 7
 
         def days_out(exp_str: str) -> int:
             try:
-                exp_dt = datetime.strptime(exp_str, "%Y-%m-%d")
+                exp_dt = datetime.strptime(exp_str, DateFormats.EXPIRATION)
                 return (exp_dt - date).days
             except Exception:
                 return -9999
@@ -604,7 +604,9 @@ class VelocitySignalMomentumStrategy(Strategy):
                 )
 
         # Summary of strategy decisions
-        get_logger().info(f"✅ Strategy evaluation complete - no positions closed on {date.strftime('%Y-%m-%d')}")
+        get_logger().info(
+            f"✅ Strategy evaluation complete - no positions closed on {date.strftime(DateFormats.ISO_DATE)}"
+        )
 
     def _sanitize_exit_price(self, value: Optional[float]) -> Optional[float]:
         if value is None:

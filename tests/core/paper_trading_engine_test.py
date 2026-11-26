@@ -19,6 +19,7 @@ from algo_trading_engine.trade import (
     compute_paper_trading_fetch_start_date,
     DEFAULT_PAPER_TRADING_LSTM_LOOKBACK_DAYS,
 )
+from algo_trading_engine._internal.util.date_formats import DateFormats
 from algo_trading_engine.enums import BarTimeInterval
 from algo_trading_engine.models.config import PaperTradingConfig
 from algo_trading_engine.database.decision_store import DecisionStore, JsonDecisionStore, generate_decision_id
@@ -282,7 +283,7 @@ class TestComputePaperTradingFetchStartDate:
         strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(days=150))
         now = datetime(2025, 6, 1, 12, 0, 0)
         result = compute_paper_trading_fetch_start_date(now, strategy, BarTimeInterval.DAY)
-        expected = (now - timedelta(days=150)).strftime("%Y-%m-%d")
+        expected = (now - timedelta(days=150)).strftime(DateFormats.ISO_DATE)
         assert result == expected
         strategy.get_warm_up_period_timedelta.assert_called_once_with(BarTimeInterval.DAY)
 
@@ -291,7 +292,7 @@ class TestComputePaperTradingFetchStartDate:
         strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(days=30))
         now = datetime(2025, 6, 1, 12, 0, 0)
         result = compute_paper_trading_fetch_start_date(now, strategy, BarTimeInterval.DAY)
-        expected = (now - timedelta(days=DEFAULT_PAPER_TRADING_LSTM_LOOKBACK_DAYS)).strftime("%Y-%m-%d")
+        expected = (now - timedelta(days=DEFAULT_PAPER_TRADING_LSTM_LOOKBACK_DAYS)).strftime(DateFormats.ISO_DATE)
         assert result == expected
 
     def test_passes_bar_interval_for_hourly_bars(self):

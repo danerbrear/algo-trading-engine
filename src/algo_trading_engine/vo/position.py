@@ -7,12 +7,12 @@ position type implementations for different trading strategies.
 
 from __future__ import annotations
 
-from algo_trading_engine._internal.util.datetime_helpers import to_readable_expiration_str
-from algo_trading_engine._internal.util.market_clock import market_time
-
 from datetime import datetime
 from typing import Optional, TYPE_CHECKING
 from abc import ABC, abstractmethod
+
+from algo_trading_engine._internal.util.date_formats import DateFormats
+from algo_trading_engine._internal.util.market_clock import market_time
 
 if TYPE_CHECKING:
     from algo_trading_engine.dto import OptionBarDTO
@@ -81,7 +81,10 @@ class Position(ABC):
         return all(self_opt == other_opt for self_opt, other_opt in zip(self.legs, other.legs))
 
     def __str__(self) -> str:
-        return f"{self.strategy_type.value} {self.symbol} {self.strike_price} @ {self.entry_price:.2f} x{self.quantity} (Open, expires {to_readable_expiration_str(self.expiration_date)})"
+        return (
+            f"{self.strategy_type.value} {self.symbol} {self.strike_price} @ {self.entry_price:.2f} "
+            f"x{self.quantity} (Open, expires {self.expiration_date.strftime(DateFormats.EXPIRATION)})"
+        )
 
     # Strategy-specific methods become abstract
     @abstractmethod
@@ -305,7 +308,7 @@ class SpreadPosition(Position, ABC):
         if option_bar.ticker == option.ticker:
             return True
 
-        if option_bar.timestamp.date() != datetime.strptime(option.expiration, "%Y-%m-%d").date():
+        if option_bar.timestamp.date() != datetime.strptime(option.expiration, DateFormats.EXPIRATION).date():
             return False
 
         ticker = option_bar.ticker

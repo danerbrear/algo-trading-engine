@@ -15,10 +15,10 @@ from polygon import RESTClient
 
 from algo_trading_engine._internal.common.cache.options_cache_manager import OptionsCacheManager
 from algo_trading_engine._internal.util.market_clock import from_epoch_ms, market_now, to_epoch_ms
+from algo_trading_engine._internal.util.date_formats import DateFormats
 from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO, StrikeRangeDTO, ExpirationRangeDTO, OptionsChainDTO
 from algo_trading_engine.vo import StrikePrice, ExpirationDate
-from algo_trading_engine.enums import BarTimeInterval
-from algo_trading_engine.enums import OptionType
+from algo_trading_engine.enums import BarTimeInterval, OptionType
 from algo_trading_engine._internal.ml_models.api_retry_handler import APIRetryHandler
 from algo_trading_engine._internal.common.progress_tracker import progress_print
 from algo_trading_engine.logging import get_logger
@@ -508,10 +508,10 @@ class OptionsHandler:
         if expiration_range:
             if expiration_range.min_days is not None:
                 min_expiry = date_obj + timedelta(days=expiration_range.min_days)
-                params["expiration_date.gte"] = min_expiry.strftime("%Y-%m-%d")
+                params["expiration_date.gte"] = min_expiry.strftime(DateFormats.EXPIRATION)
             if expiration_range.max_days is not None:
                 max_expiry = date_obj + timedelta(days=expiration_range.max_days)
-                params["expiration_date.lte"] = max_expiry.strftime("%Y-%m-%d")
+                params["expiration_date.lte"] = max_expiry.strftime(DateFormats.EXPIRATION)
         return params
 
     def _fetch_contracts_from_api(
@@ -535,7 +535,7 @@ class OptionsHandler:
                 # Use the list options contracts API with date filtering
                 contracts_response = self.client.list_options_contracts(
                     underlying_ticker=symbol,
-                    as_of=date_obj.strftime("%Y-%m-%d"),
+                    as_of=date_obj.strftime(DateFormats.ISO_DATE),
                     expired=False,
                     limit=1000,  # Maximum allowed by API
                     params=params if params else None,
@@ -587,7 +587,7 @@ class OptionsHandler:
 
             target_ts = None
             if timespan == "day":
-                from_str = dt.strftime("%Y-%m-%d")
+                from_str = dt.strftime(DateFormats.ISO_DATE)
                 to_str = from_str
             elif timespan == "hour":
                 # Request the full regular session (9:30-16:00 ET) to avoid narrow-window gaps;
@@ -602,7 +602,7 @@ class OptionsHandler:
                 from_str = bar_start.strftime("%Y-%m-%dT%H:%M:%S")
                 to_str = bar_end.strftime("%Y-%m-%dT%H:%M:%S")
             else:
-                from_str = dt.strftime("%Y-%m-%d")
+                from_str = dt.strftime(DateFormats.ISO_DATE)
                 to_str = from_str
 
             def fetch_func():
@@ -716,7 +716,7 @@ class OptionsHandler:
 
             # Create value objects
             strike = StrikePrice(Decimal(str(strike_price)))
-            exp_date = ExpirationDate(datetime.strptime(expiration_date_str, "%Y-%m-%d").date())
+            exp_date = ExpirationDate(datetime.strptime(expiration_date_str, DateFormats.EXPIRATION).date())
 
             return OptionContractDTO(
                 ticker=ticker,

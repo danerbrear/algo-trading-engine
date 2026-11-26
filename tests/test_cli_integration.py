@@ -13,6 +13,8 @@ from unittest.mock import patch, MagicMock
 from datetime import datetime
 from io import StringIO
 
+from algo_trading_engine._internal.util.date_formats import DateFormats
+
 
 def test_backtest_cli_parse_arguments():
     """Test that backtest CLI parses arguments correctly."""
@@ -126,8 +128,8 @@ def test_backtest_cli_creates_config():
         args = parse_arguments()
 
         # Manually create config like main() does
-        start_date = datetime.strptime(args.start_date, "%Y-%m-%d")
-        end_date = datetime.strptime(args.end_date, "%Y-%m-%d")
+        start_date = datetime.strptime(args.start_date, DateFormats.ISO_DATE)
+        end_date = datetime.strptime(args.end_date, DateFormats.ISO_DATE)
 
         config = BacktestConfig(
             initial_capital=args.initial_capital,
@@ -173,12 +175,12 @@ def test_backtest_cli_date_defaults():
         if args.start_date is None:
             start_date = today - timedelta(days=365)
         else:
-            start_date = datetime.strptime(args.start_date, "%Y-%m-%d")
+            start_date = datetime.strptime(args.start_date, DateFormats.ISO_DATE)
 
         if args.end_date is None:
             end_date = today
         else:
-            end_date = datetime.strptime(args.end_date, "%Y-%m-%d")
+            end_date = datetime.strptime(args.end_date, DateFormats.ISO_DATE)
 
         # Verify date logic
         assert start_date < end_date

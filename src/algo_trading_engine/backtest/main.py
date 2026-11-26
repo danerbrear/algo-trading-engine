@@ -24,6 +24,7 @@ from algo_trading_engine.gui import RunObserver
 from ._strategy_builder import StrategyFactory, create_strategy_from_args
 from algo_trading_engine._internal.common.trading_engine import TradingEngine
 from algo_trading_engine._internal.util.market_clock import market_index, market_now, market_time
+from algo_trading_engine._internal.util.date_formats import DateFormats
 from algo_trading_engine.models.config import BacktestConfig as BacktestConfigDTO, PaperTradingConfig
 from algo_trading_engine.models.metrics import PerformanceMetrics, PositionStats
 
@@ -162,9 +163,9 @@ class BacktestEngine(TradingEngine):
         strategy.use_snapshot_for_current_bar = False
 
         fetch_start = (config.start_date - strategy.get_warm_up_period_timedelta(config.bar_interval)).strftime(
-            "%Y-%m-%d"
+            DateFormats.ISO_DATE
         )
-        fetch_end = config.end_date.strftime("%Y-%m-%d")
+        fetch_end = config.end_date.strftime(DateFormats.ISO_DATE)
 
         if strategy.universe is None or not strategy.universe.symbols:
             raise ValueError("Universe has no symbols")
@@ -189,8 +190,8 @@ class BacktestEngine(TradingEngine):
             benchmark_data = retriever.fetch_data_for_period(
                 config.benchmark_ticker,
                 config.bar_interval,
-                config.start_date.strftime("%Y-%m-%d"),
-                config.end_date.strftime("%Y-%m-%d"),
+                config.start_date.strftime(DateFormats.ISO_DATE),
+                config.end_date.strftime(DateFormats.ISO_DATE),
             )
             if benchmark_data is None or len(benchmark_data) == 0:
                 get_logger().warning(
@@ -848,13 +849,13 @@ def main():
         # Default to one year before today
         start_date = today - timedelta(days=365)
     else:
-        start_date = datetime.strptime(args.start_date, "%Y-%m-%d")
+        start_date = datetime.strptime(args.start_date, DateFormats.ISO_DATE)
 
     if args.end_date is None:
         # Default to today
         end_date = today
     else:
-        end_date = datetime.strptime(args.end_date, "%Y-%m-%d")
+        end_date = datetime.strptime(args.end_date, DateFormats.ISO_DATE)
 
     # Get API key from environment
     api_key = os.getenv("POLYGON_API_KEY")

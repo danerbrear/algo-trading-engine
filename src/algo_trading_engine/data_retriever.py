@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import ClassVar, Dict, Optional
 
 from algo_trading_engine._internal.common.cache.cache_manager import CacheManager
+from algo_trading_engine._internal.util.date_formats import DateFormats
 from algo_trading_engine._internal.util.market_clock import (
     bars_through,
     market_index,
@@ -75,7 +76,7 @@ class DataRetriever:
         end_inclusive = self._effective_end_inclusive(end_date)
 
         if cached_data is not None and not cached_data.empty:
-            effective_end = end_date if end_date is not None else end_inclusive.strftime("%Y-%m-%d")
+            effective_end = end_date if end_date is not None else end_inclusive.strftime(DateFormats.ISO_DATE)
             if not self._cache_is_complete(cached_data, end_date, end_inclusive):
                 return self._fetch_gap_and_merge(symbol, bar_interval, cached_data, start_date, effective_end)
 
@@ -300,7 +301,7 @@ class DataRetriever:
         for file_path in available_files:
             try:
                 date_str = file_path.stem.split("_")[0]
-                file_date = datetime.strptime(date_str, "%Y-%m-%d")
+                file_date = datetime.strptime(date_str, DateFormats.CACHE_DATE)
                 date_diff = abs((target_date - file_date).days)
 
                 if date_diff < min_date_diff:
@@ -328,7 +329,7 @@ class DataRetriever:
         end_date: Optional[str] = None,
     ) -> Optional[pd.DataFrame]:
         if end_date is None:
-            end_date = market_now().strftime("%Y-%m-%d")
+            end_date = market_now().strftime(DateFormats.ISO_DATE)
 
         interval_dir = self._get_cache_interval_dir(bar_interval)
         cache_base = self.cache_manager.get_cache_dir("stocks", symbol)
@@ -421,7 +422,9 @@ class DataRetriever:
         else:
             for label, row in data.iterrows():
                 bar = market_time(label)
-                cache_file = cache_dir / f"{bar:%Y-%m-%d}_{bar:%H%M}.pkl"
+                cache_file = (
+                    cache_dir / f"{bar.strftime(DateFormats.CACHE_DATE)}_{bar.strftime(DateFormats.CACHE_TIME)}.pkl"
+                )
                 pd.DataFrame([row]).to_pickle(cache_file)
             get_logger().info(f"Cached {len(data)} {interval_str} bars to {interval_dir}/")
 
@@ -437,9 +440,9 @@ class DataRetriever:
         interval_str = self._get_yfinance_interval(bar_interval)
 
         if bar_interval == BarTimeInterval.DAY:
-            gap_start = (last_cached + timedelta(days=1)).strftime("%Y-%m-%d")
+            gap_start = (last_cached + timedelta(days=1)).strftime(DateFormats.ISO_DATE)
         else:
-            gap_start = last_cached.strftime("%Y-%m-%d")
+            gap_start = last_cached.strftime(DateFormats.ISO_DATE)
 
         get_logger().info(
             f"Partial cache hit: {len(cached_data)} {interval_str} bars through "

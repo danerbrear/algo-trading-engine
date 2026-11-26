@@ -13,6 +13,12 @@ alwaysApply: true
 - All prices should use the Decimal data type over float
 - Write every nullable type as `Optional[T]` from `typing`. Do not write `T | None`, including inside another generic. `Optional[Sequence[Optional[int]]]` is the form to use; `Optional[Sequence[int | None]]` and `float | None` are not. Apply this to every new or edited annotation, not only to top-level parameters.
 
+### Date and time format strings
+
+- Do not hardcode strftime/strptime patterns (or equivalent format strings such as `mdates.DateFormatter(...)`). Use `DateFormats` from `algo_trading_engine._internal.util.date_formats`.
+- Pick the `DateFormats` attribute that matches the use, even when several attributes share the same pattern: `EXPIRATION` for option expirations, `ISO_DATE` for generic date-only values (fetch ranges, logs, keys), `CACHE_DATE` / `CACHE_TIME` for cache paths, `PRINTABLE` for human-readable datetimes, `COMPACT_DATE` for compact date filenames.
+- If no existing attribute fits, add a new named case on `DateFormats` rather than inlining the pattern. Do not reuse `EXPIRATION` (or any other case) just because the string happens to match.
+
 ### Too many positional arguments
 
 When fixing pylint `too-many-positional-arguments`:

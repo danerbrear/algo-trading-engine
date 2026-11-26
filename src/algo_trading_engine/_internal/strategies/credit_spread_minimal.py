@@ -6,14 +6,14 @@ from typing import Callable, Optional, Sequence
 import pandas as pd
 
 from algo_trading_engine._internal.util.market_clock import label_position, market_index, session_dates
+from algo_trading_engine._internal.util.date_formats import DateFormats
 from algo_trading_engine._internal.common.ml_pipeline import prepare_credit_spread_backtest_data
 from algo_trading_engine.data_retriever import DataRetriever
 from algo_trading_engine.strategy import Strategy
 from algo_trading_engine.vo.universe import PostLoadCallback, UniverseSet
 from algo_trading_engine.vo import Position, create_position
-from algo_trading_engine.enums import StrategyType
+from algo_trading_engine.enums import OptionType, StrategyType
 from algo_trading_engine.vo import Option
-from algo_trading_engine.enums import OptionType
 from algo_trading_engine._internal.common.progress_tracker import progress_print
 from algo_trading_engine.dto import ExpirationRangeDTO, StrikeRangeDTO
 from algo_trading_engine.vo import StrikePrice, ExpirationDate
@@ -427,7 +427,7 @@ class CreditSpreadStrategy(Strategy):
             raise e
 
         for expiry_str in expirations:
-            expiry_date = datetime.strptime(expiry_str, "%Y-%m-%d").date()
+            expiry_date = datetime.strptime(expiry_str, DateFormats.EXPIRATION).date()
             days_to_expiry = (expiry_date - date.date()).days
             if not (min_days <= days_to_expiry <= max_days):
                 continue
@@ -530,7 +530,7 @@ class CreditSpreadStrategy(Strategy):
             candidates.sort(key=lambda x: (-x.get("expected_value", 0), -x["risk_reward"], -x["prob_profit"]))
             best = candidates[0]
             print("   🏆 Best spread selected:")
-            print(f"      • {best['width']}pt spread expiring {best['expiry'].strftime('%Y-%m-%d')}")
+            print(f"      • {best['width']}pt spread expiring {best['expiry'].strftime(DateFormats.EXPIRATION)}")
             print(
                 f"      • Risk/Reward: 1:{best['risk_reward']:.2f}, Probability: {best['prob_profit']:.1%}, Expected Value: ${best['expected_value']:.2f}"
             )
@@ -756,7 +756,7 @@ class CreditSpreadStrategy(Strategy):
                 f"⚠️  Skipping prediction for {date} - sequence has {missing_count} missing values in {len(missing_cols)} features"
             )
             print(
-                f"   Dates in sequence with missing data: {[d.strftime('%Y-%m-%d') for d in missing_dates[:5]]}{'...' if len(missing_dates) > 5 else ''}"
+                f"   Dates in sequence with missing data: {[d.strftime(DateFormats.ISO_DATE) for d in missing_dates[:5]]}{'...' if len(missing_dates) > 5 else ''}"
             )
             return None
 
@@ -828,7 +828,7 @@ class CreditSpreadStrategy(Strategy):
         # Create position using the best spread
         position = create_position(
             symbol=symbol,
-            expiration_date=datetime.strptime(atm_option.expiration, "%Y-%m-%d"),
+            expiration_date=datetime.strptime(atm_option.expiration, DateFormats.EXPIRATION),
             strategy_type=StrategyType.CALL_CREDIT_SPREAD,
             strike_price=best_spread["atm_strike"],
             entry_date=date,
@@ -882,7 +882,7 @@ class CreditSpreadStrategy(Strategy):
         # Create position using the best spread
         position = create_position(
             symbol=symbol,
-            expiration_date=datetime.strptime(atm_option.expiration, "%Y-%m-%d"),
+            expiration_date=datetime.strptime(atm_option.expiration, DateFormats.EXPIRATION),
             strategy_type=StrategyType.PUT_CREDIT_SPREAD,
             strike_price=best_spread["atm_strike"],
             entry_date=date,
@@ -923,7 +923,11 @@ class CreditSpreadStrategy(Strategy):
 
         if not otm_calls:
             contract = self._get_option_with_bar(
-                strike, datetime.strptime(expiration, "%Y-%m-%d").date(), OptionType.CALL, current_date, symbol
+                strike,
+                datetime.strptime(expiration, DateFormats.EXPIRATION).date(),
+                OptionType.CALL,
+                current_date,
+                symbol,
             )
             if contract is None:
                 return None
@@ -941,7 +945,11 @@ class CreditSpreadStrategy(Strategy):
 
         if not otm_puts:
             contract = self._get_option_with_bar(
-                strike, datetime.strptime(expiration, "%Y-%m-%d").date(), OptionType.PUT, current_date, symbol
+                strike,
+                datetime.strptime(expiration, DateFormats.EXPIRATION).date(),
+                OptionType.PUT,
+                current_date,
+                symbol,
             )
             if contract is None:
                 return None
@@ -967,7 +975,11 @@ class CreditSpreadStrategy(Strategy):
 
         # Fetch fresh data from API using new API
         fresh_option = self._get_option_with_bar(
-            option.strike, datetime.strptime(option.expiration, "%Y-%m-%d").date(), option.option_type, date, symbol
+            option.strike,
+            datetime.strptime(option.expiration, DateFormats.EXPIRATION).date(),
+            option.option_type,
+            date,
+            symbol,
         )
 
         if fresh_option and fresh_option.volume is not None:

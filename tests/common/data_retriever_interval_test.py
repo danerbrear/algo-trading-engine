@@ -11,6 +11,7 @@ from pathlib import Path
 import tempfile
 import shutil
 from algo_trading_engine.data_retriever import DataRetriever
+from algo_trading_engine._internal.util.date_formats import DateFormats
 from algo_trading_engine.enums import BarTimeInterval
 
 # yfinance always returns a tz-aware index in the exchange's time zone.
@@ -370,11 +371,11 @@ class TestPartialCacheFetch:
         cache_dir = retriever.cache_manager.get_cache_dir("stocks", "SPY") / "daily"
         cache_dir.mkdir(parents=True, exist_ok=True)
         cached.to_pickle(cache_dir / "2024-01-01.pkl")
-        gap_data = self._create_daily_data((last_cached + pd.Timedelta(days=1)).strftime("%Y-%m-%d"), 5)
+        gap_data = self._create_daily_data((last_cached + pd.Timedelta(days=1)).strftime(DateFormats.ISO_DATE), 5)
         with patch.object(retriever, "_fetch_bars_from_api", return_value=gap_data) as mock_api:
             result = retriever.fetch_data_for_period("SPY", BarTimeInterval.DAY, "2024-01-01", "2024-02-01")
         mock_api.assert_called_once()
-        call_start = mock_api.call_args[0][0]
+        call_start = mock_api.call_args[0][2]
         assert pd.Timestamp(call_start) > last_cached, "API should only be called for dates after the last cached date"
         assert len(result) == len(cached) + len(gap_data)
 
@@ -387,7 +388,7 @@ class TestPartialCacheFetch:
         cache_dir.mkdir(parents=True, exist_ok=True)
         cache_file = cache_dir / "2024-01-01.pkl"
         cached.to_pickle(cache_file)
-        gap_data = self._create_daily_data((last_cached + pd.Timedelta(days=1)).strftime("%Y-%m-%d"), 3)
+        gap_data = self._create_daily_data((last_cached + pd.Timedelta(days=1)).strftime(DateFormats.ISO_DATE), 3)
         with patch.object(retriever, "_fetch_bars_from_api", return_value=gap_data):
             retriever.fetch_data_for_period("SPY", BarTimeInterval.DAY, "2024-01-01", "2024-02-01")
         updated = pd.read_pickle(cache_file)
@@ -411,7 +412,7 @@ class TestPartialCacheFetch:
         cache_dir = retriever.cache_manager.get_cache_dir("stocks", "SPY") / "daily"
         cache_dir.mkdir(parents=True, exist_ok=True)
         cached.to_pickle(cache_dir / "2024-01-01.pkl")
-        overlap_start = cast(pd.Timestamp, cached.index[-2]).strftime("%Y-%m-%d")
+        overlap_start = cast(pd.Timestamp, cached.index[-2]).strftime(DateFormats.ISO_DATE)
         gap_data = self._create_daily_data(overlap_start, 5)
         gap_data["Close"] = 999.0
         with patch.object(retriever, "_fetch_bars_from_api", return_value=gap_data):
@@ -430,7 +431,7 @@ class TestPartialCacheFetch:
         cache_file = cache_dir / "2024-01-01.pkl"
         cached.to_pickle(cache_file)
         original_size = cache_file.stat().st_size
-        gap_data = self._create_daily_data((last_cached + pd.Timedelta(days=1)).strftime("%Y-%m-%d"), 5)
+        gap_data = self._create_daily_data((last_cached + pd.Timedelta(days=1)).strftime(DateFormats.ISO_DATE), 5)
         with patch.object(retriever, "_fetch_bars_from_api", return_value=gap_data):
             result = retriever.fetch_data_for_period("SPY", BarTimeInterval.DAY, "2024-01-01", "2024-02-01")
         assert len(result) == len(cached) + len(gap_data)
@@ -444,7 +445,7 @@ class TestPartialCacheFetch:
         cache_dir.mkdir(parents=True, exist_ok=True)
         for idx, row in cached.iterrows():
             timestamp = cast(pd.Timestamp, idx)
-            fname = f"{timestamp.strftime('%Y-%m-%d')}_{timestamp.strftime('%H%M')}.pkl"
+            fname = f"{timestamp.strftime(DateFormats.CACHE_DATE)}_{timestamp.strftime(DateFormats.CACHE_TIME)}.pkl"
             pd.DataFrame([row]).to_pickle(cache_dir / fname)
         gap_data = self._create_hourly_data("2024-01-03", 7)
         with patch.object(retriever, "_fetch_bars_from_api", return_value=gap_data) as mock_api:
@@ -465,7 +466,7 @@ class TestPartialCacheFetch:
         cache_dir.mkdir(parents=True, exist_ok=True)
         for idx, row in cached.iterrows():
             timestamp = cast(pd.Timestamp, idx)
-            fname = f"{timestamp.strftime('%Y-%m-%d')}_{timestamp.strftime('%H%M')}.pkl"
+            fname = f"{timestamp.strftime(DateFormats.CACHE_DATE)}_{timestamp.strftime(DateFormats.CACHE_TIME)}.pkl"
             pd.DataFrame([row]).to_pickle(cache_dir / fname)
         files_before = set(cache_dir.glob("*.pkl"))
         gap_data = self._create_hourly_data("2024-01-03", 4)
@@ -485,7 +486,7 @@ class TestPartialCacheFetch:
         cache_dir.mkdir(parents=True, exist_ok=True)
         for idx, row in cached.iterrows():
             timestamp = cast(pd.Timestamp, idx)
-            fname = f"{timestamp.strftime('%Y-%m-%d')}_{timestamp.strftime('%H%M')}.pkl"
+            fname = f"{timestamp.strftime(DateFormats.CACHE_DATE)}_{timestamp.strftime(DateFormats.CACHE_TIME)}.pkl"
             pd.DataFrame([row]).to_pickle(cache_dir / fname)
         with patch.object(retriever, "_fetch_bars_from_api") as mock_api:
             result = retriever.fetch_data_for_period(
@@ -540,7 +541,7 @@ class TestPartialCacheFetch:
         cache_dir.mkdir(parents=True, exist_ok=True)
         for idx, row in cached.iterrows():
             timestamp = cast(pd.Timestamp, idx)
-            fname = f"{timestamp.strftime('%Y-%m-%d')}_{timestamp.strftime('%H%M')}.pkl"
+            fname = f"{timestamp.strftime(DateFormats.CACHE_DATE)}_{timestamp.strftime(DateFormats.CACHE_TIME)}.pkl"
             pd.DataFrame([row]).to_pickle(cache_dir / fname)
         with patch.object(retriever, "_fetch_gap_and_merge", return_value=cached) as mock_merge:
             retriever.fetch_data_for_period("SPY", BarTimeInterval.HOUR, "2026-11-01", "2026-11-11")

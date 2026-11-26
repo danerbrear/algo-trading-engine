@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 from dataclasses import dataclass
 
 from algo_trading_engine._internal.util.market_clock import market_now, market_time
+from algo_trading_engine._internal.util.date_formats import DateFormats
 from algo_trading_engine.data_retriever import DataRetriever
 from algo_trading_engine.enums import BarTimeInterval
 from algo_trading_engine.plotting import PlotConfig, build_plot_spec, show_plot
@@ -66,7 +67,7 @@ class MAVelocityAnalyzer:
         # Calculate start date as 6 months ago from today
         today = market_now()
         six_months_ago = today - timedelta(days=180)
-        self.start_date = six_months_ago.strftime("%Y-%m-%d")
+        self.start_date = six_months_ago.strftime(DateFormats.ISO_DATE)
         self.symbol = symbol
         self.data_retriever = DataRetriever()
         self.data: Optional[pd.DataFrame] = None
@@ -302,7 +303,9 @@ class MAVelocityAnalyzer:
         report.append("=" * 80)
         data = self._loaded_data()
         report.append(f"Symbol: {self.symbol}")
-        report.append(f"Analysis Period: {self.start_date} to {market_time(data.index[-1]).strftime('%Y-%m-%d')}")
+        report.append(
+            f"Analysis Period: {self.start_date} to {market_time(data.index[-1]).strftime(DateFormats.ISO_DATE)}"
+        )
         report.append(f"Total Trading Days: {len(data)}")
         report.append(f"Total Trend Signals: {len(self.trend_signals)}")
         report.append("")
@@ -330,7 +333,7 @@ class MAVelocityAnalyzer:
         if successful_up_signals:
             longest_up_trend = max(successful_up_signals, key=lambda x: x.trend_duration)
             report.append(f"  Longest Upward Trend: {longest_up_trend.trend_duration} days")
-            report.append(f"    Start Date: {longest_up_trend.signal_date.strftime('%Y-%m-%d')}")
+            report.append(f"    Start Date: {longest_up_trend.signal_date.strftime(DateFormats.ISO_DATE)}")
             report.append(f"    Total Return: {longest_up_trend.trend_return:.2%}")
             report.append(f"    MA Combination: SMA {longest_up_trend.short_ma}/{longest_up_trend.long_ma}")
         else:
@@ -339,7 +342,7 @@ class MAVelocityAnalyzer:
         if successful_down_signals:
             longest_down_trend = max(successful_down_signals, key=lambda x: x.trend_duration)
             report.append(f"  Longest Downward Trend: {longest_down_trend.trend_duration} days")
-            report.append(f"    Start Date: {longest_down_trend.signal_date.strftime('%Y-%m-%d')}")
+            report.append(f"    Start Date: {longest_down_trend.signal_date.strftime(DateFormats.ISO_DATE)}")
             report.append(f"    Total Return: {longest_down_trend.trend_return:.2%}")
             report.append(f"    MA Combination: SMA {longest_down_trend.short_ma}/{longest_down_trend.long_ma}")
         else:

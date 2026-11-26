@@ -11,6 +11,7 @@ from typing import List, TYPE_CHECKING
 from algo_trading_engine.logging import configure_logger, get_logger
 from algo_trading_engine.logging.logger import log_and_echo
 from algo_trading_engine._internal.util.market_clock import market_now
+from algo_trading_engine._internal.util.date_formats import DateFormats
 from algo_trading_engine._internal.trade.live_bar import apply_live_quote
 from algo_trading_engine._internal.common.trading_engine import (
     DEFAULT_PAPER_TRADING_LSTM_LOOKBACK_DAYS,
@@ -259,7 +260,7 @@ class PaperTradingEngine(TradingEngine):
         strategy.use_snapshot_for_current_bar = True
 
         fetch_start_date = compute_paper_trading_fetch_start_date(today, strategy, config.bar_interval)
-        fetch_end = today.strftime("%Y-%m-%d")
+        fetch_end = today.strftime(DateFormats.ISO_DATE)
 
         retriever = DataRetriever(use_cache=config.use_cache)
         strategy.universe.load(retriever, config.bar_interval, fetch_start_date, fetch_end)

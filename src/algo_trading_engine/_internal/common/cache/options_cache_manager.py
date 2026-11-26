@@ -23,6 +23,7 @@ from algo_trading_engine.logging import get_logger
 
 from algo_trading_engine._internal.common.cache.cache_manager import CacheManager
 from algo_trading_engine._internal.util.market_clock import market_time
+from algo_trading_engine._internal.util.date_formats import DateFormats
 
 # Map API/enum timespan ("day"|"hour"|"minute") to cache dir name, matching stocks cache layout
 _TIMESPAN_TO_INTERVAL_DIR: Dict[str, str] = {
@@ -49,8 +50,8 @@ def _floor_to_previous_half_hour(dt: datetime) -> Tuple[date, time]:
 def _bar_time_suffix(bar_time: Union[datetime, time]) -> str:
     """Return HHMM suffix for cache filename (e.g. 0930, 1030)."""
     if isinstance(bar_time, datetime):
-        return bar_time.strftime("%H%M")
-    return bar_time.strftime("%H%M")
+        return bar_time.strftime(DateFormats.CACHE_TIME)
+    return bar_time.strftime(DateFormats.CACHE_TIME)
 
 
 class OptionsCacheManager(CacheManager):
@@ -75,7 +76,7 @@ class OptionsCacheManager(CacheManager):
 
     def get_contracts_cache_path(self, symbol: str, date: date) -> Path:
         """Get the path for contracts cache file."""
-        return self.get_cache_path("contracts.pkl", "options", symbol, date.strftime("%Y-%m-%d"))
+        return self.get_cache_path("contracts.pkl", "options", symbol, date.strftime(DateFormats.CACHE_DATE))
 
     def get_bars_cache_path(
         self,
@@ -101,16 +102,18 @@ class OptionsCacheManager(CacheManager):
             filename = f"{clean_ticker}_{suffix}.pkl"
         else:
             filename = f"{clean_ticker}.pkl"
-        return self.get_cache_path(filename, "options", symbol, date_obj.strftime("%Y-%m-%d"), "bars", interval_dir)
+        return self.get_cache_path(
+            filename, "options", symbol, date_obj.strftime(DateFormats.CACHE_DATE), "bars", interval_dir
+        )
 
     def get_date_cache_dir(self, symbol: str, date: date) -> Path:
         """Get the cache directory for a specific date."""
-        return self.get_cache_dir("options", symbol, date.strftime("%Y-%m-%d"))
+        return self.get_cache_dir("options", symbol, date.strftime(DateFormats.CACHE_DATE))
 
     def get_bars_cache_dir(self, symbol: str, date: date, timespan: str = "day") -> Path:
         """Get the bars cache directory for a specific date and interval (daily|hourly|minute)."""
         interval_dir = _interval_dir(timespan)
-        return self.get_cache_dir("options", symbol, date.strftime("%Y-%m-%d"), "bars", interval_dir)
+        return self.get_cache_dir("options", symbol, date.strftime(DateFormats.CACHE_DATE), "bars", interval_dir)
 
     def load_contracts(self, symbol: str, date: date) -> Optional[List[OptionContractDTO]]:
         """Load contracts from cache.

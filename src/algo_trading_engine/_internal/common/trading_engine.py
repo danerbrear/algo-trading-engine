@@ -12,6 +12,7 @@ import pandas as pd
 
 from algo_trading_engine import DataRetriever, Strategy
 from algo_trading_engine._internal.util.market_clock import market_now
+from algo_trading_engine._internal.util.date_formats import DateFormats
 from algo_trading_engine.logging import get_logger
 from algo_trading_engine.enums import BarTimeInterval, UniversalCloseCondition
 from algo_trading_engine.models import EngineConfig
@@ -40,7 +41,7 @@ def compute_paper_trading_fetch_start_date(
     lstm_start = now - timedelta(days=lstm_lookback_days)
     warmup_start = now - strategy.get_warm_up_period_timedelta(bar_interval)
     earliest = min(lstm_start, warmup_start)
-    return earliest.strftime("%Y-%m-%d")
+    return earliest.strftime(DateFormats.ISO_DATE)
 
 
 def make_rt_option_bar(

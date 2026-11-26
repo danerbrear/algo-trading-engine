@@ -7,6 +7,7 @@ from algo_trading_engine.vo import Option, StrikePrice, create_position
 from algo_trading_engine.vo.universe import UniverseSet
 from algo_trading_engine.dto import ExpirationRangeDTO, StrikeRangeDTO
 from algo_trading_engine.indicators import ATRIndicator
+from algo_trading_engine._internal.util.date_formats import DateFormats
 from algo_trading_engine.enums import BarTimeInterval, StrategyType
 
 
@@ -102,7 +103,7 @@ class MyCustomStrategy(Strategy):
             return
 
         call_option = Option.from_contract_and_bar(call, call_bar)
-        exp_date = datetime.strptime(str(call.expiration_date), "%Y-%m-%d")
+        exp_date = datetime.strptime(str(call.expiration_date), DateFormats.EXPIRATION)
         position = create_position(
             symbol=call.underlying_ticker,
             expiration_date=exp_date,

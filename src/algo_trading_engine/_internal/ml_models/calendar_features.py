@@ -3,6 +3,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from algo_trading_engine._internal.util.date_formats import DateFormats
+
 
 class CalendarFeatureProcessor:
     """Process economic calendar data to create features for LSTM model"""
@@ -227,8 +229,8 @@ class CalendarFeatureProcessor:
             "event_type": event_type,
             "total_events": len(events),
             "date_range": {
-                "start": events["Date"].min().strftime("%Y-%m-%d"),
-                "end": events["Date"].max().strftime("%Y-%m-%d"),
+                "start": events["Date"].min().strftime(DateFormats.ISO_DATE),
+                "end": events["Date"].max().strftime(DateFormats.ISO_DATE),
             },
             "intervals": {
                 "mean_days": np.mean(intervals) if intervals else 0,
@@ -414,7 +416,7 @@ class CalendarFeatureProcessor:
         self.events_data[event_type] = events
 
         print(
-            f"✅ Loaded {len(events)} {event_type} events from {events['Date'].min().strftime('%Y-%m-%d')} to {events['Date'].max().strftime('%Y-%m-%d')}"
+            f"✅ Loaded {len(events)} {event_type} events from {events['Date'].min().strftime(DateFormats.PRINTABLE)} to {events['Date'].max().strftime(DateFormats.PRINTABLE)}"
         )
 
     def _calculate_days_since_last(self, current_date, event_dates):

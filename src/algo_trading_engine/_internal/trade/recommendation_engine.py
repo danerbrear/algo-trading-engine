@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import List, Optional, Sequence
 
 from algo_trading_engine._internal.util.market_clock import market_now, market_time, to_market_time
+from algo_trading_engine._internal.util.date_formats import DateFormats
 from algo_trading_engine.strategy import Strategy
 from algo_trading_engine.vo import Position, create_position
 from algo_trading_engine.enums import StrategyType
@@ -221,7 +222,7 @@ class InteractiveStrategyRecommender:
             "width": width,
             "probability_of_profit": 0.7,  # Default confidence for rule-based strategies
             "confidence": 0.7,  # Default confidence for rule-based strategies
-            "expiration_date": position.expiration_date.strftime("%Y-%m-%d"),
+            "expiration_date": position.expiration_date.strftime(DateFormats.EXPIRATION),
             "risk_reward": 0.5,  # Default
         }
 
@@ -237,7 +238,7 @@ class InteractiveStrategyRecommender:
             width=float(width),
             probability_of_profit=0.7,
             confidence=0.7,
-            expiration_date=position.expiration_date.strftime("%Y-%m-%d"),
+            expiration_date=position.expiration_date.strftime(DateFormats.EXPIRATION),
             created_at=datetime.now(timezone.utc).isoformat(),
             strategy_name=strategy_name,
         )
@@ -347,7 +348,7 @@ class InteractiveStrategyRecommender:
 
         position = create_position(
             symbol=rec.proposal.symbol,
-            expiration_date=datetime.strptime(rec.proposal.expiration_date, "%Y-%m-%d"),
+            expiration_date=datetime.strptime(rec.proposal.expiration_date, DateFormats.EXPIRATION),
             strategy_type=rec.proposal.strategy_type,
             strike_price=strike,
             entry_date=to_market_time(datetime.fromisoformat(rec.decided_at)),
@@ -471,7 +472,7 @@ class InteractiveStrategyRecommender:
             for idx, (date_idx, row) in enumerate(recent_data.iterrows()):
                 # Format the date
                 if isinstance(date_idx, datetime):
-                    date_str = date_idx.date().strftime("%Y-%m-%d")
+                    date_str = date_idx.date().strftime(DateFormats.ISO_DATE)
                 else:
                     date_str = str(date_idx)
 

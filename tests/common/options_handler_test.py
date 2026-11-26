@@ -19,6 +19,7 @@ from algo_trading_engine._internal.common.cache.options_cache_manager import Opt
 from algo_trading_engine.options_helpers import OptionsRetrieverHelper
 from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO
 from algo_trading_engine.vo import StrikePrice, ExpirationDate
+from algo_trading_engine._internal.util.date_formats import DateFormats
 from algo_trading_engine.enums import OptionType, StrategyType
 
 
@@ -1035,10 +1036,10 @@ class TestOptionsHandlerPhase5Simple:
         contracts = []
         today = date.today()
         expirations = [
-            (today + timedelta(days=10)).strftime("%Y-%m-%d"),
-            (today + timedelta(days=15)).strftime("%Y-%m-%d"),
-            (today + timedelta(days=20)).strftime("%Y-%m-%d"),
-            (today + timedelta(days=40)).strftime("%Y-%m-%d"),
+            (today + timedelta(days=10)).strftime(DateFormats.EXPIRATION),
+            (today + timedelta(days=15)).strftime(DateFormats.EXPIRATION),
+            (today + timedelta(days=20)).strftime(DateFormats.EXPIRATION),
+            (today + timedelta(days=40)).strftime(DateFormats.EXPIRATION),
         ]
         strikes = [580.0, 585.0, 590.0, 595.0, 600.0, 605.0, 610.0, 615.0, 620.0]
         for exp_str in expirations:
@@ -1049,7 +1050,7 @@ class TestOptionsHandlerPhase5Simple:
                     underlying_ticker="SPY",
                     contract_type=OptionType.CALL,
                     strike_price=StrikePrice(Decimal(str(strike))),
-                    expiration_date=ExpirationDate(datetime.strptime(exp_str, "%Y-%m-%d").date()),
+                    expiration_date=ExpirationDate(datetime.strptime(exp_str, DateFormats.EXPIRATION).date()),
                     exercise_style="american",
                     shares_per_contract=100,
                     primary_exchange="BATO",
@@ -1062,7 +1063,7 @@ class TestOptionsHandlerPhase5Simple:
                     underlying_ticker="SPY",
                     contract_type=OptionType.PUT,
                     strike_price=StrikePrice(Decimal(str(strike))),
-                    expiration_date=ExpirationDate(datetime.strptime(exp_str, "%Y-%m-%d").date()),
+                    expiration_date=ExpirationDate(datetime.strptime(exp_str, DateFormats.EXPIRATION).date()),
                     exercise_style="american",
                     shares_per_contract=100,
                     primary_exchange="BATO",
@@ -1320,10 +1321,10 @@ class TestOptionsHandlerPhase5Integration:
         contracts = []
         today = date.today()
         expirations = [
-            (today + timedelta(days=10)).strftime("%Y-%m-%d"),
-            (today + timedelta(days=15)).strftime("%Y-%m-%d"),
-            (today + timedelta(days=20)).strftime("%Y-%m-%d"),
-            (today + timedelta(days=40)).strftime("%Y-%m-%d"),
+            (today + timedelta(days=10)).strftime(DateFormats.EXPIRATION),
+            (today + timedelta(days=15)).strftime(DateFormats.EXPIRATION),
+            (today + timedelta(days=20)).strftime(DateFormats.EXPIRATION),
+            (today + timedelta(days=40)).strftime(DateFormats.EXPIRATION),
         ]
         strikes = [580.0, 585.0, 590.0, 595.0, 600.0, 605.0, 610.0, 615.0, 620.0]
         for exp_str in expirations:
@@ -1334,7 +1335,7 @@ class TestOptionsHandlerPhase5Integration:
                     underlying_ticker="SPY",
                     contract_type=OptionType.CALL,
                     strike_price=StrikePrice(Decimal(str(strike))),
-                    expiration_date=ExpirationDate(datetime.strptime(exp_str, "%Y-%m-%d").date()),
+                    expiration_date=ExpirationDate(datetime.strptime(exp_str, DateFormats.EXPIRATION).date()),
                     exercise_style="american",
                     shares_per_contract=100,
                     primary_exchange="BATO",
@@ -1347,7 +1348,7 @@ class TestOptionsHandlerPhase5Integration:
                     underlying_ticker="SPY",
                     contract_type=OptionType.PUT,
                     strike_price=StrikePrice(Decimal(str(strike))),
-                    expiration_date=ExpirationDate(datetime.strptime(exp_str, "%Y-%m-%d").date()),
+                    expiration_date=ExpirationDate(datetime.strptime(exp_str, DateFormats.EXPIRATION).date()),
                     exercise_style="american",
                     shares_per_contract=100,
                     primary_exchange="BATO",
