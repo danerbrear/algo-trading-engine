@@ -131,7 +131,6 @@ class CreditSpreadStrategyBuilder(StrategyBuilder):
             get_options_chain=self._get_options_chain,
             lstm_model=self._lstm_model,
             lstm_scaler=self._lstm_scaler,
-            symbol=self._symbol,
             options_handler=self._options_handler,
         )
 
@@ -194,7 +193,6 @@ class VelocitySignalMomentumStrategyBuilder(StrategyBuilder):
             get_options_chain=self._get_options_chain,
             stop_loss=self._stop_loss,
             profit_target=self._profit_target,
-            symbol=self._symbol,
         )
 
         self.reset()

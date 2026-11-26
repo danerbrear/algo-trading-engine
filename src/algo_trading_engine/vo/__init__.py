@@ -26,6 +26,12 @@ from algo_trading_engine.vo.position import (
     create_position,
 )
 from algo_trading_engine.vo.treasury_rates import TreasuryRates
+from algo_trading_engine.vo.universe import (
+    Universe,
+    UniverseSet,
+    default_ohlcv_schema,
+    identity_post_load,
+)
 from algo_trading_engine.vo.value_objects import (
     ExpirationDate,
     MarketState,
@@ -54,4 +60,8 @@ __all__ = [
     "TradingSignal",
     "PriceRange",
     "Volatility",
+    "Universe",
+    "UniverseSet",
+    "default_ohlcv_schema",
+    "identity_post_load",
 ]

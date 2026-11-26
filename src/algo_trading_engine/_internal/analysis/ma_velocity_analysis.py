@@ -16,6 +16,7 @@ from dataclasses import dataclass
 
 from algo_trading_engine._internal.util.market_clock import market_now, market_time
 from algo_trading_engine.data_retriever import DataRetriever
+from algo_trading_engine.enums import BarTimeInterval
 from algo_trading_engine.plotting import PlotConfig, build_plot_spec, show_plot
 
 
@@ -67,7 +68,7 @@ class MAVelocityAnalyzer:
         six_months_ago = today - timedelta(days=180)
         self.start_date = six_months_ago.strftime("%Y-%m-%d")
         self.symbol = symbol
-        self.data_retriever = DataRetriever(symbol=symbol)
+        self.data_retriever = DataRetriever()
         self.data: Optional[pd.DataFrame] = None
         self.trend_signals = []
 
@@ -81,7 +82,7 @@ class MAVelocityAnalyzer:
         print(f"📊 Loading {self.symbol} data from {self.start_date}...")
 
         # Fetch data using the existing data retriever
-        data = self.data_retriever.fetch_data_for_period(self.start_date)
+        data = self.data_retriever.fetch_data_for_period(self.symbol, BarTimeInterval.DAY, self.start_date)
         self.data = data
 
         # Ensure we have Close prices

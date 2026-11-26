@@ -2,6 +2,7 @@
 Velocity strategy reads the current bar from pre-loaded data (live overlay is engine-owned).
 """
 
+from tests.conftest import load_strategy_frame
 import unittest
 from datetime import datetime
 from typing import cast
@@ -41,18 +42,18 @@ class TestVelocityLivePrice(unittest.TestCase):
 
     def test_get_current_bar_timestamp_snaps_to_last_bar(self):
         strategy = self._strategy()
-        strategy.set_data(self.test_data.copy())
-        bar_ts = strategy.get_current_bar_timestamp(self.run_date)
+        load_strategy_frame(strategy, self.test_data.copy())
+        bar_ts = strategy.get_current_bar_timestamp(self.run_date, "SPY")
         self.assertEqual(bar_ts, self.bar_date.to_pydatetime())
 
     def test_has_buy_signal_does_not_append_rows(self):
         strategy = self._strategy()
-        strategy.set_data(self.test_data.copy())
+        load_strategy_frame(strategy, self.test_data.copy())
         data_before = strategy.data
         assert data_before is not None
         length_before = len(data_before)
         with patch.object(strategy, "_check_trend_success", return_value=(False, 0, 0.0)):
-            strategy._has_buy_signal(self.run_date)
+            strategy._has_buy_signal(self.run_date, "SPY")
         data_after = strategy.data
         assert data_after is not None
         self.assertEqual(len(data_after), length_before)

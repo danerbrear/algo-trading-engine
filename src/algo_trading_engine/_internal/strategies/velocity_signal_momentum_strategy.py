@@ -7,7 +7,9 @@ from typing import Callable, Optional, Sequence
 import pandas as pd
 
 from algo_trading_engine._internal.util.market_clock import label_position, market_index
+from algo_trading_engine.data_retriever import DataRetriever
 from algo_trading_engine.strategy import Strategy
+from algo_trading_engine.vo.universe import PostLoadCallback, UniverseSet
 from algo_trading_engine.indicators.sma_indicator import SMAIndicator
 from algo_trading_engine.vo import Position, create_position
 from algo_trading_engine.enums import StrategyType
@@ -28,6 +30,7 @@ class VelocitySignalMomentumStrategy(Strategy):
 
     # Configurable holding period in trading days
     holding_period = 4
+    universe_set: UniverseSet = ["SPY"]
 
     def __init__(
         self,
@@ -36,7 +39,6 @@ class VelocitySignalMomentumStrategy(Strategy):
         get_options_chain: Optional[Callable] = None,
         stop_loss: Optional[float] = None,
         profit_target: Optional[float] = None,
-        symbol: str = "SPY",
     ):
         super().__init__(stop_loss=stop_loss, profit_target=profit_target)
 
@@ -46,7 +48,6 @@ class VelocitySignalMomentumStrategy(Strategy):
             self.get_option_bar = get_option_bar
         if get_options_chain is not None:
             self.get_options_chain = get_options_chain
-        self.symbol = symbol
         self.options_data: dict[str, OptionsChainDTO] = {}
 
         # Track position entries for plotting
@@ -55,23 +56,26 @@ class VelocitySignalMomentumStrategy(Strategy):
         self.add_indicator(SMAIndicator(period=15))
         self.add_indicator(SMAIndicator(period=30))
 
-    def set_data(self, data: pd.DataFrame, treasury_data: Optional[TreasuryRates] = None):
-        super().set_data(data, treasury_data)
+    @staticmethod
+    def _enrich_velocity_frame(symbol: str, data: pd.DataFrame) -> pd.DataFrame:
+        del symbol
+        enriched = data.copy()
+        if enriched.empty:
+            return enriched
+        enriched["SMA_15"] = enriched["Close"].rolling(window=15).mean()
+        enriched["SMA_30"] = enriched["Close"].rolling(window=30).mean()
+        enriched["MA_Velocity_15_30"] = enriched["SMA_15"] / enriched["SMA_30"]
+        enriched["Velocity_Changes"] = enriched["MA_Velocity_15_30"].diff()
+        return enriched
 
-        # Reset position entries tracking for new backtest run
+    @staticmethod
+    def universe_post_load(retriever: DataRetriever) -> PostLoadCallback:
+        del retriever
+        return VelocitySignalMomentumStrategy._enrich_velocity_frame
+
+    def set_universe(self, universe, treasury_data: Optional[TreasuryRates] = None) -> None:
+        super().set_universe(universe, treasury_data)
         self._position_entries = []
-
-        # Pre-calculate moving averages and velocity for performance
-        if self.data is not None and not self.data.empty:
-            # Calculate SMA 15 and SMA 30
-            self.data["SMA_15"] = self.data["Close"].rolling(window=15).mean()
-            self.data["SMA_30"] = self.data["Close"].rolling(window=30).mean()
-
-            # Calculate MA velocity (SMA 15 / SMA 30)
-            self.data["MA_Velocity_15_30"] = self.data["SMA_15"] / self.data["SMA_30"]
-
-            # Calculate velocity changes for signal detection
-            self.data["Velocity_Changes"] = self.data["MA_Velocity_15_30"].diff()
 
     def on_new_date(
         self,
@@ -82,10 +86,15 @@ class VelocitySignalMomentumStrategy(Strategy):
     ):
         super().on_new_date(date, positions, add_position, remove_position)
 
-        if len(positions) == 0:
-            self._try_open_position(date, add_position)
-
-        self._try_close_positions(date, positions, remove_position)
+        if self.universe is None:
+            return
+        for symbol in self.universe.symbols:
+            if not self.universe.has_bar(symbol, date):
+                continue
+            symbol_positions = tuple(p for p in positions if p.symbol == symbol)
+            if len(symbol_positions) == 0:
+                self._try_open_position(date, add_position, symbol)
+            self._try_close_positions(date, symbol_positions, remove_position, symbol)
 
     def on_end(
         self,
@@ -161,20 +170,7 @@ class VelocitySignalMomentumStrategy(Strategy):
 
         return True
 
-    def _recalculate_moving_averages(self):
-        """Recalculate moving averages and velocity changes after data updates."""
-        if self.data is not None and not self.data.empty:
-            # Calculate SMA 15 and SMA 30
-            self.data["SMA_15"] = self.data["Close"].rolling(window=15).mean()
-            self.data["SMA_30"] = self.data["Close"].rolling(window=30).mean()
-
-            # Calculate MA velocity (SMA 15 / SMA 30)
-            self.data["MA_Velocity_15_30"] = self.data["SMA_15"] / self.data["SMA_30"]
-
-            # Calculate velocity changes for signal detection
-            self.data["Velocity_Changes"] = self.data["MA_Velocity_15_30"].diff()
-
-    def _has_buy_signal(self, date: datetime) -> bool:
+    def _has_buy_signal(self, date: datetime, symbol: str) -> bool:
         """
         Check for buy signal using MA velocity (SMA 15/30) approach.
 
@@ -185,14 +181,18 @@ class VelocitySignalMomentumStrategy(Strategy):
             - Trend must last at least 3 days
             - Trend must not exceed 60 days
         """
-        if self.data is None or self.data.empty:
+        try:
+            market_data = self.market_frame(symbol)
+        except ValueError:
+            return False
+        if market_data.empty:
             return False
 
-        bar_ts = self.get_current_bar_timestamp(date)
+        bar_ts = self.get_current_bar_timestamp(date, symbol)
         if bar_ts is None:
             return False
         try:
-            current_idx = label_position(self.data.index, bar_ts)
+            current_idx = label_position(market_data.index, bar_ts)
         except KeyError:
             get_logger().warning("⚠️  Date not found in data")
             return False
@@ -203,13 +203,13 @@ class VelocitySignalMomentumStrategy(Strategy):
             return False
 
         # Check if pre-calculated velocity data is available
-        if "Velocity_Changes" not in self.data.columns:
+        if "Velocity_Changes" not in market_data.columns:
             get_logger().warning("⚠️  No velocity changes data available")
             return False
 
         # Check if current velocity increased (positive velocity change)
-        if current_idx < 1 or self.data["Velocity_Changes"].iloc[current_idx] <= 0:
-            get_logger().info(f"Velocity changes: {self.data['Velocity_Changes'].iloc[current_idx]}")
+        if current_idx < 1 or market_data["Velocity_Changes"].iloc[current_idx] <= 0:
+            get_logger().info(f"Velocity changes: {market_data['Velocity_Changes'].iloc[current_idx]}")
             return False
 
         # This is a velocity signal - now check if it leads to a successful trend
@@ -217,7 +217,7 @@ class VelocitySignalMomentumStrategy(Strategy):
 
         # Check if this leads to an upward trend of at least 3 days, max 60 days
         success, duration, trend_return = self._check_trend_success(
-            self.data, signal_index, "up", min_duration=3, max_duration=60
+            market_data, signal_index, "up", min_duration=3, max_duration=60
         )
 
         get_logger().info(f"Trend success: {success}, duration: {duration}, trend_return: {trend_return}")
@@ -296,7 +296,9 @@ class VelocitySignalMomentumStrategy(Strategy):
 
         return False, 0, 0.0
 
-    def _create_put_credit_spread(self, date: datetime, current_price: float, expiration: str) -> Optional[Position]:
+    def _create_put_credit_spread(
+        self, date: datetime, current_price: float, expiration: str, symbol: str
+    ) -> Optional[Position]:
         """
         Create a ATM/+10 put credit spread.
 
@@ -304,25 +306,26 @@ class VelocitySignalMomentumStrategy(Strategy):
             date: Current date
             current_price: Current underlying price
             expiration: Target expiration date string (YYYY-MM-DD)
+            symbol: Underlying symbol
 
         Returns:
             Position: Position for evaluation, or None if creation fails
         """
         try:
-            contracts = self._contracts_for_put_spread(date, current_price, expiration)
+            contracts = self._contracts_for_put_spread(date, current_price, expiration, symbol)
             if contracts is None:
                 return None
             selected = self._select_put_spread_legs(contracts, current_price, expiration)
             if selected is None:
                 return None
             atm_put, otm_put, atm_strike = selected
-            return self._put_spread_position(date, expiration, atm_put, otm_put, atm_strike)
+            return self._put_spread_position(date, expiration, atm_put, otm_put, atm_strike, symbol)
         except Exception as error:
             get_logger().warning(f"⚠️  Error creating put credit spread: {error}")
             return None
 
     def _contracts_for_put_spread(
-        self, date: datetime, current_price: float, expiration: str
+        self, date: datetime, current_price: float, expiration: str, symbol: str
     ) -> Optional[list[OptionContractDTO]]:
         """Contracts for one expiration, limited to strikes near the underlying."""
         expiration_range = ExpirationRangeDTO(min_days=5, max_days=10)
@@ -330,7 +333,9 @@ class VelocitySignalMomentumStrategy(Strategy):
             min_strike=StrikePrice(Decimal(str(current_price - 7))),
             max_strike=StrikePrice(Decimal(str(current_price + 1))),
         )
-        contracts = self.get_contract_list_for_date(date, strike_range=strike_range, expiration_range=expiration_range)
+        contracts = self.get_contract_list_for_date(
+            symbol, date, strike_range=strike_range, expiration_range=expiration_range
+        )
         if not contracts:
             get_logger().warning("⚠️  No contracts found for the date")
             return None
@@ -394,10 +399,11 @@ class VelocitySignalMomentumStrategy(Strategy):
         atm_put: OptionContractDTO,
         otm_put: OptionContractDTO,
         atm_strike: float,
+        symbol: str,
     ) -> Optional[Position]:
         """Build the credit-spread position from the two legs. Quantity is set by the engine."""
-        atm_bar = self.get_current_option_bar(atm_put.ticker, date)
-        otm_bar = self.get_current_option_bar(otm_put.ticker, date)
+        atm_bar = self.get_current_option_bar(symbol, atm_put.ticker, date)
+        otm_bar = self.get_current_option_bar(symbol, otm_put.ticker, date)
         if not atm_bar or not otm_bar:
             get_logger().warning("⚠️  No bar data available for credit calculation")
             return None
@@ -410,7 +416,7 @@ class VelocitySignalMomentumStrategy(Strategy):
         atm_option = Option.from_contract_and_bar(atm_put, atm_bar)
         otm_option = Option.from_contract_and_bar(otm_put, otm_bar)
         return create_position(
-            symbol=self.symbol,
+            symbol=symbol,
             expiration_date=datetime.strptime(expiration, "%Y-%m-%d"),
             strategy_type=StrategyType.PUT_CREDIT_SPREAD,
             strike_price=atm_strike,
@@ -436,24 +442,24 @@ class VelocitySignalMomentumStrategy(Strategy):
         return float(self.treasury_data.get_risk_free_rate(date))
 
     # ==== Helper methods (opening) ====
-    def _try_open_position(self, date: datetime, add_position: Callable[["Position"], None]):
+    def _try_open_position(self, date: datetime, add_position: Callable[["Position"], None], symbol: str):
         # Standard expiration target ~1 week
-        if not self._has_buy_signal(date):
+        if not self._has_buy_signal(date, symbol):
             return
         get_logger().info(f"📈 Buy signal detected for {date.strftime('%Y-%m-%d')}")
 
-        current_price = self.get_current_underlying_price(date, self.symbol)
+        current_price = self.get_current_underlying_price(date, symbol)
         if current_price is None:
             get_logger().warning("Failed to get current price.")
             return
 
         # Select expiration (target ~1 week)
-        expiration_str = self._select_week_expiration(date)
+        expiration_str = self._select_week_expiration(date, symbol)
         if not expiration_str:
             get_logger().warning("⚠️  Failed to select expiration")
             return
 
-        position = self._create_put_credit_spread(date, current_price, expiration_str)
+        position = self._create_put_credit_spread(date, current_price, expiration_str, symbol)
         if position is None:
             get_logger().warning("⚠️  Failed to create put credit spread for selected expiration")
             return
@@ -465,7 +471,7 @@ class VelocitySignalMomentumStrategy(Strategy):
 
         add_position(position)
 
-    def _get_option_chain(self, date: datetime, current_price: float) -> Optional[OptionsChainDTO]:
+    def _get_option_chain(self, date: datetime, current_price: float, symbol: str) -> Optional[OptionsChainDTO]:
         date_key = date.strftime("%Y-%m-%d")
 
         expiration_range = ExpirationRangeDTO(min_days=5, max_days=10)
@@ -476,7 +482,7 @@ class VelocitySignalMomentumStrategy(Strategy):
         )
 
         live_chain = self.get_options_chain(
-            date, current_price, strike_range=strike_range, expiration_range=expiration_range
+            symbol, date, current_price, strike_range=strike_range, expiration_range=expiration_range
         )
         if live_chain and (live_chain.get_calls() or live_chain.get_puts()):
             get_logger().info(
@@ -488,7 +494,7 @@ class VelocitySignalMomentumStrategy(Strategy):
         get_logger().warning("⚠️  Live option chain fetch returned empty data")
         return None
 
-    def _select_week_expiration(self, date: datetime) -> Optional[str]:
+    def _select_week_expiration(self, date: datetime, symbol: str) -> Optional[str]:
         """
         Select the best expiration date for the strategy using options_retriever.
         Prefer expirations 5-10 days out, else nearest > 0 days, target 7 days.
@@ -511,7 +517,7 @@ class VelocitySignalMomentumStrategy(Strategy):
             expiration_range = ExpirationRangeDTO(min_days=5, max_days=10)
 
             # Get contracts for the date (already filtered by expiration range)
-            contracts = self.get_contract_list_for_date(date, expiration_range=expiration_range)
+            contracts = self.get_contract_list_for_date(symbol, date, expiration_range=expiration_range)
 
             if not contracts:
                 get_logger().warning("⚠️  No contracts found for the date")
@@ -550,8 +556,9 @@ class VelocitySignalMomentumStrategy(Strategy):
         date: datetime,
         positions: tuple["Position", ...],
         remove_position: Strategy.RemovePositionCallback,
+        symbol: str,
     ):
-        current_underlying_price = self.get_current_underlying_price(date, self.symbol)
+        current_underlying_price = self.get_current_underlying_price(date, symbol)
         get_logger().info(f"Current underlying price: {current_underlying_price}")
         get_logger().info(f"🤖 Strategy evaluating {len(positions)} open position(s) for potential closure...")
 

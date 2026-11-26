@@ -8,6 +8,8 @@ from algo_trading_engine.strategy import Strategy
 
 
 class _MinimalStrategy(Strategy):
+    universe_set = ["SPY"]
+
     def on_new_date(self, date, positions, add_position, remove_position):
         pass
 
@@ -23,7 +25,6 @@ def test_backtest_config_plot_config_default_is_none():
         initial_capital=1000.0,
         start_date=datetime(2024, 1, 1),
         end_date=datetime(2024, 6, 1),
-        symbol="SPY",
         strategy_type="velocity_momentum",
     )
     assert config.plot_config is None

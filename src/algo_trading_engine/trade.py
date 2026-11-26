@@ -8,14 +8,8 @@ import re
 from datetime import datetime
 from typing import List, TYPE_CHECKING
 
-import pandas as pd
-
 from algo_trading_engine.logging import configure_logger, get_logger
 from algo_trading_engine.logging.logger import log_and_echo
-from algo_trading_engine._internal.common.ml_pipeline import (
-    is_credit_spread_strategy,
-    prepare_credit_spread_backtest_data,
-)
 from algo_trading_engine._internal.util.market_clock import market_now
 from algo_trading_engine._internal.trade.live_bar import apply_live_quote
 from algo_trading_engine._internal.common.trading_engine import (
@@ -54,7 +48,12 @@ class PaperTradingEngine(TradingEngine):
 
     _config: PaperTradingConfig
 
-    def __init__(self, strategy: Strategy, config: PaperTradingConfig, options_handler=None):
+    def __init__(
+        self,
+        strategy: Strategy,
+        config: PaperTradingConfig,
+        options_handler=None,
+    ):
         """
         Initialize paper trading engine.
 
@@ -63,13 +62,9 @@ class PaperTradingEngine(TradingEngine):
             config: Paper trading configuration
             options_handler: Options handler instance (optional, will be extracted from strategy if not provided)
         """
-        # PaperTradingEngine doesn't have its own data - use strategy's data
-        # If strategy doesn't have data yet, create empty DataFrame
-        strategy_data = getattr(strategy, "data", None)
-        if strategy_data is None:
-            strategy_data = pd.DataFrame()
-
-        super().__init__(strategy, strategy_data, config, bar_interval=config.bar_interval)
+        if strategy.universe is None:
+            raise ValueError("Strategy has no universe")
+        super().__init__(strategy, strategy.universe, config=config, bar_interval=config.bar_interval)
 
         self._positions: List["Position"] = []
         self._closed_positions: List[dict] = []
@@ -137,8 +132,9 @@ class PaperTradingEngine(TradingEngine):
 
         # Check for open positions and display status (recommendation-relevant -> stdout via log_and_echo).
         # Scope by strategy_name so one strategy's Lambda run does not load another strategy's Dynamo rows.
+        primary_symbol = self.universe.symbols[0]
         open_records = store.get_open_positions(
-            symbol=self._config.symbol,
+            symbol=primary_symbol,
             strategy_name=strategy_name,
         )
         if open_records:
@@ -186,7 +182,7 @@ class PaperTradingEngine(TradingEngine):
         indicators = self._strategy.indicators
         if not indicators:
             return
-        data = self._strategy.data
+        data = self.data
         if data is None or data.empty:
             raise IndicatorUpdateError(f"Cannot update indicators for {date} without market data")
         for indicator in indicators:
@@ -226,10 +222,10 @@ class PaperTradingEngine(TradingEngine):
             raise ValueError("Must use trading config.")
 
         today = market_now()
-
-        # Internal: Create options handler (strategy needs option callables before first fetch)
         options_handler = OptionsHandler(
-            symbol=config.symbol, api_key=config.api_key, use_free_tier=config.use_free_tier, use_cache=config.use_cache
+            api_key=config.api_key,
+            use_free_tier=config.use_free_tier,
+            use_cache=config.use_cache,
         )
 
         # Internal: Extract methods as callables (no imports needed by child repos)
@@ -241,7 +237,6 @@ class PaperTradingEngine(TradingEngine):
         if isinstance(config.strategy_type, str):
             strategy = create_strategy_from_args(
                 strategy_name=config.strategy_type,
-                symbol=config.symbol,
                 get_contract_list_for_date=get_contract_list_for_date,
                 get_option_bar=get_option_bar,
                 get_options_chain=get_options_chain,
@@ -255,32 +250,35 @@ class PaperTradingEngine(TradingEngine):
                 raise ValueError(f"Failed to create strategy: {config.strategy_type}")
         else:
             strategy = config.strategy_type
-            strategy.symbol = config.symbol
             strategy.get_contract_list_for_date = get_contract_list_for_date
             strategy.get_option_bar = get_option_bar
             strategy.get_options_chain = get_options_chain
+        if strategy.universe is None:
+            raise ValueError("Strategy has no universe")
 
         strategy.use_snapshot_for_current_bar = True
 
         fetch_start_date = compute_paper_trading_fetch_start_date(today, strategy, config.bar_interval)
+        fetch_end = today.strftime("%Y-%m-%d")
 
-        retriever = DataRetriever(symbol=config.symbol, bar_interval=config.bar_interval, use_cache=config.use_cache)
+        retriever = DataRetriever(use_cache=config.use_cache)
+        strategy.universe.load(retriever, config.bar_interval, fetch_start_date, fetch_end)
 
-        data = retriever.fetch_data_for_period(fetch_start_date)
-        if data is None or len(data) == 0:
-            raise ValueError(f"Failed to fetch data for {config.symbol}")
-        get_logger().info(
-            f"Fetched {len(data)} data points for {config.symbol} from {data.index[0]} to {data.index[-1]}"
-        )
+        for symbol in strategy.universe.symbols:
+            frame = strategy.universe.frame(symbol)
+            if frame is None or len(frame) == 0:
+                raise ValueError(f"Failed to fetch data for {symbol}")
+            get_logger().info(
+                f"Fetched {len(frame)} data points for {symbol} from {frame.index[0]} to {frame.index[-1]}"
+            )
+            live_price = retriever.get_live_price(symbol)
+            if live_price is not None:
+                updated = apply_live_quote(frame, live_price, today, config.bar_interval)
+                strategy.universe.replace(symbol, updated)
 
-        live_price = retriever.get_live_price()
-        if live_price is not None:
-            data = apply_live_quote(data, live_price, today, config.bar_interval)
-
-        if is_credit_spread_strategy(config.strategy_type):
-            data = prepare_credit_spread_backtest_data(data, retriever, config.symbol)
-
-        strategy.set_data(data, retriever.treasury_rates)
+        treasury_rates = retriever.load_treasury_rates(today, today)
+        strategy.set_universe(strategy.universe, treasury_rates)
+        strategy.finalize_universe()
 
         engine = cls(strategy=strategy, config=config, options_handler=options_handler)
 

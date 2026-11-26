@@ -41,7 +41,6 @@ class TestPhase2Integration:
             get_options_chain=self.get_options_chain,
             lstm_model=self.mock_lstm_model,
             lstm_scaler=self.mock_lstm_scaler,
-            symbol="SPY",
             options_handler=self.mock_options_handler,  # Still needed for LSTMModel
         )
 
@@ -86,9 +85,7 @@ class TestPhase2Integration:
         )
 
         # Create backtest engine
-        self.engine = BacktestEngine(
-            data=self.mock_data, strategy=self.strategy, initial_capital=100000, volume_config=self.volume_config
-        )
+        self.engine = BacktestEngine(strategy=self.strategy, initial_capital=100000, volume_config=self.volume_config)
 
         # Add position to engine
         self.engine.positions.append(self.position)
@@ -167,7 +164,6 @@ class TestPhase2Integration:
         """Test position closure with volume validation disabled."""
         # Create engine with volume validation disabled
         engine_disabled = BacktestEngine(
-            data=self.mock_data,
             strategy=self.strategy,
             initial_capital=100000,
             volume_config=VolumeConfig(min_volume=10, enable_volume_validation=False),

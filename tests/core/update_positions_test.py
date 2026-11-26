@@ -1,5 +1,7 @@
 """Strategy._update_positions refreshes the quote stored on each open leg."""
 
+from tests.conftest import load_strategy_frame
+
 from datetime import datetime
 from decimal import Decimal
 from typing import Optional
@@ -29,17 +31,20 @@ def _bar(ticker: str, close_price: str, volume: int, timestamp: datetime) -> Opt
 
 
 class _RecordingStrategy(Strategy):
+    universe_set = ["SPY"]
+
     def __init__(self):
         super().__init__()
         self.bars: dict[tuple[str, datetime, Optional[BarTimeInterval]], OptionBarDTO] = {}
 
         def get_option_bar(
+            symbol: str,
             ticker: str,
             date: datetime,
             multiplier: Optional[int] = 1,
             timespan: Optional[BarTimeInterval] = BarTimeInterval.DAY,
         ) -> Optional[OptionBarDTO]:
-            del multiplier
+            del symbol, multiplier
             return self.bars.get((ticker, date, timespan))
 
         self.get_option_bar = get_option_bar
@@ -118,7 +123,6 @@ def test_update_positions_keeps_previous_quote_when_bar_is_missing():
 
 def test_compute_exit_price_uses_refreshed_leg_quotes():
     strategy = _RecordingStrategy()
-    strategy.symbol = "SPY"
     as_of = datetime(2024, 2, 15)
     short_leg = _leg("O:SPY240315C00500000", 500.0)
     long_leg = _leg("O:SPY240315C00510000", 510.0)
@@ -135,8 +139,8 @@ def test_compute_exit_price_uses_refreshed_leg_quotes():
     strategy.bars[(long_leg.ticker, as_of, BarTimeInterval.DAY)] = _bar(long_leg.ticker, "0.25", 20, as_of)
     dates = pd.date_range("2024-02-15", periods=1)
     data = pd.DataFrame({"Close": [505.0]}, index=dates)
+    load_strategy_frame(strategy, data)
     engine = BacktestEngine(
-        data=data,
         strategy=strategy,
         initial_capital=10000,
         start_date=as_of,

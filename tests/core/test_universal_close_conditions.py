@@ -6,6 +6,8 @@ from algo_trading_engine.enums import UniversalCloseCondition
 
 
 class MinimalStrategy(Strategy):
+    universe_set = ["SPY"]
+
     def on_new_date(self, date, positions, add_position, remove_position):
         pass
 

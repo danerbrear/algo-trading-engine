@@ -42,52 +42,25 @@ def mock_cache_manager(temp_cache_dir):
 
 
 class TestDataRetrieverBarInterval:
-    """Test cases for DataRetriever bar_interval parameter."""
-
-    def test_default_bar_interval_is_daily(self):
-        """Test that bar_interval defaults to DAY."""
-        retriever = DataRetriever(symbol="SPY")
-        assert retriever.bar_interval == BarTimeInterval.DAY
-
-    def test_hourly_bar_interval(self):
-        """Test creating DataRetriever with hourly bars."""
-        retriever = DataRetriever(symbol="SPY", bar_interval=BarTimeInterval.HOUR)
-        assert retriever.bar_interval == BarTimeInterval.HOUR
-
-    def test_minute_bar_interval(self):
-        """Test creating DataRetriever with minute bars."""
-        retriever = DataRetriever(symbol="SPY", bar_interval=BarTimeInterval.MINUTE)
-        assert retriever.bar_interval == BarTimeInterval.MINUTE
+    """Test cases for DataRetriever bar interval helpers (interval is per fetch)."""
 
     def test_get_yfinance_interval_daily(self):
-        """Test _get_yfinance_interval returns correct string for daily."""
-        retriever = DataRetriever(symbol="SPY", bar_interval=BarTimeInterval.DAY)
-        assert retriever._get_yfinance_interval() == "1d"
+        assert DataRetriever._get_yfinance_interval(BarTimeInterval.DAY) == "1d"
 
     def test_get_yfinance_interval_hourly(self):
-        """Test _get_yfinance_interval returns correct string for hourly."""
-        retriever = DataRetriever(symbol="SPY", bar_interval=BarTimeInterval.HOUR)
-        assert retriever._get_yfinance_interval() == "1h"
+        assert DataRetriever._get_yfinance_interval(BarTimeInterval.HOUR) == "1h"
 
     def test_get_yfinance_interval_minute(self):
-        """Test _get_yfinance_interval returns correct string for minute."""
-        retriever = DataRetriever(symbol="SPY", bar_interval=BarTimeInterval.MINUTE)
-        assert retriever._get_yfinance_interval() == "1m"
+        assert DataRetriever._get_yfinance_interval(BarTimeInterval.MINUTE) == "1m"
 
     def test_get_cache_interval_dir_daily(self):
-        """Test _get_cache_interval_dir returns correct directory for daily."""
-        retriever = DataRetriever(symbol="SPY", bar_interval=BarTimeInterval.DAY)
-        assert retriever._get_cache_interval_dir() == "daily"
+        assert DataRetriever._get_cache_interval_dir(BarTimeInterval.DAY) == "daily"
 
     def test_get_cache_interval_dir_hourly(self):
-        """Test _get_cache_interval_dir returns correct directory for hourly."""
-        retriever = DataRetriever(symbol="SPY", bar_interval=BarTimeInterval.HOUR)
-        assert retriever._get_cache_interval_dir() == "hourly"
+        assert DataRetriever._get_cache_interval_dir(BarTimeInterval.HOUR) == "hourly"
 
     def test_get_cache_interval_dir_minute(self):
-        """Test _get_cache_interval_dir returns correct string for minute."""
-        retriever = DataRetriever(symbol="SPY", bar_interval=BarTimeInterval.MINUTE)
-        assert retriever._get_cache_interval_dir() == "minute"
+        assert DataRetriever._get_cache_interval_dir(BarTimeInterval.MINUTE) == "minute"
 
 
 class TestDataRetrieverFetchWithInterval:
@@ -118,12 +91,12 @@ class TestDataRetrieverFetchWithInterval:
     def test_fetch_data_daily_interval(self, mock_ticker_class, mock_load_cache):
         """Test fetching data with daily interval."""
         mock_load_cache.return_value = None
-        retriever = DataRetriever(symbol="SPY", bar_interval=BarTimeInterval.DAY)
+        retriever = DataRetriever()
         mock_ticker = Mock()
         mock_ticker.info = {"symbol": "SPY"}
         mock_ticker.history.return_value = self.create_mock_ticker_data(10, BarTimeInterval.DAY)
         mock_ticker_class.return_value = mock_ticker
-        data = retriever.fetch_data_for_period("2024-01-01", "2024-01-10")
+        data = retriever.fetch_data_for_period("SPY", BarTimeInterval.DAY, "2024-01-01", "2024-01-10")
         mock_ticker.history.assert_called_once()
         call_kwargs = mock_ticker.history.call_args.kwargs
         assert call_kwargs["interval"] == "1d"
@@ -134,12 +107,12 @@ class TestDataRetrieverFetchWithInterval:
     def test_fetch_data_hourly_interval(self, mock_ticker_class, mock_load_cache):
         """Test fetching data with hourly interval."""
         mock_load_cache.return_value = None
-        retriever = DataRetriever(symbol="SPY", bar_interval=BarTimeInterval.HOUR)
+        retriever = DataRetriever()
         mock_ticker = Mock()
         mock_ticker.info = {"symbol": "SPY"}
         mock_ticker.history.return_value = self.create_mock_ticker_data(24, BarTimeInterval.HOUR)
         mock_ticker_class.return_value = mock_ticker
-        data = retriever.fetch_data_for_period("2024-01-01", "2024-01-02")
+        data = retriever.fetch_data_for_period("SPY", BarTimeInterval.HOUR, "2024-01-01", "2024-01-02")
         mock_ticker.history.assert_called_once()
         call_kwargs = mock_ticker.history.call_args.kwargs
         assert call_kwargs["interval"] == "1h"
@@ -150,12 +123,12 @@ class TestDataRetrieverFetchWithInterval:
     def test_fetch_data_minute_interval(self, mock_ticker_class, mock_load_cache):
         """Test fetching data with minute interval."""
         mock_load_cache.return_value = None
-        retriever = DataRetriever(symbol="SPY", bar_interval=BarTimeInterval.MINUTE)
+        retriever = DataRetriever()
         mock_ticker = Mock()
         mock_ticker.info = {"symbol": "SPY"}
         mock_ticker.history.return_value = self.create_mock_ticker_data(60, BarTimeInterval.MINUTE)
         mock_ticker_class.return_value = mock_ticker
-        data = retriever.fetch_data_for_period("2024-01-01", "2024-01-01 23:59")
+        data = retriever.fetch_data_for_period("SPY", BarTimeInterval.MINUTE, "2024-01-01", "2024-01-01 23:59")
         mock_ticker.history.assert_called_once()
         call_kwargs = mock_ticker.history.call_args.kwargs
         assert call_kwargs["interval"] == "1m"
@@ -166,12 +139,12 @@ class TestDataRetrieverFetchWithInterval:
     def test_fetch_data_no_data_type_parameter(self, mock_ticker_class, mock_load_cache):
         """Test that fetch_data_for_period doesn't accept data_type parameter."""
         mock_load_cache.return_value = None
-        retriever = DataRetriever(symbol="SPY", bar_interval=BarTimeInterval.DAY)
+        retriever = DataRetriever()
         mock_ticker = Mock()
         mock_ticker.info = {"symbol": "SPY"}
         mock_ticker.history.return_value = self.create_mock_ticker_data(10, BarTimeInterval.DAY)
         mock_ticker_class.return_value = mock_ticker
-        data = retriever.fetch_data_for_period("2024-01-01", "2024-01-10")
+        data = retriever.fetch_data_for_period("SPY", BarTimeInterval.DAY, "2024-01-01", "2024-01-10")
         assert len(data) > 0
         call_kwargs = mock_ticker.history.call_args.kwargs
         assert "data_type" not in call_kwargs
@@ -181,13 +154,13 @@ class TestDataRetrieverFetchWithInterval:
     def test_fetch_data_error_includes_interval(self, mock_ticker_class, mock_load_cache):
         """Test that error messages include interval information."""
         mock_load_cache.return_value = None
-        retriever = DataRetriever(symbol="SPY", bar_interval=BarTimeInterval.HOUR)
+        retriever = DataRetriever()
         mock_ticker = Mock()
         mock_ticker.info = {"symbol": "SPY"}
         mock_ticker.history.return_value = pd.DataFrame()
         mock_ticker_class.return_value = mock_ticker
         with pytest.raises(ValueError) as exc_info:
-            retriever.fetch_data_for_period("2024-01-01", "2024-01-10")
+            retriever.fetch_data_for_period("SPY", BarTimeInterval.HOUR, "2024-01-01", "2024-01-10")
         error_message = str(exc_info.value)
         assert "1h" in error_message
 
@@ -197,35 +170,36 @@ class TestCacheStructure:
 
     def test_cache_structure_uses_interval_subdirectory(self, mock_cache_manager):
         """Test that cache uses interval-specific subdirectories."""
-        retriever = DataRetriever(symbol="SPY", bar_interval=BarTimeInterval.HOUR)
-        interval_dir = retriever._get_cache_interval_dir()
+        retriever = DataRetriever()
+        interval_dir = DataRetriever._get_cache_interval_dir(BarTimeInterval.HOUR)
         assert interval_dir == "hourly"
         cache_base = retriever.cache_manager.get_cache_dir("stocks", "SPY")
         assert "SPY" in str(cache_base)
         assert str(mock_cache_manager) in str(cache_base)
 
-    def test_load_cached_data_range_returns_none_if_no_cache(self):
+    def test_load_cached_data_range_returns_none_if_no_cache(self, mock_cache_manager):
         """Test _load_cached_data_range returns None if cache doesn't exist."""
-        retriever = DataRetriever(symbol="TESTYMBOL", bar_interval=BarTimeInterval.DAY)
-        result = retriever._load_cached_data_range("2024-01-01", "2024-01-10")
+        del mock_cache_manager
+        retriever = DataRetriever()
+        result = retriever._load_cached_data_range("ZZZ_NO_CACHE", BarTimeInterval.DAY, "2024-01-01", "2024-01-10")
         assert result is None
 
     def test_daily_cache_file_naming(self):
         """Test that daily cache files use YYYY-MM-DD.pkl format (one file per start_date)."""
-        retriever = DataRetriever(symbol="SPY", bar_interval=BarTimeInterval.DAY)
-        interval_dir = retriever._get_cache_interval_dir()
+        retriever = DataRetriever()
+        interval_dir = DataRetriever._get_cache_interval_dir(BarTimeInterval.DAY)
         assert interval_dir == "daily"
 
     def test_hourly_cache_file_naming(self):
         """Test that hourly cache files use YYYY-MM-DD_HHMM.pkl format."""
-        retriever = DataRetriever(symbol="SPY", bar_interval=BarTimeInterval.HOUR)
-        interval_dir = retriever._get_cache_interval_dir()
+        retriever = DataRetriever()
+        interval_dir = DataRetriever._get_cache_interval_dir(BarTimeInterval.HOUR)
         assert interval_dir == "hourly"
 
     def test_minute_cache_file_naming(self):
         """Test that minute cache files use YYYY-MM-DD_HHMM.pkl format."""
-        retriever = DataRetriever(symbol="SPY", bar_interval=BarTimeInterval.MINUTE)
-        interval_dir = retriever._get_cache_interval_dir()
+        retriever = DataRetriever()
+        interval_dir = DataRetriever._get_cache_interval_dir(BarTimeInterval.MINUTE)
         assert interval_dir == "minute"
 
 
@@ -239,7 +213,7 @@ class TestDailyCachePerformance:
             patch("yfinance.Ticker") as mock_ticker_class,
         ):
             mock_load_cache.return_value = None
-            retriever = DataRetriever(symbol="SPY", bar_interval=BarTimeInterval.DAY)
+            retriever = DataRetriever()
             dates = pd.date_range(start="2024-01-01", periods=100, freq="D", tz=YFINANCE_TZ)
             mock_data = pd.DataFrame(
                 {
@@ -255,7 +229,7 @@ class TestDailyCachePerformance:
             mock_ticker.info = {"symbol": "SPY"}
             mock_ticker.history.return_value = mock_data
             mock_ticker_class.return_value = mock_ticker
-            retriever.fetch_data_for_period("2024-01-01", "2024-04-09")
+            retriever.fetch_data_for_period("SPY", BarTimeInterval.DAY, "2024-01-01", "2024-04-09")
             cache_dir = retriever.cache_manager.get_cache_dir("stocks", "SPY") / "daily"
             expected_file = cache_dir / "2024-01-01.pkl"
             assert expected_file.exists(), "Daily cache should create one file per start_date"
@@ -268,9 +242,9 @@ class TestProcessAgnosticCaching:
 
     def test_no_data_type_in_cache_path(self):
         """Test that cache paths don't include data_type like 'backtest' or 'general'."""
-        retriever = DataRetriever(symbol="SPY", bar_interval=BarTimeInterval.DAY)
+        retriever = DataRetriever()
         cache_base = retriever.cache_manager.get_cache_dir("stocks", "SPY")
-        interval_dir = retriever._get_cache_interval_dir()
+        interval_dir = DataRetriever._get_cache_interval_dir(BarTimeInterval.DAY)
         full_cache_path = cache_base / interval_dir
         path_str = str(full_cache_path)
         assert "backtest" not in path_str.lower()
@@ -282,8 +256,8 @@ class TestProcessAgnosticCaching:
 
     def test_cache_reusable_across_processes(self):
         """Test that cache from different processes uses same structure."""
-        retriever1 = DataRetriever(symbol="SPY", bar_interval=BarTimeInterval.HOUR)
-        retriever2 = DataRetriever(symbol="SPY", bar_interval=BarTimeInterval.HOUR)
+        retriever1 = DataRetriever()
+        retriever2 = DataRetriever()
         cache_dir1 = retriever1.cache_manager.get_cache_dir("stocks", "SPY") / "hourly"
         cache_dir2 = retriever2.cache_manager.get_cache_dir("stocks", "SPY") / "hourly"
         assert cache_dir1 == cache_dir2
@@ -294,12 +268,12 @@ class TestDataRetrieverUseCache:
 
     def test_use_cache_defaults_to_true(self):
         """Test that use_cache defaults to True."""
-        retriever = DataRetriever(symbol="SPY")
+        retriever = DataRetriever()
         assert retriever.use_cache is True
 
     def test_use_cache_can_be_set_to_false(self):
         """Test that use_cache can be explicitly disabled."""
-        retriever = DataRetriever(symbol="SPY", use_cache=False)
+        retriever = DataRetriever(use_cache=False)
         assert retriever.use_cache is False
 
     @patch("algo_trading_engine.data_retriever.DataRetriever._load_cached_data_range")
@@ -307,7 +281,7 @@ class TestDataRetrieverUseCache:
     def test_fetch_data_does_not_write_cache_when_disabled(self, mock_ticker_class, mock_load_cache):
         """Test that no cache files are written when use_cache=False."""
         mock_load_cache.return_value = None
-        retriever = DataRetriever(symbol="ZZZ_NO_CACHE", bar_interval=BarTimeInterval.DAY, use_cache=False)
+        retriever = DataRetriever(use_cache=False)
         dates = pd.date_range(start="2024-01-01", periods=10, freq="D", tz=YFINANCE_TZ)
         mock_data = pd.DataFrame(
             {
@@ -323,7 +297,7 @@ class TestDataRetrieverUseCache:
         mock_ticker.info = {"symbol": "ZZZ_NO_CACHE"}
         mock_ticker.history.return_value = mock_data
         mock_ticker_class.return_value = mock_ticker
-        data = retriever.fetch_data_for_period("2024-01-01", "2024-01-10")
+        data = retriever.fetch_data_for_period("ZZZ_NO_CACHE", BarTimeInterval.DAY, "2024-01-01", "2024-01-10")
         assert len(data) > 0
         cache_dir = retriever.cache_manager.get_cache_dir("stocks", "ZZZ_NO_CACHE") / "daily"
         assert not cache_dir.exists() or not any(
@@ -335,7 +309,7 @@ class TestDataRetrieverUseCache:
     def test_fetch_data_writes_cache_when_enabled(self, mock_ticker_class, mock_load_cache):
         """Test that cache files are written when use_cache=True."""
         mock_load_cache.return_value = None
-        retriever = DataRetriever(symbol="SPY", bar_interval=BarTimeInterval.DAY, use_cache=True)
+        retriever = DataRetriever(use_cache=True)
         dates = pd.date_range(start="2024-01-01", periods=10, freq="D", tz=YFINANCE_TZ)
         mock_data = pd.DataFrame(
             {
@@ -351,7 +325,7 @@ class TestDataRetrieverUseCache:
         mock_ticker.info = {"symbol": "SPY"}
         mock_ticker.history.return_value = mock_data
         mock_ticker_class.return_value = mock_ticker
-        retriever.fetch_data_for_period("2024-01-01", "2024-01-10")
+        retriever.fetch_data_for_period("SPY", BarTimeInterval.DAY, "2024-01-01", "2024-01-10")
         cache_dir = retriever.cache_manager.get_cache_dir("stocks", "SPY") / "daily"
         expected_file = cache_dir / "2024-01-01.pkl"
         assert expected_file.exists(), "Cache file should be written when use_cache=True"
@@ -390,7 +364,7 @@ class TestPartialCacheFetch:
 
     def test_daily_partial_cache_fetches_only_gap(self):
         """When cache covers start..mid and end_date > mid, only fetch mid+1..end."""
-        retriever = DataRetriever(symbol="SPY", bar_interval=BarTimeInterval.DAY)
+        retriever = DataRetriever()
         cached = self._create_daily_data("2024-01-01", 10)
         last_cached = cached.index[-1]
         cache_dir = retriever.cache_manager.get_cache_dir("stocks", "SPY") / "daily"
@@ -398,7 +372,7 @@ class TestPartialCacheFetch:
         cached.to_pickle(cache_dir / "2024-01-01.pkl")
         gap_data = self._create_daily_data((last_cached + pd.Timedelta(days=1)).strftime("%Y-%m-%d"), 5)
         with patch.object(retriever, "_fetch_bars_from_api", return_value=gap_data) as mock_api:
-            result = retriever.fetch_data_for_period("2024-01-01", "2024-02-01")
+            result = retriever.fetch_data_for_period("SPY", BarTimeInterval.DAY, "2024-01-01", "2024-02-01")
         mock_api.assert_called_once()
         call_start = mock_api.call_args[0][0]
         assert pd.Timestamp(call_start) > last_cached, "API should only be called for dates after the last cached date"
@@ -406,7 +380,7 @@ class TestPartialCacheFetch:
 
     def test_daily_partial_cache_updates_cache_file(self):
         """Merged data should be persisted back to the cache file."""
-        retriever = DataRetriever(symbol="SPY", bar_interval=BarTimeInterval.DAY)
+        retriever = DataRetriever()
         cached = self._create_daily_data("2024-01-01", 5)
         last_cached = cached.index[-1]
         cache_dir = retriever.cache_manager.get_cache_dir("stocks", "SPY") / "daily"
@@ -415,24 +389,24 @@ class TestPartialCacheFetch:
         cached.to_pickle(cache_file)
         gap_data = self._create_daily_data((last_cached + pd.Timedelta(days=1)).strftime("%Y-%m-%d"), 3)
         with patch.object(retriever, "_fetch_bars_from_api", return_value=gap_data):
-            retriever.fetch_data_for_period("2024-01-01", "2024-02-01")
+            retriever.fetch_data_for_period("SPY", BarTimeInterval.DAY, "2024-01-01", "2024-02-01")
         updated = pd.read_pickle(cache_file)
         assert len(updated) == len(cached) + len(gap_data), "Cache file should contain both original and gap data"
 
     def test_daily_partial_cache_returns_cached_when_api_empty(self):
         """If the API returns no gap data (e.g. weekends), return cached data as-is."""
-        retriever = DataRetriever(symbol="SPY", bar_interval=BarTimeInterval.DAY)
+        retriever = DataRetriever()
         cached = self._create_daily_data("2024-01-01", 5)
         cache_dir = retriever.cache_manager.get_cache_dir("stocks", "SPY") / "daily"
         cache_dir.mkdir(parents=True, exist_ok=True)
         cached.to_pickle(cache_dir / "2024-01-01.pkl")
         with patch.object(retriever, "_fetch_bars_from_api", return_value=pd.DataFrame()):
-            result = retriever.fetch_data_for_period("2024-01-01", "2024-02-01")
+            result = retriever.fetch_data_for_period("SPY", BarTimeInterval.DAY, "2024-01-01", "2024-02-01")
         assert len(result) == len(cached)
 
     def test_daily_partial_cache_deduplicates_overlap(self):
         """Overlapping bars between cache and API are deduplicated (API wins)."""
-        retriever = DataRetriever(symbol="SPY", bar_interval=BarTimeInterval.DAY)
+        retriever = DataRetriever()
         cached = self._create_daily_data("2024-01-01", 10)
         cache_dir = retriever.cache_manager.get_cache_dir("stocks", "SPY") / "daily"
         cache_dir.mkdir(parents=True, exist_ok=True)
@@ -441,14 +415,14 @@ class TestPartialCacheFetch:
         gap_data = self._create_daily_data(overlap_start, 5)
         gap_data["Close"] = 999.0
         with patch.object(retriever, "_fetch_bars_from_api", return_value=gap_data):
-            result = retriever.fetch_data_for_period("2024-01-01", "2024-02-01")
+            result = retriever.fetch_data_for_period("SPY", BarTimeInterval.DAY, "2024-01-01", "2024-02-01")
         assert not result.index.duplicated().any(), "Result should have no duplicate dates"
         overlap_idx = cached.index[-2]
         assert result.loc[overlap_idx, "Close"] == 999.0, "API data should take precedence on overlapping dates"
 
     def test_daily_partial_cache_does_not_write_when_cache_disabled(self):
         """When use_cache=False, partial fetch should not update the cache file."""
-        retriever = DataRetriever(symbol="SPY", bar_interval=BarTimeInterval.DAY, use_cache=False)
+        retriever = DataRetriever(use_cache=False)
         cached = self._create_daily_data("2024-01-01", 5)
         last_cached = cached.index[-1]
         cache_dir = retriever.cache_manager.get_cache_dir("stocks", "SPY") / "daily"
@@ -458,13 +432,13 @@ class TestPartialCacheFetch:
         original_size = cache_file.stat().st_size
         gap_data = self._create_daily_data((last_cached + pd.Timedelta(days=1)).strftime("%Y-%m-%d"), 5)
         with patch.object(retriever, "_fetch_bars_from_api", return_value=gap_data):
-            result = retriever.fetch_data_for_period("2024-01-01", "2024-02-01")
+            result = retriever.fetch_data_for_period("SPY", BarTimeInterval.DAY, "2024-01-01", "2024-02-01")
         assert len(result) == len(cached) + len(gap_data)
         assert cache_file.stat().st_size == original_size, "Cache file should not be updated when use_cache=False"
 
     def test_hourly_partial_cache_fetches_gap(self):
         """Hourly bars with incomplete cache trigger a gap fetch instead of returning stale data."""
-        retriever = DataRetriever(symbol="SPY", bar_interval=BarTimeInterval.HOUR)
+        retriever = DataRetriever()
         cached = self._create_hourly_data("2024-01-02", 7)
         cache_dir = retriever.cache_manager.get_cache_dir("stocks", "SPY") / "hourly"
         cache_dir.mkdir(parents=True, exist_ok=True)
@@ -474,14 +448,14 @@ class TestPartialCacheFetch:
             pd.DataFrame([row]).to_pickle(cache_dir / fname)
         gap_data = self._create_hourly_data("2024-01-03", 7)
         with patch.object(retriever, "_fetch_bars_from_api", return_value=gap_data) as mock_api:
-            result = retriever.fetch_data_for_period("2024-01-02", "2024-01-04")
+            result = retriever.fetch_data_for_period("SPY", BarTimeInterval.HOUR, "2024-01-02", "2024-01-04")
         mock_api.assert_called_once()
         assert len(result) > len(cached), "Result should include gap data beyond cache"
         assert not result.index.duplicated().any()
 
     def test_hourly_partial_cache_saves_only_gap_bars(self):
         """When merging hourly cache, only the new gap bars are written to disk."""
-        retriever = DataRetriever(symbol="ZZZ_HOURLY_GAP", bar_interval=BarTimeInterval.HOUR)
+        retriever = DataRetriever()
         cached = self._create_hourly_data("2024-01-02", 4)
         cache_dir = retriever.cache_manager.get_cache_dir("stocks", "ZZZ_HOURLY_GAP") / "hourly"
         if cache_dir.exists():
@@ -496,14 +470,14 @@ class TestPartialCacheFetch:
         files_before = set(cache_dir.glob("*.pkl"))
         gap_data = self._create_hourly_data("2024-01-03", 4)
         with patch.object(retriever, "_fetch_bars_from_api", return_value=gap_data):
-            retriever.fetch_data_for_period("2024-01-02", "2024-01-04")
+            retriever.fetch_data_for_period("ZZZ_HOURLY_GAP", BarTimeInterval.HOUR, "2024-01-02", "2024-01-04")
         files_after = set(cache_dir.glob("*.pkl"))
         new_files = files_after - files_before
         assert len(new_files) == len(gap_data), "Only the new gap bars should be written as new cache files"
 
     def test_hourly_complete_cache_returns_without_api_call(self):
         """When hourly cache already covers end_date, no API call is made."""
-        retriever = DataRetriever(symbol="ZZZ_HOURLY_COMPLETE", bar_interval=BarTimeInterval.HOUR)
+        retriever = DataRetriever()
         cached = self._create_hourly_data("2024-01-02", 8)
         cache_dir = retriever.cache_manager.get_cache_dir("stocks", "ZZZ_HOURLY_COMPLETE") / "hourly"
         if cache_dir.exists():
@@ -514,20 +488,22 @@ class TestPartialCacheFetch:
             fname = f"{timestamp.strftime('%Y-%m-%d')}_{timestamp.strftime('%H%M')}.pkl"
             pd.DataFrame([row]).to_pickle(cache_dir / fname)
         with patch.object(retriever, "_fetch_bars_from_api") as mock_api:
-            result = retriever.fetch_data_for_period("2024-01-02", "2024-01-02")
+            result = retriever.fetch_data_for_period(
+                "ZZZ_HOURLY_COMPLETE", BarTimeInterval.HOUR, "2024-01-02", "2024-01-02"
+            )
         mock_api.assert_not_called()
         assert len(result) == len(cached)
 
     def test_stale_cache_extended_when_end_date_is_none(self):
         """When end_date is None and cache is stale, fetch the gap to bring it current."""
-        retriever = DataRetriever(symbol="SPY", bar_interval=BarTimeInterval.DAY)
+        retriever = DataRetriever()
         cached = self._create_daily_data("2024-01-01", 5)
         cache_dir = retriever.cache_manager.get_cache_dir("stocks", "SPY") / "daily"
         cache_dir.mkdir(parents=True, exist_ok=True)
         cached.to_pickle(cache_dir / "2024-01-01.pkl")
         gap_data = self._create_daily_data("2024-06-01", 10)
         with patch.object(retriever, "_fetch_bars_from_api", return_value=gap_data) as mock_api:
-            result = retriever.fetch_data_for_period("2024-01-01")
+            result = retriever.fetch_data_for_period("SPY", BarTimeInterval.DAY, "2024-01-01")
         mock_api.assert_called_once()
         assert len(result) == len(cached) + len(gap_data)
 
@@ -536,7 +512,7 @@ class TestPartialCacheFetch:
         """Provisional session bars must not be written to cache."""
         mock_market_now.return_value = datetime(2026, 11, 11, 10, 0, 0)
         symbol = "ZZZ_SKIP_TODAY"
-        retriever = DataRetriever(symbol=symbol, bar_interval=BarTimeInterval.HOUR)
+        retriever = DataRetriever()
         cache_dir = retriever.cache_manager.get_cache_dir("stocks", symbol) / "hourly"
         if cache_dir.exists():
             shutil.rmtree(cache_dir)
@@ -551,14 +527,14 @@ class TestPartialCacheFetch:
             },
             index=idx,
         )
-        retriever._save_data_to_cache(data, "2026-01-01")
+        retriever._save_data_to_cache(symbol, BarTimeInterval.HOUR, data, "2026-01-01")
         assert (cache_dir / "2026-11-10_1530.pkl").exists()
         assert list(cache_dir.glob("2026-11-11_*.pkl")) == []
 
     @patch("algo_trading_engine.data_retriever.market_now")
     def test_spans_today_forces_gap_fetch(self, mock_market_now):
         mock_market_now.return_value = datetime(2026, 11, 11, 10, 0, 0)
-        retriever = DataRetriever(symbol="SPY", bar_interval=BarTimeInterval.HOUR)
+        retriever = DataRetriever()
         cached = self._create_hourly_data("2026-11-11", 3)
         cache_dir = retriever.cache_manager.get_cache_dir("stocks", "SPY") / "hourly"
         cache_dir.mkdir(parents=True, exist_ok=True)
@@ -567,7 +543,7 @@ class TestPartialCacheFetch:
             fname = f"{timestamp.strftime('%Y-%m-%d')}_{timestamp.strftime('%H%M')}.pkl"
             pd.DataFrame([row]).to_pickle(cache_dir / fname)
         with patch.object(retriever, "_fetch_gap_and_merge", return_value=cached) as mock_merge:
-            retriever.fetch_data_for_period("2026-11-01", "2026-11-11")
+            retriever.fetch_data_for_period("SPY", BarTimeInterval.HOUR, "2026-11-01", "2026-11-11")
         mock_merge.assert_called_once()
 
 
@@ -579,37 +555,42 @@ class TestMarketTimeBoundary:
     def _bars(self, index: pd.DatetimeIndex) -> pd.DataFrame:
         return pd.DataFrame({column: [100.0 + i for i in range(len(index))] for column in self.COLUMNS}, index=index)
 
-    def _retriever(self, symbol: str, interval: BarTimeInterval, provider_bars: pd.DataFrame) -> DataRetriever:
-        retriever = DataRetriever(symbol=symbol, bar_interval=interval)
-        retriever.ticker = Mock()
-        retriever.ticker.info = {"symbol": symbol}
-        retriever.ticker.history.return_value = provider_bars
-        return retriever
+    def _mock_ticker(self, symbol: str, provider_bars: pd.DataFrame) -> Mock:
+        mock_ticker = Mock()
+        mock_ticker.info = {"symbol": symbol}
+        mock_ticker.history.return_value = provider_bars
+        return mock_ticker
 
     def test_daily_bars_from_another_exchange_keep_their_session_date(self, mock_cache_manager):
         """^VIX daily bars are stamped at Chicago midnight; they must stay on the same date."""
         chicago = pd.date_range(start="2024-01-16", periods=3, freq="D", tz="America/Chicago")
-        retriever = self._retriever("^VIX", BarTimeInterval.DAY, self._bars(chicago))
+        mock_ticker = self._mock_ticker("^VIX", self._bars(chicago))
+        retriever = DataRetriever()
 
-        data = retriever.fetch_data_for_period("2024-01-16", "2024-01-18")
+        with patch("algo_trading_engine.data_retriever.yf.Ticker", return_value=mock_ticker):
+            data = retriever.fetch_data_for_period("^VIX", BarTimeInterval.DAY, "2024-01-16", "2024-01-18")
 
         assert cast(pd.DatetimeIndex, data.index).tz is None
         assert list(data.index) == list(pd.date_range(start="2024-01-16", periods=3, freq="D"))
 
     def test_intraday_bars_from_another_exchange_are_converted_to_eastern(self, mock_cache_manager):
         chicago = pd.date_range(start="2024-01-16 08:30", periods=3, freq="h", tz="America/Chicago")
-        retriever = self._retriever("ZZZ_CHICAGO", BarTimeInterval.HOUR, self._bars(chicago))
+        mock_ticker = self._mock_ticker("ZZZ_CHICAGO", self._bars(chicago))
+        retriever = DataRetriever()
 
-        data = retriever.fetch_data_for_period("2024-01-16", "2024-01-16")
+        with patch("algo_trading_engine.data_retriever.yf.Ticker", return_value=mock_ticker):
+            data = retriever.fetch_data_for_period("ZZZ_CHICAGO", BarTimeInterval.HOUR, "2024-01-16", "2024-01-16")
 
         assert cast(pd.DatetimeIndex, data.index).tz is None
         assert list(data.index) == list(pd.date_range(start="2024-01-16 09:30", periods=3, freq="h"))
 
     def test_cache_entries_are_written_as_naive_eastern(self, mock_cache_manager):
         eastern = pd.date_range(start="2024-01-16 09:30", periods=3, freq="h", tz=YFINANCE_TZ)
-        retriever = self._retriever("ZZZ_CACHE_TZ", BarTimeInterval.HOUR, self._bars(eastern))
+        mock_ticker = self._mock_ticker("ZZZ_CACHE_TZ", self._bars(eastern))
+        retriever = DataRetriever()
 
-        retriever.fetch_data_for_period("2024-01-16", "2024-01-16")
+        with patch("algo_trading_engine.data_retriever.yf.Ticker", return_value=mock_ticker):
+            retriever.fetch_data_for_period("ZZZ_CACHE_TZ", BarTimeInterval.HOUR, "2024-01-16", "2024-01-16")
 
         cache_dir = mock_cache_manager / "stocks" / "ZZZ_CACHE_TZ" / "hourly"
         assert sorted(path.name for path in cache_dir.glob("*.pkl")) == [
@@ -623,35 +604,39 @@ class TestMarketTimeBoundary:
 
     @pytest.mark.parametrize("interval", [BarTimeInterval.DAY, BarTimeInterval.HOUR])
     def test_save_rejects_tz_aware_bars_before_writing(self, mock_cache_manager, interval):
-        retriever = DataRetriever(symbol="ZZZ_AWARE", bar_interval=interval)
+        retriever = DataRetriever()
         aware = self._bars(pd.date_range(start="2024-01-16 09:30", periods=2, freq="h", tz="UTC"))
 
         with pytest.raises(ValueError, match="naive US/Eastern"):
-            retriever._save_data_to_cache(aware, "2024-01-16")
+            retriever._save_data_to_cache("SPY", interval, aware, "2024-01-16")
 
         assert list(mock_cache_manager.rglob("*.pkl")) == []
 
     def test_cache_entry_that_is_not_naive_eastern_is_refetched_and_replaced(self, mock_cache_manager):
         eastern = pd.date_range(start="2024-01-16", periods=3, freq="D", tz=YFINANCE_TZ)
-        retriever = self._retriever("ZZZ_STALE", BarTimeInterval.DAY, self._bars(eastern))
+        mock_ticker = self._mock_ticker("ZZZ_STALE", self._bars(eastern))
+        retriever = DataRetriever()
         cache_file = mock_cache_manager / "stocks" / "ZZZ_STALE" / "daily" / "2024-01-16.pkl"
         cache_file.parent.mkdir(parents=True, exist_ok=True)
         self._bars(pd.date_range(start="2024-01-16", periods=3, freq="D", tz="UTC")).to_pickle(cache_file)
 
-        data = retriever.fetch_data_for_period("2024-01-16", "2024-01-18")
+        with patch("algo_trading_engine.data_retriever.yf.Ticker", return_value=mock_ticker):
+            data = retriever.fetch_data_for_period("ZZZ_STALE", BarTimeInterval.DAY, "2024-01-16", "2024-01-18")
 
-        cast(Mock, retriever.ticker).history.assert_called_once()
+        mock_ticker.history.assert_called_once()
         assert cast(pd.DatetimeIndex, data.index).tz is None
         assert cast(pd.DatetimeIndex, pd.read_pickle(cache_file).index).tz is None
 
     def test_cache_entry_that_is_not_a_bar_frame_is_refetched(self, mock_cache_manager):
         eastern = pd.date_range(start="2024-01-16", periods=3, freq="D", tz=YFINANCE_TZ)
-        retriever = self._retriever("ZZZ_NOT_BARS", BarTimeInterval.DAY, self._bars(eastern))
+        mock_ticker = self._mock_ticker("ZZZ_NOT_BARS", self._bars(eastern))
+        retriever = DataRetriever()
         cache_file = mock_cache_manager / "stocks" / "ZZZ_NOT_BARS" / "daily" / "2024-01-16.pkl"
         cache_file.parent.mkdir(parents=True, exist_ok=True)
         pd.Series([1.0, 2.0]).to_pickle(cache_file)
 
-        data = retriever.fetch_data_for_period("2024-01-16", "2024-01-18")
+        with patch("algo_trading_engine.data_retriever.yf.Ticker", return_value=mock_ticker):
+            data = retriever.fetch_data_for_period("ZZZ_NOT_BARS", BarTimeInterval.DAY, "2024-01-16", "2024-01-18")
 
-        cast(Mock, retriever.ticker).history.assert_called_once()
+        mock_ticker.history.assert_called_once()
         assert len(data) == 3

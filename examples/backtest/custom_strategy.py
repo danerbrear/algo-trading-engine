@@ -47,7 +47,6 @@ def main():
         start_date=datetime(2026, 1, 1),
         end_date=datetime(2026, 6, 12),
         max_position_size=0.20,
-        symbol="SPY",
         strategy_type=custom_strategy,  # Pass strategy instance
         api_key=polygon_api_key,
         bar_interval=BarTimeInterval.HOUR,

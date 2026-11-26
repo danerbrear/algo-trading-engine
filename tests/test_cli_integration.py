@@ -133,7 +133,6 @@ def test_backtest_cli_creates_config():
             initial_capital=args.initial_capital,
             start_date=start_date,
             end_date=end_date,
-            symbol=args.symbol,
             strategy_type=args.strategy,
             max_position_size=args.max_position_size,
             use_free_tier=args.free,
@@ -146,7 +145,6 @@ def test_backtest_cli_creates_config():
         assert config.initial_capital == 10000
         assert config.start_date == datetime(2024, 6, 1)
         assert config.end_date == datetime(2024, 12, 31)
-        assert config.symbol == "DIA"
         assert config.strategy_type == "credit_spread"
         assert config.max_position_size == 0.25
         assert config.use_free_tier is True

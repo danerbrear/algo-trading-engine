@@ -43,14 +43,12 @@ Example Usage:
 --------------
     from algo_trading_engine import BacktestEngine, BacktestConfig
     from algo_trading_engine.enums import StrategyType
-    from algo_trading_engine.vo import Position
     from datetime import datetime
 
     config = BacktestConfig(
         initial_capital=10000,
         start_date=datetime(2024, 1, 1),
         end_date=datetime(2025, 1, 1),
-        symbol="SPY",
         strategy_type="credit_spread"
     )
 

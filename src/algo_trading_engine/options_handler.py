@@ -46,17 +46,16 @@ class OptionsHandler:
 
     def __init__(
         self,
-        symbol: str,
         api_key: Optional[str] = None,
         cache_dir: str = "data_cache",
         use_free_tier: bool = False,
         use_cache: bool = True,
     ):
-        """Initialize the OptionsHandler."""
-        if not symbol or not symbol.strip():
-            raise ValueError("Symbol is required and cannot be empty")
+        """Initialize the OptionsHandler.
 
-        self.symbol = symbol.upper()
+        The handler is not bound to a symbol. Pass the underlying on each call,
+        the same way ``DataRetriever`` does.
+        """
         self.api_key = api_key or os.getenv("POLYGON_API_KEY")
         self.use_free_tier = use_free_tier
         self.use_cache = use_cache
@@ -129,12 +128,13 @@ class OptionsHandler:
 
     def get_contract_list_for_date(
         self,
+        symbol: str,
         date: datetime,
         strike_range: Optional[StrikeRangeDTO] = None,
         expiration_range: Optional[ExpirationRangeDTO] = None,
     ) -> List[OptionContractDTO]:
         """
-        Get all option contracts for a specific date with optional filtering.
+        Get all option contracts for a specific underlying and date with optional filtering.
 
         This method implements additive caching:
         1. First tries to load from cache
@@ -143,6 +143,7 @@ class OptionsHandler:
         4. Returns filtered results
 
         Args:
+            symbol: Underlying ticker
             date: The date to get contracts for
             strike_range: Optional strike price filtering
             expiration_range: Optional expiration date filtering
@@ -153,6 +154,7 @@ class OptionsHandler:
         Raises:
             TypeError: If date is not a datetime or date object
         """
+        underlying = self._normalize_symbol(symbol)
         if not isinstance(date, (datetime, _date_class)):
             raise TypeError(f"date must be a datetime or date object, got {type(date).__name__}")
 
@@ -161,13 +163,13 @@ class OptionsHandler:
         # Try to load from cache first (with graceful error handling)
         cached_contracts = None
         try:
-            cached_contracts = self.cache_manager.load_contracts(self.symbol, date_obj)
+            cached_contracts = self.cache_manager.load_contracts(underlying, date_obj)
         except Exception as e:
-            print(f"⚠️  Cache loading failed for {self.symbol} on {date_obj}: {e}. Falling back to API...")
+            print(f"⚠️  Cache loading failed for {underlying} on {date_obj}: {e}. Falling back to API...")
             cached_contracts = None
 
         if cached_contracts:
-            progress_print(f"📁 Loaded {len(cached_contracts)} contracts from cache for {self.symbol} on {date_obj}")
+            progress_print(f"📁 Loaded {len(cached_contracts)} contracts from cache for {underlying} on {date_obj}")
 
             # Apply filtering to cached contracts
             filtered_cached = self._apply_contract_filters(cached_contracts, strike_range, expiration_range, date_obj)
@@ -183,11 +185,11 @@ class OptionsHandler:
                     "⚠️  Cached contracts don't fully satisfy filtering criteria, fetching additional contracts from API..."
                 )
         else:
-            progress_print(f"🔄 No cached contracts found for {self.symbol} on {date_obj}, fetching from API...")
+            progress_print(f"🔄 No cached contracts found for {underlying} on {date_obj}, fetching from API...")
             filtered_cached = []
 
         # Fetch additional contracts from API
-        api_contracts = self._fetch_contracts_from_api(date_obj, strike_range, expiration_range)
+        api_contracts = self._fetch_contracts_from_api(underlying, date_obj, strike_range, expiration_range)
 
         if api_contracts:
             # Merge cached and API contracts (remove duplicates by ticker)
@@ -195,9 +197,9 @@ class OptionsHandler:
 
             # Cache the merged contracts (with graceful error handling)
             try:
-                self._cache_contracts(date, all_contracts)
+                self._cache_contracts(underlying, date, all_contracts)
             except Exception as e:
-                print(f"⚠️  Cache saving failed for {self.symbol} on {date_obj}: {e}. Continuing without caching...")
+                print(f"⚠️  Cache saving failed for {underlying} on {date_obj}: {e}. Continuing without caching...")
 
             # Apply filters to merged contracts before returning
             filtered_all = self._apply_contract_filters(all_contracts, strike_range, expiration_range, date_obj)
@@ -213,6 +215,7 @@ class OptionsHandler:
 
     def get_option_bar(
         self,
+        symbol: str,
         ticker: str,
         date: datetime,
         multiplier: Optional[int] = 1,
@@ -222,6 +225,7 @@ class OptionsHandler:
         Get bar data for a specific option contract.
 
         Args:
+            symbol: Underlying ticker (cache key)
             ticker: Option contract ticker (e.g. O:SPY240119C00450000)
             date: The date (and for hourly/minute, the time) to get bar data for. For daily bars
                 only the date part is used. For hourly/minute bars, pass a datetime with the
@@ -232,6 +236,7 @@ class OptionsHandler:
         Returns:
             OptionBarDTO if found, None otherwise
         """
+        underlying = self._normalize_symbol(symbol)
         if not isinstance(ticker, str) or not ticker or not multiplier or not timespan:
             return None
 
@@ -240,7 +245,7 @@ class OptionsHandler:
         # Try to load from cache first (with graceful error handling)
         cached_bar = None
         try:
-            cached_bar = self.cache_manager.load_bar(self.symbol, date, ticker, timespan.value)
+            cached_bar = self.cache_manager.load_bar(underlying, date, ticker, timespan.value)
         except Exception as e:
             print(f"⚠️  Cache loading failed for {ticker} on {date_obj}: {e}. Falling back to API...")
             cached_bar = None
@@ -256,7 +261,7 @@ class OptionsHandler:
         if bar:
             # Cache the fetched bar data (with graceful error handling)
             try:
-                self._cache_bar(date, ticker, bar, timespan)
+                self._cache_bar(underlying, date, ticker, bar, timespan)
             except Exception as e:
                 print(f"⚠️  Cache saving failed for {ticker} on {date_obj}: {e}. Continuing without caching...")
             return bar
@@ -264,7 +269,7 @@ class OptionsHandler:
         progress_print(f"⚠️  No bar data received from API for {ticker} on {date_obj}")
         return None
 
-    def get_option_snapshot(self, ticker: str) -> Optional[OptionBarDTO]:
+    def get_option_snapshot(self, symbol: str, ticker: str) -> Optional[OptionBarDTO]:
         """
         Get near-real-time price data for an option contract via Polygon snapshot endpoint.
 
@@ -272,16 +277,18 @@ class OptionsHandler:
         Not cached — always fetches fresh data from the API.
 
         Args:
+            symbol: Underlying ticker
             ticker: Option contract ticker (e.g. O:SPY240119C00450000)
 
         Returns:
             OptionBarDTO if snapshot data is available, None otherwise
         """
+        underlying = self._normalize_symbol(symbol)
         if not isinstance(ticker, str) or not ticker:
             return None
 
         progress_print(f"🔄 Fetching snapshot for {ticker}...")
-        snapshot = self._fetch_snapshot_from_api(ticker)
+        snapshot = self._fetch_snapshot_from_api(underlying, ticker)
         if snapshot:
             bar = OptionBarDTO.from_snapshot(ticker, snapshot)
             if bar:
@@ -293,6 +300,7 @@ class OptionsHandler:
 
     def get_options_chain(
         self,
+        symbol: str,
         date: datetime,
         current_price: float,
         strike_range: Optional[StrikeRangeDTO] = None,
@@ -301,9 +309,10 @@ class OptionsHandler:
         multiplier: Optional[int] = 1,
     ) -> OptionsChainDTO:
         """
-        Get complete option chain for a date.
+        Get complete option chain for an underlying on a date.
 
         Args:
+            symbol: Underlying ticker
             date: The date to get option chain for
             current_price: Current underlying price
             strike_range: Optional strike price filtering
@@ -314,20 +323,21 @@ class OptionsHandler:
         Returns:
             OptionsChainDTO with contracts and bars
         """
+        underlying = self._normalize_symbol(symbol)
         date_obj = date.date() if isinstance(date, datetime) else date
 
         # Get contracts
-        contracts = self.get_contract_list_for_date(date, strike_range, expiration_range)
+        contracts = self.get_contract_list_for_date(underlying, date, strike_range, expiration_range)
 
         # Get bars for all contracts
         bars = {}
         for contract in contracts:
-            bar = self.get_option_bar(contract.ticker, date, multiplier=multiplier, timespan=timespan)
+            bar = self.get_option_bar(underlying, contract.ticker, date, multiplier=multiplier, timespan=timespan)
             if bar:
                 bars[contract.ticker] = bar
 
         return OptionsChainDTO(
-            underlying_symbol=self.symbol,
+            underlying_symbol=underlying,
             current_price=Decimal(str(current_price)),
             date=date_obj,
             contracts=contracts,
@@ -409,7 +419,14 @@ class OptionsHandler:
 
         return merged_contracts
 
-    def _cache_contracts(self, date: datetime, contracts: List[OptionContractDTO]) -> None:
+    @staticmethod
+    def _normalize_symbol(symbol: str) -> str:
+        """Uppercase an underlying ticker, or raise when it is missing."""
+        if not isinstance(symbol, str) or not symbol.strip():
+            raise ValueError("Symbol is required and cannot be empty")
+        return symbol.strip().upper()
+
+    def _cache_contracts(self, symbol: str, date: datetime, contracts: List[OptionContractDTO]) -> None:
         """
         Cache contracts for a specific date.
 
@@ -420,12 +437,13 @@ class OptionsHandler:
             return
         date_obj = date.date() if isinstance(date, datetime) else date
         try:
-            self.cache_manager.save_contracts(self.symbol, date_obj, contracts)
+            self.cache_manager.save_contracts(symbol, date_obj, contracts)
         except Exception as e:
-            print(f"⚠️  Cache saving failed for {self.symbol} on {date_obj}: {e}. Continuing without caching...")
+            print(f"⚠️  Cache saving failed for {symbol} on {date_obj}: {e}. Continuing without caching...")
 
     def _cache_bar(
         self,
+        symbol: str,
         date: datetime,
         ticker: str,
         bar: OptionBarDTO,
@@ -440,12 +458,12 @@ class OptionsHandler:
         if not self.use_cache:
             return
         try:
-            self.cache_manager.save_bar(self.symbol, date, ticker, bar, timespan.value)
+            self.cache_manager.save_bar(symbol, date, ticker, bar, timespan.value)
         except Exception as e:
             date_obj = date.date() if isinstance(date, datetime) else date
             print(f"⚠️  Cache saving failed for {ticker} on {date_obj}: {e}. Continuing without caching...")
 
-    def _get_cache_stats(self, date: datetime) -> Dict[str, int]:
+    def _get_cache_stats(self, symbol: str, date: datetime) -> Dict[str, int]:
         """
         Get cache statistics for a specific date.
 
@@ -455,8 +473,8 @@ class OptionsHandler:
         date_obj = date.date() if isinstance(date, datetime) else date
 
         return {
-            "contracts_count": self.cache_manager.get_cached_contracts_count(self.symbol, date_obj),
-            "bars_count": self.cache_manager.get_cached_bars_count(self.symbol, date_obj),
+            "contracts_count": self.cache_manager.get_cached_contracts_count(symbol, date_obj),
+            "bars_count": self.cache_manager.get_cached_bars_count(symbol, date_obj),
         }
 
     def _apply_contract_filters(
@@ -498,6 +516,7 @@ class OptionsHandler:
 
     def _fetch_contracts_from_api(
         self,
+        symbol: str,
         date_obj: date,
         strike_range: Optional[StrikeRangeDTO] = None,
         expiration_range: Optional[ExpirationRangeDTO] = None,
@@ -515,7 +534,7 @@ class OptionsHandler:
 
                 # Use the list options contracts API with date filtering
                 contracts_response = self.client.list_options_contracts(
-                    underlying_ticker=self.symbol,
+                    underlying_ticker=symbol,
                     as_of=date_obj.strftime("%Y-%m-%d"),
                     expired=False,
                     limit=1000,  # Maximum allowed by API
@@ -524,11 +543,11 @@ class OptionsHandler:
                 return contracts_response
 
             response = self.api_retry_handler.fetch_with_retry(
-                fetch_func, f"Failed to fetch contracts for {self.symbol} on {date_obj}"
+                fetch_func, f"Failed to fetch contracts for {symbol} on {date_obj}"
             )
 
             if not response:
-                progress_print(f"⚠️  No contracts data received from API for {self.symbol} on {date_obj}")
+                progress_print(f"⚠️  No contracts data received from API for {symbol} on {date_obj}")
                 return []
 
             contracts = []
@@ -542,7 +561,7 @@ class OptionsHandler:
                     progress_print(f"⚠️  Error converting contract {contract_data.get('ticker', 'unknown')}: {e}")
                     continue
 
-            progress_print(f"✅ Fetched {len(contracts)} contracts from API for {self.symbol} on {date_obj}")
+            progress_print(f"✅ Fetched {len(contracts)} contracts from API for {symbol} on {date_obj}")
             return contracts
 
         except Exception as e:
@@ -645,12 +664,12 @@ class OptionsHandler:
             progress_print(f"❌ Error fetching bar data from API for {ticker} on {dt.date()}: {e}")
             return None
 
-    def _fetch_snapshot_from_api(self, ticker: str):
+    def _fetch_snapshot_from_api(self, symbol: str, ticker: str):
         """Fetch option contract snapshot from Polygon.io API."""
         try:
 
             def fetch_func():
-                return self.client.get_snapshot_option(self.symbol, ticker)
+                return self.client.get_snapshot_option(symbol, ticker)
 
             return self.api_retry_handler.fetch_with_retry(
                 fetch_func,

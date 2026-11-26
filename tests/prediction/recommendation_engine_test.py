@@ -108,7 +108,6 @@ def test_recommender_open_accept(tmp_path):
     otm_option = _make_option("B", 495, "2025-09-06", "put", 1.0)
     strategy = MagicMock()
     strategy.data = MagicMock()
-    strategy.symbol = "SPY"
     date = datetime(2025, 8, 8)
     strategy.data.loc.__getitem__.return_value = {"Close": 500}
     mock_class = type("CreditSpreadStrategy", (), {})
@@ -164,7 +163,6 @@ def test_recommender_close_accept(tmp_path):
     store = JsonDecisionStore(base_dir=str(tmp_path))
     store.append_decision(record)
     strategy = MagicMock()
-    strategy.symbol = "SPY"
     strategy.data = MagicMock()
     strategy.data.loc.__getitem__.return_value = {"Close": 500}
     mock_class = type("CreditSpreadStrategy", (), {})
@@ -191,7 +189,6 @@ def test_recommender_open_calls_on_add_position_success(tmp_path):
     otm_option = _make_option("B", 495, "2025-09-06", "put", 1.0)
     strategy = MagicMock()
     strategy.data = MagicMock()
-    strategy.symbol = "SPY"
     date = datetime(2025, 8, 8)
     strategy.data.loc.__getitem__.return_value = {"Close": 500}
     mock_class = type("CreditSpreadStrategy", (), {})
@@ -246,7 +243,6 @@ def test_recommender_close_calls_on_remove_position_success(tmp_path):
     store = JsonDecisionStore(base_dir=str(tmp_path))
     store.append_decision(record)
     strategy = MagicMock()
-    strategy.symbol = "SPY"
     strategy.data = MagicMock()
     strategy.data.loc.__getitem__.return_value = {"Close": 500}
     mock_class = type("CreditSpreadStrategy", (), {})
@@ -307,7 +303,6 @@ def test_strategy_b_ignores_strategy_a_open_position(tmp_path):
     assert len(store.get_open_positions()) == 1
     strategy_b = MagicMock()
     strategy_b.data = MagicMock()
-    strategy_b.symbol = "SPY"
     date = datetime(2025, 8, 8)
     strategy_b.data.loc.__getitem__.return_value = {"Close": 500}
     cast(Any, strategy_b).__class__ = type("VelocitySignalMomentumStrategy", (), {})
@@ -354,7 +349,6 @@ def test_strategy_sees_its_own_open_position(tmp_path):
     store.append_decision(record)
     strategy_a = MagicMock()
     strategy_a.data = MagicMock()
-    strategy_a.symbol = "SPY"
     date = datetime(2025, 8, 8)
     strategy_a.data.loc.__getitem__.return_value = {"Close": 500}
     cast(Any, strategy_a).__class__ = type("CreditSpreadStrategy", (), {})
@@ -386,7 +380,6 @@ def test_get_exit_price_from_user_prompts_uses_leg_prices_as_defaults(tmp_path):
     )
     position.set_quantity(1)
     strategy = MagicMock()
-    strategy.symbol = "SPY"
     store = JsonDecisionStore(base_dir=str(tmp_path))
     allocations_config = {"strategies": {"credit_spread": {"allocated_capital": 10000.0, "max_risk_percentage": 0.05}}}
     capital_manager = CapitalManager(allocations_config, store)
@@ -413,7 +406,6 @@ def test_get_exit_price_from_user_prompts_accepts_custom_leg_prices(tmp_path):
     )
     position.set_quantity(1)
     strategy = MagicMock()
-    strategy.symbol = "SPY"
     store = JsonDecisionStore(base_dir=str(tmp_path))
     allocations_config = {"strategies": {"credit_spread": {"allocated_capital": 10000.0, "max_risk_percentage": 0.05}}}
     capital_manager = CapitalManager(allocations_config, store)

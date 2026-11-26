@@ -165,12 +165,9 @@ class InteractiveStrategyRecommender:
         if date.date() == current_date:
             # Use live price via strategy's injected method
             get_logger().info(f"Fetching live price for {date.date()} (current date)")
-            # Get symbol from strategy
             symbol = None
-            if hasattr(self.strategy, "symbol"):
-                symbol = self.strategy.symbol
-            elif hasattr(self.strategy, "data") and self.strategy.data is not None:
-                symbol = str(self.strategy.data.index.name) if self.strategy.data.index.name else "SPY"
+            if self.strategy.universe is not None and self.strategy.universe.symbols:
+                symbol = self.strategy.universe.symbols[0]
 
             if symbol:
                 try:
@@ -233,7 +230,7 @@ class InteractiveStrategyRecommender:
 
         # Build proposal DTO
         proposal = ProposedPositionRequestDTO(
-            symbol=self.strategy.symbol if hasattr(self.strategy, "symbol") else "SPY",
+            symbol=position.symbol,
             strategy_type=position.strategy_type,
             legs=(atm_option, otm_option),
             credit=float(position.entry_price),

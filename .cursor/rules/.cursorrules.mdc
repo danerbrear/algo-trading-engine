@@ -31,6 +31,12 @@ Order members in every class as follows:
 4. Public methods: abstract methods first, then concrete methods. Public `@classmethod` and `@staticmethod` stay in this group
 5. Private methods, including private static and class methods
 
+### Strategy universe
+
+- A strategy's symbols are a class attribute `universe_set: UniverseSet` on that strategy implementation. `Universe` is constructed in `Strategy.__init__` from `universe_set`, `universe_schema`, and `universe_post_load`.
+- A pandera schema for a strategy's universe is a class attribute on that strategy implementation. Callers use `StrategyClass.universe_schema`.
+- Do not put a single `symbol` (or similar) attribute on `Strategy` or strategy implementations. Symbols live on the universe; methods that need one symbol take it as a parameter (or read from a position / loop variable).
+
 ### Startup and imports
 
 - Keep **program startup fast**: importing a module for a lightweight workflow (CLI, DTOs, backtest wiring without ML) must not eagerly load heavy stacks (TensorFlow/keras, sklearn/hmmlearn, matplotlib/seaborn) unless that module’s job is ML or plotting.

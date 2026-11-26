@@ -25,7 +25,8 @@ def main():
 
     # Create configuration
     config = PaperTradingConfig(
-        symbol="SPY", strategy_type="velocity_momentum", api_key=polygon_api_key  # Built-in strategy name
+        strategy_type="velocity_momentum",
+        api_key=polygon_api_key,
     )
 
     # Create and run engine - all data fetching and setup is handled internally

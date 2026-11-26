@@ -93,7 +93,6 @@ class VolumeStats:
 class EngineConfig(ABC):
     """Shared configuration for backtesting and paper trading engines."""
 
-    symbol: str
     strategy_type: Union[str, "Strategy"]
     bar_interval: BarTimeInterval = BarTimeInterval.DAY
     max_position_size: Optional[float] = None

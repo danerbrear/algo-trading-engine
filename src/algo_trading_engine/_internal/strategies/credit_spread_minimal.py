@@ -6,10 +6,13 @@ from typing import Callable, Optional, Sequence
 import pandas as pd
 
 from algo_trading_engine._internal.util.market_clock import label_position, market_index, session_dates
+from algo_trading_engine._internal.common.ml_pipeline import prepare_credit_spread_backtest_data
+from algo_trading_engine.data_retriever import DataRetriever
 from algo_trading_engine.strategy import Strategy
+from algo_trading_engine.vo.universe import PostLoadCallback, UniverseSet
 from algo_trading_engine.vo import Position, create_position
 from algo_trading_engine.enums import StrategyType
-from algo_trading_engine.vo import Option, TreasuryRates
+from algo_trading_engine.vo import Option
 from algo_trading_engine.enums import OptionType
 from algo_trading_engine._internal.common.progress_tracker import progress_print
 from algo_trading_engine.dto import ExpirationRangeDTO, StrikeRangeDTO
@@ -26,6 +29,7 @@ class CreditSpreadStrategy(Strategy):
     """
 
     holding_period = 25
+    universe_set: UniverseSet = ["SPY"]
 
     def __init__(
         self,
@@ -34,13 +38,11 @@ class CreditSpreadStrategy(Strategy):
         get_options_chain: Optional[Callable],
         lstm_model,
         lstm_scaler,
-        symbol: str = "SPY",
         options_handler=None,
     ):
         super().__init__(stop_loss=0.6)
         self.lstm_model = lstm_model
         self.lstm_scaler = lstm_scaler
-        self.symbol = symbol
 
         if get_contract_list_for_date is not None:
             self.get_contract_list_for_date = get_contract_list_for_date
@@ -53,15 +55,23 @@ class CreditSpreadStrategy(Strategy):
 
         self.error_count = 0
 
-    def set_data(self, data: pd.DataFrame, treasury_data: Optional[TreasuryRates] = None):
-        super().set_data(data, treasury_data)
+    @staticmethod
+    def universe_post_load(retriever: DataRetriever) -> PostLoadCallback:
+        def post_load(symbol: str, data: pd.DataFrame) -> pd.DataFrame:
+            return prepare_credit_spread_backtest_data(data, retriever, symbol)
 
-        # Use LSTMModel static methods with options_handler
-        # Note: LSTMModel.calculate_option_features expects OptionsHandler
+        return post_load
+
+    def finalize_universe(self) -> None:
+        if self.universe is None:
+            raise ValueError("Universe not set")
         if self._options_handler is None:
             raise ValueError("options_handler is required for LSTMModel compatibility")
-        frame = LSTMModel.calculate_option_features(data, self._options_handler)
-        self.data = LSTMModel.calculate_option_signals(frame)
+        for symbol in self.universe.symbols:
+            frame = self.universe.frame(symbol)
+            with_features = LSTMModel.calculate_option_features(frame, self._options_handler, symbol)
+            with_signals = LSTMModel.calculate_option_signals(with_features)
+            self.universe.replace(symbol, with_signals)
 
     def on_new_date(
         self,
@@ -76,10 +86,19 @@ class CreditSpreadStrategy(Strategy):
         """
         super().on_new_date(date, positions, add_position, remove_position)
 
-        if len(positions) == 0:
-            has_error = self._open_predicted_position(date, add_position)
-        else:
-            has_error = self._close_positions_for_date(date, positions, remove_position)
+        if self.universe is None:
+            return
+
+        has_error = False
+        for symbol in self.universe.symbols:
+            if not self.universe.has_bar(symbol, date):
+                continue
+            symbol_positions = tuple(p for p in positions if p.symbol == symbol)
+            if len(symbol_positions) == 0:
+                if self._open_predicted_position(date, add_position, symbol):
+                    has_error = True
+            elif self._close_positions_for_date(date, symbol_positions, remove_position, symbol):
+                has_error = True
 
         if has_error:
             self.error_count += 1
@@ -90,7 +109,7 @@ class CreditSpreadStrategy(Strategy):
         """
         for position in positions:
             try:
-                underlying_price = self.get_current_underlying_price(date, self.symbol)
+                underlying_price = self.get_current_underlying_price(date, position.symbol)
                 exit_price = position.exit_price_from_leg_quotes(underlying_price)
                 if exit_price is None:
                     raise TypeError("exit_price is required")
@@ -272,10 +291,10 @@ class CreditSpreadStrategy(Strategy):
             progress_print("✅ Missing values within acceptable tolerance")
         return True
 
-    def _open_predicted_position(self, date: datetime, add_position: Callable[["Position"], None]) -> bool:
+    def _open_predicted_position(self, date: datetime, add_position: Callable[["Position"], None], symbol: str) -> bool:
         """Open the predicted credit spread. Returns True when opening fails."""
         print("No positions, opening new position")
-        prediction = self._make_prediction(date)
+        prediction = self._make_prediction(date, symbol)
         if prediction is None:
             return True
         if prediction["strategy"] == 1:
@@ -288,11 +307,9 @@ class CreditSpreadStrategy(Strategy):
             return False
 
         try:
-            position = create_spread(date, prediction)
+            position = create_spread(date, prediction, symbol)
             if position:
-                market_data = self.data
-                if market_data is None:
-                    raise ValueError("Data not set for strategy. Call set_data() first.")
+                market_data = self.market_frame(symbol)
                 current_price = market_data.loc[date]["Close"]
                 print(f"    Current price: {round(current_price, 2)}")
                 add_position(position)
@@ -306,11 +323,12 @@ class CreditSpreadStrategy(Strategy):
         date: datetime,
         positions: tuple["Position", ...],
         remove_position: Strategy.RemovePositionCallback,
+        symbol: str,
     ) -> bool:
         """Apply close rules to open positions. Returns True when a close check fails."""
         has_error = False
         for position in positions:
-            exit_price, quote_failed = self._quoted_exit_price(position, date)
+            exit_price, quote_failed = self._quoted_exit_price(position, date, symbol)
             if quote_failed:
                 has_error = True
             if exit_price is None or has_error:
@@ -318,13 +336,13 @@ class CreditSpreadStrategy(Strategy):
                 has_error = True
             else:
                 exit_price = round(max(exit_price, 0), 2)
-            if self._close_position_if_due(date, position, exit_price, remove_position):
+            if self._close_position_if_due(date, position, exit_price, remove_position, symbol):
                 has_error = True
         return has_error
 
-    def _quoted_exit_price(self, position: "Position", date: datetime):
+    def _quoted_exit_price(self, position: "Position", date: datetime, symbol: str):
         """Return the leg-quote exit price and whether quoting failed."""
-        underlying_price = self.get_current_underlying_price(date, self.symbol)
+        underlying_price = self.get_current_underlying_price(date, symbol)
         try:
             return position.exit_price_from_leg_quotes(underlying_price), False
         except Exception as error:
@@ -337,12 +355,13 @@ class CreditSpreadStrategy(Strategy):
         position: "Position",
         exit_price,
         remove_position: Strategy.RemovePositionCallback,
+        symbol: str,
     ) -> bool:
         """Close the position when a rule is met. Returns True when closing raises."""
         try:
             if position.get_days_to_expiration(date) < 1:
                 print(f"Position {position.__str__()} expired or near expiration")
-                underlying_price = self.get_current_underlying_price(date, self.symbol)
+                underlying_price = self.get_current_underlying_price(date, symbol)
                 if underlying_price is not None:
                     print(f"    Underlying price: {underlying_price}")
                     if exit_price is None:
@@ -375,6 +394,7 @@ class CreditSpreadStrategy(Strategy):
         strategy_type: StrategyType,
         confidence: float,
         date: datetime,
+        symbol: str,
         min_days: int = 20,
         max_days: int = 40,
     ):
@@ -393,7 +413,7 @@ class CreditSpreadStrategy(Strategy):
         # Get available expiration dates using get_contract_list_for_date with ExpirationRangeDTO
         try:
             expiration_range = ExpirationRangeDTO(min_days=min_days, max_days=max_days)
-            contracts = self.get_contract_list_for_date(date, expiration_range=expiration_range)
+            contracts = self.get_contract_list_for_date(symbol, date, expiration_range=expiration_range)
             expirations = sorted(set(str(contract.expiration_date) for contract in contracts))
 
             if not expirations:
@@ -422,8 +442,8 @@ class CreditSpreadStrategy(Strategy):
                     otm_strike = atm_strike + width
 
                     # Find ATM and OTM call options using new API
-                    atm_call = self._get_option_with_bar(atm_strike, expiry_date, OptionType.CALL, date)
-                    otm_call = self._get_option_with_bar(otm_strike, expiry_date, OptionType.CALL, date)
+                    atm_call = self._get_option_with_bar(atm_strike, expiry_date, OptionType.CALL, date, symbol)
+                    otm_call = self._get_option_with_bar(otm_strike, expiry_date, OptionType.CALL, date, symbol)
 
                     if not atm_call or not otm_call:
                         progress_print(f"      ❌ No ATM or OTM call options found for {width}pt spread")
@@ -440,8 +460,8 @@ class CreditSpreadStrategy(Strategy):
                     otm_strike = atm_strike - width
 
                     # Find ATM and OTM put options using new API
-                    atm_put = self._get_option_with_bar(atm_strike, expiry_date, OptionType.PUT, date)
-                    otm_put = self._get_option_with_bar(otm_strike, expiry_date, OptionType.PUT, date)
+                    atm_put = self._get_option_with_bar(atm_strike, expiry_date, OptionType.PUT, date, symbol)
+                    otm_put = self._get_option_with_bar(otm_strike, expiry_date, OptionType.PUT, date, symbol)
 
                     if not atm_put or not otm_put:
                         print(f"      ❌ No ATM or OTM put options found for {width}pt spread")
@@ -520,7 +540,7 @@ class CreditSpreadStrategy(Strategy):
             return None
 
     def _get_option_with_bar(
-        self, strike: float, expiry_date: date, option_type: OptionType, date: datetime
+        self, strike: float, expiry_date: date, option_type: OptionType, date: datetime, symbol: str
     ) -> Optional[Option]:
         """
         Get an Option object with price/volume data using new API.
@@ -530,6 +550,7 @@ class CreditSpreadStrategy(Strategy):
             expiry_date: Expiration date (date object)
             option_type: OptionType enum
             date: Current date for data lookup
+            symbol: Underlying symbol
 
         Returns:
             Option object if found, None otherwise
@@ -542,7 +563,7 @@ class CreditSpreadStrategy(Strategy):
             expiration_range = ExpirationRangeDTO(target_date=expiration_date, current_date=date.date())
 
             contracts = self.get_contract_list_for_date(
-                date, strike_range=strike_range, expiration_range=expiration_range
+                symbol, date, strike_range=strike_range, expiration_range=expiration_range
             )
 
             # Find matching contract by type
@@ -552,7 +573,7 @@ class CreditSpreadStrategy(Strategy):
                 return None
 
             # Get price/volume data (real-time snapshot when live, else historical /aggs)
-            bar = self.get_current_option_bar(contract_dto.ticker, date)
+            bar = self.get_current_option_bar(symbol, contract_dto.ticker, date)
             if bar is None:
                 return None
 
@@ -613,12 +634,13 @@ class CreditSpreadStrategy(Strategy):
         # Ensure probability is within reasonable bounds
         return max(0.35, min(0.85, base_prob))
 
-    def _make_prediction(self, date: datetime):
+    def _make_prediction(self, date: datetime, symbol: str):
         """
         Make a prediction from the LSTM model for a given date.
 
         Args:
             date: The date to make a prediction for
+            symbol: Underlying symbol
 
         Returns:
             dict: Dictionary containing:
@@ -626,9 +648,7 @@ class CreditSpreadStrategy(Strategy):
                 - confidence: float (probability of the predicted strategy)
                 - probabilities: dict (probabilities for all strategies)
         """
-        data = self.data
-        if data is None:
-            raise ValueError("Data not set for strategy. Call set_data() first.")
+        data = self.market_frame(symbol)
 
         if self.lstm_model is None:
             raise ValueError("LSTM model not set for strategy.")
@@ -775,9 +795,11 @@ class CreditSpreadStrategy(Strategy):
             print(f"Error making LSTM prediction: {e}")
             raise ValueError(f"Error making LSTM prediction: {e}") from e
 
-    def _create_call_credit_spread_from_chain(self, date: datetime, prediction: dict) -> Optional[Position]:
+    def _create_call_credit_spread_from_chain(
+        self, date: datetime, prediction: dict, symbol: str
+    ) -> Optional[Position]:
         """Create a call credit spread using the options chain data"""
-        current_price = self.get_current_underlying_price(date, self.symbol)
+        current_price = self.get_current_underlying_price(date, symbol)
         if current_price is None:
             print("⚠️  Failed to get current price")
             return None
@@ -785,7 +807,7 @@ class CreditSpreadStrategy(Strategy):
         confidence = prediction["confidence"] if prediction else 0.5
 
         # Find best spread using the new method
-        best_spread = self._find_best_spread(current_price, StrategyType.CALL_CREDIT_SPREAD, confidence, date)
+        best_spread = self._find_best_spread(current_price, StrategyType.CALL_CREDIT_SPREAD, confidence, date, symbol)
 
         if not best_spread:
             print("⚠️  No suitable call credit spread found")
@@ -796,8 +818,8 @@ class CreditSpreadStrategy(Strategy):
         otm_option = best_spread["otm_option"]
 
         # Ensure volume data is available for both options
-        atm_option = self._ensure_volume_data(atm_option, date)
-        otm_option = self._ensure_volume_data(otm_option, date)
+        atm_option = self._ensure_volume_data(atm_option, date, symbol)
+        otm_option = self._ensure_volume_data(otm_option, date, symbol)
 
         if atm_option is None or otm_option is None:
             print("⚠️  Could not fetch volume data for options")
@@ -805,7 +827,7 @@ class CreditSpreadStrategy(Strategy):
 
         # Create position using the best spread
         position = create_position(
-            symbol=self.symbol,
+            symbol=symbol,
             expiration_date=datetime.strptime(atm_option.expiration, "%Y-%m-%d"),
             strategy_type=StrategyType.CALL_CREDIT_SPREAD,
             strike_price=best_spread["atm_strike"],
@@ -824,10 +846,10 @@ class CreditSpreadStrategy(Strategy):
 
         return position
 
-    def _create_put_credit_spread_from_chain(self, date: datetime, prediction: dict) -> Optional[Position]:
+    def _create_put_credit_spread_from_chain(self, date: datetime, prediction: dict, symbol: str) -> Optional[Position]:
         """Create a put credit spread using the options chain data"""
 
-        current_price = self.get_current_underlying_price(date, self.symbol)
+        current_price = self.get_current_underlying_price(date, symbol)
         if current_price is None:
             print("⚠️  Failed to get current price")
             return None
@@ -839,7 +861,7 @@ class CreditSpreadStrategy(Strategy):
         confidence = prediction["confidence"]
 
         # Find best spread using the new method
-        best_spread = self._find_best_spread(current_price, StrategyType.PUT_CREDIT_SPREAD, confidence, date)
+        best_spread = self._find_best_spread(current_price, StrategyType.PUT_CREDIT_SPREAD, confidence, date, symbol)
 
         if not best_spread:
             print("⚠️  No suitable put credit spread found")
@@ -850,8 +872,8 @@ class CreditSpreadStrategy(Strategy):
         otm_option = best_spread["otm_option"]
 
         # Ensure volume data is available for both options
-        atm_option = self._ensure_volume_data(atm_option, date)
-        otm_option = self._ensure_volume_data(otm_option, date)
+        atm_option = self._ensure_volume_data(atm_option, date, symbol)
+        otm_option = self._ensure_volume_data(otm_option, date, symbol)
 
         if atm_option is None or otm_option is None:
             print("⚠️  Could not fetch volume data for options")
@@ -859,7 +881,7 @@ class CreditSpreadStrategy(Strategy):
 
         # Create position using the best spread
         position = create_position(
-            symbol=self.symbol,
+            symbol=symbol,
             expiration_date=datetime.strptime(atm_option.expiration, "%Y-%m-%d"),
             strategy_type=StrategyType.PUT_CREDIT_SPREAD,
             strike_price=best_spread["atm_strike"],
@@ -892,7 +914,7 @@ class CreditSpreadStrategy(Strategy):
 
         return None
 
-    def _find_otm_call(self, calls: list, atm_strike: float, current_date: datetime, expiration: str):
+    def _find_otm_call(self, calls: list, atm_strike: float, current_date: datetime, expiration: str, symbol: str):
         """Find an OTM call option (higher strike than ATM)"""
         strike = atm_strike + 10
 
@@ -901,7 +923,7 @@ class CreditSpreadStrategy(Strategy):
 
         if not otm_calls:
             contract = self._get_option_with_bar(
-                strike, datetime.strptime(expiration, "%Y-%m-%d").date(), OptionType.CALL, current_date
+                strike, datetime.strptime(expiration, "%Y-%m-%d").date(), OptionType.CALL, current_date, symbol
             )
             if contract is None:
                 return None
@@ -910,7 +932,7 @@ class CreditSpreadStrategy(Strategy):
         # Return the closest OTM call (lowest strike above ATM)
         return min(otm_calls, key=lambda opt: opt.strike)
 
-    def _find_otm_put(self, puts: list, atm_strike: float, current_date: datetime, expiration: str):
+    def _find_otm_put(self, puts: list, atm_strike: float, current_date: datetime, expiration: str, symbol: str):
         """Find an OTM put option (lower strike than ATM)"""
         strike = atm_strike - 10
 
@@ -919,7 +941,7 @@ class CreditSpreadStrategy(Strategy):
 
         if not otm_puts:
             contract = self._get_option_with_bar(
-                strike, datetime.strptime(expiration, "%Y-%m-%d").date(), OptionType.PUT, current_date
+                strike, datetime.strptime(expiration, "%Y-%m-%d").date(), OptionType.PUT, current_date, symbol
             )
             if contract is None:
                 return None
@@ -928,13 +950,14 @@ class CreditSpreadStrategy(Strategy):
         # Return the closest OTM put (highest strike below ATM)
         return max(otm_puts, key=lambda opt: opt.strike)
 
-    def _ensure_volume_data(self, option: Option, date: datetime) -> Optional[Option]:
+    def _ensure_volume_data(self, option: Option, date: datetime, symbol: str) -> Optional[Option]:
         """
         Ensure option has volume data, fetch if missing.
 
         Args:
             option: The option to check/fetch volume data for
             date: The date for the data
+            symbol: Underlying symbol
 
         Returns:
             Option: The option with volume data, or None if unable to fetch
@@ -944,7 +967,7 @@ class CreditSpreadStrategy(Strategy):
 
         # Fetch fresh data from API using new API
         fresh_option = self._get_option_with_bar(
-            option.strike, datetime.strptime(option.expiration, "%Y-%m-%d").date(), option.option_type, date
+            option.strike, datetime.strptime(option.expiration, "%Y-%m-%d").date(), option.option_type, date, symbol
         )
 
         if fresh_option and fresh_option.volume is not None:

@@ -2,6 +2,8 @@
 Unit tests for BacktestConfig benchmark_ticker support.
 """
 
+from tests.conftest import universe_from_frame
+
 import pytest
 from datetime import datetime, timedelta
 from typing import cast
@@ -20,7 +22,6 @@ class TestBacktestConfigBenchmarkTicker:
             initial_capital=100000,
             start_date=datetime(2024, 1, 1),
             end_date=datetime(2024, 1, 31),
-            symbol="DIA",
             strategy_type="credit_spread",
         )
         assert config.benchmark_ticker is None
@@ -31,7 +32,6 @@ class TestBacktestConfigBenchmarkTicker:
             initial_capital=100000,
             start_date=datetime(2024, 1, 1),
             end_date=datetime(2024, 1, 31),
-            symbol="DIA",
             strategy_type="credit_spread",
             benchmark_ticker="SPY",
         )
@@ -43,7 +43,6 @@ class TestBacktestConfigBenchmarkTicker:
             initial_capital=100000,
             start_date=datetime(2024, 1, 1),
             end_date=datetime(2024, 1, 31),
-            symbol="SPY",
             strategy_type="credit_spread",
             benchmark_ticker="SPY",
         )
@@ -55,7 +54,6 @@ class TestBacktestConfigBenchmarkTicker:
             initial_capital=100000,
             start_date=datetime(2024, 1, 1),
             end_date=datetime(2024, 1, 31),
-            symbol="DIA",
             strategy_type="credit_spread",
             benchmark_ticker="SPY",
         )
@@ -77,113 +75,90 @@ def _make_price_data(start, periods, base_price=100.0):
     )
 
 
-def _passthrough_credit_spread_ml_prep(data, _retriever, _symbol):
-    """Avoid calendar/HMM I/O when unit-testing BacktestEngine.from_config."""
-    return data
+def _mock_strategy_with_universe(symbol: str = "SPY", periods: int = 5) -> Mock:
+    loaded = universe_from_frame(symbol, _make_price_data("2024-01-01", periods))
+    loaded.load = Mock()
+    mock_strategy = Mock()
+    mock_strategy.universe = loaded
+    mock_strategy.set_universe = Mock()
+    mock_strategy.indicators = []
+    mock_strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(0))
+    mock_strategy.validate_universe = Mock(return_value=True)
+    return mock_strategy
 
 
 class TestBacktestEngineBenchmarkFromConfig:
     """Test BacktestEngine.from_config with benchmark_ticker."""
 
-    @patch(
-        "algo_trading_engine.backtest.main.prepare_credit_spread_backtest_data",
-        side_effect=_passthrough_credit_spread_ml_prep,
-    )
     @patch("algo_trading_engine.backtest.main.DataRetriever")
     @patch("algo_trading_engine.backtest.main.OptionsHandler")
     @patch("algo_trading_engine.backtest.main.create_strategy_from_args")
     def test_no_benchmark_ticker_uses_trading_data(
-        self, mock_create_strategy, _mock_options_handler, mock_data_retriever, _mock_ml_prep
+        self, mock_create_strategy, _mock_options_handler, mock_data_retriever
     ):
         """When benchmark_ticker is None, benchmark uses trading symbol data."""
-        mock_strategy = Mock()
-        mock_strategy.set_data = Mock()
-        mock_strategy.indicators = []
-        mock_strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(0))
+        mock_strategy = _mock_strategy_with_universe()
         mock_create_strategy.return_value = mock_strategy
         mock_retriever = Mock()
         mock_retriever.treasury_rates = None
+        mock_retriever.load_treasury_rates.return_value = None
         mock_retriever.fetch_data_for_period.return_value = _make_price_data("2024-01-01", 5)
         mock_data_retriever.return_value = mock_retriever
         config = BacktestConfig(
             initial_capital=100000,
             start_date=datetime(2024, 1, 1),
             end_date=datetime(2024, 1, 31),
-            symbol="DIA",
             strategy_type="credit_spread",
         )
         engine = BacktestEngine.from_config(config)
         assert engine.benchmark_data is None
         assert mock_data_retriever.call_count == 1
 
-    @patch(
-        "algo_trading_engine.backtest.main.prepare_credit_spread_backtest_data",
-        side_effect=_passthrough_credit_spread_ml_prep,
-    )
     @patch("algo_trading_engine.backtest.main.DataRetriever")
     @patch("algo_trading_engine.backtest.main.OptionsHandler")
     @patch("algo_trading_engine.backtest.main.create_strategy_from_args")
     def test_benchmark_ticker_same_as_symbol_skips_extra_fetch(
-        self, mock_create_strategy, _mock_options_handler, mock_data_retriever, _mock_ml_prep
+        self, mock_create_strategy, _mock_options_handler, mock_data_retriever
     ):
         """When benchmark_ticker equals symbol, no extra data fetch is made."""
-        mock_strategy = Mock()
-        mock_strategy.set_data = Mock()
-        mock_strategy.indicators = []
-        mock_strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(0))
+        mock_strategy = _mock_strategy_with_universe("SPY")
         mock_create_strategy.return_value = mock_strategy
         mock_retriever = Mock()
         mock_retriever.treasury_rates = None
+        mock_retriever.load_treasury_rates.return_value = None
         mock_retriever.fetch_data_for_period.return_value = _make_price_data("2024-01-01", 5)
         mock_data_retriever.return_value = mock_retriever
         config = BacktestConfig(
             initial_capital=100000,
             start_date=datetime(2024, 1, 1),
             end_date=datetime(2024, 1, 31),
-            symbol="SPY",
             strategy_type="credit_spread",
             benchmark_ticker="SPY",
         )
         engine = BacktestEngine.from_config(config)
         assert engine.benchmark_data is None
         assert mock_data_retriever.call_count == 1
+        mock_retriever.fetch_data_for_period.assert_not_called()
 
-    @patch(
-        "algo_trading_engine.backtest.main.prepare_credit_spread_backtest_data",
-        side_effect=_passthrough_credit_spread_ml_prep,
-    )
     @patch("algo_trading_engine.backtest.main.DataRetriever")
     @patch("algo_trading_engine.backtest.main.OptionsHandler")
     @patch("algo_trading_engine.backtest.main.create_strategy_from_args")
     def test_different_benchmark_ticker_fetches_separate_data(
-        self, mock_create_strategy, _mock_options_handler, mock_data_retriever, _mock_ml_prep
+        self, mock_create_strategy, _mock_options_handler, mock_data_retriever
     ):
-        """When benchmark_ticker differs from symbol, a second DataRetriever fetches benchmark data."""
-        mock_strategy = Mock()
-        mock_strategy.set_data = Mock()
-        mock_strategy.indicators = []
-        mock_strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(0))
+        """When benchmark_ticker differs from the strategy universe, fetch that ticker separately."""
+        mock_strategy = _mock_strategy_with_universe("DIA")
         mock_create_strategy.return_value = mock_strategy
-        trading_data = _make_price_data("2024-01-01", 5, base_price=200.0)
         benchmark_data = _make_price_data("2024-01-01", 5, base_price=400.0)
-        call_count = [0]
-
-        def side_effect():
-            call_count[0] += 1
-            retriever = Mock()
-            retriever.treasury_rates = None
-            if call_count[0] == 1:
-                retriever.fetch_data_for_period.return_value = trading_data
-            else:
-                retriever.fetch_data_for_period.return_value = benchmark_data
-            return retriever
-
-        mock_data_retriever.side_effect = lambda **kw: side_effect()
+        mock_retriever = Mock()
+        mock_retriever.treasury_rates = None
+        mock_retriever.load_treasury_rates.return_value = None
+        mock_retriever.fetch_data_for_period.return_value = benchmark_data
+        mock_data_retriever.return_value = mock_retriever
         config = BacktestConfig(
             initial_capital=100000,
             start_date=datetime(2024, 1, 1),
             end_date=datetime(2024, 1, 31),
-            symbol="DIA",
             strategy_type="credit_spread",
             benchmark_ticker="SPY",
         )
@@ -191,45 +166,25 @@ class TestBacktestEngineBenchmarkFromConfig:
         assert engine.benchmark_data is not None
         assert len(engine.benchmark_data) == 5
         assert engine.benchmark_data.loc[engine.benchmark_data.index[0], "Close"] == 400.0
-        assert mock_data_retriever.call_count == 2
-        second_call_kwargs = mock_data_retriever.call_args_list[1][1]
-        assert second_call_kwargs["symbol"] == "SPY"
+        mock_retriever.fetch_data_for_period.assert_called_once()
+        assert mock_retriever.fetch_data_for_period.call_args[0][0] == "SPY"
 
-    @patch(
-        "algo_trading_engine.backtest.main.prepare_credit_spread_backtest_data",
-        side_effect=_passthrough_credit_spread_ml_prep,
-    )
     @patch("algo_trading_engine.backtest.main.DataRetriever")
     @patch("algo_trading_engine.backtest.main.OptionsHandler")
     @patch("algo_trading_engine.backtest.main.create_strategy_from_args")
-    def test_benchmark_fetch_failure_falls_back(
-        self, mock_create_strategy, _mock_options_handler, mock_data_retriever, _mock_ml_prep
-    ):
+    def test_benchmark_fetch_failure_falls_back(self, mock_create_strategy, _mock_options_handler, mock_data_retriever):
         """When benchmark data fetch fails, engine falls back to trading data."""
-        mock_strategy = Mock()
-        mock_strategy.set_data = Mock()
-        mock_strategy.indicators = []
-        mock_strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(0))
+        mock_strategy = _mock_strategy_with_universe("DIA")
         mock_create_strategy.return_value = mock_strategy
-        trading_data = _make_price_data("2024-01-01", 5)
-        call_count = [0]
-
-        def side_effect():
-            call_count[0] += 1
-            retriever = Mock()
-            retriever.treasury_rates = None
-            if call_count[0] == 1:
-                retriever.fetch_data_for_period.return_value = trading_data
-            else:
-                retriever.fetch_data_for_period.return_value = None
-            return retriever
-
-        mock_data_retriever.side_effect = lambda **kw: side_effect()
+        mock_retriever = Mock()
+        mock_retriever.treasury_rates = None
+        mock_retriever.load_treasury_rates.return_value = None
+        mock_retriever.fetch_data_for_period.return_value = None
+        mock_data_retriever.return_value = mock_retriever
         config = BacktestConfig(
             initial_capital=100000,
             start_date=datetime(2024, 1, 1),
             end_date=datetime(2024, 1, 31),
-            symbol="DIA",
             strategy_type="credit_spread",
             benchmark_ticker="INVALID",
         )
@@ -248,10 +203,11 @@ class TestBacktestEngineBenchmarkRun:
         mock_strategy.on_end = Mock()
         mock_strategy.indicators = []
         mock_strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(0))
+        mock_strategy.validate_universe = Mock(return_value=True)
         trading_data = _make_price_data("2024-01-01", 5, base_price=200.0)
+        mock_strategy.universe = universe_from_frame("SPY", trading_data)
         benchmark_data = _make_price_data("2024-01-01", 5, base_price=400.0)
         engine = BacktestEngine(
-            data=trading_data,
             strategy=mock_strategy,
             initial_capital=100000,
             start_date=datetime(2024, 1, 1),
@@ -272,9 +228,10 @@ class TestBacktestEngineBenchmarkRun:
         mock_strategy.on_end = Mock()
         mock_strategy.indicators = []
         mock_strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(0))
+        mock_strategy.validate_universe = Mock(return_value=True)
         trading_data = _make_price_data("2024-01-01", 5, base_price=200.0)
+        mock_strategy.universe = universe_from_frame("SPY", trading_data)
         engine = BacktestEngine(
-            data=trading_data,
             strategy=mock_strategy,
             initial_capital=100000,
             start_date=datetime(2024, 1, 1),

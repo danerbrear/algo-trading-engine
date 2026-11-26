@@ -79,7 +79,6 @@ def test_recommender_with_capital_manager_risk_check_pass(strategy_mock, decisio
     """Test recommendation with capital manager when risk check passes."""
     date = datetime(2025, 8, 8)
     strategy_mock.data.loc.__getitem__.return_value = {"Close": 500}
-    strategy_mock.symbol = "SPY"
     atm_option = _make_option("A", 500, "2025-09-06", "put", 2.0)
     otm_option = _make_option("B", 495, "2025-09-06", "put", 1.0)
     from algo_trading_engine.vo import create_position
@@ -110,7 +109,6 @@ def test_recommender_with_capital_manager_risk_check_fail(strategy_mock, decisio
     """Test recommendation with capital manager when risk check fails."""
     date = datetime(2025, 8, 8)
     strategy_mock.data.loc.__getitem__.return_value = {"Close": 500}
-    strategy_mock.symbol = "SPY"
     atm_option = _make_option("A", 500, "2025-09-06", "put", 2.0)
     otm_option = _make_option("B", 490, "2025-09-06", "put", 1.0)
     from algo_trading_engine.vo import create_position
@@ -141,7 +139,6 @@ def test_recommender_calculates_max_risk_correctly(strategy_mock, decision_store
     """Test that max risk is calculated correctly for credit spreads."""
     date = datetime(2025, 8, 8)
     strategy_mock.data.loc.__getitem__.return_value = {"Close": 500}
-    strategy_mock.symbol = "SPY"
     atm_option = _make_option("A", 500, "2025-09-06", "put", 2.0)
     otm_option = _make_option("B", 495, "2025-09-06", "put", 1.0)
     from algo_trading_engine.vo import create_position
@@ -175,7 +172,6 @@ def test_recommender_displays_premium_info(strategy_mock, decision_store, capita
     """Test that premium information is displayed for credit strategies."""
     date = datetime(2025, 8, 8)
     strategy_mock.data.loc.__getitem__.return_value = {"Close": 500}
-    strategy_mock.symbol = "SPY"
     atm_option = _make_option("A", 500, "2025-09-06", "put", 2.0)
     otm_option = _make_option("B", 495, "2025-09-06", "put", 1.0)
     from algo_trading_engine.vo import create_position
@@ -210,7 +206,6 @@ def test_recommender_strategy_name_mapping(decision_store, allocations_config):
     strategy_mock = MagicMock()
     strategy_mock.data = MagicMock()
     strategy_mock.data.loc.__getitem__.return_value = {"Close": 500}
-    strategy_mock.symbol = "SPY"
     mock_class = type("VelocitySignalMomentumStrategy", (), {})
     cast(Any, strategy_mock).__class__ = mock_class
     atm_option = _make_option("A", 500, "2025-09-06", "put", 2.0)

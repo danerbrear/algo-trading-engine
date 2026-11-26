@@ -14,10 +14,6 @@ from algo_trading_engine.strategy import Strategy
 from ._models import Benchmark
 from algo_trading_engine.vo import Position
 from algo_trading_engine.data_retriever import DataRetriever
-from algo_trading_engine._internal.common.ml_pipeline import (
-    is_credit_spread_strategy,
-    prepare_credit_spread_backtest_data,
-)
 from algo_trading_engine.enums import BarTimeInterval
 from algo_trading_engine.models.config import VolumeConfig, VolumeStats
 from algo_trading_engine.models import EngineConfig, OverallPerformanceStats, StrategyPerformanceStats
@@ -39,7 +35,6 @@ class BacktestEngine(TradingEngine):
 
     def __init__(
         self,
-        data: pd.DataFrame,
         strategy: Strategy,
         initial_capital: float = 100000,
         start_date: Optional[datetime] = None,
@@ -54,7 +49,9 @@ class BacktestEngine(TradingEngine):
         plot_config=None,
         config: Optional[EngineConfig] = None,
     ):
-        super().__init__(strategy, data, config=config, bar_interval=bar_interval)
+        if strategy.universe is None:
+            raise ValueError("Strategy has no universe")
+        super().__init__(strategy, strategy.universe, config=config, bar_interval=bar_interval)
         self._capital = initial_capital
         self.initial_capital = initial_capital  # Store initial capital for reporting
         # Naive US/Eastern, like the bar index they are compared against.
@@ -126,11 +123,10 @@ class BacktestEngine(TradingEngine):
         log_level = "info" if config.quiet_mode else "debug"
         configure_logger("backtest", log_level=log_level, observer=config.observer)
 
-        retriever = DataRetriever(symbol=config.symbol, bar_interval=config.bar_interval)
-
-        # Internal: Create options handler
+        retriever = DataRetriever(use_cache=config.use_cache)
         options_handler = OptionsHandler(
-            symbol=config.symbol, api_key=config.api_key, use_free_tier=config.use_free_tier
+            api_key=config.api_key,
+            use_free_tier=config.use_free_tier,
         )
 
         # Internal: Extract methods as callables (no imports needed by child repos)
@@ -143,7 +139,6 @@ class BacktestEngine(TradingEngine):
             # Create strategy from string name
             strategy = create_strategy_from_args(
                 strategy_name=config.strategy_type,
-                symbol=config.symbol,
                 get_contract_list_for_date=get_contract_list_for_date,
                 get_option_bar=get_option_bar,
                 get_options_chain=get_options_chain,
@@ -156,7 +151,6 @@ class BacktestEngine(TradingEngine):
         else:
             # Strategy instance provided - inject callables if strategy expects them
             strategy = config.strategy_type
-            strategy.symbol = config.symbol
             if hasattr(strategy, "get_contract_list_for_date"):
                 strategy.get_contract_list_for_date = get_contract_list_for_date
                 strategy.get_option_bar = get_option_bar
@@ -167,39 +161,41 @@ class BacktestEngine(TradingEngine):
 
         strategy.use_snapshot_for_current_bar = False
 
-        # Internal: Fetch data for backtest period
-        data = retriever.fetch_data_for_period(
-            (config.start_date - strategy.get_warm_up_period_timedelta(config.bar_interval)).strftime("%Y-%m-%d"),
-            config.end_date.strftime("%Y-%m-%d"),
+        fetch_start = (config.start_date - strategy.get_warm_up_period_timedelta(config.bar_interval)).strftime(
+            "%Y-%m-%d"
         )
+        fetch_end = config.end_date.strftime("%Y-%m-%d")
 
-        if data is None or len(data) == 0:
-            raise ValueError(
-                f"Failed to fetch data for {config.symbol} from {config.start_date.date()} to {config.end_date.date()}"
-            )
+        if strategy.universe is None or not strategy.universe.symbols:
+            raise ValueError("Universe has no symbols")
 
-        if is_credit_spread_strategy(config.strategy_type):
-            data = prepare_credit_spread_backtest_data(data, retriever, config.symbol)
+        strategy.universe.load(retriever, BarTimeInterval.DAY, fetch_start, fetch_end)
 
-        # Internal: Set data on strategy
-        strategy.set_data(data, retriever.treasury_rates)
+        treasury_rates = retriever.load_treasury_rates(config.start_date, config.end_date)
+        strategy.set_universe(strategy.universe, treasury_rates)
+        strategy.finalize_universe()
         strategy.set_plot_config(config.plot_config)
 
-        get_logger().info(f"Data describe:\n{data.describe().to_string()}")
-        get_logger().info(f"Data head:\n{data.head(5).to_string()}")
-        get_logger().info(f"Data tail:\n{data.tail(5).to_string()}")
+        example_symbol = strategy.universe.symbols[0]
+        frame = strategy.universe.frame(example_symbol)
+        get_logger().info(f"Data shape for one existing ticker ({example_symbol})")
+        get_logger().info(f"Data describe ({example_symbol}):\n{frame.describe().to_string()}")
+        get_logger().info(f"Data head ({example_symbol}):\n{frame.head(5).to_string()}")
+        get_logger().info(f"Data tail ({example_symbol}):\n{frame.tail(5).to_string()}")
 
         # Fetch separate benchmark data if benchmark_ticker differs from trading symbol
         benchmark_data = None
-        if config.benchmark_ticker and config.benchmark_ticker != config.symbol:
-            benchmark_retriever = DataRetriever(symbol=config.benchmark_ticker, bar_interval=config.bar_interval)
-            benchmark_data = benchmark_retriever.fetch_data_for_period(
-                config.start_date.strftime("%Y-%m-%d"), config.end_date.strftime("%Y-%m-%d")
+        if config.benchmark_ticker and config.benchmark_ticker not in strategy.universe.symbols:
+            benchmark_data = retriever.fetch_data_for_period(
+                config.benchmark_ticker,
+                config.bar_interval,
+                config.start_date.strftime("%Y-%m-%d"),
+                config.end_date.strftime("%Y-%m-%d"),
             )
             if benchmark_data is None or len(benchmark_data) == 0:
                 get_logger().warning(
                     f"Failed to fetch benchmark data for {config.benchmark_ticker}; "
-                    f"falling back to {config.symbol} as benchmark"
+                    "falling back to universe bars as the benchmark"
                 )
                 benchmark_data = None
             else:
@@ -207,7 +203,6 @@ class BacktestEngine(TradingEngine):
 
         # Create engine first so we can inject engine methods into strategy
         engine = cls(
-            data=data,
             strategy=strategy,
             initial_capital=config.initial_capital,
             start_date=config.start_date,
@@ -239,7 +234,7 @@ class BacktestEngine(TradingEngine):
         configure_logger("backtest", log_level=log_level, observer=self.observer)
 
         # Validate the data using the strategy's validation method
-        if not self.strategy.validate_data(self.data):
+        if not self.strategy.validate_universe(self.universe):
             get_logger().error("Backtest aborted due to invalid data")
             return False
 
@@ -247,7 +242,8 @@ class BacktestEngine(TradingEngine):
         # hits DatetimeArray slicing and raises on current pandas.
         ts_start = pd.Timestamp(self.start_date)
         ts_end = pd.Timestamp(self.end_date)
-        date_range = self.data.loc[ts_start:ts_end].index
+        calendar = self.universe.timestamps()
+        date_range = calendar[(calendar >= ts_start) & (calendar <= ts_end)]
         if len(date_range) == 0:
             get_logger().error("No rows in data for configured start/end range")
             return False
@@ -275,8 +271,10 @@ class BacktestEngine(TradingEngine):
             )
             set_global_progress_tracker(self.progress_tracker)
 
+        range_start = market_time(date_range[0])
+        range_end = market_time(date_range[-1])
         get_logger().info(f"Running backtest on {len(date_range)} trading days")
-        get_logger().info(f"   Date range: {date_range[0].date()} to {date_range[-1].date()}")
+        get_logger().info(f"   Date range: {range_start.date()} to {range_end.date()}")
 
         for _, date in enumerate(date_range):
             positions_tuple = tuple(self.positions)
@@ -432,7 +430,7 @@ class BacktestEngine(TradingEngine):
         log_and_echo(f"   Sharpe Ratio: {sharpe_ratio:.3f}")
         log_and_echo(f"   Expected value: {'N/A' if expected_value is None else f'${expected_value:+,.2f}'}")
 
-        if self.closed_positions:
+        if self.closed_positions and self.plot_config is not None:
             from algo_trading_engine.backtest._equity import (
                 build_equity_curve_dataframe,
             )  # pylint: disable=import-outside-toplevel
@@ -450,7 +448,7 @@ class BacktestEngine(TradingEngine):
                     title="Equity Curve",
                     y_label="Equity ($)",
                 )
-                strategy_specs = list(self.plot_config.specs or []) if self.plot_config is not None else []
+                strategy_specs = list(self.plot_config.specs or [])
                 show_plot([*strategy_specs, spec], config=self.plot_config)
 
         if self.observer is not None:
@@ -866,7 +864,6 @@ def main():
         initial_capital=args.initial_capital,
         start_date=start_date,
         end_date=end_date,
-        symbol=args.symbol,
         strategy_type=args.strategy,
         max_position_size=args.max_position_size,
         api_key=api_key,

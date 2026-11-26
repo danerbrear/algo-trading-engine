@@ -33,7 +33,6 @@ def main():
     # Create configuration
     # Note: Capital is managed through config/strategies/capital_allocations.json
     config = PaperTradingConfig(
-        symbol=args.symbol,
         strategy_type=args.strategy,
         max_position_size=args.max_position_size,
         api_key=api_key,

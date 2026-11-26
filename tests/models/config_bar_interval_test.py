@@ -18,7 +18,6 @@ class TestBacktestConfigBarInterval:
             initial_capital=100000,
             start_date=datetime(2024, 1, 1),
             end_date=datetime(2024, 1, 31),
-            symbol="SPY",
             strategy_type="velocity_signal_momentum",
         )
 
@@ -30,7 +29,6 @@ class TestBacktestConfigBarInterval:
             initial_capital=100000,
             start_date=datetime(2024, 1, 1),
             end_date=datetime(2024, 1, 31),
-            symbol="SPY",
             strategy_type="velocity_signal_momentum",
             bar_interval=BarTimeInterval.HOUR,
         )
@@ -43,7 +41,6 @@ class TestBacktestConfigBarInterval:
             initial_capital=100000,
             start_date=datetime(2024, 1, 1),
             end_date=datetime(2024, 1, 31),
-            symbol="SPY",
             strategy_type="velocity_signal_momentum",
             bar_interval=BarTimeInterval.MINUTE,
         )
@@ -59,7 +56,6 @@ class TestBacktestConfigBarInterval:
             initial_capital=100000,
             start_date=start_date,
             end_date=end_date,
-            symbol="SPY",
             strategy_type="velocity_signal_momentum",
             bar_interval=BarTimeInterval.HOUR,
         )
@@ -76,7 +72,6 @@ class TestBacktestConfigBarInterval:
                 initial_capital=100000,
                 start_date=start_date,
                 end_date=end_date,
-                symbol="SPY",
                 strategy_type="velocity_signal_momentum",
                 bar_interval=BarTimeInterval.HOUR,
             )
@@ -90,7 +85,6 @@ class TestBacktestConfigBarInterval:
             initial_capital=100000,
             start_date=start_date,
             end_date=end_date,
-            symbol="SPY",
             strategy_type="velocity_signal_momentum",
             bar_interval=BarTimeInterval.MINUTE,
         )
@@ -107,7 +101,6 @@ class TestBacktestConfigBarInterval:
                 initial_capital=100000,
                 start_date=start_date,
                 end_date=end_date,
-                symbol="SPY",
                 strategy_type="velocity_signal_momentum",
                 bar_interval=BarTimeInterval.MINUTE,
             )
@@ -121,7 +114,6 @@ class TestBacktestConfigBarInterval:
             initial_capital=100000,
             start_date=start_date,
             end_date=end_date,
-            symbol="SPY",
             strategy_type="velocity_signal_momentum",
             bar_interval=BarTimeInterval.DAY,
         )
@@ -138,7 +130,6 @@ class TestBacktestConfigBarInterval:
                 initial_capital=100000,
                 start_date=start_date,
                 end_date=end_date,
-                symbol="SPY",
                 strategy_type="velocity_signal_momentum",
                 bar_interval=BarTimeInterval.MINUTE,
             )
@@ -154,31 +145,25 @@ class TestPaperTradingConfigBarInterval:
 
     def test_default_bar_interval_is_daily(self):
         """Test that bar_interval defaults to DAY."""
-        config = PaperTradingConfig(symbol="SPY", strategy_type="velocity_signal_momentum")
+        config = PaperTradingConfig(strategy_type="velocity_signal_momentum")
 
         assert config.bar_interval == BarTimeInterval.DAY
 
     def test_hourly_bar_interval(self):
         """Test creating config with hourly bars."""
-        config = PaperTradingConfig(
-            symbol="SPY", strategy_type="velocity_signal_momentum", bar_interval=BarTimeInterval.HOUR
-        )
+        config = PaperTradingConfig(strategy_type="velocity_signal_momentum", bar_interval=BarTimeInterval.HOUR)
 
         assert config.bar_interval == BarTimeInterval.HOUR
 
     def test_minute_bar_interval(self):
         """Test creating config with minute bars."""
-        config = PaperTradingConfig(
-            symbol="SPY", strategy_type="velocity_signal_momentum", bar_interval=BarTimeInterval.MINUTE
-        )
+        config = PaperTradingConfig(strategy_type="velocity_signal_momentum", bar_interval=BarTimeInterval.MINUTE)
 
         assert config.bar_interval == BarTimeInterval.MINUTE
 
     def test_daily_bar_interval(self):
         """Test creating config with daily bars explicitly."""
-        config = PaperTradingConfig(
-            symbol="SPY", strategy_type="velocity_signal_momentum", bar_interval=BarTimeInterval.DAY
-        )
+        config = PaperTradingConfig(strategy_type="velocity_signal_momentum", bar_interval=BarTimeInterval.DAY)
 
         assert config.bar_interval == BarTimeInterval.DAY
 
@@ -186,7 +171,6 @@ class TestPaperTradingConfigBarInterval:
         """Test PaperTradingConfig doesn't validate date ranges (no start/end dates)."""
         # This should not raise any errors regardless of bar_interval
         config = PaperTradingConfig(
-            symbol="SPY",
             strategy_type="velocity_signal_momentum",
             bar_interval=BarTimeInterval.MINUTE,  # Would have date limit in BacktestConfig
         )
@@ -199,22 +183,22 @@ class TestPaperTradingConfigUseCache:
 
     def test_use_cache_defaults_to_true(self):
         """Test that use_cache defaults to True."""
-        config = PaperTradingConfig(symbol="SPY", strategy_type="velocity_signal_momentum")
+        config = PaperTradingConfig(strategy_type="velocity_signal_momentum")
         assert config.use_cache is True
 
     def test_use_cache_can_be_set_to_false(self):
         """Test that use_cache can be explicitly set to False."""
-        config = PaperTradingConfig(symbol="SPY", strategy_type="velocity_signal_momentum", use_cache=False)
+        config = PaperTradingConfig(strategy_type="velocity_signal_momentum", use_cache=False)
         assert config.use_cache is False
 
     def test_use_cache_can_be_set_to_true(self):
         """Test that use_cache can be explicitly set to True."""
-        config = PaperTradingConfig(symbol="SPY", strategy_type="velocity_signal_momentum", use_cache=True)
+        config = PaperTradingConfig(strategy_type="velocity_signal_momentum", use_cache=True)
         assert config.use_cache is True
 
     def test_use_cache_is_immutable(self):
         """Test that use_cache cannot be modified after creation (frozen dataclass)."""
-        config = PaperTradingConfig(symbol="SPY", strategy_type="velocity_signal_momentum", use_cache=False)
+        config = PaperTradingConfig(strategy_type="velocity_signal_momentum", use_cache=False)
         with pytest.raises(Exception):
             config.use_cache = True  # type: ignore
 
@@ -223,14 +207,14 @@ class TestPaperTradingConfigAutoYes:
     """Test cases for PaperTradingConfig auto_yes parameter."""
 
     def test_auto_yes_defaults_to_false(self):
-        config = PaperTradingConfig(symbol="SPY", strategy_type="velocity_signal_momentum")
+        config = PaperTradingConfig(strategy_type="velocity_signal_momentum")
         assert config.auto_yes is False
 
     def test_auto_yes_can_be_set_to_true(self):
-        config = PaperTradingConfig(symbol="SPY", strategy_type="velocity_signal_momentum", auto_yes=True)
+        config = PaperTradingConfig(strategy_type="velocity_signal_momentum", auto_yes=True)
         assert config.auto_yes is True
 
     def test_auto_yes_is_immutable(self):
-        config = PaperTradingConfig(symbol="SPY", strategy_type="velocity_signal_momentum", auto_yes=False)
+        config = PaperTradingConfig(strategy_type="velocity_signal_momentum", auto_yes=False)
         with pytest.raises(Exception):
             config.auto_yes = True  # type: ignore

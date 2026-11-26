@@ -37,6 +37,8 @@ def ticker():
 class _MinimalStrategy(Strategy):
     """Concrete Strategy for exercising base-class helpers."""
 
+    universe_set = ["SPY"]
+
     def on_new_date(self, date, positions, add_position, remove_position):
         return None
 
@@ -54,10 +56,10 @@ class TestMakeRtOptionBar:
         handler.get_option_bar = Mock()
 
         rt = make_rt_option_bar(handler)
-        bar = rt(ticker)
+        bar = rt("SPY", ticker)
 
         assert bar is not None
-        handler.get_option_snapshot.assert_called_once_with(ticker)
+        handler.get_option_snapshot.assert_called_once_with("SPY", ticker)
         handler.get_option_bar.assert_not_called()
 
     def test_returns_none_without_aggs_fallback(self, ticker):
@@ -66,10 +68,10 @@ class TestMakeRtOptionBar:
         handler.get_option_bar = Mock(return_value=_sample_bar())
 
         rt = make_rt_option_bar(handler)
-        bar = rt(ticker)
+        bar = rt("SPY", ticker)
 
         assert bar is None
-        handler.get_option_snapshot.assert_called_once_with(ticker)
+        handler.get_option_snapshot.assert_called_once_with("SPY", ticker)
         handler.get_option_bar.assert_not_called()
 
 
@@ -89,14 +91,13 @@ class TestUseSnapshotForCurrentBar:
             initial_capital=100000,
             start_date=datetime(2024, 1, 1),
             end_date=datetime(2024, 1, 31),
-            symbol="SPY",
             strategy_type=strategy,
         )
         assert strategy.use_snapshot_for_current_bar is True
 
     def test_paper_trading_config_sets_true(self):
         strategy = _MinimalStrategy()
-        PaperTradingConfig(symbol="SPY", strategy_type=strategy)
+        PaperTradingConfig(strategy_type=strategy)
         assert strategy.use_snapshot_for_current_bar is True
 
 
@@ -107,10 +108,10 @@ class TestStrategyGetCurrentOptionBar:
         strategy.get_rt_option_bar = Mock(return_value=rt_bar)
         strategy.get_option_bar = Mock(return_value=_sample_bar("other"))
 
-        result = strategy.get_current_option_bar(ticker, datetime.now(), timespan=BarTimeInterval.HOUR)
+        result = strategy.get_current_option_bar("SPY", ticker, datetime.now(), timespan=BarTimeInterval.HOUR)
 
         assert result is rt_bar
-        strategy.get_rt_option_bar.assert_called_once_with(ticker)
+        strategy.get_rt_option_bar.assert_called_once_with("SPY", ticker)
         strategy.get_option_bar.assert_not_called()
 
     def test_backtest_uses_historical_aggs(self, ticker):
@@ -119,7 +120,7 @@ class TestStrategyGetCurrentOptionBar:
         strategy.get_option_bar = Mock(return_value=hist_bar)
         date = datetime(2025, 1, 2)
 
-        result = strategy.get_current_option_bar(ticker, date, timespan=BarTimeInterval.DAY)
+        result = strategy.get_current_option_bar("SPY", ticker, date, timespan=BarTimeInterval.DAY)
 
         assert result is hist_bar
-        strategy.get_option_bar.assert_called_once_with(ticker, date, 1, BarTimeInterval.DAY)
+        strategy.get_option_bar.assert_called_once_with("SPY", ticker, date, 1, BarTimeInterval.DAY)

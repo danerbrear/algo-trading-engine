@@ -5,6 +5,7 @@ Unit tests for enhanced strategy methods
 from datetime import datetime
 from unittest.mock import Mock, patch
 import pandas as pd
+from tests.conftest import load_strategy_frame
 import tempfile
 import shutil
 from pathlib import Path
@@ -62,7 +63,7 @@ class TestVelocitySignalMomentumStrategyEnhancements:
             },
             index=dates,
         )
-        self.strategy.set_data(self.sample_data)
+        load_strategy_frame(self.strategy, self.sample_data)
 
     def test_get_current_underlying_price_historical_date(self):
         """Test get_current_underlying_price with historical date"""
@@ -109,9 +110,8 @@ class TestVelocitySignalMomentumStrategyEnhancements:
         with pytest.raises(ValueError, match="Failed to fetch live price from DataRetriever"):
             self.strategy.get_current_underlying_price(current_date, symbol)
 
-    def test_recalculate_moving_averages(self):
-        """Test _recalculate_moving_averages method"""
-        self.strategy._recalculate_moving_averages()
+    def test_universe_load_precomputes_moving_averages(self):
+        """Universe post_load enriches frames with velocity moving averages."""
         data = self.strategy.data
         assert data is not None
         assert "SMA_15" in data.columns
@@ -189,7 +189,6 @@ class TestCreditSpreadStrategyEnhancements:
             get_options_chain=self.get_options_chain,
             lstm_model=self.lstm_model,
             lstm_scaler=self.lstm_scaler,
-            symbol="SPY",
             options_handler=self.options_handler,
         )
         dates = pd.date_range(start="2024-01-01", periods=100, freq="D")
@@ -203,7 +202,7 @@ class TestCreditSpreadStrategyEnhancements:
             },
             index=dates,
         )
-        self.strategy.set_data(self.sample_data)
+        load_strategy_frame(self.strategy, self.sample_data)
 
     def test_get_current_underlying_price_historical_date(self):
         """Test get_current_underlying_price with historical date"""
@@ -247,7 +246,7 @@ class TestDataRetrieverLivePrice:
         """Test get_live_price with yfinance fallback"""
         from algo_trading_engine.data_retriever import DataRetriever
 
-        data_retriever = DataRetriever(symbol="SPY")
+        data_retriever = DataRetriever()
         mock_ticker_instance = Mock()
         mock_ticker_instance.info = {"currentPrice": 450.0, "regularMarketPrice": 450.0, "previousClose": 445.0}
         mock_ticker.return_value = mock_ticker_instance
@@ -260,7 +259,7 @@ class TestDataRetrieverLivePrice:
         """Test get_live_price with yfinance when currentPrice is None"""
         from algo_trading_engine.data_retriever import DataRetriever
 
-        data_retriever = DataRetriever(symbol="SPY")
+        data_retriever = DataRetriever()
         mock_ticker_instance = Mock()
         mock_ticker_instance.info = {"currentPrice": None, "regularMarketPrice": 450.0, "previousClose": 445.0}
         mock_ticker.return_value = mock_ticker_instance
@@ -272,7 +271,7 @@ class TestDataRetrieverLivePrice:
         """Test get_live_price with yfinance falling back to previousClose"""
         from algo_trading_engine.data_retriever import DataRetriever
 
-        data_retriever = DataRetriever(symbol="SPY")
+        data_retriever = DataRetriever()
         mock_ticker_instance = Mock()
         mock_ticker_instance.info = {"currentPrice": None, "regularMarketPrice": None, "previousClose": 445.0}
         mock_ticker.return_value = mock_ticker_instance
@@ -284,7 +283,7 @@ class TestDataRetrieverLivePrice:
         """Test get_live_price with yfinance when no price data is available"""
         from algo_trading_engine.data_retriever import DataRetriever
 
-        data_retriever = DataRetriever(symbol="SPY")
+        data_retriever = DataRetriever()
         mock_ticker_instance = Mock()
         mock_ticker_instance.info = {"currentPrice": None, "regularMarketPrice": None, "previousClose": None}
         mock_ticker.return_value = mock_ticker_instance
@@ -299,8 +298,8 @@ class TestDataRetrieverLivePrice:
         mock_ticker_instance = Mock()
         mock_ticker_instance.info = {"currentPrice": 450.0, "regularMarketPrice": 450.0, "previousClose": 445.0}
         mock_ticker.return_value = mock_ticker_instance
-        retriever_one = DataRetriever(symbol="SPY")
-        retriever_two = DataRetriever(symbol="SPY")
+        retriever_one = DataRetriever()
+        retriever_two = DataRetriever()
         assert retriever_one.get_live_price("SPY") == 450.0
         assert retriever_two.get_live_price("SPY") == 450.0
         mock_ticker.assert_called_once_with("SPY")
@@ -319,7 +318,7 @@ class TestDataRetrieverLivePrice:
             return mock_instance
 
         mock_ticker.side_effect = ticker_side_effect
-        retriever = DataRetriever(symbol="SPY")
+        retriever = DataRetriever()
         assert retriever.get_live_price("SPY") == 450.0
         assert retriever.get_live_price("QQQ") == 380.0
         assert mock_ticker.call_count == 2
@@ -329,7 +328,7 @@ class TestDataRetrieverLivePrice:
         """Test get_live_price with yfinance exception"""
         from algo_trading_engine.data_retriever import DataRetriever
 
-        data_retriever = DataRetriever(symbol="SPY")
+        data_retriever = DataRetriever()
         mock_ticker.side_effect = Exception("Network error")
         price = data_retriever.get_live_price("SPY")
         assert price is None

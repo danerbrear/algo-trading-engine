@@ -29,7 +29,6 @@ def main():
         start_date=datetime(2025, 1, 2),
         end_date=datetime(2026, 4, 30),
         max_position_size=0.20,
-        symbol="SPY",
         strategy_type="velocity_momentum",  # Built-in strategy name
         api_key=polygon_api_key,
         plot_config=PlotConfig(enabled=False),

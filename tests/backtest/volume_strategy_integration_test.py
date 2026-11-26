@@ -28,7 +28,6 @@ class TestStrategyCurrentDateVolumeValidation:
             get_options_chain=self.get_options_chain,
             lstm_model=self.mock_lstm_model,
             lstm_scaler=self.mock_lstm_scaler,
-            symbol="SPY",
             options_handler=self.mock_options_handler,
         )
         self.option1 = Option(

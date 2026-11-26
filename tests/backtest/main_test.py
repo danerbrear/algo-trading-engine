@@ -4,9 +4,11 @@ Integration tests for volume validation in backtest scenarios.
 This module tests volume validation integration with BacktestEngine and Strategy components.
 """
 
+from tests.conftest import load_strategy_frame
+
 import pytest
 from datetime import datetime
-from typing import cast
+from typing import Optional, cast
 from unittest.mock import Mock
 import pandas as pd
 from algo_trading_engine.backtest.main import BacktestEngine
@@ -21,35 +23,39 @@ from algo_trading_engine.enums import OptionType
 class MockStrategy(Strategy):
     """Mock strategy for testing volume validation integration."""
 
-    def __init__(self, options_handler=None, symbol="SPY"):
+    universe_set = ["SPY"]
+
+    def __init__(self, options_handler=None):
         super().__init__()
         self.options_handler = options_handler
-        self.symbol = symbol
         dates = pd.date_range("2024-01-01", periods=3)
-        self.data = pd.DataFrame(
-            {
-                "Open": [99.0, 100.0, 101.0],
-                "High": [102.0, 103.0, 104.0],
-                "Low": [98.0, 99.0, 100.0],
-                "Close": [100.0, 101.0, 102.0],
-                "Volume": [1000000, 1100000, 1200000],
-                "Returns": [0.01, 0.01, 0.01],
-                "Log_Returns": [0.00995, 0.00995, 0.00995],
-                "Volatility": [0.15, 0.15, 0.15],
-                "RSI": [50.0, 50.0, 50.0],
-                "MACD_Hist": [0.0, 0.0, 0.0],
-                "Volume_Ratio": [1.0, 1.0, 1.0],
-                "Market_State": [0, 0, 0],
-                "Put_Call_Ratio": [0.5, 0.5, 0.5],
-                "Option_Volume_Ratio": [1.0, 1.0, 1.0],
-                "Days_Until_Next_CPI": [30, 29, 28],
-                "Days_Since_Last_CPI": [15, 16, 17],
-                "Days_Until_Next_CC": [45, 44, 43],
-                "Days_Since_Last_CC": [10, 11, 12],
-                "Days_Until_Next_FFR": [60, 59, 58],
-                "Days_Since_Last_FFR": [5, 6, 7],
-            },
-            index=dates,
+        load_strategy_frame(
+            self,
+            pd.DataFrame(
+                {
+                    "Open": [99.0, 100.0, 101.0],
+                    "High": [102.0, 103.0, 104.0],
+                    "Low": [98.0, 99.0, 100.0],
+                    "Close": [100.0, 101.0, 102.0],
+                    "Volume": [1000000, 1100000, 1200000],
+                    "Returns": [0.01, 0.01, 0.01],
+                    "Log_Returns": [0.00995, 0.00995, 0.00995],
+                    "Volatility": [0.15, 0.15, 0.15],
+                    "RSI": [50.0, 50.0, 50.0],
+                    "MACD_Hist": [0.0, 0.0, 0.0],
+                    "Volume_Ratio": [1.0, 1.0, 1.0],
+                    "Market_State": [0, 0, 0],
+                    "Put_Call_Ratio": [0.5, 0.5, 0.5],
+                    "Option_Volume_Ratio": [1.0, 1.0, 1.0],
+                    "Days_Until_Next_CPI": [30, 29, 28],
+                    "Days_Since_Last_CPI": [15, 16, 17],
+                    "Days_Until_Next_CC": [45, 44, 43],
+                    "Days_Since_Last_CC": [10, 11, 12],
+                    "Days_Until_Next_FFR": [60, 59, 58],
+                    "Days_Since_Last_FFR": [5, 6, 7],
+                },
+                index=dates,
+            ),
         )
 
     @staticmethod
@@ -100,7 +106,6 @@ class TestVolumeValidationIntegration:
         data = strategy.data
         assert data is not None
         engine = BacktestEngine(
-            data=data,
             strategy=strategy,
             initial_capital=10000,
             start_date=datetime(2024, 1, 1),
@@ -152,7 +157,6 @@ class TestVolumeValidationIntegration:
         data = strategy.data
         assert data is not None
         engine = BacktestEngine(
-            data=data,
             strategy=strategy,
             initial_capital=10000,
             start_date=datetime(2024, 1, 1),
@@ -204,7 +208,6 @@ class TestVolumeValidationIntegration:
         data = strategy.data
         assert data is not None
         engine = BacktestEngine(
-            data=data,
             strategy=strategy,
             initial_capital=10000,
             start_date=datetime(2024, 1, 1),
@@ -256,7 +259,6 @@ class TestVolumeValidationIntegration:
         data = strategy.data
         assert data is not None
         engine = BacktestEngine(
-            data=data,
             strategy=strategy,
             initial_capital=10000,
             start_date=datetime(2024, 1, 1),
@@ -275,7 +277,6 @@ class TestVolumeValidationIntegration:
         data = strategy.data
         assert data is not None
         engine = BacktestEngine(
-            data=data,
             strategy=strategy,
             initial_capital=10000,
             start_date=datetime(2024, 1, 1),
@@ -317,7 +318,6 @@ class TestVolumeValidationIntegration:
         )
         strategy = MockStrategy()
         engine = BacktestEngine(
-            data=data,
             strategy=strategy,
             initial_capital=100000,
             volume_config=VolumeConfig(min_volume=10, enable_volume_validation=True),
@@ -429,7 +429,6 @@ class TestUniversalCloseCallback:
         data = strategy.data
         assert data is not None
         engine = BacktestEngine(
-            data=data,
             strategy=strategy,
             initial_capital=10000,
             start_date=datetime(2024, 1, 1),
@@ -510,12 +509,13 @@ class TestUniversalCloseCallback:
 
             def _get_option_bar(
                 self,
+                symbol: str,
                 ticker: str,
                 date: datetime,
-                multiplier: int | None = 1,
-                timespan: BarTimeInterval | None = None,
-            ) -> OptionBarDTO | None:
-                _ = date, multiplier, timespan
+                multiplier: Optional[int] = 1,
+                timespan: Optional[BarTimeInterval] = None,
+            ) -> Optional[OptionBarDTO]:
+                _ = symbol, multiplier, timespan
                 assert self._option1 is not None
                 assert self._option2 is not None
                 if ticker == self._option1.ticker:
@@ -542,7 +542,6 @@ class TestUniversalCloseCallback:
         data = strategy.data
         assert data is not None
         engine = BacktestEngine(
-            data=data,
             strategy=strategy,
             initial_capital=10000,
             start_date=datetime(2024, 1, 1),
@@ -625,12 +624,13 @@ class TestUniversalCloseCallback:
 
             def _get_option_bar(
                 self,
+                symbol: str,
                 ticker: str,
                 date: datetime,
-                multiplier: int | None = 1,
-                timespan: BarTimeInterval | None = None,
-            ) -> OptionBarDTO | None:
-                _ = date, multiplier, timespan
+                multiplier: Optional[int] = 1,
+                timespan: Optional[BarTimeInterval] = None,
+            ) -> Optional[OptionBarDTO]:
+                _ = symbol, multiplier, timespan
                 assert self._option1 is not None
                 assert self._option2 is not None
                 if ticker == self._option1.ticker:
@@ -649,7 +649,6 @@ class TestUniversalCloseCallback:
         data = strategy.data
         assert data is not None
         engine = BacktestEngine(
-            data=data,
             strategy=strategy,
             initial_capital=10000,
             start_date=datetime(2024, 1, 1),
@@ -680,6 +679,8 @@ def _minimal_spy_df(periods: int) -> pd.DataFrame:
 class OnNewDateOrderStrategy(Strategy):
     """Records on_new_date call order; indicators are fed full history in each update."""
 
+    universe_set = ["SPY"]
+
     def __init__(self):
         super().__init__()
         self.dates_called_in_on_new_date: list = []
@@ -701,10 +702,9 @@ class TestBacktestOnNewDateDateRange:
         n = 5
         data = _minimal_spy_df(n)
         strategy = OnNewDateOrderStrategy()
-        strategy.data = data
+        load_strategy_frame(strategy, data)
         index = cast(pd.DatetimeIndex, data.index)
         engine = BacktestEngine(
-            data=data,
             strategy=strategy,
             initial_capital=10000,
             start_date=cast(pd.Timestamp, index[0]).to_pydatetime(),
@@ -732,7 +732,6 @@ class TestCreditSpreadAssignmentCapital:
         data = strategy.data
         assert data is not None
         return BacktestEngine(
-            data=data,
             strategy=strategy,
             initial_capital=10000,
             volume_config=VolumeConfig(min_volume=10, enable_volume_validation=False),

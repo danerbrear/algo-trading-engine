@@ -35,7 +35,8 @@ def main():
 
     # Create configuration
     config = PaperTradingConfig(
-        symbol="SPY", strategy_type=MyCustomStrategy(), api_key=polygon_api_key  # Custom strategy instance
+        strategy_type=MyCustomStrategy(),
+        api_key=polygon_api_key,
     )
 
     # Create and run engine - all data fetching and setup is handled internally

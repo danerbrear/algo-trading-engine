@@ -2,6 +2,7 @@
 Unit tests for Strategy class indicator functionality
 """
 
+from tests.conftest import load_strategy_frame
 import pytest
 from datetime import datetime, timedelta
 from typing import cast
@@ -23,6 +24,8 @@ def _as_datetime(value: object) -> datetime:
 
 class ConcreteTestStrategy(Strategy):
     """Concrete implementation of Strategy for testing"""
+
+    universe_set = ["SPY"]
 
     def __init__(self):
         super().__init__()
@@ -186,7 +189,7 @@ class TestStrategyWithATRIndicator:
         strategy.add_indicator(atr)
         strategy.add_indicator(atr)
         data = self.create_sample_data()
-        strategy.set_data(data)
+        load_strategy_frame(strategy, data)
         atr.update(datetime(2024, 1, 6), data)
         assert atr.value is not None
         assert atr.value > 0
@@ -197,7 +200,7 @@ class TestStrategyWithATRIndicator:
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(atr)
         data = self.create_sample_data(num_days=5)
-        strategy.set_data(data)
+        load_strategy_frame(strategy, data)
         atr.update(datetime(2024, 1, 5), data)
         assert atr.value is None
 
@@ -209,7 +212,7 @@ class TestStrategyWithATRIndicator:
         strategy.add_indicator(mock_indicator)
         strategy.add_indicator(atr)
         data = self.create_sample_data()
-        strategy.set_data(data)
+        load_strategy_frame(strategy, data)
         as_of = datetime(2024, 1, 6)
         mock_indicator.update(as_of, data)
         atr.update(as_of, data)
@@ -222,7 +225,7 @@ class TestStrategyWithATRIndicator:
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(atr)
         data = self.create_sample_data()
-        strategy.set_data(data)
+        load_strategy_frame(strategy, data)
         atr.update(datetime(2024, 1, 4), data)
         atr_value_day4 = atr.value
         atr.update(datetime(2024, 1, 5), data)
@@ -255,7 +258,7 @@ class TestStrategyOnNewDateWithIndicators:
         indicator = MockIndicator()
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(indicator)
-        strategy.set_data(self.create_sample_data())
+        load_strategy_frame(strategy, self.create_sample_data())
         strategy.on_new_date(datetime(2024, 1, 10), (), Mock(), Mock())
         assert indicator.update_called is False
         assert strategy.on_new_date_called is True
@@ -266,7 +269,7 @@ class TestStrategyOnNewDateWithIndicators:
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(atr)
         data = self.create_sample_data()
-        strategy.set_data(data)
+        load_strategy_frame(strategy, data)
         _engine_precompute(strategy, data)
         assert atr.value is not None
         strategy.on_new_date(datetime(2024, 1, 6), (), Mock(), Mock())
@@ -279,6 +282,8 @@ class TestStrategyIndicatorAccessInStrategy:
 
     class StrategyUsingIndicator(Strategy):
         """Strategy that uses indicator values in its logic"""
+
+        universe_set = ["SPY"]
 
         def __init__(self, atr_indicator):
             super().__init__()
@@ -320,7 +325,7 @@ class TestStrategyIndicatorAccessInStrategy:
         atr = ATRIndicator(period=3)
         strategy = self.StrategyUsingIndicator(atr)
         data = self.create_volatile_data()
-        strategy.set_data(data)
+        load_strategy_frame(strategy, data)
         _engine_precompute(strategy, data)
         strategy.on_new_date(datetime(2024, 1, 4), (), Mock(), Mock())
         assert strategy.current_atr is not None
@@ -331,7 +336,7 @@ class TestStrategyIndicatorAccessInStrategy:
         atr = ATRIndicator(period=3)
         strategy = self.StrategyUsingIndicator(atr)
         data = self.create_volatile_data()
-        strategy.set_data(data)
+        load_strategy_frame(strategy, data)
         _engine_precompute(strategy, data)
         strategy.on_new_date(datetime(2024, 1, 4), (), Mock(), Mock())
         assert strategy.signal_generated is True
@@ -340,17 +345,18 @@ class TestStrategyIndicatorAccessInStrategy:
         assert strategy.current_atr > strategy.atr_threshold
 
 
-class TestStrategySetData:
-    """Test cases for set_data method with indicators"""
+class TestStrategyUniverseFrame:
+    """Test cases for loading a market frame onto the strategy universe"""
 
-    def test_set_data_stores_data_for_indicators(self):
-        """Test set_data makes data available for indicators"""
+    def test_universe_frame_is_available_to_indicators(self):
+        """Test replace() makes data available for indicators"""
         indicator = MockIndicator()
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(indicator)
         dates = pd.date_range(start="2024-01-01", periods=10, freq="D")
         data = pd.DataFrame(
             {
+                "Open": [100 + i for i in range(10)],
                 "Close": [100 + i for i in range(10)],
                 "High": [105 + i for i in range(10)],
                 "Low": [95 + i for i in range(10)],
@@ -358,9 +364,9 @@ class TestStrategySetData:
             },
             index=dates,
         )
-        strategy.set_data(data)
+        load_strategy_frame(strategy, data)
         assert strategy.data is not None
-        pd.testing.assert_frame_equal(strategy.data, data)
+        pd.testing.assert_frame_equal(strategy.data[data.columns], data, check_dtype=False)
         indicator.update(datetime(2024, 1, 5), data)
         assert indicator.last_update_data is data
 
@@ -385,7 +391,7 @@ class TestStrategyIndicatorEdgeCases:
             },
             index=dates,
         )
-        strategy.set_data(data)
+        load_strategy_frame(strategy, data)
         new_indicator.update(datetime(2024, 1, 5), data)
         assert new_indicator.update_called is True
 
@@ -447,7 +453,7 @@ class TestStrategyGetIndicator:
             },
             index=dates,
         )
-        strategy.set_data(data)
+        load_strategy_frame(strategy, data)
         atr.update(datetime(2024, 1, 6), data)
         retrieved_atr = strategy.get_indicator(ATRIndicator)
         assert retrieved_atr is not None
@@ -572,7 +578,7 @@ class TestStrategyAddIndicator:
             },
             index=dates,
         )
-        strategy.set_data(data)
+        load_strategy_frame(strategy, data)
         assert atr.value is None
         atr.update(datetime(2024, 1, 6), data)
         assert atr.value is not None
@@ -582,6 +588,7 @@ class TestStrategyAddIndicator:
         """Test adding indicators in strategy __init__ method"""
 
         class StrategyWithDynamicIndicators(Strategy):
+            universe_set = ["SPY"]
 
             def __init__(self):
                 super().__init__()
@@ -650,8 +657,10 @@ class _PrecomputeTestEngine(TradingEngine):
 
 
 def _engine_precompute(strategy: Strategy, data: pd.DataFrame) -> None:
-    config = PaperTradingConfig(symbol="SPY", strategy_type="credit_spread")
-    _PrecomputeTestEngine(strategy, data, config)
+    if data is not None and not data.empty:
+        load_strategy_frame(strategy, data)
+    config = PaperTradingConfig(strategy_type="credit_spread")
+    _PrecomputeTestEngine(strategy, strategy.universe, config)
 
 
 class TestEnginePrecomputeIndicators:
@@ -660,20 +669,20 @@ class TestEnginePrecomputeIndicators:
     def test_raises_when_no_data(self):
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(ATRIndicator(period=3))
-        config = PaperTradingConfig(symbol="SPY", strategy_type="credit_spread")
+        config = PaperTradingConfig(strategy_type="credit_spread")
         with pytest.raises(ValueError, match="Cannot precompute indicators without data"):
-            _PrecomputeTestEngine(strategy, pd.DataFrame(), config)
+            _PrecomputeTestEngine(strategy, strategy.universe, config)
 
     def test_raises_when_empty_data(self):
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(ATRIndicator(period=3))
-        config = PaperTradingConfig(symbol="SPY", strategy_type="credit_spread")
+        config = PaperTradingConfig(strategy_type="credit_spread")
         with pytest.raises(ValueError, match="Cannot precompute indicators without data"):
-            _PrecomputeTestEngine(strategy, pd.DataFrame(), config)
+            _PrecomputeTestEngine(strategy, strategy.universe, config)
 
     def test_no_op_when_no_indicators(self):
         strategy = ConcreteTestStrategy()
-        strategy.set_data(_hourly_ohlcv())
+        load_strategy_frame(strategy, _hourly_ohlcv())
         assert strategy.data is not None
         _engine_precompute(strategy, strategy.data)
 
@@ -684,7 +693,7 @@ class TestEnginePrecomputeIndicators:
         strategy.add_indicator(atr)
         strategy.add_indicator(sma)
         data = _hourly_ohlcv()
-        strategy.set_data(data)
+        load_strategy_frame(strategy, data)
         _engine_precompute(strategy, data)
         test_bar = _as_datetime(data.index[6])
         assert atr.get_value_at(test_bar) is not None
@@ -699,13 +708,13 @@ class TestEnginePrecomputeBacktestParity:
         atr_bt = ATRIndicator(period=3)
         bt = ConcreteTestStrategy()
         bt.add_indicator(atr_bt)
-        bt.set_data(data)
+        load_strategy_frame(bt, data)
         for date in data.index:
             atr_bt.update(date, data)
         atr_pc = ATRIndicator(period=3)
         pt = ConcreteTestStrategy()
         pt.add_indicator(atr_pc)
-        pt.set_data(data)
+        load_strategy_frame(pt, data)
         _engine_precompute(pt, data)
         for bar in data.index[atr_bt.warm_up_period - 1 :]:
             assert atr_bt.get_value_at(bar) == pytest.approx(atr_pc.get_value_at(bar))
@@ -715,13 +724,13 @@ class TestEnginePrecomputeBacktestParity:
         sma_bt = SMAIndicator(period=5, period_unit=BarTimeInterval.HOUR)
         bt = ConcreteTestStrategy()
         bt.add_indicator(sma_bt)
-        bt.set_data(data)
+        load_strategy_frame(bt, data)
         for date in data.index:
             sma_bt.update(date, data)
         sma_pc = SMAIndicator(period=5, period_unit=BarTimeInterval.HOUR)
         pt = ConcreteTestStrategy()
         pt.add_indicator(sma_pc)
-        pt.set_data(data)
+        load_strategy_frame(pt, data)
         _engine_precompute(pt, data)
         for bar in data.index[sma_bt.warm_up_period - 1 :]:
             assert sma_bt.get_value_at(bar) == pytest.approx(sma_pc.get_value_at(bar))
@@ -732,6 +741,7 @@ class TestStrategyHistoricalLookupWithWarmUp:
     (e.g. ATR K bars ago) must succeed after warm-up and fail without it."""
 
     class _LookbackStrategy(Strategy):
+        universe_set = ["SPY"]
 
         def __init__(self, atr, lookback_bars=4):
             super().__init__()
@@ -762,7 +772,7 @@ class TestStrategyHistoricalLookupWithWarmUp:
         atr = ATRIndicator(period=3)
         data = _hourly_ohlcv()
         strategy = self._LookbackStrategy(atr, lookback_bars=4)
-        strategy.set_data(data)
+        load_strategy_frame(strategy, data)
         _engine_precompute(strategy, data)
         for date in data.index:
             strategy.on_new_date(date, (), Mock(), Mock())
@@ -773,7 +783,7 @@ class TestStrategyHistoricalLookupWithWarmUp:
         atr = ATRIndicator(period=3)
         data = _hourly_ohlcv()
         strategy = self._LookbackStrategy(atr, lookback_bars=4)
-        strategy.set_data(data)
+        load_strategy_frame(strategy, data)
         strategy.on_new_date(_as_datetime(data.index[-1]), (), Mock(), Mock())
         assert strategy.current_atr_value is None
         assert strategy.historical_atr_value is None
@@ -782,7 +792,7 @@ class TestStrategyHistoricalLookupWithWarmUp:
         atr = ATRIndicator(period=3)
         data = _hourly_ohlcv()
         strategy = self._LookbackStrategy(atr, lookback_bars=4)
-        strategy.set_data(data)
+        load_strategy_frame(strategy, data)
         _engine_precompute(strategy, data)
         strategy.on_new_date(_as_datetime(data.index[-1]), (), Mock(), Mock())
         assert strategy.current_atr_value is not None
@@ -792,7 +802,7 @@ class TestStrategyHistoricalLookupWithWarmUp:
         atr = ATRIndicator(period=5)
         data = _daily_ohlcv(20)
         strategy = self._LookbackStrategy(atr, lookback_bars=4)
-        strategy.set_data(data)
+        load_strategy_frame(strategy, data)
         strategy.on_new_date(_as_datetime(data.index[-1]), (), Mock(), Mock())
         assert strategy.current_atr_value is None
         assert strategy.historical_atr_value is None

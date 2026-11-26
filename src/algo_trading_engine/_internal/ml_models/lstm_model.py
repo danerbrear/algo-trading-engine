@@ -46,7 +46,7 @@ class LSTMModel:
         self.original_features: list | None = None
         self.feature_recommendations: dict | None = None
 
-    def prepare_data(self, data_retriever, sequence_length=60):
+    def prepare_data(self, data_retriever, sequence_length=60, lstm_data=None):
         """Prepare data for LSTM model with enhanced features using separate date ranges
 
         Args:
@@ -56,7 +56,10 @@ class LSTMModel:
         Returns:
             tuple: (X_train, y_train, X_test, y_test)
         """
-        print(f"\n🚀 Phase 6: Preparing LSTM features ({len(data_retriever.lstm_data)} samples)")
+        frame = lstm_data if lstm_data is not None else getattr(data_retriever, "lstm_data", None)
+        if frame is None:
+            raise ValueError("lstm_data is required; pass the frame returned from prepare_training_data")
+        print(f"\n🚀 Phase 6: Preparing LSTM features ({len(frame)} samples)")
 
         # Prepare feature matrix for LSTM (including all features and market states)
         self.feature_columns = [
@@ -101,9 +104,7 @@ class LSTMModel:
         self.model = self._build_model()
 
         # Analyze feature correlations before scaling
-        correlation_pairs = self.analyze_feature_correlations(
-            data_retriever.lstm_data, self.feature_columns, threshold=0.8
-        )
+        correlation_pairs = self.analyze_feature_correlations(frame, self.feature_columns, threshold=0.8)
 
         # Generate detailed feature reduction recommendations
         self.feature_recommendations = self.generate_feature_reduction_recommendations(
@@ -119,18 +120,18 @@ class LSTMModel:
             print("   Note: You can modify this by editing the feature_columns list in prepare_data()")
 
         # Scale features (using original feature set for now - user can modify based on recommendations)
-        features = self.scaler.fit_transform(data_retriever.lstm_data[self.feature_columns])
+        features = self.scaler.fit_transform(frame[self.feature_columns])
 
         # Critical: Check for NaN or infinite values that cause training to fail
         print("🔍 Data validation:")
         print(f"   NaN values in features: {np.isnan(features).sum()}")
         print(f"   Infinite values in features: {np.isinf(features).sum()}")
-        print(f"   NaN values in labels: {data_retriever.lstm_data['Option_Signal'].isna().sum()}")
+        print(f"   NaN values in labels: {frame['Option_Signal'].isna().sum()}")
 
         # Clean the data - remove rows with NaN or infinite values
         valid_mask = ~(np.isnan(features).any(axis=1) | np.isinf(features).any(axis=1))
         features = features[valid_mask]
-        clean_lstm_data = data_retriever.lstm_data[valid_mask].copy()
+        clean_lstm_data = frame[valid_mask].copy()
 
         print(f"   📊 Cleaned data: {len(features)} samples (removed {(~valid_mask).sum()} invalid samples)")
 
@@ -505,7 +506,9 @@ class LSTMModel:
         return data
 
     @staticmethod
-    def calculate_option_features(data, options_handler, min_dte: int = 24, max_dte: int = 36) -> pd.DataFrame:
+    def calculate_option_features(
+        data, options_handler, symbol: str, min_dte: int = 24, max_dte: int = 36
+    ) -> pd.DataFrame:
         """Calculate option-related features with multi-strike data for strategy modeling
 
         This method uses the options_handler to fetch options chain data and extracts
@@ -514,6 +517,7 @@ class LSTMModel:
         Args:
             data: pd.DataFrame with market data
             options_handler: OptionsHandler instance for fetching options data
+            symbol: Underlying ticker
             min_dte: Minimum days to expiration (default: 24)
             max_dte: Maximum days to expiration (default: 36)
 
@@ -551,7 +555,7 @@ class LSTMModel:
 
                 # Fetch only the contracts we need (more efficient than full chain)
                 all_contracts = options_handler.get_contract_list_for_date(
-                    date=current_date, strike_range=strike_range, expiration_range=expiration_range
+                    symbol, date=current_date, strike_range=strike_range, expiration_range=expiration_range
                 )
 
                 if not all_contracts:
@@ -570,7 +574,7 @@ class LSTMModel:
                 puts_by_strike = {}
 
                 for contract in needed_contracts:
-                    bar = options_handler.get_option_bar(contract.ticker, current_date)
+                    bar = options_handler.get_option_bar(symbol, contract.ticker, current_date)
                     if bar:
                         # Convert contract and bar to Option object
                         option = Option.from_contract_and_bar(contract, bar)

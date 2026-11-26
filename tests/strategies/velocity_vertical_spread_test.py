@@ -3,6 +3,7 @@ Test to verify that velocity strategy creates vertical spreads (not diagonal spr
 A vertical spread must have both legs with the SAME expiration date.
 """
 
+from tests.conftest import load_strategy_frame
 import pytest
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -121,8 +122,8 @@ class TestVelocityVerticalSpread:
         mock_bar_579 = mock_bar_579_nov6
         strategy.get_contract_list_for_date = Mock(return_value=mock_contracts)
 
-        def mock_get_option_bar(ticker, date, multiplier=1, timespan=None):
-            _ = date, multiplier, timespan
+        def mock_get_option_bar(symbol, ticker, date, multiplier=1, timespan=None):
+            _ = symbol, date, multiplier, timespan
             if "585" in ticker and "251106" in ticker:
                 return mock_bar_585
             elif "579" in ticker and "251106" in ticker:
@@ -144,9 +145,9 @@ class TestVelocityVerticalSpread:
                 index=dates,
             )
         )
-        strategy.set_data(data, treasury_data)
+        load_strategy_frame(strategy, data, treasury_data)
         position = strategy._create_put_credit_spread(
-            date=current_date, current_price=current_price, expiration=target_expiration
+            date=current_date, current_price=current_price, expiration=target_expiration, symbol="SPY"
         )
         assert position is not None, "Position should be created"
         assert len(position.legs) == 2, "Position should have 2 legs"
@@ -201,7 +202,7 @@ class TestVelocityVerticalSpread:
         ]
         strategy.get_contract_list_for_date = Mock(return_value=mock_contracts)
         position = strategy._create_put_credit_spread(
-            date=current_date, current_price=current_price, expiration=target_expiration
+            date=current_date, current_price=current_price, expiration=target_expiration, symbol="SPY"
         )
         assert position is None, "Position should be None if target expiration contracts are not available"
         print("✅ Test passed: Strategy correctly rejects position when target expiration unavailable")
