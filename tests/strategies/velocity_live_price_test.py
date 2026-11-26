@@ -49,11 +49,9 @@ class TestVelocityLivePrice(unittest.TestCase):
     def test_has_buy_signal_does_not_append_rows(self):
         strategy = self._strategy()
         load_strategy_frame(strategy, self.test_data.copy())
-        data_before = strategy.data
-        assert data_before is not None
+        data_before = strategy.universe.frame("SPY")
         length_before = len(data_before)
         with patch.object(strategy, "_check_trend_success", return_value=(False, 0, 0.0)):
             strategy._has_buy_signal(self.run_date, "SPY")
-        data_after = strategy.data
-        assert data_after is not None
+        data_after = strategy.universe.frame("SPY")
         self.assertEqual(len(data_after), length_before)

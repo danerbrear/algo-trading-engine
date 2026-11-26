@@ -36,7 +36,7 @@ class MyCustomStrategy(Strategy):
         Called for each trading day.
 
         Implement your strategy logic here:
-        - Analyze current market conditions using self.data
+        - Analyze current market conditions using self.universe.frame(symbol)
         - Check existing positions
         - Add new positions via add_position()
         - Close positions via remove_position()

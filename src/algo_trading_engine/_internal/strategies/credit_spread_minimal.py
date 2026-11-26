@@ -56,7 +56,7 @@ class CreditSpreadStrategy(Strategy):
         self.error_count = 0
 
     @staticmethod
-    def universe_post_load(retriever: DataRetriever) -> PostLoadCallback:
+    def on_universe_load_complete(retriever: DataRetriever) -> PostLoadCallback:
         def post_load(symbol: str, data: pd.DataFrame) -> pd.DataFrame:
             return prepare_credit_spread_backtest_data(data, retriever, symbol)
 

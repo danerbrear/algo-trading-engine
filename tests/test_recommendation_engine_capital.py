@@ -11,6 +11,14 @@ from algo_trading_engine.enums import StrategyType
 from algo_trading_engine.vo import Option
 
 
+def _stub_universe_close(strategy: MagicMock, close: float = 500) -> None:
+    frame = MagicMock()
+    frame.loc.__getitem__.return_value = {"Close": close}
+    frame.empty = False
+    strategy.universe.symbols = ["SPY"]
+    strategy.universe.frame.return_value = frame
+
+
 def _make_option(symbol: str, strike: float, expiration: str, opt_type: str, last: float) -> Option:
     """Helper to create Option objects for testing."""
     return Option.from_dict(
@@ -55,13 +63,8 @@ def capital_manager(allocations_config, decision_store):
 @pytest.fixture
 def strategy_mock():
     """Create a mock strategy."""
-    from types import SimpleNamespace
-
-    class MockStrategy:
-        __name__ = "CreditSpreadStrategy"
-
     strategy = MagicMock()
-    strategy.data = MagicMock()
+    _stub_universe_close(strategy)
     cast(Any, strategy).__class__ = type("CreditSpreadStrategy", (), {})
     strategy.__class__.__name__ = "CreditSpreadStrategy"
     return strategy
@@ -78,7 +81,6 @@ def options_handler_mock():
 def test_recommender_with_capital_manager_risk_check_pass(strategy_mock, decision_store, capital_manager):
     """Test recommendation with capital manager when risk check passes."""
     date = datetime(2025, 8, 8)
-    strategy_mock.data.loc.__getitem__.return_value = {"Close": 500}
     atm_option = _make_option("A", 500, "2025-09-06", "put", 2.0)
     otm_option = _make_option("B", 495, "2025-09-06", "put", 1.0)
     from algo_trading_engine.vo import create_position
@@ -108,7 +110,6 @@ def test_recommender_with_capital_manager_risk_check_pass(strategy_mock, decisio
 def test_recommender_with_capital_manager_risk_check_fail(strategy_mock, decision_store, capital_manager):
     """Test recommendation with capital manager when risk check fails."""
     date = datetime(2025, 8, 8)
-    strategy_mock.data.loc.__getitem__.return_value = {"Close": 500}
     atm_option = _make_option("A", 500, "2025-09-06", "put", 2.0)
     otm_option = _make_option("B", 490, "2025-09-06", "put", 1.0)
     from algo_trading_engine.vo import create_position
@@ -138,7 +139,6 @@ def test_recommender_with_capital_manager_risk_check_fail(strategy_mock, decisio
 def test_recommender_calculates_max_risk_correctly(strategy_mock, decision_store, capital_manager):
     """Test that max risk is calculated correctly for credit spreads."""
     date = datetime(2025, 8, 8)
-    strategy_mock.data.loc.__getitem__.return_value = {"Close": 500}
     atm_option = _make_option("A", 500, "2025-09-06", "put", 2.0)
     otm_option = _make_option("B", 495, "2025-09-06", "put", 1.0)
     from algo_trading_engine.vo import create_position
@@ -171,7 +171,6 @@ def test_recommender_calculates_max_risk_correctly(strategy_mock, decision_store
 def test_recommender_displays_premium_info(strategy_mock, decision_store, capital_manager):
     """Test that premium information is displayed for credit strategies."""
     date = datetime(2025, 8, 8)
-    strategy_mock.data.loc.__getitem__.return_value = {"Close": 500}
     atm_option = _make_option("A", 500, "2025-09-06", "put", 2.0)
     otm_option = _make_option("B", 495, "2025-09-06", "put", 1.0)
     from algo_trading_engine.vo import create_position
@@ -204,8 +203,7 @@ def test_recommender_strategy_name_mapping(decision_store, allocations_config):
     date = datetime(2025, 8, 8)
     capital_manager = CapitalManager(allocations_config, decision_store)
     strategy_mock = MagicMock()
-    strategy_mock.data = MagicMock()
-    strategy_mock.data.loc.__getitem__.return_value = {"Close": 500}
+    _stub_universe_close(strategy_mock)
     mock_class = type("VelocitySignalMomentumStrategy", (), {})
     cast(Any, strategy_mock).__class__ = mock_class
     atm_option = _make_option("A", 500, "2025-09-06", "put", 2.0)

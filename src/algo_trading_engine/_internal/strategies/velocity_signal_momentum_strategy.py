@@ -69,7 +69,7 @@ class VelocitySignalMomentumStrategy(Strategy):
         return enriched
 
     @staticmethod
-    def universe_post_load(retriever: DataRetriever) -> PostLoadCallback:
+    def on_universe_load_complete(retriever: DataRetriever) -> PostLoadCallback:
         del retriever
         return VelocitySignalMomentumStrategy._enrich_velocity_frame
 

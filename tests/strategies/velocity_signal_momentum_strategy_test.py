@@ -664,8 +664,7 @@ class TestVelocityStrategyMarketData:
         prices = [100 + i * 0.1 for i in range(len(dates))]
         market_data = pd.DataFrame({"Close": prices}, index=dates)
         load_strategy_frame(strategy, market_data)
-        data = strategy.data
-        assert data is not None
+        data = strategy.universe.frame("SPY")
         assert "SMA_15" in data.columns
         assert "SMA_30" in data.columns
         assert "MA_Velocity_15_30" in data.columns

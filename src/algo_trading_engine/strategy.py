@@ -10,7 +10,6 @@ import math
 from typing import (
     Any,
     Callable,
-    ClassVar,
     Iterable,
     List,
     Optional,
@@ -99,7 +98,6 @@ class Strategy(ABC):
             """Close ``position`` at ``exit_price``."""
 
     universe_set: UniverseSet
-    universe_schema: ClassVar[DataFrameSchema] = default_ohlcv_schema()
 
     # Callables for options trading strategies. Default to a raising stub until injected.
     # Callable[..., Any] matches keyword calls and injected handlers without changing the stub.
@@ -138,7 +136,6 @@ class Strategy(ABC):
             self.universal_close_conditions = frozenset(UniversalCloseCondition)
         else:
             self.universal_close_conditions = frozenset(universal_close_conditions)
-        self._data_override: Optional[pd.DataFrame] = None
         self.treasury_data: Optional[TreasuryRates] = None
         self.plot_config: Optional["PlotConfig"] = None
         self.indicators: List[Indicator] = []
@@ -149,8 +146,8 @@ class Strategy(ABC):
             raise TypeError(f"{type(self).__name__} must define a non-empty class attribute universe_set")
         self.universe = Universe(
             universe_set,
-            schema=type(self).universe_schema,
-            post_load=type(self).universe_post_load(DataRetriever(use_cache=False)),
+            schema=type(self).universe_schema(),
+            post_load=type(self).on_universe_load_complete(DataRetriever(use_cache=False)),
         )
 
     @property
@@ -352,29 +349,6 @@ class Strategy(ABC):
         candidates = index[index <= date]
         return market_time(candidates[-1] if len(candidates) > 0 else index[-1])
 
-    @staticmethod
-    def universe_post_load(retriever: DataRetriever) -> PostLoadCallback:
-        """Build the universe ``post_load`` hook for this strategy."""
-        del retriever
-        return identity_post_load
-
-    @property
-    def data(self) -> Optional[pd.DataFrame]:
-        """Primary symbol frame (first universe symbol), when a universe is loaded."""
-        if self._data_override is not None:
-            return self._data_override
-        if not self.universe.symbols:
-            return None
-        try:
-            return self.universe.frame(self.universe.symbols[0])
-        except KeyError:
-            return None
-
-    @data.setter
-    def data(self, value: Optional[pd.DataFrame]) -> None:
-        """Allow tests and mocks to inject a primary frame without a full universe load."""
-        self._data_override = value
-
     def market_frame(self, symbol: str) -> pd.DataFrame:
         """Return the loaded frame for ``symbol``."""
         try:
@@ -385,7 +359,6 @@ class Strategy(ABC):
     def set_universe(self, universe: Universe, treasury_data: Optional[TreasuryRates] = None) -> None:
         """Attach loaded market data and optional treasury rates."""
         self.universe = universe
-        self._data_override = None
         self.treasury_data = treasury_data
 
     def finalize_universe(self) -> None:
@@ -410,6 +383,17 @@ class Strategy(ABC):
     def set_stop_loss(self, stop_loss: float):
         """Set the stop loss for the strategy."""
         self.stop_loss = stop_loss
+
+    @staticmethod
+    def universe_schema() -> DataFrameSchema:
+        """Pandera schema applied to each universe frame after ``post_load``."""
+        return default_ohlcv_schema()
+
+    @staticmethod
+    def on_universe_load_complete(retriever: DataRetriever) -> PostLoadCallback:
+        """Build the universe ``post_load`` hook for this strategy."""
+        del retriever
+        return identity_post_load
 
     def _profit_target_hit(self, position: "Position", exit_price: Optional[float]) -> bool:
         """

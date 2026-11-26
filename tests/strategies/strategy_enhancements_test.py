@@ -112,8 +112,7 @@ class TestVelocitySignalMomentumStrategyEnhancements:
 
     def test_universe_load_precomputes_moving_averages(self):
         """Universe post_load enriches frames with velocity moving averages."""
-        data = self.strategy.data
-        assert data is not None
+        data = self.strategy.universe.frame("SPY")
         assert "SMA_15" in data.columns
         assert "SMA_30" in data.columns
         assert "MA_Velocity_15_30" in data.columns

@@ -8,6 +8,8 @@ from datetime import datetime, timedelta
 from typing import cast
 from unittest.mock import Mock
 import pandas as pd
+from pandera.errors import SchemaError
+from pandera.pandas import Column, DataFrameSchema
 from algo_trading_engine.strategy import Strategy
 from algo_trading_engine.indicators.indicator import Indicator
 from algo_trading_engine.indicators.average_true_return_indicator import ATRIndicator
@@ -365,8 +367,8 @@ class TestStrategyUniverseFrame:
             index=dates,
         )
         load_strategy_frame(strategy, data)
-        assert strategy.data is not None
-        pd.testing.assert_frame_equal(strategy.data[data.columns], data, check_dtype=False)
+        frame = strategy.universe.frame("SPY")
+        pd.testing.assert_frame_equal(frame[data.columns], data, check_dtype=False)
         indicator.update(datetime(2024, 1, 5), data)
         assert indicator.last_update_data is data
 
@@ -683,8 +685,7 @@ class TestEnginePrecomputeIndicators:
     def test_no_op_when_no_indicators(self):
         strategy = ConcreteTestStrategy()
         load_strategy_frame(strategy, _hourly_ohlcv())
-        assert strategy.data is not None
-        _engine_precompute(strategy, strategy.data)
+        _engine_precompute(strategy, strategy.universe.frame("SPY"))
 
     def test_multiple_indicators_all_precomputed(self):
         atr = ATRIndicator(period=3)
@@ -754,8 +755,7 @@ class TestStrategyHistoricalLookupWithWarmUp:
             super().on_new_date(date, positions, add_position, remove_position)
             atr = self.indicators[0]
             self.current_atr_value = atr.get_value_at(date)
-            data = self.data
-            assert data is not None
+            data = self.universe.frame("SPY")
             bar_idx = data.index.get_loc(date)
             assert isinstance(bar_idx, int)
             if bar_idx >= self.lookback_bars:
@@ -806,3 +806,38 @@ class TestStrategyHistoricalLookupWithWarmUp:
         strategy.on_new_date(_as_datetime(data.index[-1]), (), Mock(), Mock())
         assert strategy.current_atr_value is None
         assert strategy.historical_atr_value is None
+
+
+class TestStrategyUniverseSchema:
+    """Strategy.universe_schema() is used when constructing Universe."""
+
+    def test_default_schema_accepts_ohlcv(self):
+        strategy = ConcreteTestStrategy()
+        load_strategy_frame(strategy, _daily_ohlcv(5))
+        assert not strategy.universe.frame("SPY").empty
+
+    def test_override_requires_declared_columns(self):
+        class SchemaOverrideStrategy(ConcreteTestStrategy):
+            @staticmethod
+            def universe_schema() -> DataFrameSchema:
+                return DataFrameSchema(
+                    {
+                        "Open": Column(float, nullable=True),
+                        "High": Column(float, nullable=True),
+                        "Low": Column(float, nullable=True),
+                        "Close": Column(float, nullable=True),
+                        "Volume": Column(float, nullable=True),
+                        "SMA_20": Column(float, nullable=True),
+                    },
+                    strict=False,
+                    coerce=True,
+                )
+
+        strategy = SchemaOverrideStrategy()
+        with pytest.raises(SchemaError):
+            load_strategy_frame(strategy, _daily_ohlcv(5))
+
+        frame = _daily_ohlcv(5)
+        frame["SMA_20"] = frame["Close"].rolling(window=2, min_periods=1).mean()
+        load_strategy_frame(strategy, frame)
+        assert "SMA_20" in strategy.universe.frame("SPY").columns

@@ -37,7 +37,7 @@ def _mock_strategy():
     mock_strategy.indicators = []
     mock_strategy.warm_up_period = 0
     mock_strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(0))
-    mock_strategy.universe_post_load = Mock(return_value=identity_post_load)
+    mock_strategy.on_universe_load_complete = Mock(return_value=identity_post_load)
     mock_strategy.validate_universe = Mock(return_value=True)
     return mock_strategy
 

@@ -64,7 +64,6 @@ def mock_strategy():
         index=dates,
     )
     strategy.universe = universe_from_frame("SPY", data)
-    strategy.data = data
     strategy.indicators = []
     strategy.recommend_open_position.return_value = None
     strategy.recommend_close_positions.return_value = []
@@ -264,7 +263,7 @@ def test_paper_trading_engine_strategy_name_extraction(mock_options_handler, pap
         strategy = MagicMock()
         cast(Any, strategy).__class__ = type(class_name, (), {})
         dates = pd.date_range(start="2025-01-01", end="2025-08-08", freq="D")
-        strategy.data = pd.DataFrame({"Close": [500.0] * len(dates)}, index=dates)
+        strategy.universe = universe_from_frame("SPY", pd.DataFrame({"Close": [500.0] * len(dates)}, index=dates))
         engine = PaperTradingEngine(
             strategy=strategy, config=paper_trading_config, options_handler=mock_options_handler
         )
@@ -329,7 +328,7 @@ class TestPaperTradingEngineFromConfig:
         mock_strategy.options_handler = None
         mock_strategy.warm_up_period = 0
         mock_strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(0))
-        mock_strategy.universe_post_load = Mock(return_value=identity_post_load)
+        mock_strategy.on_universe_load_complete = Mock(return_value=identity_post_load)
         return mock_strategy
 
     @patch("algo_trading_engine.trade.OptionsHandler")
@@ -534,7 +533,6 @@ class TestStrategyCallbacksFromPaperTradingEngine:
         dates = pd.date_range(start="2025-01-01", end="2025-08-08", freq="D")
         data = pd.DataFrame({"Close": [500.0] * len(dates)}, index=dates)
         strategy.universe = universe_from_frame("SPY", data)
-        strategy.data = data
         strategy.profit_target = None
         strategy.stop_loss = None
         strategy.indicators = []
@@ -678,7 +676,7 @@ class TestPaperTradingIndicatorUpdate:
         run_date = datetime(2024, 6, 1, 15, 30)
         engine.update_indicators(run_date)
         assert indicator.updates[0][0] == run_date
-        assert indicator.updates[0][1] is engine.strategy.data
+        assert indicator.updates[0][1] is engine.strategy.universe.frame("SPY")
 
     def test_skips_a_timestamp_already_precomputed(self):
         indicator = _RecordingIndicator()

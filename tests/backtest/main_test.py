@@ -103,8 +103,6 @@ class TestVolumeValidationIntegration:
     def test_backtest_engine_with_volume_validation_enabled(self):
         """Test BacktestEngine with volume validation enabled."""
         strategy = MockStrategy()
-        data = strategy.data
-        assert data is not None
         engine = BacktestEngine(
             strategy=strategy,
             initial_capital=10000,
@@ -154,8 +152,6 @@ class TestVolumeValidationIntegration:
             pass
 
         strategy = MockStrategyWithLowVolume()
-        data = strategy.data
-        assert data is not None
         engine = BacktestEngine(
             strategy=strategy,
             initial_capital=10000,
@@ -205,8 +201,6 @@ class TestVolumeValidationIntegration:
             pass
 
         strategy = MockStrategyWithMissingVolume()
-        data = strategy.data
-        assert data is not None
         engine = BacktestEngine(
             strategy=strategy,
             initial_capital=10000,
@@ -256,8 +250,6 @@ class TestVolumeValidationIntegration:
             pass
 
         strategy = MockStrategyWithCustomVolume()
-        data = strategy.data
-        assert data is not None
         engine = BacktestEngine(
             strategy=strategy,
             initial_capital=10000,
@@ -274,8 +266,6 @@ class TestVolumeValidationIntegration:
     def test_volume_statistics_reporting(self):
         """Test that volume statistics are properly tracked and reported."""
         strategy = MockStrategy()
-        data = strategy.data
-        assert data is not None
         engine = BacktestEngine(
             strategy=strategy,
             initial_capital=10000,
@@ -426,8 +416,6 @@ class TestUniversalCloseCallback:
                 super().on_remove_position_success(date, position, exit_price, underlying_price, current_volumes)
 
         strategy = MockStrategyWithCallback()
-        data = strategy.data
-        assert data is not None
         engine = BacktestEngine(
             strategy=strategy,
             initial_capital=10000,
@@ -539,8 +527,6 @@ class TestUniversalCloseCallback:
                 super().on_remove_position_success(date, position, exit_price, underlying_price, current_volumes)
 
         strategy = MockStrategyProfitTarget()
-        data = strategy.data
-        assert data is not None
         engine = BacktestEngine(
             strategy=strategy,
             initial_capital=10000,
@@ -646,8 +632,6 @@ class TestUniversalCloseCallback:
                 super().on_remove_position_success(date, position, exit_price, underlying_price, current_volumes)
 
         strategy = MockStrategyProfitTargetExcluded()
-        data = strategy.data
-        assert data is not None
         engine = BacktestEngine(
             strategy=strategy,
             initial_capital=10000,
@@ -729,8 +713,6 @@ class TestCreditSpreadAssignmentCapital:
 
     def _make_engine(self):
         strategy = MockStrategy()
-        data = strategy.data
-        assert data is not None
         return BacktestEngine(
             strategy=strategy,
             initial_capital=10000,

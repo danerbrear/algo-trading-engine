@@ -39,9 +39,10 @@ Order members in every class as follows:
 
 ### Strategy universe
 
-- A strategy's symbols are a class attribute `universe_set: UniverseSet` on that strategy implementation. `Universe` is constructed in `Strategy.__init__` from `universe_set`, `universe_schema`, and `universe_post_load`.
-- A pandera schema for a strategy's universe is a class attribute on that strategy implementation. Callers use `StrategyClass.universe_schema`.
+- A strategy's symbols are a class attribute `universe_set: UniverseSet` on that strategy implementation. `Universe` is constructed in `Strategy.__init__` from `universe_set`, `universe_schema()`, and `on_universe_load_complete`.
+- Override `universe_schema()` when a strategy needs a pandera schema other than `default_ohlcv_schema()`. Override `on_universe_load_complete` to enrich frames after fetch.
 - Do not put a single `symbol` (or similar) attribute on `Strategy` or strategy implementations. Symbols live on the universe; methods that need one symbol take it as a parameter (or read from a position / loop variable).
+- Do not put a single `data` frame on `Strategy`. Market data lives on the universe; use `self.universe.frame(symbol)` or `self.market_frame(symbol)`.
 
 ### Startup and imports
 
