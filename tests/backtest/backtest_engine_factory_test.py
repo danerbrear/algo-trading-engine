@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from unittest.mock import Mock, patch
 import pandas as pd
 from algo_trading_engine.backtest.main import BacktestEngine
+from algo_trading_engine.enums import BarTimeInterval
 from algo_trading_engine.models.config import BacktestConfig
 from algo_trading_engine.models.config import VolumeConfig
 from tests.conftest import universe_from_frame
@@ -65,6 +66,7 @@ class TestBacktestEngineFactory:
         engine = BacktestEngine.from_config(config)
         mock_data_retriever.assert_called_once_with(use_cache=True)
         mock_strategy.universe.load.assert_called_once()
+        assert mock_strategy.universe.load.call_args[0][1] == config.bar_interval
         mock_options_handler.assert_called_once_with(api_key="test_key", use_free_tier=False)
         mock_create_strategy.assert_called_once()
         call_kwargs = mock_create_strategy.call_args[1]
@@ -95,6 +97,28 @@ class TestBacktestEngineFactory:
         engine = BacktestEngine.from_config(config)
         assert engine.strategy == mock_strategy
         mock_strategy.set_treasury_rates.assert_called_once()
+
+    @patch("algo_trading_engine.backtest.main.OptionsHandler")
+    @patch("algo_trading_engine.backtest.main.DataRetriever")
+    def test_from_config_loads_universe_with_config_bar_interval(self, mock_data_retriever, _mock_options_handler):
+        """Universe load uses the configured bar interval, not a hardcoded daily interval."""
+        mock_strategy = _mock_strategy()
+        mock_strategy.options_handler = None
+        mock_retriever_instance = Mock()
+        mock_retriever_instance.load_treasury_rates.return_value = None
+        mock_retriever_instance.fetch_data_for_period.return_value = _sample_frame()
+        mock_data_retriever.return_value = mock_retriever_instance
+        config = BacktestConfig(
+            initial_capital=100000,
+            start_date=datetime(2024, 1, 1),
+            end_date=datetime(2024, 1, 31),
+            strategy_type=mock_strategy,
+            api_key="test_key",
+            bar_interval=BarTimeInterval.HOUR,
+        )
+        BacktestEngine.from_config(config)
+        load_args = mock_strategy.universe.load.call_args[0]
+        assert load_args[1] == BarTimeInterval.HOUR
 
     @patch("algo_trading_engine.backtest.main.create_strategy_from_args")
     @patch("algo_trading_engine.backtest.main.OptionsHandler")

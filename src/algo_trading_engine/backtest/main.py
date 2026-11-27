@@ -171,7 +171,7 @@ class BacktestEngine(TradingEngine):
             raise ValueError("Universe has no symbols")
 
         strategy.set_treasury_rates(retriever.load_treasury_rates(config.start_date, config.end_date))
-        strategy.universe.load(retriever, BarTimeInterval.DAY, fetch_start, fetch_end)
+        strategy.universe.load(retriever, config.bar_interval, fetch_start, fetch_end)
         strategy.set_plot_config(config.plot_config)
 
         example_symbol = strategy.universe.symbols[0]
