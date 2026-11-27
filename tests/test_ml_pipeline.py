@@ -49,13 +49,11 @@ def test_prepare_credit_spread_backtest_data_applies_market_state():
         index=dates,
     )
 
-    retriever = MagicMock()
-    retriever.calculate_features_for_data.side_effect = lambda df, window=20: None
-
     mock_classifier = MagicMock()
     mock_classifier.predict_states.return_value = pd.Series([1] * len(dates), index=dates)
 
     with (
+        patch("algo_trading_engine.data_retriever.DataRetriever.calculate_features_for_data") as mock_features,
         patch(
             "algo_trading_engine._internal.ml_models.model_loaders.get_model_directory",
             return_value="/tmp/models",
@@ -70,8 +68,8 @@ def test_prepare_credit_spread_backtest_data_applies_market_state():
     ):
         mock_calendar_cls.return_value.calculate_all_features.side_effect = lambda df: df
 
-        result = prepare_credit_spread_backtest_data(data, retriever, "SPY")
+        result = prepare_credit_spread_backtest_data(data, "SPY")
 
     assert "Market_State" in result.columns
-    retriever.calculate_features_for_data.assert_called_once()
+    mock_features.assert_called_once()
     mock_classifier.predict_states.assert_called_once()

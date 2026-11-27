@@ -10,6 +10,14 @@ from algo_trading_engine.vo import Option
 from algo_trading_engine.vo import create_position
 
 
+def _stub_universe_close(strategy: MagicMock, close: float = 500) -> None:
+    frame = MagicMock()
+    frame.loc.__getitem__.return_value = {"Close": close}
+    frame.empty = False
+    strategy.universe.symbols = ["SPY"]
+    strategy.universe.frame.return_value = frame
+
+
 def _make_option(symbol: str, strike: float, expiration: str, opt_type: str, last: float, volume: int = 100) -> Option:
     return Option.from_dict(
         {
@@ -107,10 +115,8 @@ def test_recommender_open_accept(tmp_path):
     atm_option = _make_option("A", 500, "2025-09-06", "put", 2.0)
     otm_option = _make_option("B", 495, "2025-09-06", "put", 1.0)
     strategy = MagicMock()
-    strategy.data = MagicMock()
-    strategy.symbol = "SPY"
+    _stub_universe_close(strategy)
     date = datetime(2025, 8, 8)
-    strategy.data.loc.__getitem__.return_value = {"Close": 500}
     mock_class = type("CreditSpreadStrategy", (), {})
     cast(Any, strategy).__class__ = mock_class
     from algo_trading_engine.vo import create_position
@@ -164,9 +170,7 @@ def test_recommender_close_accept(tmp_path):
     store = JsonDecisionStore(base_dir=str(tmp_path))
     store.append_decision(record)
     strategy = MagicMock()
-    strategy.symbol = "SPY"
-    strategy.data = MagicMock()
-    strategy.data.loc.__getitem__.return_value = {"Close": 500}
+    _stub_universe_close(strategy)
     mock_class = type("CreditSpreadStrategy", (), {})
     cast(Any, strategy).__class__ = mock_class
     from algo_trading_engine.vo import create_position
@@ -190,10 +194,8 @@ def test_recommender_open_calls_on_add_position_success(tmp_path):
     atm_option = _make_option("A", 500, "2025-09-06", "put", 2.0)
     otm_option = _make_option("B", 495, "2025-09-06", "put", 1.0)
     strategy = MagicMock()
-    strategy.data = MagicMock()
-    strategy.symbol = "SPY"
+    _stub_universe_close(strategy)
     date = datetime(2025, 8, 8)
-    strategy.data.loc.__getitem__.return_value = {"Close": 500}
     mock_class = type("CreditSpreadStrategy", (), {})
     cast(Any, strategy).__class__ = mock_class
     created_position = create_position(
@@ -246,9 +248,7 @@ def test_recommender_close_calls_on_remove_position_success(tmp_path):
     store = JsonDecisionStore(base_dir=str(tmp_path))
     store.append_decision(record)
     strategy = MagicMock()
-    strategy.symbol = "SPY"
-    strategy.data = MagicMock()
-    strategy.data.loc.__getitem__.return_value = {"Close": 500}
+    _stub_universe_close(strategy)
     mock_class = type("CreditSpreadStrategy", (), {})
     cast(Any, strategy).__class__ = mock_class
     close_date = datetime(2025, 8, 8)
@@ -306,10 +306,8 @@ def test_strategy_b_ignores_strategy_a_open_position(tmp_path):
     store.append_decision(record_a)
     assert len(store.get_open_positions()) == 1
     strategy_b = MagicMock()
-    strategy_b.data = MagicMock()
-    strategy_b.symbol = "SPY"
+    _stub_universe_close(strategy_b)
     date = datetime(2025, 8, 8)
-    strategy_b.data.loc.__getitem__.return_value = {"Close": 500}
     cast(Any, strategy_b).__class__ = type("VelocitySignalMomentumStrategy", (), {})
     received_positions = []
 
@@ -353,10 +351,8 @@ def test_strategy_sees_its_own_open_position(tmp_path):
     store = JsonDecisionStore(base_dir=str(tmp_path))
     store.append_decision(record)
     strategy_a = MagicMock()
-    strategy_a.data = MagicMock()
-    strategy_a.symbol = "SPY"
+    _stub_universe_close(strategy_a)
     date = datetime(2025, 8, 8)
-    strategy_a.data.loc.__getitem__.return_value = {"Close": 500}
     cast(Any, strategy_a).__class__ = type("CreditSpreadStrategy", (), {})
     received_positions = []
 
@@ -386,7 +382,6 @@ def test_get_exit_price_from_user_prompts_uses_leg_prices_as_defaults(tmp_path):
     )
     position.set_quantity(1)
     strategy = MagicMock()
-    strategy.symbol = "SPY"
     store = JsonDecisionStore(base_dir=str(tmp_path))
     allocations_config = {"strategies": {"credit_spread": {"allocated_capital": 10000.0, "max_risk_percentage": 0.05}}}
     capital_manager = CapitalManager(allocations_config, store)
@@ -413,7 +408,6 @@ def test_get_exit_price_from_user_prompts_accepts_custom_leg_prices(tmp_path):
     )
     position.set_quantity(1)
     strategy = MagicMock()
-    strategy.symbol = "SPY"
     store = JsonDecisionStore(base_dir=str(tmp_path))
     allocations_config = {"strategies": {"credit_spread": {"allocated_capital": 10000.0, "max_risk_percentage": 0.05}}}
     capital_manager = CapitalManager(allocations_config, store)

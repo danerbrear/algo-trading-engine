@@ -6,6 +6,9 @@ from datetime import datetime
 from typing import cast
 from unittest.mock import Mock
 
+import pandas as pd
+
+from tests.conftest import load_strategy_frame
 from algo_trading_engine.backtest.main import BacktestEngine
 from algo_trading_engine.models.config import VolumeConfig
 from algo_trading_engine._internal.strategies.credit_spread_minimal import CreditSpreadStrategy
@@ -41,8 +44,20 @@ class TestPhase2Integration:
             get_options_chain=self.get_options_chain,
             lstm_model=self.mock_lstm_model,
             lstm_scaler=self.mock_lstm_scaler,
-            symbol="SPY",
             options_handler=self.mock_options_handler,  # Still needed for LSTMModel
+        )
+        load_strategy_frame(
+            self.strategy,
+            pd.DataFrame(
+                {
+                    "Open": [500.0, 510.0],
+                    "High": [501.0, 511.0],
+                    "Low": [499.0, 509.0],
+                    "Close": [500.0, 510.0],
+                    "Volume": [1_000_000.0, 1_100_000.0],
+                },
+                index=pd.DatetimeIndex([datetime(2024, 1, 15), datetime(2024, 2, 15)]),
+            ),
         )
 
         # Create test options
@@ -86,9 +101,7 @@ class TestPhase2Integration:
         )
 
         # Create backtest engine
-        self.engine = BacktestEngine(
-            data=self.mock_data, strategy=self.strategy, initial_capital=100000, volume_config=self.volume_config
-        )
+        self.engine = BacktestEngine(strategy=self.strategy, initial_capital=100000, volume_config=self.volume_config)
 
         # Add position to engine
         self.engine.positions.append(self.position)
@@ -167,7 +180,6 @@ class TestPhase2Integration:
         """Test position closure with volume validation disabled."""
         # Create engine with volume validation disabled
         engine_disabled = BacktestEngine(
-            data=self.mock_data,
             strategy=self.strategy,
             initial_capital=100000,
             volume_config=VolumeConfig(min_volume=10, enable_volume_validation=False),

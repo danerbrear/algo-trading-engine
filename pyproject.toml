@@ -18,7 +18,8 @@ dependencies = [
     "python-dotenv>=1.0.1",
     "tqdm>=4.66.0",
     "loguru>=0.7.0",
-    "vollib>=1.0.11"
+    "vollib>=1.0.11",
+    "pandera>=0.20.0",
 ]
 
 [project.optional-dependencies]

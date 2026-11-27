@@ -12,12 +12,13 @@ import pandas as pd
 
 from algo_trading_engine import DataRetriever, Strategy
 from algo_trading_engine._internal.util.market_clock import market_now
+from algo_trading_engine._internal.util.date_formats import DateFormats
 from algo_trading_engine.logging import get_logger
 from algo_trading_engine.enums import BarTimeInterval, UniversalCloseCondition
 from algo_trading_engine.models import EngineConfig
 from algo_trading_engine.models.config import BacktestConfig, PaperTradingConfig
 from algo_trading_engine.dto import OptionBarDTO
-from algo_trading_engine.vo import Position
+from algo_trading_engine.vo import Position, Universe
 
 # Minimum calendar lookback for LSTM / feature history in paper trading (aligned with prior default).
 DEFAULT_PAPER_TRADING_LSTM_LOOKBACK_DAYS = 120
@@ -40,12 +41,12 @@ def compute_paper_trading_fetch_start_date(
     lstm_start = now - timedelta(days=lstm_lookback_days)
     warmup_start = now - strategy.get_warm_up_period_timedelta(bar_interval)
     earliest = min(lstm_start, warmup_start)
-    return earliest.strftime("%Y-%m-%d")
+    return earliest.strftime(DateFormats.ISO_DATE)
 
 
 def make_rt_option_bar(
     options_handler,
-) -> Callable[[str], Optional[OptionBarDTO]]:
+) -> Callable[[str, str], Optional[OptionBarDTO]]:
     """
     Build a near-real-time option bar callable for live/paper trading.
 
@@ -55,8 +56,8 @@ def make_rt_option_bar(
     which BacktestConfig sets False and PaperTradingConfig sets True.
     """
 
-    def _get_rt_option_bar(ticker: str) -> Optional[OptionBarDTO]:
-        return options_handler.get_option_snapshot(ticker)
+    def _get_rt_option_bar(symbol: str, ticker: str) -> Optional[OptionBarDTO]:
+        return options_handler.get_option_snapshot(symbol, ticker)
 
     return _get_rt_option_bar
 
@@ -72,12 +73,12 @@ class TradingEngine(ABC):
     def __init__(
         self,
         strategy: Strategy,
-        data: pd.DataFrame,
+        universe: Universe,
         config: Optional[EngineConfig],
         bar_interval: Optional["BarTimeInterval"] = None,
     ):
         self._strategy = strategy
-        self._data = data
+        self._universe = universe
         self._config = config
         self.bar_interval = bar_interval
 
@@ -88,9 +89,14 @@ class TradingEngine(ABC):
         self.precompute_indicators()
 
     @property
+    def universe(self) -> Universe:
+        """Loaded market data for all symbols in the engine universe."""
+        return self._universe
+
+    @property
     def data(self) -> pd.DataFrame:
-        """Get the market data."""
-        return self._data
+        """Primary symbol frame (first symbol in the universe)."""
+        return self._universe.frame(self._universe.symbols[0])
 
     @property
     @abstractmethod
@@ -135,19 +141,23 @@ class TradingEngine(ABC):
         """
 
     def precompute_indicators(self) -> None:
-        """Vectorized indicator fill for all bars in engine data."""
+        """Vectorized indicator fill for all bars in each universe symbol frame."""
         if not self._strategy.indicators:
             return
-        if self._data is None or self._data.empty:
-            raise ValueError(
-                "Cannot precompute indicators without data. "
-                "Provide market data before constructing the trading engine."
-            )
-        for indicator in self._strategy.indicators:
-            indicator.precompute(self._data)
+        bar_count = 0
+        for symbol in self._universe.symbols:
+            try:
+                frame = self._universe.frame(symbol)
+            except KeyError as exc:
+                raise ValueError(f"Cannot precompute indicators without data for {symbol}") from exc
+            if frame.empty:
+                raise ValueError(f"Cannot precompute indicators without data for {symbol}")
+            for indicator in self._strategy.indicators:
+                indicator.precompute(frame)
+            bar_count += len(frame)
         get_logger().info(
             f"Indicator precompute complete: {len(self._strategy.indicators)} indicator(s), "
-            f"{len(self._data)} bar(s)"
+            f"{bar_count} bar(s) across {len(self._universe.symbols)} symbol(s)"
         )
 
     def get_current_volumes_for_position(self, position: Position, date: Optional[datetime] = None) -> list[int | None]:
@@ -209,10 +219,8 @@ class TradingEngine(ABC):
         ``remove_position`` closes the position when a condition is met. When omitted, a met
         condition is logged and the position is left open.
         """
-        # Get symbol from strategy if available, otherwise default to 'SPY'
-        symbol = getattr(self.strategy, "symbol", "SPY")
-        current_underlying_price = self.strategy.get_current_underlying_price(date, symbol)
         for position in self.get_positions():
+            current_underlying_price = self.strategy.get_current_underlying_price(date, position.symbol)
             # Get current volumes for this specific position
             current_volumes = self.get_current_volumes_for_position(position, date)
             volume_snapshot = tuple(current_volumes) if current_volumes is not None else None
@@ -270,8 +278,8 @@ class TradingEngine(ABC):
                 if config is not None and hasattr(config, "use_cache"):
                     use_cache = config.use_cache
 
-                data_retriever = DataRetriever(symbol=symbol, use_cache=use_cache)
-                live_price = data_retriever.get_live_price()
+                data_retriever = DataRetriever(use_cache=use_cache)
+                live_price = data_retriever.get_live_price(symbol)
             except Exception as e:
                 raise ValueError(f"Failed to fetch live price from DataRetriever: {e}") from e
 
@@ -281,12 +289,15 @@ class TradingEngine(ABC):
                 raise ValueError("Failed to fetch live price from DataRetriever.")
         else:
             # Historical date - return Close price from data
+            if self._strategy.universe is None:
+                return None
             try:
-                return float(self.data.loc[date]["Close"])
+                frame = self._strategy.universe.frame(symbol)
+                return float(frame.loc[date]["Close"])
             except (KeyError, IndexError):
-                # If exact date not found, try to get closest available date
                 try:
-                    return float(self.data.loc[self.data.index <= date]["Close"].iloc[-1])
+                    frame = self._strategy.universe.frame(symbol)
+                    return float(frame.loc[frame.index <= date]["Close"].iloc[-1])
                 except (IndexError, KeyError) as e:
                     raise ValueError(f"Could not find price data for date {date.date()}") from e
 

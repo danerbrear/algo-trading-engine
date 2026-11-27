@@ -4,8 +4,8 @@ Setup script to create a virtual environment and .env file for environment varia
 
 This script will:
 1. Create a Python virtual environment
-2. Install the algo-trading-engine package in editable mode
-3. Install all dependencies from pyproject.toml
+2. Install the algo-trading-engine package in editable mode with the ``dev`` extra
+3. Install all runtime and development dependencies from pyproject.toml
 4. Install pre-commit git hooks
 5. Set up the .env file with API keys
 6. Make CLI commands available (algo-backtest, algo-paper-trade)
@@ -80,9 +80,9 @@ def create_venv():
             print(f"Warning: Could not upgrade pip: {e}")
             print("Continuing with existing pip version...")
 
-        # Install package in editable mode (this installs all dependencies from pyproject.toml)
-        print("Installing algo-trading-engine package and dependencies...")
-        subprocess.run([str(pip_path), "install", "-e", "."], check=True)
+        # Editable install with [dev] (runtime + lint/test tooling from pyproject.toml)
+        print("Installing algo-trading-engine package and dependencies (including [dev])...")
+        subprocess.run([str(pip_path), "install", "-e", ".[dev]"], check=True)
         print("✅ Package and dependencies installed successfully!")
         print("✅ CLI commands available: algo-backtest, algo-paper-trade")
     else:
@@ -104,8 +104,8 @@ def create_venv():
             except subprocess.CalledProcessError as e:
                 print(f"Warning: Could not upgrade pip: {e}")
 
-            # Reinstall package (updates dependencies)
-            subprocess.run([str(pip_path), "install", "-e", ".", "--upgrade"], check=True)
+            # Reinstall package with [dev] (updates runtime + lint/test tooling)
+            subprocess.run([str(pip_path), "install", "-e", ".[dev]", "--upgrade"], check=True)
             print("✅ Packages updated successfully!")
 
 

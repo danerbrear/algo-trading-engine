@@ -9,6 +9,7 @@ import os
 
 from algo_trading_engine.dto.decisions import DecisionResponseDTO
 from algo_trading_engine.dto.trade import ProposedPositionRequestDTO
+from algo_trading_engine._internal.util.date_formats import DateFormats
 from algo_trading_engine.enums import StrategyType
 
 
@@ -185,7 +186,7 @@ class JsonDecisionStore(DecisionStore):
         os.makedirs(self.base_dir, exist_ok=True)
 
     def _file_path_for_date(self, date_obj: date) -> str:
-        fname = f"decisions_{date_obj.strftime('%Y%m%d')}.json"
+        fname = f"decisions_{date_obj.strftime(DateFormats.COMPACT_DATE)}.json"
         return os.path.join(self.base_dir, fname)
 
     def _list_decision_files(self) -> List[str]:
@@ -229,4 +230,4 @@ def _iso_to_date(iso_str: str) -> date:
     try:
         return datetime.fromisoformat(iso_str).date()
     except Exception:
-        return datetime.strptime(iso_str, "%Y-%m-%d").date()
+        return datetime.strptime(iso_str, DateFormats.ISO_DATE).date()

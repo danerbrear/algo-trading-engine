@@ -14,6 +14,8 @@ from dotenv import load_dotenv
 from pathlib import Path
 import importlib.util
 
+from pandera.errors import SchemaError, SchemaErrors
+
 # Import from the public API
 from algo_trading_engine import BacktestEngine, BacktestConfig
 from algo_trading_engine.enums import BarTimeInterval
@@ -47,7 +49,6 @@ def main():
         start_date=datetime(2026, 1, 1),
         end_date=datetime(2026, 6, 12),
         max_position_size=0.20,
-        symbol="SPY",
         strategy_type=custom_strategy,  # Pass strategy instance
         api_key=polygon_api_key,
         bar_interval=BarTimeInterval.HOUR,
@@ -55,10 +56,8 @@ def main():
         quiet_mode=False,
     )
 
-    # Create and run engine - all data fetching and setup is handled internally
-    engine = BacktestEngine.from_config(config)
-
     try:
+        engine = BacktestEngine.from_config(config)
         success = engine.run()
 
         if success:
@@ -76,6 +75,9 @@ def main():
             sys.exit(1)
     except KeyboardInterrupt:
         print("Backtest interrupted by user.")
+        sys.exit(1)
+    except (SchemaError, SchemaErrors) as e:
+        print(f"Data not valid: {e}")
         sys.exit(1)
     except Exception as e:
         print(f"Error during backtest: {e}")

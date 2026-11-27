@@ -9,6 +9,7 @@ from typing import Sequence
 import numpy as np
 
 from algo_trading_engine.plotting.spec import BarSpec, HeatmapSpec, PlotSpec
+from algo_trading_engine._internal.util.date_formats import DateFormats
 
 _NON_INTERACTIVE_BACKENDS = frozenset({"agg", "svg", "pdf", "ps", "cairo", "template"})
 
@@ -120,7 +121,7 @@ def render_lines_on_axes(spec: PlotSpec, ax) -> None:
     if spec.x == "timestamp":
         import matplotlib.dates as mdates  # pylint: disable=import-outside-toplevel
 
-        ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
+        ax.xaxis.set_major_formatter(mdates.DateFormatter(DateFormats.ISO_DATE))
         plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
 
 

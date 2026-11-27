@@ -5,12 +5,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, Optional
 from vollib.black_scholes.implied_volatility import implied_volatility
 
-from algo_trading_engine._internal.util.datetime_helpers import (
-    EXPIRATION_DATE_FORMAT,
-    to_readable_str,
-    to_readable_expiration_str,
-)
-
+from algo_trading_engine._internal.util.date_formats import DateFormats
 from algo_trading_engine.enums import OptionType
 
 if TYPE_CHECKING:
@@ -58,7 +53,7 @@ class Option:
             raise ValueError(f"option_type must be a string or OptionType enum, got {type(self.option_type)}")
 
         if isinstance(self.expiration, datetime):
-            object.__setattr__(self, "expiration", to_readable_expiration_str(self.expiration))
+            object.__setattr__(self, "expiration", self.expiration.strftime(DateFormats.EXPIRATION))
 
         if self.mid_price is None and self.bid is not None and self.ask is not None:
             object.__setattr__(self, "mid_price", (self.bid + self.ask) / 2)
@@ -86,7 +81,10 @@ class Option:
         )
 
     def __str__(self) -> str:
-        return f"{self.symbol} {self.option_type.value.upper()} {self.strike} @ {self.last_price:.2f} as of {to_readable_str(self.timestamp)}"
+        return (
+            f"{self.symbol} {self.option_type.value.upper()} {self.strike} @ {self.last_price:.2f} "
+            f"as of {self.timestamp.strftime(DateFormats.PRINTABLE)}"
+        )
 
     def __repr__(self) -> str:
         return (
@@ -128,7 +126,7 @@ class Option:
     @property
     def time_to_expiration(self) -> float:
         """Time to expiration in years"""
-        expiration_dt = datetime.strptime(self.expiration, EXPIRATION_DATE_FORMAT)
+        expiration_dt = datetime.strptime(self.expiration, DateFormats.EXPIRATION)
         diff = expiration_dt - self.timestamp
         return diff.days / 365
 

@@ -13,6 +13,8 @@ from unittest.mock import patch, MagicMock
 from datetime import datetime
 from io import StringIO
 
+from algo_trading_engine._internal.util.date_formats import DateFormats
+
 
 def test_backtest_cli_parse_arguments():
     """Test that backtest CLI parses arguments correctly."""
@@ -126,14 +128,13 @@ def test_backtest_cli_creates_config():
         args = parse_arguments()
 
         # Manually create config like main() does
-        start_date = datetime.strptime(args.start_date, "%Y-%m-%d")
-        end_date = datetime.strptime(args.end_date, "%Y-%m-%d")
+        start_date = datetime.strptime(args.start_date, DateFormats.ISO_DATE)
+        end_date = datetime.strptime(args.end_date, DateFormats.ISO_DATE)
 
         config = BacktestConfig(
             initial_capital=args.initial_capital,
             start_date=start_date,
             end_date=end_date,
-            symbol=args.symbol,
             strategy_type=args.strategy,
             max_position_size=args.max_position_size,
             use_free_tier=args.free,
@@ -146,7 +147,6 @@ def test_backtest_cli_creates_config():
         assert config.initial_capital == 10000
         assert config.start_date == datetime(2024, 6, 1)
         assert config.end_date == datetime(2024, 12, 31)
-        assert config.symbol == "DIA"
         assert config.strategy_type == "credit_spread"
         assert config.max_position_size == 0.25
         assert config.use_free_tier is True
@@ -175,12 +175,12 @@ def test_backtest_cli_date_defaults():
         if args.start_date is None:
             start_date = today - timedelta(days=365)
         else:
-            start_date = datetime.strptime(args.start_date, "%Y-%m-%d")
+            start_date = datetime.strptime(args.start_date, DateFormats.ISO_DATE)
 
         if args.end_date is None:
             end_date = today
         else:
-            end_date = datetime.strptime(args.end_date, "%Y-%m-%d")
+            end_date = datetime.strptime(args.end_date, DateFormats.ISO_DATE)
 
         # Verify date logic
         assert start_date < end_date
@@ -239,6 +239,62 @@ def test_backtest_main_failure(mock_getenv, mock_engine_class):
 
         # Should exit with 1 (failure)
         assert exc_info.value.code == 1
+
+
+@patch("algo_trading_engine.backtest.main.BacktestEngine")
+@patch("os.getenv")
+def test_backtest_main_schema_error(mock_getenv, mock_engine_class, capsys):
+    """Schema validation failures print a dedicated message and exit 1."""
+    from pandera.errors import SchemaError
+
+    from algo_trading_engine.backtest.main import main
+
+    mock_getenv.return_value = "test_api_key"
+    mock_engine_class.from_config.side_effect = SchemaError(None, None, "missing Close")
+    test_args = ["prog", "--strategy", "credit_spread", "--start-date", "2024-01-01", "--end-date", "2024-01-31"]
+
+    with patch.object(sys, "argv", test_args):
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+
+    assert exc_info.value.code == 1
+    assert "validating the fetched data" in capsys.readouterr().out
+
+
+@patch("algo_trading_engine.backtest.main.BacktestEngine")
+@patch("os.getenv")
+def test_backtest_main_schema_errors(mock_getenv, mock_engine_class, capsys):
+    """Collected SchemaErrors (extra columns) print a dedicated message and exit 1."""
+    import pandas as pd
+    from pandera.errors import SchemaErrors
+
+    from algo_trading_engine.backtest.main import main
+    from algo_trading_engine.vo.universe import default_ohlcv_schema
+
+    frame = pd.DataFrame(
+        {
+            "Open": [100.0],
+            "High": [101.0],
+            "Low": [99.0],
+            "Close": [100.5],
+            "Volume": [1_000_000.0],
+            "Dividends": [0.0],
+        },
+        index=pd.date_range("2024-01-01", periods=1, freq="D"),
+    )
+    with pytest.raises(SchemaErrors) as schema_exc:
+        default_ohlcv_schema().validate(frame)
+
+    mock_getenv.return_value = "test_api_key"
+    mock_engine_class.from_config.side_effect = schema_exc.value
+    test_args = ["prog", "--strategy", "credit_spread", "--start-date", "2024-01-01", "--end-date", "2024-01-31"]
+
+    with patch.object(sys, "argv", test_args):
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+
+    assert exc_info.value.code == 1
+    assert "validating the fetched data" in capsys.readouterr().out
 
 
 def test_cli_entrypoint_definitions():

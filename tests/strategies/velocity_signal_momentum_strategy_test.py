@@ -1,5 +1,7 @@
 """Tests for VelocitySignalMomentumStrategy."""
 
+from tests.conftest import load_strategy_frame
+
 # These tests call the strategy's private helpers directly.
 # pylint: disable=protected-access
 
@@ -7,7 +9,7 @@ import inspect
 from datetime import datetime
 from decimal import Decimal
 from typing import Optional, Sequence
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import pandas as pd
 import pytest
@@ -309,7 +311,7 @@ class TestVelocitySignalMomentumStrategy:
         ]
         strategy.get_contract_list_for_date = Mock(return_value=contracts)
         date = datetime(2024, 1, 1)
-        picked = strategy._select_week_expiration(date)
+        picked = strategy._select_week_expiration(date, "SPY")
         assert picked == "2024-01-08"
 
     def test_get_current_underlying_price(self):
@@ -326,7 +328,7 @@ class TestVelocitySignalMomentumStrategy:
         dates = pd.date_range("2024-01-01", periods=3)
         data = pd.DataFrame({"Close": [100.0, 101.0, 102.0]}, index=dates)
         data.index.name = "SPY"
-        strategy.set_data(data)
+        load_strategy_frame(strategy, data)
 
         def mock_get_price(date: datetime, symbol: str) -> Optional[float]:
             _ = symbol
@@ -418,7 +420,7 @@ class TestVelocitySignalMomentumStrategy:
 
     def test_get_risk_free_rate_with_treasury_data(self):
         """Test getting risk-free rate when treasury data is available"""
-        self.strategy.set_data(self.market_data, self.treasury_rates)
+        load_strategy_frame(self.strategy, self.market_data, self.treasury_rates)
         current_date = datetime(2021, 1, 15)
         risk_free_rate = self.strategy._get_risk_free_rate(current_date)
         assert isinstance(risk_free_rate, float)
@@ -435,8 +437,8 @@ class TestVelocitySignalMomentumStrategy:
             get_option_bar=get_option_bar,
             get_options_chain=get_options_chain,
         )
-        strategy.set_data(
-            pd.DataFrame({"Close": [100, 101, 102]}, index=pd.date_range("2024-01-02", periods=3, freq="D"))
+        load_strategy_frame(
+            strategy, pd.DataFrame({"Close": [100, 101, 102]}, index=pd.date_range("2024-01-02", periods=3, freq="D"))
         )
         rate = strategy._get_risk_free_rate(datetime.now())
         assert rate == 2.0
@@ -450,11 +452,13 @@ class TestVelocitySignalMomentumStrategy:
         atm_bar = _option_bar("O:SPY240115P100", "2.50")
         otm_bar = _option_bar("O:SPY240115P94", "0.50")
         strategy.get_option_bar = Mock(
-            side_effect=lambda ticker, bar_date, multiplier=1, timespan=None: atm_bar if "100" in ticker else otm_bar
+            side_effect=lambda _symbol, ticker, bar_date, multiplier=1, timespan=None: (
+                atm_bar if "100" in ticker else otm_bar
+            )
         )
         prices = pd.DataFrame({"Close": [100, 101, 102]}, index=pd.date_range("2024-01-01", periods=3))
-        strategy.set_data(prices, _treasury_rates())
-        position = strategy._create_put_credit_spread(datetime(2024, 1, 1), 100.0, "2024-01-15")
+        load_strategy_frame(strategy, prices, _treasury_rates())
+        position = strategy._create_put_credit_spread(datetime(2024, 1, 1), 100.0, "2024-01-15", "SPY")
         assert position is not None
         assert position.strategy_type == StrategyType.PUT_CREDIT_SPREAD
         assert position.strike_price == 100.0
@@ -465,8 +469,8 @@ class TestVelocitySignalMomentumStrategy:
         """Test creating a test put credit spread when no credit is received."""
         strategy = _new_strategy()
         prices = pd.DataFrame({"Close": [100, 101, 102]}, index=pd.date_range("2024-01-01", periods=3))
-        strategy.set_data(prices, _treasury_rates())
-        position = strategy._create_put_credit_spread(datetime(2024, 1, 1), 100.0, "2024-01-15")
+        load_strategy_frame(strategy, prices, _treasury_rates())
+        position = strategy._create_put_credit_spread(datetime(2024, 1, 1), 100.0, "2024-01-15", "SPY")
         assert position is None
 
 
@@ -489,8 +493,8 @@ class TestVelocityBuySignal:
         remaining_days = len(dates) - len(base_prices)
         prices = base_prices + [110] * remaining_days
         market_data = pd.DataFrame({"Close": prices}, index=dates)
-        strategy.set_data(market_data)
-        result = strategy._has_buy_signal(datetime(2024, 2, 8))
+        load_strategy_frame(strategy, market_data)
+        result = strategy._has_buy_signal(datetime(2024, 2, 8), "SPY")
         assert result is True
 
     def test_has_buy_signal_no_data(self):
@@ -504,7 +508,7 @@ class TestVelocityBuySignal:
             get_option_bar=get_option_bar,
             get_options_chain=get_options_chain,
         )
-        result = strategy._has_buy_signal(datetime(2024, 1, 20))
+        result = strategy._has_buy_signal(datetime(2024, 1, 20), "SPY")
         assert result is False
 
     def test_has_buy_signal_insufficient_history(self):
@@ -520,8 +524,8 @@ class TestVelocityBuySignal:
         )
         dates = pd.date_range("2024-01-01", "2024-01-20", freq="D")
         market_data = pd.DataFrame({"Close": [100 + i * 0.5 for i in range(len(dates))]}, index=dates)
-        strategy.set_data(market_data)
-        result = strategy._has_buy_signal(datetime(2024, 1, 20))
+        load_strategy_frame(strategy, market_data)
+        result = strategy._has_buy_signal(datetime(2024, 1, 20), "SPY")
         assert result is False
 
     def test_has_buy_signal_trend_too_short(self):
@@ -540,8 +544,8 @@ class TestVelocityBuySignal:
         remaining_days = len(dates) - len(base_prices)
         prices = base_prices + [97] * remaining_days
         market_data = pd.DataFrame({"Close": prices}, index=dates)
-        strategy.set_data(market_data)
-        result = strategy._has_buy_signal(datetime(2024, 3, 8))
+        load_strategy_frame(strategy, market_data)
+        result = strategy._has_buy_signal(datetime(2024, 3, 8), "SPY")
         assert result is False
 
     def test_has_buy_signal_trend_too_long(self):
@@ -560,8 +564,8 @@ class TestVelocityBuySignal:
         remaining_days = len(dates) - len(base_prices)
         prices = base_prices + [base_prices[-1]] * remaining_days
         market_data = pd.DataFrame({"Close": prices}, index=dates)
-        strategy.set_data(market_data)
-        result = strategy._has_buy_signal(datetime(2024, 2, 5))
+        load_strategy_frame(strategy, market_data)
+        result = strategy._has_buy_signal(datetime(2024, 2, 5), "SPY")
         assert result is False
 
     def test_has_buy_signal_no_velocity_increase(self):
@@ -580,8 +584,8 @@ class TestVelocityBuySignal:
         remaining_days = len(dates) - len(base_prices)
         prices = base_prices + [95] * remaining_days
         market_data = pd.DataFrame({"Close": prices}, index=dates)
-        strategy.set_data(market_data)
-        result = strategy._has_buy_signal(datetime(2024, 2, 15))
+        load_strategy_frame(strategy, market_data)
+        result = strategy._has_buy_signal(datetime(2024, 2, 15), "SPY")
         assert result is False
 
     def test_has_buy_signal_significant_reversal(self):
@@ -600,8 +604,8 @@ class TestVelocityBuySignal:
         remaining_days = len(dates) - len(base_prices)
         prices = base_prices + [107] * remaining_days
         market_data = pd.DataFrame({"Close": prices}, index=dates)
-        strategy.set_data(market_data)
-        result = strategy._has_buy_signal(datetime(2024, 3, 10))
+        load_strategy_frame(strategy, market_data)
+        result = strategy._has_buy_signal(datetime(2024, 3, 10), "SPY")
         assert result is False
 
     def test_has_buy_signal_invalid_date(self):
@@ -617,8 +621,8 @@ class TestVelocityBuySignal:
         )
         dates = pd.date_range("2024-01-01", "2024-03-10", freq="D")
         market_data = pd.DataFrame({"Close": [100 + i * 0.5 for i in range(len(dates))]}, index=dates)
-        strategy.set_data(market_data)
-        result = strategy._has_buy_signal(datetime(2025, 1, 1))
+        load_strategy_frame(strategy, market_data)
+        result = strategy._has_buy_signal(datetime(2025, 1, 1), "SPY")
         assert result is False
 
     def test_has_buy_signal_edge_case_minimal_reversal(self):
@@ -637,16 +641,16 @@ class TestVelocityBuySignal:
         remaining_days = len(dates) - len(base_prices)
         prices = base_prices + [108.35] * remaining_days
         market_data = pd.DataFrame({"Close": prices}, index=dates)
-        strategy.set_data(market_data)
-        result = strategy._has_buy_signal(datetime(2024, 2, 2))
+        load_strategy_frame(strategy, market_data)
+        result = strategy._has_buy_signal(datetime(2024, 2, 2), "SPY")
         assert isinstance(result, bool)
 
 
 class TestVelocityStrategyMarketData:
     """Prepared market data and end-of-run behavior."""
 
-    def test_set_data_pre_calculates_moving_averages(self):
-        """Test that set_data pre-calculates moving averages and velocity."""
+    def test_universe_replace_pre_calculates_moving_averages(self):
+        """Test that replace() pre-calculates moving averages and velocity."""
         mock_options_handler = Mock()
         get_contract_list_for_date = mock_options_handler.get_contract_list_for_date
         get_option_bar = mock_options_handler.get_option_bar
@@ -659,9 +663,8 @@ class TestVelocityStrategyMarketData:
         dates = pd.date_range("2024-01-01", "2024-03-10", freq="D")
         prices = [100 + i * 0.1 for i in range(len(dates))]
         market_data = pd.DataFrame({"Close": prices}, index=dates)
-        strategy.set_data(market_data)
-        data = strategy.data
-        assert data is not None
+        load_strategy_frame(strategy, market_data)
+        data = strategy.universe.frame("SPY")
         assert "SMA_15" in data.columns
         assert "SMA_30" in data.columns
         assert "MA_Velocity_15_30" in data.columns
@@ -686,7 +689,7 @@ class TestVelocityStrategyMarketData:
         dates = pd.date_range("2024-01-01", "2024-03-10", freq="D")
         prices = [100 + i * 0.1 for i in range(len(dates))]
         market_data = pd.DataFrame({"Close": prices}, index=dates)
-        strategy.set_data(market_data)
+        load_strategy_frame(strategy, market_data)
         assert len(strategy._position_entries) == 0
         entry_date1 = datetime(2024, 1, 15)
         entry_date2 = datetime(2024, 2, 1)
@@ -695,8 +698,6 @@ class TestVelocityStrategyMarketData:
         assert len(strategy._position_entries) == 2
         assert entry_date1 in strategy._position_entries
         assert entry_date2 in strategy._position_entries
-        strategy.set_data(market_data)
-        assert len(strategy._position_entries) == 0
 
     def test_on_end_is_noop_without_plotting(self):
         """Test on_end does not require matplotlib or data."""
@@ -725,10 +726,8 @@ class TestVelocityStrategyMarketData:
         dates = pd.date_range("2024-01-01", "2024-01-10", freq="D")
         prices = [100 + i * 0.1 for i in range(len(dates))]
         market_data = pd.DataFrame({"Close": prices}, index=dates)
-        strategy.set_data(market_data)
-        with patch("matplotlib.pyplot.subplots") as mock_subplots:
-            strategy.on_end((), Mock(), datetime.now())
-            mock_subplots.assert_not_called()
+        load_strategy_frame(strategy, market_data)
+        strategy.on_end((), Mock(), datetime.now())
 
 
 class TestVelocityStrategyFactory:
@@ -774,7 +773,7 @@ class TestVelocityStrategyMethodSignatures:
         """Test that on_new_date can be called with the correct signature from base class"""
         strategy = _new_strategy()
         data = _ohlcv_frame()
-        strategy.set_data(data)
+        load_strategy_frame(strategy, data)
         base_sig = inspect.signature(Strategy.on_new_date)
         strategy_sig = inspect.signature(strategy.on_new_date)
         _assert_same_parameter_names(base_sig, strategy_sig)
@@ -788,7 +787,7 @@ class TestVelocityStrategyMethodSignatures:
     def test_on_end_signature_matches_base_class(self):
         """Test that on_end can be called with the correct signature from base class"""
         strategy = _new_strategy()
-        strategy.set_data(_ohlcv_frame())
+        load_strategy_frame(strategy, _ohlcv_frame())
         base_sig = inspect.signature(Strategy.on_end)
         strategy_sig = inspect.signature(strategy.on_end)
         _assert_same_parameter_names(base_sig, strategy_sig)
@@ -802,7 +801,7 @@ class TestVelocityStrategyMethodSignatures:
         """Test that _try_close_positions uses the correct remove_position signature"""
         strategy = _new_strategy()
         data = _ohlcv_frame()
-        strategy.set_data(data)
+        load_strategy_frame(strategy, data)
         signature = inspect.signature(strategy._try_close_positions)
         remove_position_param = signature.parameters["remove_position"]
         assert str(remove_position_param.annotation) == "Strategy.RemovePositionCallback"
@@ -813,7 +812,7 @@ class TestVelocityStrategyMethodSignatures:
         strategy.get_option_bar = Mock(return_value=None)
         strategy.get_current_underlying_price = _close_price(data)
         try:
-            strategy._try_close_positions(datetime(2024, 1, 25), tuple(), _ignore_remove_position)
+            strategy._try_close_positions(datetime(2024, 1, 25), tuple(), _ignore_remove_position, "SPY")
         except TypeError as error:
             pytest.fail(f"_try_close_positions signature mismatch: {error}")
 
@@ -821,9 +820,8 @@ class TestVelocityStrategyMethodSignatures:
         """Integration test: verify strategy can be called by backtest engine with correct signatures"""
         strategy = _new_strategy()
         data = _ohlcv_frame()
-        strategy.set_data(data)
+        load_strategy_frame(strategy, data)
         engine = BacktestEngine(
-            data=data,
             strategy=strategy,
             initial_capital=10000,
             start_date=datetime(2024, 1, 1),

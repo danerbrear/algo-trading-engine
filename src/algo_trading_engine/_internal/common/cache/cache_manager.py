@@ -2,6 +2,7 @@ import pickle
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Any
+from algo_trading_engine._internal.util.date_formats import DateFormats
 
 
 class CacheManager:
@@ -54,7 +55,7 @@ class CacheManager:
 
     def get_date_cache_path(self, date: datetime, suffix: str, *subdirs: str) -> Path:
         """Get cache path for a specific date"""
-        date_str = date.strftime("%Y-%m-%d")
+        date_str = date.strftime(DateFormats.CACHE_DATE)
         filename = f"{date_str}{suffix}.pkl"
         return self.get_cache_path(filename, *subdirs)
 

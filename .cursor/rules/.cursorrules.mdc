@@ -13,6 +13,12 @@ alwaysApply: true
 - All prices should use the Decimal data type over float
 - Write every nullable type as `Optional[T]` from `typing`. Do not write `T | None`, including inside another generic. `Optional[Sequence[Optional[int]]]` is the form to use; `Optional[Sequence[int | None]]` and `float | None` are not. Apply this to every new or edited annotation, not only to top-level parameters.
 
+### Date and time format strings
+
+- Do not hardcode strftime/strptime patterns (or equivalent format strings such as `mdates.DateFormatter(...)`). Use `DateFormats` from `algo_trading_engine._internal.util.date_formats`.
+- Pick the `DateFormats` attribute that matches the use, even when several attributes share the same pattern: `EXPIRATION` for option expirations, `ISO_DATE` for generic date-only values (fetch ranges, logs, keys), `CACHE_DATE` / `CACHE_TIME` for cache paths, `PRINTABLE` for human-readable datetimes, `COMPACT_DATE` for compact date filenames.
+- If no existing attribute fits, add a new named case on `DateFormats` rather than inlining the pattern. Do not reuse `EXPIRATION` (or any other case) just because the string happens to match.
+
 ### Too many positional arguments
 
 When fixing pylint `too-many-positional-arguments`:
@@ -30,6 +36,14 @@ Order members in every class as follows:
 3. Properties
 4. Public methods: abstract methods first, then concrete methods. Public `@classmethod` and `@staticmethod` stay in this group
 5. Private methods, including private static and class methods
+
+### Strategy universe
+
+- A strategy's symbols are a class attribute `universe_set: UniverseSet` on that strategy implementation. `Universe` is constructed in `Strategy.__init__` from `universe_set`, `universe_schema()`, and `on_universe_load_complete`. Engines call `universe.load(...)` to fetch and store frames; do not replace the universe via `set_universe`.
+- Override `universe_schema()` when a strategy needs a pandera schema other than `default_ohlcv_schema()`. Override `on_universe_load_complete` only to enrich frames after fetch; `Strategy` applies `universe_schema()` validation after that callback.
+- Treasury rates are not part of `Universe`. `Strategy.set_treasury_rates` stores them on the instance; engines call it before `universe.load`. Implementations that need rates on the frame join them in `on_universe_load_complete` and declare those columns on `universe_schema()`.
+- Do not put a single `symbol` (or similar) attribute on `Strategy` or strategy implementations. Symbols live on the universe; methods that need one symbol take it as a parameter (or read from a position / loop variable).
+- Do not put a single `data` frame on `Strategy`. Market data lives on the universe; use `self.universe.frame(symbol)` or `self.market_frame(symbol)`.
 
 ### Startup and imports
 

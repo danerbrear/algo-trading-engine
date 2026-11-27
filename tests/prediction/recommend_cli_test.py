@@ -34,7 +34,6 @@ class TestRecommendCli(unittest.TestCase):
         config = mock_engine_class.from_config.call_args[0][0]
 
         # Verify config parameters
-        self.assertEqual(config.symbol, "SPY")
         self.assertEqual(config.strategy_type, "velocity_momentum")
         self.assertEqual(config.api_key, "test_api_key")
 
@@ -77,7 +76,6 @@ class TestRecommendCli(unittest.TestCase):
         mock_engine_class.from_config.assert_called_once()
         config = mock_engine_class.from_config.call_args[0][0]
 
-        self.assertEqual(config.symbol, "DIA")
         self.assertEqual(config.strategy_type, "credit_spread")
         self.assertEqual(config.max_position_size, 0.25)
         self.assertEqual(config.stop_loss, 0.6)
@@ -104,7 +102,6 @@ class TestRecommendCli(unittest.TestCase):
         mock_engine_class.from_config.assert_called_once()
         config = mock_engine_class.from_config.call_args[0][0]
 
-        self.assertEqual(config.symbol, "SPY")
         self.assertEqual(config.strategy_type, "credit_spread")
         self.assertEqual(config.max_position_size, 0.40)
         self.assertIsNone(config.stop_loss)

@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import List, Optional, Sequence
 
 from algo_trading_engine._internal.util.market_clock import market_now, market_time, to_market_time
+from algo_trading_engine._internal.util.date_formats import DateFormats
 from algo_trading_engine.strategy import Strategy
 from algo_trading_engine.vo import Position, create_position
 from algo_trading_engine.enums import StrategyType
@@ -19,8 +20,8 @@ class InteractiveStrategyRecommender:
     """Produce open/close recommendations and capture user decisions.
 
     Expects a strategy compatible with credit spread workflows (e.g.,
-    CreditSpreadStrategy), with `.data`, `.options_data`, and helpers used
-    in the existing backtest (`_find_best_spread`, `_ensure_volume_data`,
+    CreditSpreadStrategy), with a loaded universe and helpers used in the
+    existing backtest (`_find_best_spread`, `_ensure_volume_data`,
     `get_current_volumes_for_position`).
     """
 
@@ -159,19 +160,13 @@ class InteractiveStrategyRecommender:
     def _get_current_price(self, date: datetime) -> Optional[float]:
         """Determine current price for the given date."""
         current_price = None
+        symbol = self.strategy.universe.symbols[0] if self.strategy.universe.symbols else None
 
         # Check if the specified date is the current date
         current_date = market_now().date()
         if date.date() == current_date:
             # Use live price via strategy's injected method
             get_logger().info(f"Fetching live price for {date.date()} (current date)")
-            # Get symbol from strategy
-            symbol = None
-            if hasattr(self.strategy, "symbol"):
-                symbol = self.strategy.symbol
-            elif hasattr(self.strategy, "data") and self.strategy.data is not None:
-                symbol = str(self.strategy.data.index.name) if self.strategy.data.index.name else "SPY"
-
             if symbol:
                 try:
                     current_price = self.strategy.get_current_underlying_price(date, symbol)
@@ -184,25 +179,29 @@ class InteractiveStrategyRecommender:
 
         # Fallback to cached data if live price failed or date is not current
         if current_price is None:
+            if symbol is None:
+                get_logger().warning("No universe symbol available for cached price lookup")
+                return None
             try:
-                market_data = self.strategy.data
-                if market_data is None:
-                    raise ValueError("Strategy data is not set")
+                market_data = self.strategy.universe.frame(symbol)
+            except KeyError:
+                get_logger().warning(f"No loaded frame for {symbol}")
+                return None
+            try:
                 current_price = float(market_data.loc[date]["Close"])
             except Exception:
-                # try normalize date
                 try:
-                    current_price = float(self.strategy.data.loc[date.date()]["Close"])  # type: ignore[index]
+                    current_price = float(market_data.loc[date.date()]["Close"])  # type: ignore[index]
                 except Exception:
                     get_logger().warning(f"Could not find current price for date {date.date()}")
-                    if self.strategy.data is not None and len(self.strategy.data) > 0:
-                        bars = self.strategy.data.index
+                    if len(market_data) > 0:
+                        bars = market_data.index
                         get_logger().info(
                             f"Available data range: {market_time(bars[0]).date()} to {market_time(bars[-1]).date()}"
                         )
-                        get_logger().info(f"Total data points: {len(self.strategy.data)}")
+                        get_logger().info(f"Total data points: {len(market_data)}")
                     else:
-                        get_logger().warning("Strategy data is empty or None")
+                        get_logger().warning("Universe frame is empty")
                     return None
 
         return current_price
@@ -224,7 +223,7 @@ class InteractiveStrategyRecommender:
             "width": width,
             "probability_of_profit": 0.7,  # Default confidence for rule-based strategies
             "confidence": 0.7,  # Default confidence for rule-based strategies
-            "expiration_date": position.expiration_date.strftime("%Y-%m-%d"),
+            "expiration_date": position.expiration_date.strftime(DateFormats.EXPIRATION),
             "risk_reward": 0.5,  # Default
         }
 
@@ -233,14 +232,14 @@ class InteractiveStrategyRecommender:
 
         # Build proposal DTO
         proposal = ProposedPositionRequestDTO(
-            symbol=self.strategy.symbol if hasattr(self.strategy, "symbol") else "SPY",
+            symbol=position.symbol,
             strategy_type=position.strategy_type,
             legs=(atm_option, otm_option),
             credit=float(position.entry_price),
             width=float(width),
             probability_of_profit=0.7,
             confidence=0.7,
-            expiration_date=position.expiration_date.strftime("%Y-%m-%d"),
+            expiration_date=position.expiration_date.strftime(DateFormats.EXPIRATION),
             created_at=datetime.now(timezone.utc).isoformat(),
             strategy_name=strategy_name,
         )
@@ -350,7 +349,7 @@ class InteractiveStrategyRecommender:
 
         position = create_position(
             symbol=rec.proposal.symbol,
-            expiration_date=datetime.strptime(rec.proposal.expiration_date, "%Y-%m-%d"),
+            expiration_date=datetime.strptime(rec.proposal.expiration_date, DateFormats.EXPIRATION),
             strategy_type=rec.proposal.strategy_type,
             strike_price=strike,
             entry_date=to_market_time(datetime.fromisoformat(rec.decided_at)),
@@ -461,12 +460,21 @@ class InteractiveStrategyRecommender:
     def _display_recent_underlying_prices(self, _date: datetime) -> None:
         """Display the most recent 5 days of underlying price for velocity_momentum strategy."""
         try:
-            if self.strategy.data is None or self.strategy.data.empty:
+            symbols = self.strategy.universe.symbols
+            if not symbols:
+                get_logger().warning("No underlying price data available")
+                return
+            try:
+                market_data = self.strategy.universe.frame(symbols[0])
+            except KeyError:
+                get_logger().warning("No underlying price data available")
+                return
+            if market_data.empty:
                 get_logger().warning("No underlying price data available")
                 return
 
             # Get the most recent 5 days of data
-            recent_data = self.strategy.data.tail(5)
+            recent_data = market_data.tail(5)
 
             get_logger().info("Recent 5 bars of Underlying Price:")
             get_logger().info("=" * 50)
@@ -474,7 +482,7 @@ class InteractiveStrategyRecommender:
             for idx, (date_idx, row) in enumerate(recent_data.iterrows()):
                 # Format the date
                 if isinstance(date_idx, datetime):
-                    date_str = date_idx.date().strftime("%Y-%m-%d")
+                    date_str = date_idx.date().strftime(DateFormats.ISO_DATE)
                 else:
                     date_str = str(date_idx)
 

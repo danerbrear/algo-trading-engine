@@ -2,6 +2,7 @@
 Signal consistency when live and close prices match on the same bar (engine overlay).
 """
 
+from tests.conftest import load_strategy_frame
 import unittest
 from datetime import datetime
 from typing import cast
@@ -42,14 +43,14 @@ class TestVelocityLiveVsCloseConsistency(unittest.TestCase):
         )
         data = self.historical_data.copy()
         data.loc[self.bar_date, "Close"] = close
-        strategy.set_data(data)
+        load_strategy_frame(strategy, data)
         return strategy
 
     def test_same_close_on_bar_yields_same_signal(self):
         strategy_a = self._strategy_with_today_bar(self.reference_close)
         strategy_b = self._strategy_with_today_bar(self.reference_close)
         with patch.object(strategy_a, "_check_trend_success", return_value=(True, 5, 0.03)):
-            signal_a = strategy_a._has_buy_signal(self.run_date)
+            signal_a = strategy_a._has_buy_signal(self.run_date, "SPY")
         with patch.object(strategy_b, "_check_trend_success", return_value=(True, 5, 0.03)):
-            signal_b = strategy_b._has_buy_signal(self.run_date)
+            signal_b = strategy_b._has_buy_signal(self.run_date, "SPY")
         self.assertEqual(signal_a, signal_b)

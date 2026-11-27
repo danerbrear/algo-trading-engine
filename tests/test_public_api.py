@@ -58,14 +58,12 @@ def test_backtest_config_creation():
         initial_capital=10000,
         start_date=datetime(2024, 1, 1),
         end_date=datetime(2024, 12, 31),
-        symbol="SPY",
         strategy_type="credit_spread",
     )
 
     assert config.initial_capital == 10000
     assert config.start_date == datetime(2024, 1, 1)
     assert config.end_date == datetime(2024, 12, 31)
-    assert config.symbol == "SPY"
     assert config.strategy_type == "credit_spread"
     assert config.volume_config is not None  # Should have default
 
@@ -80,7 +78,6 @@ def test_backtest_config_validation():
             initial_capital=10000,
             start_date=datetime(2024, 12, 31),
             end_date=datetime(2024, 1, 1),  # Wrong order
-            symbol="SPY",
             strategy_type="credit_spread",
         )
 
@@ -90,7 +87,6 @@ def test_backtest_config_validation():
             initial_capital=-1000,  # Negative
             start_date=datetime(2024, 1, 1),
             end_date=datetime(2024, 12, 31),
-            symbol="SPY",
             strategy_type="credit_spread",
         )
 
@@ -100,9 +96,8 @@ def test_paper_trading_config_creation():
     from algo_trading_engine import PaperTradingConfig
 
     # Test with minimal required parameters
-    config = PaperTradingConfig(symbol="SPY", strategy_type="velocity_momentum")
+    config = PaperTradingConfig(strategy_type="velocity_momentum")
 
-    assert config.symbol == "SPY"
     assert config.strategy_type == "velocity_momentum"
 
 
@@ -112,7 +107,7 @@ def test_paper_trading_config_validation():
 
     # Test that max_position_size validation works
     with pytest.raises(ValueError, match="Max position size must be between 0 and 1"):
-        PaperTradingConfig(symbol="SPY", strategy_type="velocity_momentum", max_position_size=1.5)  # Invalid: > 1
+        PaperTradingConfig(strategy_type="velocity_momentum", max_position_size=1.5)  # Invalid: > 1
 
 
 def test_volume_config_creation():
@@ -196,7 +191,6 @@ def test_backtest_config_cli_parameters():
         initial_capital=3000,
         start_date=datetime(2024, 1, 1),
         end_date=datetime(2024, 12, 31),
-        symbol="SPY",
         strategy_type="velocity_momentum",
         max_position_size=0.40,
         api_key="test_key",
@@ -211,7 +205,6 @@ def test_backtest_config_cli_parameters():
     assert config.initial_capital == 3000
     assert config.start_date == datetime(2024, 1, 1)
     assert config.end_date == datetime(2024, 12, 31)
-    assert config.symbol == "SPY"
     assert config.strategy_type == "velocity_momentum"
     assert config.max_position_size == 0.40
     assert config.api_key == "test_key"
@@ -229,7 +222,6 @@ def test_paper_trading_config_cli_parameters():
     # Create config with all CLI-accessible parameters
     # Note: Capital is managed via config/strategies/capital_allocations.json
     config = PaperTradingConfig(
-        symbol="SPY",
         strategy_type="credit_spread",
         max_position_size=0.40,
         api_key="test_key",
@@ -239,7 +231,6 @@ def test_paper_trading_config_cli_parameters():
     )
 
     # Verify all parameters are set
-    assert config.symbol == "SPY"
     assert config.strategy_type == "credit_spread"
     assert config.max_position_size == 0.40
     assert config.api_key == "test_key"

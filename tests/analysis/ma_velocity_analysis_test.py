@@ -17,6 +17,7 @@ from algo_trading_engine._internal.analysis.ma_velocity_analysis import (
     TrendSignal,
     MAVelocityResult,
 )
+from algo_trading_engine._internal.util.date_formats import DateFormats
 
 
 def _as_signal_datetime(value: str) -> datetime:
@@ -80,7 +81,7 @@ class TestMAVelocityAnalysis:
         assert self.analyzer.trend_signals == []
 
         # Check that start_date is approximately 6 months ago
-        expected_start = (datetime.now() - timedelta(days=180)).strftime("%Y-%m-%d")
+        expected_start = (datetime.now() - timedelta(days=180)).strftime(DateFormats.ISO_DATE)
         actual_start = self.analyzer.start_date
         assert actual_start[:7] == expected_start[:7]  # Check year and month
 

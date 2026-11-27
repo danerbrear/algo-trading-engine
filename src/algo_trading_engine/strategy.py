@@ -7,12 +7,28 @@ This module provides the abstract base class that all trading strategies must im
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 import math
-from typing import Any, Callable, Iterable, List, Optional, Protocol, Sequence, TYPE_CHECKING
+from typing import (
+    Any,
+    Callable,
+    Iterable,
+    List,
+    Optional,
+    Protocol,
+    Sequence,
+    TYPE_CHECKING,
+)
 import pandas as pd
+from pandera.pandas import DataFrameSchema
 
 from algo_trading_engine._internal.util.market_clock import market_index, market_time
 from algo_trading_engine.logging import get_logger
-from algo_trading_engine.vo import TreasuryRates
+from algo_trading_engine.vo import TreasuryRates, Universe
+from algo_trading_engine.vo.universe import (
+    PostLoadCallback,
+    UniverseSet,
+    default_ohlcv_schema,
+    identity_post_load,
+)
 from algo_trading_engine.indicators.indicator import Indicator
 from algo_trading_engine.enums import BarTimeInterval, UniversalCloseCondition
 
@@ -49,7 +65,7 @@ class Strategy(ABC):
         attributes. Each defaults to a raising stub until the strategy builder or engine
         replaces it:
 
-        - get_contract_list_for_date: Get list of option contracts for a specific date and symbol
+        - get_contract_list_for_date: Get list of option contracts for an underlying and date
         - get_option_bar: Get historical bar data for an option contract on a specific date (/aggs)
         - get_rt_option_bar: Get near-real-time bar data for an option contract via Polygon
           snapshot. Injected for paper trading. Use ``use_snapshot_for_current_bar`` to choose
@@ -80,7 +96,7 @@ class Strategy(ABC):
         ) -> None:
             """Close ``position`` at ``exit_price``."""
 
-    symbol: str
+    universe_set: UniverseSet
 
     # Callables for options trading strategies. Default to a raising stub until injected.
     # Callable[..., Any] matches keyword calls and injected handlers without changing the stub.
@@ -119,11 +135,19 @@ class Strategy(ABC):
             self.universal_close_conditions = frozenset(UniversalCloseCondition)
         else:
             self.universal_close_conditions = frozenset(universal_close_conditions)
-        self.data: Optional[pd.DataFrame] = None
-        self.treasury_data: Optional[TreasuryRates] = None
+        self.treasury_rates: Optional[TreasuryRates] = None
         self.plot_config: Optional["PlotConfig"] = None
         self.indicators: List[Indicator] = []
         self.option_bar_timespan = BarTimeInterval.DAY
+
+        universe_set = getattr(type(self), "universe_set", None)
+        if not universe_set:
+            raise TypeError(f"{type(self).__name__} must define a non-empty class attribute universe_set")
+        self.universe = Universe(
+            universe_set,
+            schema=type(self).universe_schema(),
+            post_load=self._validated_universe_post_load(),
+        )
 
     @property
     def warm_up_period(self) -> int:
@@ -174,20 +198,17 @@ class Strategy(ABC):
             date: Final date
         """
 
-    @abstractmethod
-    def validate_data(self, data: pd.DataFrame) -> bool:
-        """
-        Validate that the provided data meets the strategy's requirements.
+    def set_treasury_rates(self, treasury_rates: Optional[TreasuryRates]) -> None:
+        """Attach treasury rates to this strategy instance.
 
-        Args:
-            data: DataFrame with market data and features
-
-        Returns:
-            True if data is valid, False otherwise
+        Implementations may join rates into universe frames in
+        ``on_universe_load_complete`` when they declare those columns on ``universe_schema()``.
         """
+        self.treasury_rates = treasury_rates
 
     def get_current_option_bar(
         self,
+        symbol: str,
         ticker: str,
         date: datetime,
         timespan: BarTimeInterval = BarTimeInterval.DAY,
@@ -199,10 +220,10 @@ class Strategy(ABC):
         (dateless). Otherwise use the historical /aggs bar for ``date`` at the given ``timespan``.
         """
         if self.use_snapshot_for_current_bar and self.get_rt_option_bar:
-            return self.get_rt_option_bar(ticker)
+            return self.get_rt_option_bar(symbol, ticker)
 
         if self.get_option_bar:
-            return self.get_option_bar(ticker, date, 1, timespan)
+            return self.get_option_bar(symbol, ticker, date, 1, timespan)
 
         return None
 
@@ -310,30 +331,25 @@ class Strategy(ABC):
             position: Position to add
         """
 
-    def get_current_bar_timestamp(self, date: datetime) -> Optional[datetime]:
-        """Most recent bar in ``data`` at or before ``date``."""
-        if self.data is None or self.data.empty:
+    def get_current_bar_timestamp(self, date: datetime, symbol: str) -> Optional[datetime]:
+        """Most recent bar for ``symbol`` at or before ``date``."""
+        try:
+            frame = self.universe.frame(symbol)
+        except KeyError:
+            return None
+        if frame.empty:
             return None
 
-        index = market_index(self.data)
+        index = market_index(frame)
         candidates = index[index <= date]
         return market_time(candidates[-1] if len(candidates) > 0 else index[-1])
 
-    def set_data(self, data: pd.DataFrame, treasury_data: Optional[TreasuryRates] = None):
-        """
-        Set the market data for the strategy.
-
-        Args:
-            data: DataFrame with market data, indexed by naive US/Eastern bar timestamps
-            treasury_data: Optional treasury rates data
-
-        Raises:
-            TypeError: If ``data`` is not indexed by a DatetimeIndex
-            ValueError: If the index is tz-aware
-        """
-        market_index(data)
-        self.data = data
-        self.treasury_data = treasury_data
+    def market_frame(self, symbol: str) -> pd.DataFrame:
+        """Return the loaded frame for ``symbol``."""
+        try:
+            return self.universe.frame(symbol)
+        except KeyError as exc:
+            raise ValueError(f"No loaded frame for {symbol}") from exc
 
     def set_plot_config(self, plot_config: Optional["PlotConfig"]) -> None:
         """Set plotting configuration for strategy-driven charts."""
@@ -346,6 +362,30 @@ class Strategy(ABC):
     def set_stop_loss(self, stop_loss: float):
         """Set the stop loss for the strategy."""
         self.stop_loss = stop_loss
+
+    @staticmethod
+    def universe_schema() -> DataFrameSchema:
+        """Pandera schema applied to each universe frame after load-complete enrichment."""
+        return default_ohlcv_schema()
+
+    def on_universe_load_complete(self) -> PostLoadCallback:
+        """Return a callback that derives extra columns from each loaded frame.
+
+        Do not fetch market data here, and do not validate. The base class applies
+        ``universe_schema()`` after this callback. ``self.treasury_rates`` is available
+        when engines call ``set_treasury_rates`` before ``universe.load``.
+        """
+        return identity_post_load
+
+    def _validated_universe_post_load(self) -> PostLoadCallback:
+        """Run ``on_universe_load_complete``, then validate with ``universe_schema()``."""
+        enrich = self.on_universe_load_complete()
+        schema = type(self).universe_schema()
+
+        def post_load(symbol: str, data: pd.DataFrame) -> pd.DataFrame:
+            return schema.validate(enrich(symbol, data))
+
+        return post_load
 
     def _profit_target_hit(self, position: "Position", exit_price: Optional[float]) -> bool:
         """
@@ -389,6 +429,7 @@ class Strategy(ABC):
             for option in position.legs:
                 try:
                     bar = self.get_current_option_bar(
+                        position.symbol,
                         option.ticker,
                         date,
                         timespan=self.option_bar_timespan,

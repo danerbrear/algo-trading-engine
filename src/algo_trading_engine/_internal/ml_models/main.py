@@ -13,6 +13,7 @@ from .config import BATCH_SIZE, EPOCHS, SEQUENCE_LENGTH
 from algo_trading_engine._internal.util.market_clock import market_now
 from algo_trading_engine.plotting import PlotConfig
 from algo_trading_engine import DataRetriever
+from algo_trading_engine.enums import BarTimeInterval
 
 from .plots import create_plotter
 
@@ -37,7 +38,10 @@ class StockPredictor:
         self.sequence_length = sequence_length
         self.hmm_start_date: str = hmm_start_date
         self.lstm_start_date: str = lstm_start_date
-        self.data_retriever = DataRetriever(symbol=symbol)
+        self.symbol = symbol
+        self.bar_interval = BarTimeInterval.DAY
+        self.data_retriever = DataRetriever()
+        self.lstm_data: pd.DataFrame | None = None
         self.model = None
         self.X_train: np.ndarray | None = None
         self.y_train: np.ndarray | None = None
@@ -48,8 +52,10 @@ class StockPredictor:
 
     def prepare_data(self):
         """Prepare the data for training"""
-        self.state_classifier = prepare_training_data(
+        self.state_classifier, self.lstm_data = prepare_training_data(
             self.data_retriever,
+            self.symbol,
+            self.bar_interval,
             lstm_start_date=self.lstm_start_date,
             hmm_start_date=self.hmm_start_date,
         )
@@ -64,7 +70,9 @@ class StockPredictor:
 
         # Prepare LSTM-specific data
         self.X_train, self.y_train, self.X_test, self.y_test = self.lstm_model.prepare_data(
-            self.data_retriever, sequence_length=self.sequence_length
+            self.data_retriever,
+            sequence_length=self.sequence_length,
+            lstm_data=self.lstm_data,
         )
 
     def train_model(self, epochs=EPOCHS, batch_size=BATCH_SIZE):
@@ -141,7 +149,7 @@ class StockPredictor:
 
             # Get the corresponding dates and strategy returns from the data retriever
             # We need to access the LSTM data that was used for testing
-            lstm_data = self.data_retriever.lstm_data
+            lstm_data = self.lstm_data
 
             if lstm_data is None or len(lstm_data) == 0:
                 return None, None
@@ -209,7 +217,7 @@ class StockPredictor:
     def plot_results(self, results, history=None):
         """Plot the results using the new plotting module"""
         # Create plotter instance
-        plotter = create_plotter(self.data_retriever.symbol, plot_config=PlotConfig())
+        plotter = create_plotter(self.symbol, plot_config=PlotConfig())
 
         # Get predicted strategy returns and actual returns for comparison
         predicted_returns, actual_returns = self.get_strategy_returns_comparison()

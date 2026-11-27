@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, Optional, Tuple
 
 import pandas as pd
 
+from algo_trading_engine.enums import BarTimeInterval
 from algo_trading_engine.logging import get_logger
 
 if TYPE_CHECKING:
@@ -47,6 +48,8 @@ def load_credit_spread_models(symbol: str) -> Tuple[Any, Any]:
 
 def prepare_data_for_lstm(
     data_retriever: "DataRetriever",
+    symbol: str,
+    bar_interval: BarTimeInterval,
     start_date: str,
     _sequence_length: int = 60,
     state_classifier: Optional["MarketStateClassifier"] = None,
@@ -61,8 +64,7 @@ def prepare_data_for_lstm(
     from algo_trading_engine._internal.ml_models.calendar_features import CalendarFeatureProcessor
 
     get_logger().info(f"Phase 1: Preparing LSTM training data from {start_date}")
-    lstm_data = data_retriever.fetch_data_for_period(start_date)
-    data_retriever.lstm_data = lstm_data
+    lstm_data = data_retriever.fetch_data_for_period(symbol, bar_interval, start_date)
     data_retriever.calculate_features_for_data(lstm_data)
 
     get_logger().info("Phase 2: Applying trained HMM to LSTM data")
@@ -76,14 +78,16 @@ def prepare_data_for_lstm(
     calendar_processor = CalendarFeatureProcessor()
     lstm_data = calendar_processor.calculate_all_features(lstm_data)
 
-    data_retriever.lstm_data = lstm_data
-    data_retriever.data = lstm_data
     return lstm_data
 
 
 def prepare_training_data(
-    data_retriever: "DataRetriever", lstm_start_date: str, hmm_start_date: str
-) -> "MarketStateClassifier":
+    data_retriever: "DataRetriever",
+    symbol: str,
+    bar_interval: BarTimeInterval,
+    lstm_start_date: str,
+    hmm_start_date: str,
+) -> tuple["MarketStateClassifier", pd.DataFrame]:
     """
     Train HMM on historical market data and prepare LSTM feature dataset.
 
@@ -94,20 +98,25 @@ def prepare_training_data(
     from algo_trading_engine._internal.ml_models.market_state_classifier import MarketStateClassifier
 
     get_logger().info(f"Phase 1: Preparing HMM training data from {hmm_start_date}")
-    hmm_data = data_retriever.fetch_data_for_period(hmm_start_date)
+    hmm_data = data_retriever.fetch_data_for_period(symbol, bar_interval, hmm_start_date)
     data_retriever.calculate_features_for_data(hmm_data)
 
     get_logger().info(f"Phase 2: Training HMM on market data ({len(hmm_data)} samples)")
     state_classifier = MarketStateClassifier()
     state_classifier.train_hmm_model(hmm_data)
 
-    prepare_data_for_lstm(data_retriever, start_date=lstm_start_date, state_classifier=state_classifier)
-    return state_classifier
+    lstm_data = prepare_data_for_lstm(
+        data_retriever,
+        symbol,
+        bar_interval,
+        start_date=lstm_start_date,
+        state_classifier=state_classifier,
+    )
+    return state_classifier, lstm_data
 
 
 def prepare_credit_spread_backtest_data(
     data: pd.DataFrame,
-    data_retriever: "DataRetriever",
     symbol: str,
 ) -> pd.DataFrame:
     """
@@ -117,6 +126,7 @@ def prepare_credit_spread_backtest_data(
     """
     # Deferred so importing this module stays free of sklearn/hmmlearn/TensorFlow.
     # pylint: disable=import-outside-toplevel
+    from algo_trading_engine.data_retriever import DataRetriever
     from algo_trading_engine._internal.ml_models.model_loaders import (
         get_model_directory,
         load_hmm_model,
@@ -124,7 +134,7 @@ def prepare_credit_spread_backtest_data(
     from algo_trading_engine._internal.ml_models.calendar_features import CalendarFeatureProcessor
 
     enriched = data.copy()
-    data_retriever.calculate_features_for_data(enriched)
+    DataRetriever.calculate_features_for_data(enriched)
 
     model_dir = get_model_directory(symbol=symbol)
     try:

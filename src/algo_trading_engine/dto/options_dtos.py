@@ -15,6 +15,7 @@ from typing import Optional, List, Dict, Any
 import re
 
 from algo_trading_engine._internal.util.market_clock import market_now
+from algo_trading_engine._internal.util.date_formats import DateFormats
 from algo_trading_engine.logging import get_logger
 from algo_trading_engine.vo import StrikePrice, ExpirationDate
 from algo_trading_engine.enums import OptionType
@@ -93,7 +94,7 @@ class OptionContractDTO:
             underlying_ticker=data["underlying_ticker"],
             contract_type=OptionType(data["contract_type"]),
             strike_price=StrikePrice(Decimal(str(data["strike_price"]))),
-            expiration_date=ExpirationDate(datetime.strptime(data["expiration_date"], "%Y-%m-%d").date()),
+            expiration_date=ExpirationDate(datetime.strptime(data["expiration_date"], DateFormats.EXPIRATION).date()),
             exercise_style=data.get("exercise_style", "american"),
             shares_per_contract=data.get("shares_per_contract", 100),
             primary_exchange=data.get("primary_exchange"),
@@ -443,7 +444,7 @@ class OptionsChainDTO:
         return cls(
             underlying_symbol=data["underlying_symbol"],
             current_price=Decimal(str(data["current_price"])),
-            date=datetime.strptime(data["date"], "%Y-%m-%d").date(),
+            date=datetime.strptime(data["date"], DateFormats.ISO_DATE).date(),
             contracts=[OptionContractDTO.from_dict(contract) for contract in data.get("contracts", [])],
             bars={ticker: OptionBarDTO.from_dict(bar) for ticker, bar in data.get("bars", {}).items()},
         )

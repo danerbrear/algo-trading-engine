@@ -19,6 +19,7 @@ from algo_trading_engine._internal.common.cache.options_cache_manager import Opt
 from algo_trading_engine.options_helpers import OptionsRetrieverHelper
 from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO
 from algo_trading_engine.vo import StrikePrice, ExpirationDate
+from algo_trading_engine._internal.util.date_formats import DateFormats
 from algo_trading_engine.enums import OptionType, StrategyType
 
 
@@ -334,7 +335,7 @@ class TestOptionsHandler:
     @pytest.fixture
     def options_handler(self, temp_dir):
         """Create options handler with temporary directory."""
-        return OptionsHandler("SPY", cache_dir=temp_dir)
+        return OptionsHandler(cache_dir=temp_dir)
 
     @pytest.fixture
     def sample_contracts(self):
@@ -357,8 +358,7 @@ class TestOptionsHandler:
 
     def test_initialization(self, temp_dir):
         """Test OptionsHandler initialization."""
-        handler = OptionsHandler("SPY", cache_dir=temp_dir)
-        assert handler.symbol == "SPY"
+        handler = OptionsHandler(cache_dir=temp_dir)
         assert handler.cache_manager.base_dir == Path(temp_dir)
 
     def test_initialization_without_api_key(self, temp_dir):
@@ -370,7 +370,7 @@ class TestOptionsHandler:
             del os.environ["POLYGON_API_KEY"]
         try:
             with pytest.raises(ValueError, match="Polygon.io API key is required"):
-                OptionsHandler("SPY", api_key=None, cache_dir=temp_dir)
+                OptionsHandler(api_key=None, cache_dir=temp_dir)
         finally:
             if original_key:
                 os.environ["POLYGON_API_KEY"] = original_key
@@ -380,14 +380,14 @@ class TestOptionsHandler:
         """Test getting contract list when no cached data exists."""
         test_date = datetime(2021, 11, 19)
         mock_fetch.return_value = []
-        contracts = options_handler.get_contract_list_for_date(test_date)
+        contracts = options_handler.get_contract_list_for_date("SPY", test_date)
         assert contracts == []
 
     def test_get_contract_list_for_date_with_data(self, options_handler, sample_contracts):
         """Test getting contract list with cached data."""
         test_date = datetime(2021, 11, 19)
-        options_handler._cache_contracts(test_date, sample_contracts)
-        contracts = options_handler.get_contract_list_for_date(test_date)
+        options_handler._cache_contracts("SPY", test_date, sample_contracts)
+        contracts = options_handler.get_contract_list_for_date("SPY", test_date)
         assert len(contracts) == 1
         assert contracts[0].ticker == "O:SPY211119C00045000"
 
@@ -395,17 +395,17 @@ class TestOptionsHandler:
         """Test getting option bar when no cached data exists."""
         test_date = datetime(2021, 11, 19)
         contract = sample_contracts[0]
-        bar = options_handler.get_option_bar(contract.ticker, test_date)
+        bar = options_handler.get_option_bar("SPY", contract.ticker, test_date)
         assert bar is None
 
     def test_cache_stats(self, options_handler, sample_contracts):
         """Test getting cache statistics."""
         test_date = datetime(2021, 11, 19)
-        stats = options_handler._get_cache_stats(test_date)
+        stats = options_handler._get_cache_stats("SPY", test_date)
         assert stats["contracts_count"] == 0
         assert stats["bars_count"] == 0
-        options_handler._cache_contracts(test_date, sample_contracts)
-        stats = options_handler._get_cache_stats(test_date)
+        options_handler._cache_contracts("SPY", test_date, sample_contracts)
+        stats = options_handler._get_cache_stats("SPY", test_date)
         assert stats["contracts_count"] == 1
         assert stats["bars_count"] == 0
 
@@ -413,9 +413,9 @@ class TestOptionsHandler:
         """Test that private methods can be accessed during testing but are blocked in production."""
         test_date = datetime(2021, 11, 19)
         try:
-            options_handler._cache_contracts(test_date, [])
-            options_handler._cache_bar(test_date, "test_ticker", None)
-            options_handler._get_cache_stats(test_date)
+            options_handler._cache_contracts("SPY", test_date, [])
+            options_handler._cache_bar("SPY", test_date, "test_ticker", None)
+            options_handler._get_cache_stats("SPY", test_date)
             print("✅ Private methods accessible during testing (as expected)")
         except AttributeError as e:
             pytest.fail(f"Private methods should be accessible during testing: {e}")
@@ -614,7 +614,7 @@ class TestOptionsHandlerPhase3:
     @pytest.fixture
     def options_handler(self, temp_dir):
         """Create OptionsHandler with temporary directory."""
-        return OptionsHandler("SPY", api_key="test_key", cache_dir=temp_dir, use_free_tier=True)
+        return OptionsHandler(api_key="test_key", cache_dir=temp_dir, use_free_tier=True)
 
     @pytest.fixture
     def sample_contracts(self):
@@ -666,8 +666,8 @@ class TestOptionsHandlerPhase3:
     def test_get_contract_list_for_date_from_cache(self, options_handler, sample_contracts):
         """Test getting contracts from cache."""
         test_date = datetime(2021, 11, 19)
-        options_handler._cache_contracts(test_date, sample_contracts)
-        contracts = options_handler.get_contract_list_for_date(test_date)
+        options_handler._cache_contracts("SPY", test_date, sample_contracts)
+        contracts = options_handler.get_contract_list_for_date("SPY", test_date)
         assert len(contracts) == 2
         assert contracts[0].ticker == "O:SPY250929C00600000"
         assert contracts[1].ticker == "O:SPY250929P00600000"
@@ -695,7 +695,7 @@ class TestOptionsHandlerPhase3:
         mock_rest_client.return_value = mock_client
         options_handler.client = mock_client
         options_handler.api_retry_handler.fetch_with_retry = Mock(return_value=mock_response)
-        contracts = options_handler.get_contract_list_for_date(test_date)
+        contracts = options_handler.get_contract_list_for_date("SPY", test_date)
         assert len(contracts) == 1
         assert contracts[0].ticker == "O:SPY250929C00600000"
         assert contracts[0].contract_type == OptionType.CALL
@@ -714,7 +714,7 @@ class TestOptionsHandlerPhase3:
         mock_rest_client.return_value = mock_client
         options_handler.client = mock_client
         options_handler.api_retry_handler.fetch_with_retry = Mock(return_value=mock_bar_data)
-        bar = options_handler.get_option_bar(contract.ticker, test_date)
+        bar = options_handler.get_option_bar("SPY", contract.ticker, test_date)
         assert bar is not None
         assert bar.ticker == contract.ticker
         assert bar.close_price == Decimal("10.75")
@@ -783,8 +783,8 @@ class TestOptionsHandlerPhase3:
         """Test complete options chain integration."""
         test_date = datetime(2021, 11, 19)
         current_price = 600.0
-        options_handler._cache_contracts(test_date, sample_contracts)
-        options_handler._cache_bar(test_date, sample_contracts[0].ticker, sample_bar)
+        options_handler._cache_contracts("SPY", test_date, sample_contracts)
+        options_handler._cache_bar("SPY", test_date, sample_contracts[0].ticker, sample_bar)
         with patch.object(
             options_handler.cache_manager,
             "load_bar",
@@ -792,7 +792,7 @@ class TestOptionsHandlerPhase3:
                 sample_bar if t == sample_contracts[0].ticker else None
             ),
         ):
-            chain = options_handler.get_options_chain(test_date, current_price)
+            chain = options_handler.get_options_chain("SPY", test_date, current_price)
             assert chain.underlying_symbol == "SPY"
             assert chain.current_price == Decimal(str(current_price))
             assert chain.date == test_date.date()
@@ -804,7 +804,7 @@ class TestOptionsHandlerPhase3:
         """Test error handling when API fails."""
         test_date = datetime(2021, 11, 19)
         options_handler.api_retry_handler.fetch_with_retry = Mock(side_effect=Exception("API Error"))
-        contracts = options_handler.get_contract_list_for_date(test_date)
+        contracts = options_handler.get_contract_list_for_date("SPY", test_date)
         assert contracts == []
 
     def test_error_handling_invalid_contract_data(self, options_handler):
@@ -813,7 +813,7 @@ class TestOptionsHandlerPhase3:
         mock_response = Mock()
         mock_response.results = [{"ticker": "INVALID", "underlying_ticker": "SPY"}]
         options_handler.api_retry_handler.fetch_with_retry = Mock(return_value=mock_response)
-        contracts = options_handler.get_contract_list_for_date(test_date)
+        contracts = options_handler.get_contract_list_for_date("SPY", test_date)
         assert contracts == []
 
     def test_error_handling_invalid_bar_data(self, options_handler, sample_contracts):
@@ -823,7 +823,7 @@ class TestOptionsHandlerPhase3:
         mock_response = Mock()
         mock_response.results = [{"o": 10.5, "h": 11.0, "l": 10.25, "v": 1000}]
         options_handler.api_retry_handler.fetch_with_retry = Mock(return_value=mock_response)
-        bar = options_handler.get_option_bar(contract.ticker, test_date)
+        bar = options_handler.get_option_bar("SPY", contract.ticker, test_date)
         assert bar is None
 
     def test_rate_limiting_integration(self, options_handler):
@@ -831,7 +831,7 @@ class TestOptionsHandlerPhase3:
         test_date = datetime(2021, 11, 19)
         mock_fetch_with_retry = Mock(return_value=Mock(results=[]))
         options_handler.api_retry_handler.fetch_with_retry = mock_fetch_with_retry
-        options_handler.get_contract_list_for_date(test_date)
+        options_handler.get_contract_list_for_date("SPY", test_date)
         mock_fetch_with_retry.assert_called_once()
 
     def test_caching_behavior(self, options_handler):
@@ -852,10 +852,10 @@ class TestOptionsHandlerPhase3:
             }
         ]
         options_handler.api_retry_handler.fetch_with_retry = Mock(return_value=mock_response)
-        contracts1 = options_handler.get_contract_list_for_date(test_date)
+        contracts1 = options_handler.get_contract_list_for_date("SPY", test_date)
         assert len(contracts1) == 1
         options_handler.api_retry_handler.fetch_with_retry.reset_mock()
-        contracts2 = options_handler.get_contract_list_for_date(test_date)
+        contracts2 = options_handler.get_contract_list_for_date("SPY", test_date)
         assert len(contracts2) == 1
         assert contracts1[0].ticker == contracts2[0].ticker
         options_handler.api_retry_handler.fetch_with_retry.assert_not_called()
@@ -864,9 +864,9 @@ class TestOptionsHandlerPhase3:
         """Test that private method enforcement still works in Phase 3."""
         test_date = datetime(2021, 11, 19)
         try:
-            options_handler._cache_contracts(test_date, [])
-            options_handler._cache_bar(test_date, "test_ticker", None)
-            options_handler._get_cache_stats(test_date)
+            options_handler._cache_contracts("SPY", test_date, [])
+            options_handler._cache_bar("SPY", test_date, "test_ticker", None)
+            options_handler._get_cache_stats("SPY", test_date)
             print("✅ Private methods accessible during testing (as expected)")
         except AttributeError as e:
             pytest.fail(f"Private methods should be accessible during testing: {e}")
@@ -888,7 +888,7 @@ class TestOptionsHandlerPhase3:
                 additional_underlyings=None,
             )
         ]
-        options_handler._cache_contracts(test_date, limited_cached_contracts)
+        options_handler._cache_contracts("SPY", test_date, limited_cached_contracts)
         strike_range = StrikeRangeDTO(min_strike=StrikePrice(Decimal("400")), max_strike=StrikePrice(Decimal("500")))
         mock_response = [
             {
@@ -905,7 +905,7 @@ class TestOptionsHandlerPhase3:
             }
         ]
         options_handler.api_retry_handler.fetch_with_retry = Mock(return_value=mock_response)
-        contracts = options_handler.get_contract_list_for_date(test_date, strike_range=strike_range)
+        contracts = options_handler.get_contract_list_for_date("SPY", test_date, strike_range=strike_range)
         assert len(contracts) == 1
         assert contracts[0].ticker == "O:SPY250929C00450000"
         assert contracts[0].strike_price.value == 450.0
@@ -919,11 +919,11 @@ class TestOptionsHandlerPhase3:
     def test_additive_caching_with_no_filters(self, options_handler, sample_contracts):
         """Test that additive caching doesn't trigger when no filters are specified."""
         test_date = datetime(2021, 11, 19)
-        options_handler._cache_contracts(test_date, sample_contracts)
+        options_handler._cache_contracts("SPY", test_date, sample_contracts)
         mock_response = Mock()
         mock_response.results = []
         options_handler.api_retry_handler.fetch_with_retry = Mock(return_value=mock_response)
-        contracts = options_handler.get_contract_list_for_date(test_date)
+        contracts = options_handler.get_contract_list_for_date("SPY", test_date)
         assert len(contracts) == 2
         assert contracts == sample_contracts
         options_handler.api_retry_handler.fetch_with_retry.assert_not_called()
@@ -945,7 +945,7 @@ class TestOptionsHandlerPhase3:
                 additional_underlyings=None,
             )
         ]
-        options_handler._cache_contracts(test_date, cached_contracts)
+        options_handler._cache_contracts("SPY", test_date, cached_contracts)
         mock_response = [
             {
                 "ticker": "O:SPY250929C00600000",
@@ -986,7 +986,7 @@ class TestOptionsHandlerPhase3:
         ]
         options_handler.api_retry_handler.fetch_with_retry = Mock(return_value=mock_response)
         strike_range = StrikeRangeDTO(min_strike=StrikePrice(Decimal("440")), max_strike=StrikePrice(Decimal("470")))
-        contracts = options_handler.get_contract_list_for_date(test_date, strike_range=strike_range)
+        contracts = options_handler.get_contract_list_for_date("SPY", test_date, strike_range=strike_range)
         assert len(contracts) == 2
         tickers = {c.ticker for c in contracts}
         assert "O:SPY250929C00450000" in tickers
@@ -1028,7 +1028,7 @@ class TestOptionsHandlerPhase5Simple:
     @pytest.fixture
     def options_handler(self, temp_dir):
         """Create OptionsHandler with temporary directory."""
-        return OptionsHandler("SPY", api_key="test_key", cache_dir=temp_dir, use_free_tier=True)
+        return OptionsHandler(api_key="test_key", cache_dir=temp_dir, use_free_tier=True)
 
     @pytest.fixture
     def sample_contracts(self):
@@ -1036,10 +1036,10 @@ class TestOptionsHandlerPhase5Simple:
         contracts = []
         today = date.today()
         expirations = [
-            (today + timedelta(days=10)).strftime("%Y-%m-%d"),
-            (today + timedelta(days=15)).strftime("%Y-%m-%d"),
-            (today + timedelta(days=20)).strftime("%Y-%m-%d"),
-            (today + timedelta(days=40)).strftime("%Y-%m-%d"),
+            (today + timedelta(days=10)).strftime(DateFormats.EXPIRATION),
+            (today + timedelta(days=15)).strftime(DateFormats.EXPIRATION),
+            (today + timedelta(days=20)).strftime(DateFormats.EXPIRATION),
+            (today + timedelta(days=40)).strftime(DateFormats.EXPIRATION),
         ]
         strikes = [580.0, 585.0, 590.0, 595.0, 600.0, 605.0, 610.0, 615.0, 620.0]
         for exp_str in expirations:
@@ -1050,7 +1050,7 @@ class TestOptionsHandlerPhase5Simple:
                     underlying_ticker="SPY",
                     contract_type=OptionType.CALL,
                     strike_price=StrikePrice(Decimal(str(strike))),
-                    expiration_date=ExpirationDate(datetime.strptime(exp_str, "%Y-%m-%d").date()),
+                    expiration_date=ExpirationDate(datetime.strptime(exp_str, DateFormats.EXPIRATION).date()),
                     exercise_style="american",
                     shares_per_contract=100,
                     primary_exchange="BATO",
@@ -1063,7 +1063,7 @@ class TestOptionsHandlerPhase5Simple:
                     underlying_ticker="SPY",
                     contract_type=OptionType.PUT,
                     strike_price=StrikePrice(Decimal(str(strike))),
-                    expiration_date=ExpirationDate(datetime.strptime(exp_str, "%Y-%m-%d").date()),
+                    expiration_date=ExpirationDate(datetime.strptime(exp_str, DateFormats.EXPIRATION).date()),
                     exercise_style="american",
                     shares_per_contract=100,
                     primary_exchange="BATO",
@@ -1074,8 +1074,7 @@ class TestOptionsHandlerPhase5Simple:
 
     def test_basic_initialization(self, temp_dir):
         """Test basic initialization."""
-        handler = OptionsHandler("SPY", api_key="test_key", cache_dir=temp_dir)
-        assert handler.symbol == "SPY"
+        handler = OptionsHandler(api_key="test_key", cache_dir=temp_dir)
         assert handler.api_key == "test_key"
         assert handler.cache_manager is not None
 
@@ -1083,7 +1082,7 @@ class TestOptionsHandlerPhase5Simple:
         """Test getting contracts from cache."""
         test_date = datetime.now()
         with patch.object(options_handler.cache_manager, "load_contracts", return_value=sample_contracts):
-            contracts = options_handler.get_contract_list_for_date(test_date)
+            contracts = options_handler.get_contract_list_for_date("SPY", test_date)
             assert len(contracts) == len(sample_contracts)
             assert all((isinstance(c, OptionContractDTO) for c in contracts))
 
@@ -1094,7 +1093,7 @@ class TestOptionsHandlerPhase5Simple:
             min_strike=StrikePrice(Decimal("590.0")), max_strike=StrikePrice(Decimal("610.0"))
         )
         with patch.object(options_handler.cache_manager, "load_contracts", return_value=sample_contracts):
-            contracts = options_handler.get_contract_list_for_date(test_date, strike_range=strike_range)
+            contracts = options_handler.get_contract_list_for_date("SPY", test_date, strike_range=strike_range)
             assert len(contracts) > 0
             assert all((590.0 <= float(c.strike_price.value) <= 610.0 for c in contracts))
 
@@ -1103,7 +1102,7 @@ class TestOptionsHandlerPhase5Simple:
         test_date = datetime.now()
         expiration_range = ExpirationRangeDTO(min_days=1, max_days=45)
         with patch.object(options_handler.cache_manager, "load_contracts", return_value=sample_contracts):
-            contracts = options_handler.get_contract_list_for_date(test_date, expiration_range=expiration_range)
+            contracts = options_handler.get_contract_list_for_date("SPY", test_date, expiration_range=expiration_range)
             assert len(contracts) > 0
             assert all((isinstance(c, OptionContractDTO) for c in contracts))
 
@@ -1124,7 +1123,7 @@ class TestOptionsHandlerPhase5Simple:
             adjusted=True,
         )
         with patch.object(options_handler.cache_manager, "load_bar", return_value=sample_bar):
-            bar = options_handler.get_option_bar(contract.ticker, test_date)
+            bar = options_handler.get_option_bar("SPY", contract.ticker, test_date)
             assert bar is not None
             assert bar.ticker == contract.ticker
             assert bar.volume > 0
@@ -1149,7 +1148,7 @@ class TestOptionsHandlerPhase5Simple:
             patch.object(options_handler.cache_manager, "load_contracts", return_value=sample_contracts),
             patch.object(options_handler.cache_manager, "load_bar", return_value=sample_bar),
         ):
-            chain = options_handler.get_options_chain(test_date, current_price)
+            chain = options_handler.get_options_chain("SPY", test_date, current_price)
             assert chain.underlying_symbol == "SPY"
             assert chain.current_price == Decimal("600.0")
             assert len(chain.contracts) == len(sample_contracts)
@@ -1161,12 +1160,13 @@ class TestOptionsHandlerPhase5Simple:
             if "POLYGON_API_KEY" in os.environ:
                 del os.environ["POLYGON_API_KEY"]
             with pytest.raises(ValueError, match="Polygon.io API key is required"):
-                OptionsHandler("SPY", api_key=None, cache_dir=temp_dir)
+                OptionsHandler(api_key=None, cache_dir=temp_dir)
 
     def test_error_handling_invalid_symbol(self, temp_dir):
         """Test error handling for invalid symbol."""
-        with pytest.raises(ValueError):
-            OptionsHandler("", api_key="test_key", cache_dir=temp_dir)
+        handler = OptionsHandler(api_key="test_key", cache_dir=temp_dir)
+        with pytest.raises(ValueError, match="Symbol is required and cannot be empty"):
+            handler.get_contract_list_for_date("", datetime.now())
 
     def test_error_handling_invalid_strike_range(self):
         """Test error handling for invalid strike range."""
@@ -1182,7 +1182,7 @@ class TestOptionsHandlerPhase5Simple:
         """Test handling of API failures."""
         test_date = datetime.now()
         with patch.object(options_handler.api_retry_handler, "fetch_with_retry", side_effect=Exception("API failure")):
-            contracts = options_handler._fetch_contracts_from_api(test_date.date())
+            contracts = options_handler._fetch_contracts_from_api("SPY", test_date.date())
             assert contracts == []
 
     def test_cache_failure_handling(self, options_handler):
@@ -1190,7 +1190,7 @@ class TestOptionsHandlerPhase5Simple:
         test_date = datetime.now()
         with patch.object(options_handler.cache_manager, "load_contracts", side_effect=Exception("Cache failure")):
             with patch.object(options_handler.api_retry_handler, "fetch_with_retry", return_value=Mock(results=[])):
-                contracts = options_handler.get_contract_list_for_date(test_date)
+                contracts = options_handler.get_contract_list_for_date("SPY", test_date)
                 assert contracts == []
 
     def test_performance_basic(self, options_handler, sample_contracts):
@@ -1200,7 +1200,7 @@ class TestOptionsHandlerPhase5Simple:
             import time
 
             start_time = time.time()
-            contracts = options_handler.get_contract_list_for_date(test_date)
+            contracts = options_handler.get_contract_list_for_date("SPY", test_date)
             end_time = time.time()
             processing_time = end_time - start_time
             assert processing_time < 1.0
@@ -1215,7 +1215,7 @@ class TestOptionsHandlerPhase5Simple:
 
             process = psutil.Process()
             initial_memory = process.memory_info().rss
-            contracts = options_handler.get_contract_list_for_date(test_date)
+            contracts = options_handler.get_contract_list_for_date("SPY", test_date)
             current_memory = process.memory_info().rss
             memory_increase = current_memory - initial_memory
             assert memory_increase < 100 * 1024 * 1024
@@ -1226,7 +1226,7 @@ class TestOptionsHandlerPhase5Simple:
         """Test basic validation."""
         test_date = datetime.now()
         with patch.object(options_handler.cache_manager, "load_contracts", return_value=sample_contracts):
-            contracts = options_handler.get_contract_list_for_date(test_date)
+            contracts = options_handler.get_contract_list_for_date("SPY", test_date)
             for contract in contracts:
                 assert isinstance(contract, OptionContractDTO)
                 assert contract.ticker is not None
@@ -1251,17 +1251,17 @@ class TestOptionsHandlerPhase5Simple:
             adjusted=True,
         )
         with patch.object(options_handler.cache_manager, "load_contracts", return_value=sample_contracts):
-            contracts = options_handler.get_contract_list_for_date(test_date)
+            contracts = options_handler.get_contract_list_for_date("SPY", test_date)
             assert len(contracts) > 0
             contract = contracts[0]
             with (
                 patch.object(options_handler.cache_manager, "load_bar", return_value=None),
                 patch.object(options_handler, "_fetch_bar_from_api", return_value=None),
             ):
-                bar = options_handler.get_option_bar(contract.ticker, test_date)
+                bar = options_handler.get_option_bar("SPY", contract.ticker, test_date)
                 assert bar is None
             with patch.object(options_handler.cache_manager, "load_bar", return_value=sample_bar):
-                chain = options_handler.get_options_chain(test_date, current_price)
+                chain = options_handler.get_options_chain("SPY", test_date, current_price)
                 assert chain.underlying_symbol == "SPY"
                 assert chain.current_price == Decimal("600.0")
                 assert len(chain.contracts) == len(contracts)
@@ -1313,7 +1313,7 @@ class TestOptionsHandlerPhase5Integration:
     @pytest.fixture
     def options_handler(self, temp_dir):
         """Create OptionsHandler with temporary directory."""
-        return OptionsHandler("SPY", api_key="test_key", cache_dir=temp_dir, use_free_tier=True)
+        return OptionsHandler(api_key="test_key", cache_dir=temp_dir, use_free_tier=True)
 
     @pytest.fixture
     def sample_contracts(self):
@@ -1321,10 +1321,10 @@ class TestOptionsHandlerPhase5Integration:
         contracts = []
         today = date.today()
         expirations = [
-            (today + timedelta(days=10)).strftime("%Y-%m-%d"),
-            (today + timedelta(days=15)).strftime("%Y-%m-%d"),
-            (today + timedelta(days=20)).strftime("%Y-%m-%d"),
-            (today + timedelta(days=40)).strftime("%Y-%m-%d"),
+            (today + timedelta(days=10)).strftime(DateFormats.EXPIRATION),
+            (today + timedelta(days=15)).strftime(DateFormats.EXPIRATION),
+            (today + timedelta(days=20)).strftime(DateFormats.EXPIRATION),
+            (today + timedelta(days=40)).strftime(DateFormats.EXPIRATION),
         ]
         strikes = [580.0, 585.0, 590.0, 595.0, 600.0, 605.0, 610.0, 615.0, 620.0]
         for exp_str in expirations:
@@ -1335,7 +1335,7 @@ class TestOptionsHandlerPhase5Integration:
                     underlying_ticker="SPY",
                     contract_type=OptionType.CALL,
                     strike_price=StrikePrice(Decimal(str(strike))),
-                    expiration_date=ExpirationDate(datetime.strptime(exp_str, "%Y-%m-%d").date()),
+                    expiration_date=ExpirationDate(datetime.strptime(exp_str, DateFormats.EXPIRATION).date()),
                     exercise_style="american",
                     shares_per_contract=100,
                     primary_exchange="BATO",
@@ -1348,7 +1348,7 @@ class TestOptionsHandlerPhase5Integration:
                     underlying_ticker="SPY",
                     contract_type=OptionType.PUT,
                     strike_price=StrikePrice(Decimal(str(strike))),
-                    expiration_date=ExpirationDate(datetime.strptime(exp_str, "%Y-%m-%d").date()),
+                    expiration_date=ExpirationDate(datetime.strptime(exp_str, DateFormats.EXPIRATION).date()),
                     exercise_style="american",
                     shares_per_contract=100,
                     primary_exchange="BATO",
@@ -1392,18 +1392,18 @@ class TestOptionsHandlerPhase5Integration:
                 )
                 expiration_range = ExpirationRangeDTO(min_days=1, max_days=30)
                 contracts = options_handler.get_contract_list_for_date(
-                    test_date, strike_range=strike_range, expiration_range=expiration_range
+                    "SPY", test_date, strike_range=strike_range, expiration_range=expiration_range
                 )
                 assert len(contracts) > 0
                 assert all((590.0 <= float(c.strike_price.value) <= 610.0 for c in contracts))
                 contract = contracts[0]
-                bar = options_handler.get_option_bar(contract.ticker, test_date)
+                bar = options_handler.get_option_bar("SPY", contract.ticker, test_date)
                 assert bar is not None
                 assert bar.ticker == contract.ticker
                 assert bar.volume > 0
                 current_price = 600.0
                 chain = options_handler.get_options_chain(
-                    test_date, current_price, strike_range=strike_range, expiration_range=expiration_range
+                    "SPY", test_date, current_price, strike_range=strike_range, expiration_range=expiration_range
                 )
                 assert chain.underlying_symbol == "SPY"
                 assert chain.current_price == Decimal("600.0")
@@ -1446,7 +1446,7 @@ class TestOptionsHandlerPhase5Integration:
             strike_range = StrikeRangeDTO(
                 min_strike=StrikePrice(Decimal("590.0")), max_strike=StrikePrice(Decimal("610.0"))
             )
-            filtered_contracts = options_handler.get_contract_list_for_date(test_date, strike_range=strike_range)
+            filtered_contracts = options_handler.get_contract_list_for_date("SPY", test_date, strike_range=strike_range)
             end_time = time.time()
             processing_time = end_time - start_time
             assert processing_time < 1.0
@@ -1460,19 +1460,19 @@ class TestOptionsHandlerPhase5Integration:
         options_handler.cache_manager = cache_manager
         cache_manager.load_contracts.return_value = sample_contracts
         cache_manager.load_bar.return_value = None
-        contracts1 = options_handler.get_contract_list_for_date(test_date)
+        contracts1 = options_handler.get_contract_list_for_date("SPY", test_date)
         assert len(contracts1) == len(sample_contracts)
         cache_manager.load_contracts.assert_called_once()
-        contracts2 = options_handler.get_contract_list_for_date(test_date)
+        contracts2 = options_handler.get_contract_list_for_date("SPY", test_date)
         assert len(contracts2) == len(contracts1)
         assert cache_manager.load_contracts.call_count == 2
 
     def test_error_handling_comprehensive(self, options_handler):
         """Test comprehensive error handling scenarios."""
-        with pytest.raises(ValueError):
-            OptionsHandler("", api_key="test_key", cache_dir="temp")
+        with pytest.raises(ValueError, match="Symbol is required and cannot be empty"):
+            options_handler.get_contract_list_for_date("", datetime.now())
         with pytest.raises((ValueError, TypeError)):
-            options_handler.get_contract_list_for_date("invalid_date")
+            options_handler.get_contract_list_for_date("SPY", "invalid_date")
         with pytest.raises(ValueError):
             StrikeRangeDTO(min_strike=StrikePrice(Decimal("610.0")), max_strike=StrikePrice(Decimal("590.0")))
         with pytest.raises(ValueError):
@@ -1488,7 +1488,7 @@ class TestOptionsHandlerPhase5Integration:
         large_contracts = sample_contracts * 100
         test_date = datetime.now()
         with patch.object(options_handler.cache_manager, "load_contracts", return_value=large_contracts):
-            contracts = options_handler.get_contract_list_for_date(test_date)
+            contracts = options_handler.get_contract_list_for_date("SPY", test_date)
             current_memory = process.memory_info().rss
             memory_increase = current_memory - initial_memory
             assert memory_increase < 100 * 1024 * 1024
@@ -1508,7 +1508,7 @@ class TestOptionsHandlerPhase5Integration:
         def worker(worker_id):
             try:
                 with patch.object(options_handler.cache_manager, "load_contracts", return_value=sample_contracts):
-                    contracts = options_handler.get_contract_list_for_date(test_date)
+                    contracts = options_handler.get_contract_list_for_date("SPY", test_date)
                     results.put((worker_id, len(contracts)))
             except Exception as e:
                 errors.put((worker_id, str(e)))
@@ -1536,7 +1536,7 @@ class TestOptionsHandlerPhase5Integration:
                 side_effect=lambda s, d, t, timespan="day", bar_time=None: sample_bars.get(t),
             ):
                 target_expiration = "2025-01-15"
-                contracts = options_handler.get_contract_list_for_date(test_date)
+                contracts = options_handler.get_contract_list_for_date("SPY", test_date)
                 exp_contracts = OptionsRetrieverHelper.find_contracts_by_expiration(contracts, target_expiration)
                 call_short, call_long = OptionsRetrieverHelper.find_credit_spread_legs(
                     exp_contracts, current_price, target_expiration, OptionType.CALL, spread_width=5
@@ -1560,14 +1560,14 @@ class TestOptionsHandlerPhase5Integration:
         """Test data consistency across different API calls."""
         test_date = datetime.now()
         with patch.object(options_handler.cache_manager, "load_contracts", return_value=sample_contracts):
-            contracts1 = options_handler.get_contract_list_for_date(test_date)
-            contracts2 = options_handler.get_contract_list_for_date(test_date)
+            contracts1 = options_handler.get_contract_list_for_date("SPY", test_date)
+            contracts2 = options_handler.get_contract_list_for_date("SPY", test_date)
             assert len(contracts1) == len(contracts2)
             assert all((c1.ticker == c2.ticker for c1, c2 in zip(contracts1, contracts2)))
             strike_range = StrikeRangeDTO(
                 min_strike=StrikePrice(Decimal("590.0")), max_strike=StrikePrice(Decimal("610.0"))
             )
-            filtered_contracts = options_handler.get_contract_list_for_date(test_date, strike_range=strike_range)
+            filtered_contracts = options_handler.get_contract_list_for_date("SPY", test_date, strike_range=strike_range)
             assert len(filtered_contracts) <= len(contracts1)
             assert all((590.0 <= float(c.strike_price.value) <= 610.0 for c in filtered_contracts))
 
@@ -1575,14 +1575,14 @@ class TestOptionsHandlerPhase5Integration:
         """Test edge cases and boundary conditions."""
         test_date = datetime.now()
         with patch.object(options_handler.cache_manager, "load_contracts", return_value=[]):
-            contracts = options_handler.get_contract_list_for_date(test_date)
+            contracts = options_handler.get_contract_list_for_date("SPY", test_date)
             assert len(contracts) == 0
         with patch.object(options_handler.cache_manager, "load_contracts", return_value=None):
-            contracts = options_handler.get_contract_list_for_date(test_date)
+            contracts = options_handler.get_contract_list_for_date("SPY", test_date)
             assert len(contracts) == 0
         invalid_contracts = [None, "invalid", {}]
         with patch.object(options_handler.cache_manager, "load_contracts", return_value=invalid_contracts):
-            contracts = options_handler.get_contract_list_for_date(test_date)
+            contracts = options_handler.get_contract_list_for_date("SPY", test_date)
             assert len(contracts) == 3
 
     def test_api_rate_limiting(self, options_handler):
@@ -1598,7 +1598,7 @@ class TestOptionsHandlerPhase5Integration:
         with patch.object(options_handler.api_retry_handler, "fetch_with_retry") as mock_retry:
             mock_retry.side_effect = mock_fetch_func
             for _ in range(3):
-                options_handler._fetch_contracts_from_api(test_date.date())
+                options_handler._fetch_contracts_from_api("SPY", test_date.date())
             assert api_call_count == 3
 
     def test_comprehensive_validation(self, options_handler, sample_contracts):
@@ -1648,7 +1648,7 @@ class TestOptionsHandlerErrorHandling:
     @pytest.fixture
     def options_handler(self, temp_dir):
         """Create OptionsHandler with temporary directory."""
-        return OptionsHandler("SPY", api_key="test_key", cache_dir=temp_dir, use_free_tier=True)
+        return OptionsHandler(api_key="test_key", cache_dir=temp_dir, use_free_tier=True)
 
     def test_invalid_initialization_parameters(self, temp_dir):
         """Test error handling for invalid initialization parameters."""
@@ -1656,22 +1656,23 @@ class TestOptionsHandlerErrorHandling:
             if "POLYGON_API_KEY" in os.environ:
                 del os.environ["POLYGON_API_KEY"]
             with pytest.raises(ValueError, match="Polygon.io API key is required"):
-                OptionsHandler("SPY", api_key=None, cache_dir=temp_dir)
+                OptionsHandler(api_key=None, cache_dir=temp_dir)
         with patch.dict(os.environ, {}, clear=False):
             if "POLYGON_API_KEY" in os.environ:
                 del os.environ["POLYGON_API_KEY"]
             with pytest.raises(ValueError, match="Polygon.io API key is required"):
-                OptionsHandler("SPY", api_key="", cache_dir=temp_dir)
+                OptionsHandler(api_key="", cache_dir=temp_dir)
+        handler = OptionsHandler(api_key="test_key", cache_dir=temp_dir)
         with pytest.raises(ValueError, match="Symbol is required and cannot be empty"):
-            OptionsHandler("", api_key="test_key", cache_dir=temp_dir)
+            handler.get_contract_list_for_date("", datetime.now())
         with pytest.raises(ValueError, match="Symbol is required and cannot be empty"):
-            OptionsHandler(cast(str, None), api_key="test_key", cache_dir=temp_dir)
+            handler.get_contract_list_for_date(cast(str, None), datetime.now())
 
     def test_invalid_contract_parameters(self, options_handler):
         """Test error handling for invalid ticker parameters."""
-        result = options_handler.get_option_bar("", datetime.now())
+        result = options_handler.get_option_bar("SPY", "", datetime.now())
         assert result is None
-        result = options_handler.get_option_bar(None, datetime.now())
+        result = options_handler.get_option_bar("SPY", None, datetime.now())
         assert result is None
 
     def test_invalid_filter_parameters(self):
@@ -1690,34 +1691,34 @@ class TestOptionsHandlerErrorHandling:
     def test_api_failure_handling(self, options_handler):
         """Test handling of API failures."""
         with patch.object(options_handler.api_retry_handler, "fetch_with_retry", side_effect=Exception("API timeout")):
-            contracts = options_handler._fetch_contracts_from_api(date.today())
+            contracts = options_handler._fetch_contracts_from_api("SPY", date.today())
             assert contracts == []
         with patch.object(
             options_handler.api_retry_handler, "fetch_with_retry", side_effect=Exception("Rate limit exceeded")
         ):
-            contracts = options_handler._fetch_contracts_from_api(date.today())
+            contracts = options_handler._fetch_contracts_from_api("SPY", date.today())
             assert contracts == []
         with patch.object(
             options_handler.api_retry_handler, "fetch_with_retry", side_effect=Exception("Authentication failed")
         ):
-            contracts = options_handler._fetch_contracts_from_api(date.today())
+            contracts = options_handler._fetch_contracts_from_api("SPY", date.today())
             assert contracts == []
         with patch.object(
             options_handler.api_retry_handler, "fetch_with_retry", side_effect=Exception("Network error")
         ):
-            contracts = options_handler._fetch_contracts_from_api(date.today())
+            contracts = options_handler._fetch_contracts_from_api("SPY", date.today())
             assert contracts == []
 
     def test_cache_corruption_handling(self, options_handler):
         """Test handling of corrupted cache files."""
         with patch.object(options_handler.cache_manager, "load_contracts", side_effect=Exception("Cache corruption")):
-            contracts = options_handler.get_contract_list_for_date(datetime.now())
+            contracts = options_handler.get_contract_list_for_date("SPY", datetime.now())
             assert contracts == []
         with patch.object(options_handler.cache_manager, "load_bar", side_effect=Exception("Cache corruption")):
-            bar = options_handler.get_option_bar("test_ticker", datetime.now())
+            bar = options_handler.get_option_bar("SPY", "test_ticker", datetime.now())
             assert bar is None
         with patch.object(options_handler.cache_manager, "save_contracts", side_effect=Exception("Cache write error")):
-            options_handler._cache_contracts(datetime.now(), [])
+            options_handler._cache_contracts("SPY", datetime.now(), [])
 
     def test_invalid_data_handling(self, options_handler):
         """Test handling of invalid data from API."""
@@ -1736,7 +1737,7 @@ class TestOptionsHandlerErrorHandling:
             with patch.object(
                 options_handler.api_retry_handler, "fetch_with_retry", return_value=Mock(results=invalid_data)
             ):
-                contracts = options_handler._fetch_contracts_from_api(date.today())
+                contracts = options_handler._fetch_contracts_from_api("SPY", date.today())
                 assert isinstance(contracts, list)
         invalid_bar_data = [
             None,
@@ -1761,10 +1762,10 @@ class TestOptionsHandlerErrorHandling:
     def test_edge_cases_and_boundary_conditions(self, options_handler):
         """Test edge cases and boundary conditions."""
         with patch.object(options_handler.cache_manager, "load_contracts", return_value=[]):
-            contracts = options_handler.get_contract_list_for_date(datetime.now())
+            contracts = options_handler.get_contract_list_for_date("SPY", datetime.now())
             assert contracts == []
         with patch.object(options_handler.cache_manager, "load_contracts", return_value=None):
-            contracts = options_handler.get_contract_list_for_date(datetime.now())
+            contracts = options_handler.get_contract_list_for_date("SPY", datetime.now())
             assert contracts == []
         valid_contract = OptionContractDTO(
             ticker="O:SPY250115C00600000",
@@ -1777,7 +1778,7 @@ class TestOptionsHandlerErrorHandling:
         )
         mixed_contracts = [valid_contract, None, "invalid", {}, valid_contract]
         with patch.object(options_handler.cache_manager, "load_contracts", return_value=mixed_contracts):
-            contracts = options_handler.get_contract_list_for_date(datetime.now())
+            contracts = options_handler.get_contract_list_for_date("SPY", datetime.now())
             assert len(contracts) == 5
             valid_contracts = [c for c in contracts if isinstance(c, OptionContractDTO)]
             assert len(valid_contracts) == 2
@@ -1791,7 +1792,7 @@ class TestOptionsHandlerErrorHandling:
             shares_per_contract=100,
         )
         with patch.object(options_handler.cache_manager, "load_contracts", return_value=[extreme_contract]):
-            contracts = options_handler.get_contract_list_for_date(datetime.now())
+            contracts = options_handler.get_contract_list_for_date("SPY", datetime.now())
             assert len(contracts) == 1
             assert contracts[0].strike_price.value == Decimal("9500.00")
 
@@ -1810,11 +1811,11 @@ class TestOptionsHandlerErrorHandling:
                         options_handler.api_retry_handler, "fetch_with_retry", side_effect=Exception("API failure")
                     ):
                         with patch.object(options_handler.cache_manager, "load_contracts", return_value=[]):
-                            contracts = options_handler.get_contract_list_for_date(datetime.now())
+                            contracts = options_handler.get_contract_list_for_date("SPY", datetime.now())
                             results.put((worker_id, len(contracts)))
                 else:
                     with patch.object(options_handler.cache_manager, "load_contracts", return_value=[]):
-                        contracts = options_handler.get_contract_list_for_date(datetime.now())
+                        contracts = options_handler.get_contract_list_for_date("SPY", datetime.now())
                         results.put((worker_id, len(contracts)))
             except Exception as e:
                 errors.put((worker_id, str(e)))
@@ -1839,23 +1840,23 @@ class TestOptionsHandlerErrorHandling:
                 options_handler.cache_manager, "save_contracts", side_effect=Exception("Cache write failure")
             ):
                 with patch.object(options_handler.api_retry_handler, "fetch_with_retry", return_value=Mock(results=[])):
-                    contracts = options_handler.get_contract_list_for_date(datetime.now())
+                    contracts = options_handler.get_contract_list_for_date("SPY", datetime.now())
                     assert contracts == []
         with patch.object(options_handler.api_retry_handler, "fetch_with_retry", side_effect=Exception("API failure")):
-            contracts = options_handler.get_contract_list_for_date(datetime.now())
+            contracts = options_handler.get_contract_list_for_date("SPY", datetime.now())
             assert contracts == []
         with patch.object(options_handler.cache_manager, "load_contracts", return_value=[]):
             with patch.object(
                 options_handler.api_retry_handler, "fetch_with_retry", side_effect=Exception("API failure")
             ):
-                contracts = options_handler.get_contract_list_for_date(datetime.now())
+                contracts = options_handler.get_contract_list_for_date("SPY", datetime.now())
                 assert contracts == []
 
     def test_error_message_clarity(self, options_handler):
         """Test that error messages are clear and helpful."""
         test_date = datetime.now()
         test_contracts = []
-        options_handler._cache_contracts(test_date, test_contracts)
+        options_handler._cache_contracts("SPY", test_date, test_contracts)
         with pytest.raises(ValueError) as exc_info:
             StrikeRangeDTO(min_strike=StrikePrice(Decimal("610.0")), max_strike=StrikePrice(Decimal("590.0")))
         error_message = str(exc_info.value)
@@ -1867,7 +1868,7 @@ class TestOptionsHandlerErrorHandling:
             if "POLYGON_API_KEY" in os.environ:
                 del os.environ["POLYGON_API_KEY"]
             with pytest.raises(ValueError) as exc_info:
-                OptionsHandler("SPY", api_key=None, cache_dir="temp")
+                OptionsHandler(api_key=None, cache_dir="temp")
             error_message = str(exc_info.value)
             assert "Polygon.io API key is required" in error_message
         finally:
@@ -1877,16 +1878,16 @@ class TestOptionsHandlerErrorHandling:
     def test_recovery_from_errors(self, options_handler):
         """Test recovery from various error conditions."""
         with patch.object(options_handler.api_retry_handler, "fetch_with_retry", side_effect=Exception("API failure")):
-            contracts1 = options_handler.get_contract_list_for_date(datetime.now())
+            contracts1 = options_handler.get_contract_list_for_date("SPY", datetime.now())
             assert contracts1 == []
         with patch.object(options_handler.cache_manager, "load_contracts", return_value=[]):
-            contracts2 = options_handler.get_contract_list_for_date(datetime.now())
+            contracts2 = options_handler.get_contract_list_for_date("SPY", datetime.now())
             assert contracts2 == []
         with patch.object(options_handler.cache_manager, "load_contracts", side_effect=Exception("Cache corruption")):
-            contracts1 = options_handler.get_contract_list_for_date(datetime.now())
+            contracts1 = options_handler.get_contract_list_for_date("SPY", datetime.now())
             assert contracts1 == []
         with patch.object(options_handler.cache_manager, "load_contracts", return_value=[]):
-            contracts2 = options_handler.get_contract_list_for_date(datetime.now())
+            contracts2 = options_handler.get_contract_list_for_date("SPY", datetime.now())
             assert contracts2 == []
 
 
@@ -1936,38 +1937,38 @@ class TestOptionsHandlerUseCache:
 
     def test_use_cache_defaults_to_true(self, temp_dir):
         """Test that use_cache defaults to True."""
-        handler = OptionsHandler("SPY", api_key="test_key", cache_dir=temp_dir)
+        handler = OptionsHandler(api_key="test_key", cache_dir=temp_dir)
         assert handler.use_cache is True
 
     def test_use_cache_can_be_set_to_false(self, temp_dir):
         """Test that use_cache can be disabled."""
-        handler = OptionsHandler("SPY", api_key="test_key", cache_dir=temp_dir, use_cache=False)
+        handler = OptionsHandler(api_key="test_key", cache_dir=temp_dir, use_cache=False)
         assert handler.use_cache is False
 
     def test_cache_contracts_skipped_when_use_cache_false(self, temp_dir, sample_contracts):
         """Test that _cache_contracts does not write when use_cache=False."""
-        handler = OptionsHandler("SPY", api_key="test_key", cache_dir=temp_dir, use_cache=False)
+        handler = OptionsHandler(api_key="test_key", cache_dir=temp_dir, use_cache=False)
         with patch.object(handler.cache_manager, "save_contracts") as mock_save:
-            handler._cache_contracts(datetime.now(), sample_contracts)
+            handler._cache_contracts("SPY", datetime.now(), sample_contracts)
             mock_save.assert_not_called()
 
     def test_cache_contracts_writes_when_use_cache_true(self, temp_dir, sample_contracts):
         """Test that _cache_contracts writes when use_cache=True."""
-        handler = OptionsHandler("SPY", api_key="test_key", cache_dir=temp_dir, use_cache=True)
+        handler = OptionsHandler(api_key="test_key", cache_dir=temp_dir, use_cache=True)
         with patch.object(handler.cache_manager, "save_contracts") as mock_save:
-            handler._cache_contracts(datetime.now(), sample_contracts)
+            handler._cache_contracts("SPY", datetime.now(), sample_contracts)
             mock_save.assert_called_once()
 
     def test_cache_bar_skipped_when_use_cache_false(self, temp_dir, sample_bar):
         """Test that _cache_bar does not write when use_cache=False."""
-        handler = OptionsHandler("SPY", api_key="test_key", cache_dir=temp_dir, use_cache=False)
+        handler = OptionsHandler(api_key="test_key", cache_dir=temp_dir, use_cache=False)
         with patch.object(handler.cache_manager, "save_bar") as mock_save:
-            handler._cache_bar(datetime.now(), "O:SPY211119C00045000", sample_bar)
+            handler._cache_bar("SPY", datetime.now(), "O:SPY211119C00045000", sample_bar)
             mock_save.assert_not_called()
 
     def test_cache_bar_writes_when_use_cache_true(self, temp_dir, sample_bar):
         """Test that _cache_bar writes when use_cache=True."""
-        handler = OptionsHandler("SPY", api_key="test_key", cache_dir=temp_dir, use_cache=True)
+        handler = OptionsHandler(api_key="test_key", cache_dir=temp_dir, use_cache=True)
         with patch.object(handler.cache_manager, "save_bar") as mock_save:
-            handler._cache_bar(datetime.now(), "O:SPY211119C00045000", sample_bar)
+            handler._cache_bar("SPY", datetime.now(), "O:SPY211119C00045000", sample_bar)
             mock_save.assert_called_once()

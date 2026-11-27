@@ -2,11 +2,14 @@
 Unit tests for Strategy class indicator functionality
 """
 
+from tests.conftest import load_strategy_frame
 import pytest
 from datetime import datetime, timedelta
 from typing import cast
 from unittest.mock import Mock
 import pandas as pd
+from pandera.errors import SchemaError, SchemaErrors
+from pandera.pandas import Column, DataFrameSchema
 from algo_trading_engine.strategy import Strategy
 from algo_trading_engine.indicators.indicator import Indicator
 from algo_trading_engine.indicators.average_true_return_indicator import ATRIndicator
@@ -24,6 +27,8 @@ def _as_datetime(value: object) -> datetime:
 class ConcreteTestStrategy(Strategy):
     """Concrete implementation of Strategy for testing"""
 
+    universe_set = ["SPY"]
+
     def __init__(self):
         super().__init__()
         self.on_new_date_called = False
@@ -40,10 +45,6 @@ class ConcreteTestStrategy(Strategy):
     def on_end(self, positions, remove_position, date):
         """Implementation of abstract on_end"""
         pass
-
-    def validate_data(self, data):
-        """Implementation of abstract validate_data"""
-        return "Close" in data.columns and len(data) > 0
 
 
 class MockIndicator(Indicator):
@@ -186,7 +187,7 @@ class TestStrategyWithATRIndicator:
         strategy.add_indicator(atr)
         strategy.add_indicator(atr)
         data = self.create_sample_data()
-        strategy.set_data(data)
+        load_strategy_frame(strategy, data)
         atr.update(datetime(2024, 1, 6), data)
         assert atr.value is not None
         assert atr.value > 0
@@ -197,7 +198,7 @@ class TestStrategyWithATRIndicator:
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(atr)
         data = self.create_sample_data(num_days=5)
-        strategy.set_data(data)
+        load_strategy_frame(strategy, data)
         atr.update(datetime(2024, 1, 5), data)
         assert atr.value is None
 
@@ -209,7 +210,7 @@ class TestStrategyWithATRIndicator:
         strategy.add_indicator(mock_indicator)
         strategy.add_indicator(atr)
         data = self.create_sample_data()
-        strategy.set_data(data)
+        load_strategy_frame(strategy, data)
         as_of = datetime(2024, 1, 6)
         mock_indicator.update(as_of, data)
         atr.update(as_of, data)
@@ -222,7 +223,7 @@ class TestStrategyWithATRIndicator:
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(atr)
         data = self.create_sample_data()
-        strategy.set_data(data)
+        load_strategy_frame(strategy, data)
         atr.update(datetime(2024, 1, 4), data)
         atr_value_day4 = atr.value
         atr.update(datetime(2024, 1, 5), data)
@@ -255,7 +256,7 @@ class TestStrategyOnNewDateWithIndicators:
         indicator = MockIndicator()
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(indicator)
-        strategy.set_data(self.create_sample_data())
+        load_strategy_frame(strategy, self.create_sample_data())
         strategy.on_new_date(datetime(2024, 1, 10), (), Mock(), Mock())
         assert indicator.update_called is False
         assert strategy.on_new_date_called is True
@@ -266,7 +267,7 @@ class TestStrategyOnNewDateWithIndicators:
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(atr)
         data = self.create_sample_data()
-        strategy.set_data(data)
+        load_strategy_frame(strategy, data)
         _engine_precompute(strategy, data)
         assert atr.value is not None
         strategy.on_new_date(datetime(2024, 1, 6), (), Mock(), Mock())
@@ -279,6 +280,8 @@ class TestStrategyIndicatorAccessInStrategy:
 
     class StrategyUsingIndicator(Strategy):
         """Strategy that uses indicator values in its logic"""
+
+        universe_set = ["SPY"]
 
         def __init__(self, atr_indicator):
             super().__init__()
@@ -296,9 +299,6 @@ class TestStrategyIndicatorAccessInStrategy:
 
         def on_end(self, positions, remove_position, date):
             pass
-
-        def validate_data(self, data):
-            return True
 
     def create_volatile_data(self):
         """Create data with high volatility"""
@@ -320,7 +320,7 @@ class TestStrategyIndicatorAccessInStrategy:
         atr = ATRIndicator(period=3)
         strategy = self.StrategyUsingIndicator(atr)
         data = self.create_volatile_data()
-        strategy.set_data(data)
+        load_strategy_frame(strategy, data)
         _engine_precompute(strategy, data)
         strategy.on_new_date(datetime(2024, 1, 4), (), Mock(), Mock())
         assert strategy.current_atr is not None
@@ -331,7 +331,7 @@ class TestStrategyIndicatorAccessInStrategy:
         atr = ATRIndicator(period=3)
         strategy = self.StrategyUsingIndicator(atr)
         data = self.create_volatile_data()
-        strategy.set_data(data)
+        load_strategy_frame(strategy, data)
         _engine_precompute(strategy, data)
         strategy.on_new_date(datetime(2024, 1, 4), (), Mock(), Mock())
         assert strategy.signal_generated is True
@@ -340,17 +340,18 @@ class TestStrategyIndicatorAccessInStrategy:
         assert strategy.current_atr > strategy.atr_threshold
 
 
-class TestStrategySetData:
-    """Test cases for set_data method with indicators"""
+class TestStrategyUniverseFrame:
+    """Test cases for loading a market frame onto the strategy universe"""
 
-    def test_set_data_stores_data_for_indicators(self):
-        """Test set_data makes data available for indicators"""
+    def test_universe_frame_is_available_to_indicators(self):
+        """Test replace() makes data available for indicators"""
         indicator = MockIndicator()
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(indicator)
         dates = pd.date_range(start="2024-01-01", periods=10, freq="D")
         data = pd.DataFrame(
             {
+                "Open": [100 + i for i in range(10)],
                 "Close": [100 + i for i in range(10)],
                 "High": [105 + i for i in range(10)],
                 "Low": [95 + i for i in range(10)],
@@ -358,9 +359,9 @@ class TestStrategySetData:
             },
             index=dates,
         )
-        strategy.set_data(data)
-        assert strategy.data is not None
-        pd.testing.assert_frame_equal(strategy.data, data)
+        load_strategy_frame(strategy, data)
+        frame = strategy.universe.frame("SPY")
+        pd.testing.assert_frame_equal(frame[data.columns], data, check_dtype=False)
         indicator.update(datetime(2024, 1, 5), data)
         assert indicator.last_update_data is data
 
@@ -385,7 +386,7 @@ class TestStrategyIndicatorEdgeCases:
             },
             index=dates,
         )
-        strategy.set_data(data)
+        load_strategy_frame(strategy, data)
         new_indicator.update(datetime(2024, 1, 5), data)
         assert new_indicator.update_called is True
 
@@ -447,7 +448,7 @@ class TestStrategyGetIndicator:
             },
             index=dates,
         )
-        strategy.set_data(data)
+        load_strategy_frame(strategy, data)
         atr.update(datetime(2024, 1, 6), data)
         retrieved_atr = strategy.get_indicator(ATRIndicator)
         assert retrieved_atr is not None
@@ -572,7 +573,7 @@ class TestStrategyAddIndicator:
             },
             index=dates,
         )
-        strategy.set_data(data)
+        load_strategy_frame(strategy, data)
         assert atr.value is None
         atr.update(datetime(2024, 1, 6), data)
         assert atr.value is not None
@@ -582,6 +583,7 @@ class TestStrategyAddIndicator:
         """Test adding indicators in strategy __init__ method"""
 
         class StrategyWithDynamicIndicators(Strategy):
+            universe_set = ["SPY"]
 
             def __init__(self):
                 super().__init__()
@@ -593,9 +595,6 @@ class TestStrategyAddIndicator:
 
             def on_end(self, positions, remove_position, date):
                 pass
-
-            def validate_data(self, data):
-                return True
 
         strategy = StrategyWithDynamicIndicators()
         assert len(strategy.indicators) == 2
@@ -650,8 +649,10 @@ class _PrecomputeTestEngine(TradingEngine):
 
 
 def _engine_precompute(strategy: Strategy, data: pd.DataFrame) -> None:
-    config = PaperTradingConfig(symbol="SPY", strategy_type="credit_spread")
-    _PrecomputeTestEngine(strategy, data, config)
+    if data is not None and not data.empty:
+        load_strategy_frame(strategy, data)
+    config = PaperTradingConfig(strategy_type="credit_spread")
+    _PrecomputeTestEngine(strategy, strategy.universe, config)
 
 
 class TestEnginePrecomputeIndicators:
@@ -660,22 +661,21 @@ class TestEnginePrecomputeIndicators:
     def test_raises_when_no_data(self):
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(ATRIndicator(period=3))
-        config = PaperTradingConfig(symbol="SPY", strategy_type="credit_spread")
+        config = PaperTradingConfig(strategy_type="credit_spread")
         with pytest.raises(ValueError, match="Cannot precompute indicators without data"):
-            _PrecomputeTestEngine(strategy, pd.DataFrame(), config)
+            _PrecomputeTestEngine(strategy, strategy.universe, config)
 
     def test_raises_when_empty_data(self):
         strategy = ConcreteTestStrategy()
         strategy.add_indicator(ATRIndicator(period=3))
-        config = PaperTradingConfig(symbol="SPY", strategy_type="credit_spread")
+        config = PaperTradingConfig(strategy_type="credit_spread")
         with pytest.raises(ValueError, match="Cannot precompute indicators without data"):
-            _PrecomputeTestEngine(strategy, pd.DataFrame(), config)
+            _PrecomputeTestEngine(strategy, strategy.universe, config)
 
     def test_no_op_when_no_indicators(self):
         strategy = ConcreteTestStrategy()
-        strategy.set_data(_hourly_ohlcv())
-        assert strategy.data is not None
-        _engine_precompute(strategy, strategy.data)
+        load_strategy_frame(strategy, _hourly_ohlcv())
+        _engine_precompute(strategy, strategy.universe.frame("SPY"))
 
     def test_multiple_indicators_all_precomputed(self):
         atr = ATRIndicator(period=3)
@@ -684,7 +684,7 @@ class TestEnginePrecomputeIndicators:
         strategy.add_indicator(atr)
         strategy.add_indicator(sma)
         data = _hourly_ohlcv()
-        strategy.set_data(data)
+        load_strategy_frame(strategy, data)
         _engine_precompute(strategy, data)
         test_bar = _as_datetime(data.index[6])
         assert atr.get_value_at(test_bar) is not None
@@ -699,13 +699,13 @@ class TestEnginePrecomputeBacktestParity:
         atr_bt = ATRIndicator(period=3)
         bt = ConcreteTestStrategy()
         bt.add_indicator(atr_bt)
-        bt.set_data(data)
+        load_strategy_frame(bt, data)
         for date in data.index:
             atr_bt.update(date, data)
         atr_pc = ATRIndicator(period=3)
         pt = ConcreteTestStrategy()
         pt.add_indicator(atr_pc)
-        pt.set_data(data)
+        load_strategy_frame(pt, data)
         _engine_precompute(pt, data)
         for bar in data.index[atr_bt.warm_up_period - 1 :]:
             assert atr_bt.get_value_at(bar) == pytest.approx(atr_pc.get_value_at(bar))
@@ -715,13 +715,13 @@ class TestEnginePrecomputeBacktestParity:
         sma_bt = SMAIndicator(period=5, period_unit=BarTimeInterval.HOUR)
         bt = ConcreteTestStrategy()
         bt.add_indicator(sma_bt)
-        bt.set_data(data)
+        load_strategy_frame(bt, data)
         for date in data.index:
             sma_bt.update(date, data)
         sma_pc = SMAIndicator(period=5, period_unit=BarTimeInterval.HOUR)
         pt = ConcreteTestStrategy()
         pt.add_indicator(sma_pc)
-        pt.set_data(data)
+        load_strategy_frame(pt, data)
         _engine_precompute(pt, data)
         for bar in data.index[sma_bt.warm_up_period - 1 :]:
             assert sma_bt.get_value_at(bar) == pytest.approx(sma_pc.get_value_at(bar))
@@ -732,6 +732,7 @@ class TestStrategyHistoricalLookupWithWarmUp:
     (e.g. ATR K bars ago) must succeed after warm-up and fail without it."""
 
     class _LookbackStrategy(Strategy):
+        universe_set = ["SPY"]
 
         def __init__(self, atr, lookback_bars=4):
             super().__init__()
@@ -744,8 +745,7 @@ class TestStrategyHistoricalLookupWithWarmUp:
             super().on_new_date(date, positions, add_position, remove_position)
             atr = self.indicators[0]
             self.current_atr_value = atr.get_value_at(date)
-            data = self.data
-            assert data is not None
+            data = self.universe.frame("SPY")
             bar_idx = data.index.get_loc(date)
             assert isinstance(bar_idx, int)
             if bar_idx >= self.lookback_bars:
@@ -755,14 +755,11 @@ class TestStrategyHistoricalLookupWithWarmUp:
         def on_end(self, positions, remove_position, date):
             pass
 
-        def validate_data(self, data):
-            return True
-
     def test_backtest_iteration_historical_lookup_succeeds(self):
         atr = ATRIndicator(period=3)
         data = _hourly_ohlcv()
         strategy = self._LookbackStrategy(atr, lookback_bars=4)
-        strategy.set_data(data)
+        load_strategy_frame(strategy, data)
         _engine_precompute(strategy, data)
         for date in data.index:
             strategy.on_new_date(date, (), Mock(), Mock())
@@ -773,7 +770,7 @@ class TestStrategyHistoricalLookupWithWarmUp:
         atr = ATRIndicator(period=3)
         data = _hourly_ohlcv()
         strategy = self._LookbackStrategy(atr, lookback_bars=4)
-        strategy.set_data(data)
+        load_strategy_frame(strategy, data)
         strategy.on_new_date(_as_datetime(data.index[-1]), (), Mock(), Mock())
         assert strategy.current_atr_value is None
         assert strategy.historical_atr_value is None
@@ -782,7 +779,7 @@ class TestStrategyHistoricalLookupWithWarmUp:
         atr = ATRIndicator(period=3)
         data = _hourly_ohlcv()
         strategy = self._LookbackStrategy(atr, lookback_bars=4)
-        strategy.set_data(data)
+        load_strategy_frame(strategy, data)
         _engine_precompute(strategy, data)
         strategy.on_new_date(_as_datetime(data.index[-1]), (), Mock(), Mock())
         assert strategy.current_atr_value is not None
@@ -792,7 +789,68 @@ class TestStrategyHistoricalLookupWithWarmUp:
         atr = ATRIndicator(period=5)
         data = _daily_ohlcv(20)
         strategy = self._LookbackStrategy(atr, lookback_bars=4)
-        strategy.set_data(data)
+        load_strategy_frame(strategy, data)
         strategy.on_new_date(_as_datetime(data.index[-1]), (), Mock(), Mock())
         assert strategy.current_atr_value is None
         assert strategy.historical_atr_value is None
+
+
+class TestStrategyUniverseSchema:
+    """Strategy.universe_schema() is used when constructing Universe."""
+
+    def test_default_schema_accepts_ohlcv(self):
+        strategy = ConcreteTestStrategy()
+        load_strategy_frame(strategy, _daily_ohlcv(5))
+        assert not strategy.universe.frame("SPY").empty
+
+    def test_override_requires_declared_columns(self):
+        class SchemaOverrideStrategy(ConcreteTestStrategy):
+            @staticmethod
+            def universe_schema() -> DataFrameSchema:
+                return DataFrameSchema(
+                    {
+                        "Open": Column(float, nullable=True),
+                        "High": Column(float, nullable=True),
+                        "Low": Column(float, nullable=True),
+                        "Close": Column(float, nullable=True),
+                        "Volume": Column(float, nullable=True),
+                        "SMA_20": Column(float, nullable=True),
+                    },
+                    strict=False,
+                    coerce=True,
+                )
+
+        strategy = SchemaOverrideStrategy()
+        with pytest.raises(SchemaError):
+            load_strategy_frame(strategy, _daily_ohlcv(5))
+
+        frame = _daily_ohlcv(5)
+        frame["SMA_20"] = frame["Close"].rolling(window=2, min_periods=1).mean()
+        load_strategy_frame(strategy, frame)
+        assert "SMA_20" in strategy.universe.frame("SPY").columns
+
+    def test_on_universe_load_complete_does_not_validate(self):
+        callback = ConcreteTestStrategy().on_universe_load_complete()
+        invalid = pd.DataFrame({"NotAColumn": [1.0, 2.0, 3.0]})
+        result = callback("SPY", invalid)
+        assert "NotAColumn" in result.columns
+
+    def test_set_treasury_rates_attaches_to_instance(self):
+        strategy = ConcreteTestStrategy()
+        rates = Mock()
+        strategy.set_treasury_rates(rates)
+        assert strategy.treasury_rates is rates
+
+    def test_base_class_validates_schema_after_enrich(self):
+        class EnrichOnlyStrategy(ConcreteTestStrategy):
+            def on_universe_load_complete(self):
+                def post_load(symbol: str, data: pd.DataFrame) -> pd.DataFrame:
+                    del symbol
+                    return data
+
+                return post_load
+
+        strategy = EnrichOnlyStrategy()
+        invalid = pd.DataFrame({"NotAColumn": [1.0, 2.0, 3.0]})
+        with pytest.raises((SchemaError, SchemaErrors)):
+            strategy.universe.replace("SPY", invalid)

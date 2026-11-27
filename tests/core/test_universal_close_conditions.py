@@ -6,14 +6,13 @@ from algo_trading_engine.enums import UniversalCloseCondition
 
 
 class MinimalStrategy(Strategy):
+    universe_set = ["SPY"]
+
     def on_new_date(self, date, positions, add_position, remove_position):
         pass
 
     def on_end(self, positions, remove_position, date):
         pass
-
-    def validate_data(self, data):
-        return True
 
 
 class TestUniversalCloseConditionsConfig(unittest.TestCase):

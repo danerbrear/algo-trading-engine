@@ -12,10 +12,10 @@ from datetime import date, datetime
 import pandas as pd
 
 from algo_trading_engine._internal.util.market_clock import market_now
+from algo_trading_engine._internal.util.date_formats import DateFormats
 from algo_trading_engine.dto import OptionContractDTO, OptionBarDTO
-from algo_trading_engine.enums import BarTimeInterval
+from algo_trading_engine.enums import BarTimeInterval, OptionType, StrategyType
 from algo_trading_engine.vo import Option, Position, create_position
-from algo_trading_engine.enums import OptionType, StrategyType
 
 
 class OptionsRetrieverHelper:
@@ -531,7 +531,7 @@ class OptionsRetrieverHelper:
 
         for exp_date_str, exp_contracts in grouped.items():
             try:
-                exp_date = datetime.strptime(exp_date_str, "%Y-%m-%d").date()
+                exp_date = datetime.strptime(exp_date_str, DateFormats.EXPIRATION).date()
                 days_to_exp = (exp_date - current_date).days
 
                 if min_days <= days_to_exp <= max_days:
@@ -1022,7 +1022,7 @@ class OptionsRetrieverHelper:
         otm_option = Option.from_contract_and_bar(otm_contract, otm_bar)
         symbol = itm_contract.underlying_ticker
         strike_price = float(itm_contract.strike_price.value)
-        expiration_date = datetime.strptime(expiration, "%Y-%m-%d")
+        expiration_date = datetime.strptime(expiration, DateFormats.EXPIRATION)
         strategy_type = (
             StrategyType.CALL_DEBIT_SPREAD if option_type == OptionType.CALL else StrategyType.PUT_DEBIT_SPREAD
         )
