@@ -22,7 +22,6 @@ from pandera.pandas import DataFrameSchema
 
 from algo_trading_engine._internal.util.market_clock import market_index, market_time
 from algo_trading_engine.logging import get_logger
-from algo_trading_engine.data_retriever import DataRetriever
 from algo_trading_engine.vo import TreasuryRates, Universe
 from algo_trading_engine.vo.universe import (
     PostLoadCallback,
@@ -136,7 +135,7 @@ class Strategy(ABC):
             self.universal_close_conditions = frozenset(UniversalCloseCondition)
         else:
             self.universal_close_conditions = frozenset(universal_close_conditions)
-        self.treasury_data: Optional[TreasuryRates] = None
+        self.treasury_rates: Optional[TreasuryRates] = None
         self.plot_config: Optional["PlotConfig"] = None
         self.indicators: List[Indicator] = []
         self.option_bar_timespan = BarTimeInterval.DAY
@@ -147,7 +146,7 @@ class Strategy(ABC):
         self.universe = Universe(
             universe_set,
             schema=type(self).universe_schema(),
-            post_load=type(self).on_universe_load_complete(DataRetriever(use_cache=False)),
+            post_load=self._validated_universe_post_load(),
         )
 
     @property
@@ -199,17 +198,13 @@ class Strategy(ABC):
             date: Final date
         """
 
-    @abstractmethod
-    def validate_data(self, data: pd.DataFrame) -> bool:
-        """
-        Validate that the provided data meets the strategy's requirements.
+    def set_treasury_rates(self, treasury_rates: Optional[TreasuryRates]) -> None:
+        """Attach treasury rates to this strategy instance.
 
-        Args:
-            data: DataFrame with market data and features
-
-        Returns:
-            True if data is valid, False otherwise
+        Implementations may join rates into universe frames in
+        ``on_universe_load_complete`` when they declare those columns on ``universe_schema()``.
         """
+        self.treasury_rates = treasury_rates
 
     def get_current_option_bar(
         self,
@@ -356,22 +351,6 @@ class Strategy(ABC):
         except KeyError as exc:
             raise ValueError(f"No loaded frame for {symbol}") from exc
 
-    def set_universe(self, universe: Universe, treasury_data: Optional[TreasuryRates] = None) -> None:
-        """Attach loaded market data and optional treasury rates."""
-        self.universe = universe
-        self.treasury_data = treasury_data
-
-    def finalize_universe(self) -> None:
-        """Optional hook after universe frames are loaded; override in subclasses."""
-
-    def validate_universe(self, universe: Universe) -> bool:
-        """Validate every symbol frame in ``universe``."""
-        for symbol in universe.symbols:
-            if not self.validate_data(universe.frame(symbol)):
-                get_logger().warning(f"validate_data failed for {symbol}")
-                return False
-        return True
-
     def set_plot_config(self, plot_config: Optional["PlotConfig"]) -> None:
         """Set plotting configuration for strategy-driven charts."""
         self.plot_config = plot_config
@@ -386,14 +365,27 @@ class Strategy(ABC):
 
     @staticmethod
     def universe_schema() -> DataFrameSchema:
-        """Pandera schema applied to each universe frame after ``post_load``."""
+        """Pandera schema applied to each universe frame after load-complete enrichment."""
         return default_ohlcv_schema()
 
-    @staticmethod
-    def on_universe_load_complete(retriever: DataRetriever) -> PostLoadCallback:
-        """Build the universe ``post_load`` hook for this strategy."""
-        del retriever
+    def on_universe_load_complete(self) -> PostLoadCallback:
+        """Return a callback that derives extra columns from each loaded frame.
+
+        Do not fetch market data here, and do not validate. The base class applies
+        ``universe_schema()`` after this callback. ``self.treasury_rates`` is available
+        when engines call ``set_treasury_rates`` before ``universe.load``.
+        """
         return identity_post_load
+
+    def _validated_universe_post_load(self) -> PostLoadCallback:
+        """Run ``on_universe_load_complete``, then validate with ``universe_schema()``."""
+        enrich = self.on_universe_load_complete()
+        schema = type(self).universe_schema()
+
+        def post_load(symbol: str, data: pd.DataFrame) -> pd.DataFrame:
+            return schema.validate(enrich(symbol, data))
+
+        return post_load
 
     def _profit_target_hit(self, position: "Position", exit_price: Optional[float]) -> bool:
         """

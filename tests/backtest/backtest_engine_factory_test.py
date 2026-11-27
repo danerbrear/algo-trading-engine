@@ -33,12 +33,11 @@ def _mock_strategy():
     loaded.load = Mock()
     mock_strategy = Mock()
     mock_strategy.universe = loaded
-    mock_strategy.set_universe = Mock()
+    mock_strategy.set_treasury_rates = Mock()
     mock_strategy.indicators = []
     mock_strategy.warm_up_period = 0
     mock_strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(0))
     mock_strategy.on_universe_load_complete = Mock(return_value=identity_post_load)
-    mock_strategy.validate_universe = Mock(return_value=True)
     return mock_strategy
 
 
@@ -70,7 +69,7 @@ class TestBacktestEngineFactory:
         mock_create_strategy.assert_called_once()
         call_kwargs = mock_create_strategy.call_args[1]
         assert call_kwargs["strategy_name"] == "credit_spread"
-        mock_strategy.set_universe.assert_called_once()
+        mock_strategy.set_treasury_rates.assert_called_once()
         assert engine.initial_capital == 100000
         assert engine.start_date == datetime(2024, 1, 1)
         assert engine.end_date == datetime(2024, 1, 31)
@@ -95,7 +94,7 @@ class TestBacktestEngineFactory:
         )
         engine = BacktestEngine.from_config(config)
         assert engine.strategy == mock_strategy
-        mock_strategy.set_universe.assert_called_once()
+        mock_strategy.set_treasury_rates.assert_called_once()
 
     @patch("algo_trading_engine.backtest.main.create_strategy_from_args")
     @patch("algo_trading_engine.backtest.main.OptionsHandler")

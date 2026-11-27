@@ -46,10 +46,6 @@ class ConcreteTestStrategy(Strategy):
         """Implementation of abstract on_end"""
         pass
 
-    def validate_data(self, data):
-        """Implementation of abstract validate_data"""
-        return "Close" in data.columns and len(data) > 0
-
 
 class MockIndicator(Indicator):
     """Mock indicator for testing"""
@@ -303,9 +299,6 @@ class TestStrategyIndicatorAccessInStrategy:
 
         def on_end(self, positions, remove_position, date):
             pass
-
-        def validate_data(self, data):
-            return True
 
     def create_volatile_data(self):
         """Create data with high volatility"""
@@ -603,9 +596,6 @@ class TestStrategyAddIndicator:
             def on_end(self, positions, remove_position, date):
                 pass
 
-            def validate_data(self, data):
-                return True
-
         strategy = StrategyWithDynamicIndicators()
         assert len(strategy.indicators) == 2
         assert isinstance(strategy.indicators[0], ATRIndicator)
@@ -765,9 +755,6 @@ class TestStrategyHistoricalLookupWithWarmUp:
         def on_end(self, positions, remove_position, date):
             pass
 
-        def validate_data(self, data):
-            return True
-
     def test_backtest_iteration_historical_lookup_succeeds(self):
         atr = ATRIndicator(period=3)
         data = _hourly_ohlcv()
@@ -841,3 +828,29 @@ class TestStrategyUniverseSchema:
         frame["SMA_20"] = frame["Close"].rolling(window=2, min_periods=1).mean()
         load_strategy_frame(strategy, frame)
         assert "SMA_20" in strategy.universe.frame("SPY").columns
+
+    def test_on_universe_load_complete_does_not_validate(self):
+        callback = ConcreteTestStrategy().on_universe_load_complete()
+        invalid = pd.DataFrame({"NotAColumn": [1.0, 2.0, 3.0]})
+        result = callback("SPY", invalid)
+        assert "NotAColumn" in result.columns
+
+    def test_set_treasury_rates_attaches_to_instance(self):
+        strategy = ConcreteTestStrategy()
+        rates = Mock()
+        strategy.set_treasury_rates(rates)
+        assert strategy.treasury_rates is rates
+
+    def test_base_class_validates_schema_after_enrich(self):
+        class EnrichOnlyStrategy(ConcreteTestStrategy):
+            def on_universe_load_complete(self):
+                def post_load(symbol: str, data: pd.DataFrame) -> pd.DataFrame:
+                    del symbol
+                    return data
+
+                return post_load
+
+        strategy = EnrichOnlyStrategy()
+        invalid = pd.DataFrame({"NotAColumn": [1.0, 2.0, 3.0]})
+        with pytest.raises(SchemaError):
+            strategy.universe.replace("SPY", invalid)

@@ -4,7 +4,6 @@ from datetime import datetime
 from decimal import Decimal
 from unittest.mock import Mock
 
-import pandas as pd
 import pytest
 
 from algo_trading_engine._internal.common.trading_engine import make_rt_option_bar
@@ -44,9 +43,6 @@ class _MinimalStrategy(Strategy):
 
     def on_end(self, positions, remove_position, date):
         return None
-
-    def validate_data(self, data: pd.DataFrame) -> bool:
-        return True
 
 
 class TestMakeRtOptionBar:

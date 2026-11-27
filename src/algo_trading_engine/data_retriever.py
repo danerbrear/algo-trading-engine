@@ -122,7 +122,8 @@ class DataRetriever:
         return data
 
     # TODO: Move out of this file - DataRetriever should be reserved for data fetching only, not calculation.
-    def calculate_features_for_data(self, data: pd.DataFrame, window=20):
+    @staticmethod
+    def calculate_features_for_data(data: pd.DataFrame, window=20):
         """Calculate technical features for a given dataset"""
         min_required_samples = max(window, 50) + 10
 
@@ -144,8 +145,8 @@ class DataRetriever:
         data["Price_to_SMA20"] = data["Close"] / data["SMA20"]
         data["SMA20_to_SMA50"] = data["SMA20"] / data["SMA50"]
 
-        data["RSI"] = self._calculate_rsi(data["Close"], window)
-        macd_line, macd_signal = self._calculate_macd(data["Close"])
+        data["RSI"] = DataRetriever._calculate_rsi(data["Close"], window)
+        macd_line, macd_signal = DataRetriever._calculate_macd(data["Close"])
         data["MACD_Hist"] = macd_line - macd_signal
 
         data["SMA20_to_SMA50_Lag1"] = data["SMA20_to_SMA50"].shift(1)
@@ -166,7 +167,7 @@ class DataRetriever:
 
         data["Volume_SMA"] = data["Volume"].rolling(window=window, min_periods=1).mean()
         data["Volume_Ratio"] = data["Volume"] / data["Volume_SMA"]
-        data["OBV"] = self._calculate_obv(data["Close"], data["Volume"])
+        data["OBV"] = DataRetriever._calculate_obv(data["Close"], data["Volume"])
 
         original_length = len(data)
         data.dropna(inplace=True)
@@ -468,7 +469,8 @@ class DataRetriever:
 
         return merged_data
 
-    def _calculate_rsi(self, prices, window=14):
+    @staticmethod
+    def _calculate_rsi(prices, window=14):
         if len(prices) < window + 1:
             raise ValueError(
                 f"Insufficient data for RSI calculation: {len(prices)} samples available, "
@@ -481,14 +483,16 @@ class DataRetriever:
         rs = gain / loss
         return 100 - (100 / (1 + rs))
 
-    def _calculate_macd(self, prices, fast=12, slow=26, signal=9):
+    @staticmethod
+    def _calculate_macd(prices, fast=12, slow=26, signal=9):
         exp1 = prices.ewm(span=fast, adjust=False).mean()
         exp2 = prices.ewm(span=slow, adjust=False).mean()
         macd = exp1 - exp2
         signal_line = macd.ewm(span=signal, adjust=False).mean()
         return macd, signal_line
 
-    def _calculate_obv(self, prices, volume):
+    @staticmethod
+    def _calculate_obv(prices, volume):
         price_change = prices.diff()
         obv = pd.Series(index=prices.index, dtype=float)
         obv.iloc[0] = volume.iloc[0]

@@ -263,6 +263,7 @@ class PaperTradingEngine(TradingEngine):
         fetch_end = today.strftime(DateFormats.ISO_DATE)
 
         retriever = DataRetriever(use_cache=config.use_cache)
+        strategy.set_treasury_rates(retriever.load_treasury_rates(today, today))
         strategy.universe.load(retriever, config.bar_interval, fetch_start_date, fetch_end)
 
         for symbol in strategy.universe.symbols:
@@ -276,10 +277,6 @@ class PaperTradingEngine(TradingEngine):
             if live_price is not None:
                 updated = apply_live_quote(frame, live_price, today, config.bar_interval)
                 strategy.universe.replace(symbol, updated)
-
-        treasury_rates = retriever.load_treasury_rates(today, today)
-        strategy.set_universe(strategy.universe, treasury_rates)
-        strategy.finalize_universe()
 
         engine = cls(strategy=strategy, config=config, options_handler=options_handler)
 

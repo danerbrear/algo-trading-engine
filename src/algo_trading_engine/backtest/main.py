@@ -170,11 +170,8 @@ class BacktestEngine(TradingEngine):
         if strategy.universe is None or not strategy.universe.symbols:
             raise ValueError("Universe has no symbols")
 
+        strategy.set_treasury_rates(retriever.load_treasury_rates(config.start_date, config.end_date))
         strategy.universe.load(retriever, BarTimeInterval.DAY, fetch_start, fetch_end)
-
-        treasury_rates = retriever.load_treasury_rates(config.start_date, config.end_date)
-        strategy.set_universe(strategy.universe, treasury_rates)
-        strategy.finalize_universe()
         strategy.set_plot_config(config.plot_config)
 
         example_symbol = strategy.universe.symbols[0]
@@ -233,11 +230,6 @@ class BacktestEngine(TradingEngine):
         """
         log_level = "info" if self.quiet_mode else "debug"
         configure_logger("backtest", log_level=log_level, observer=self.observer)
-
-        # Validate the data using the strategy's validation method
-        if not self.strategy.validate_universe(self.universe):
-            get_logger().error("Backtest aborted due to invalid data")
-            return False
 
         # Bars in [start_date, end_date] via label slice on the frame — Index[datetime:]
         # hits DatetimeArray slicing and raises on current pandas.

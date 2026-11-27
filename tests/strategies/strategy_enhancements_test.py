@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 from algo_trading_engine._internal.strategies.velocity_signal_momentum_strategy import VelocitySignalMomentumStrategy
 from algo_trading_engine._internal.strategies.credit_spread_minimal import CreditSpreadStrategy
+from algo_trading_engine.vo.universe import identity_post_load
 
 
 @pytest.fixture
@@ -201,6 +202,7 @@ class TestCreditSpreadStrategyEnhancements:
             },
             index=dates,
         )
+        self.strategy.universe.post_load = identity_post_load
         load_strategy_frame(self.strategy, self.sample_data)
 
     def test_get_current_underlying_price_historical_date(self):

@@ -16,9 +16,6 @@ class _MinimalStrategy(Strategy):
     def on_end(self, positions, remove_position, date):
         pass
 
-    def validate_data(self, data):
-        return True
-
 
 def test_backtest_config_plot_config_default_is_none():
     config = BacktestConfig(

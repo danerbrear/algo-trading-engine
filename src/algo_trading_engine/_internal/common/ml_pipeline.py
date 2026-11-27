@@ -117,7 +117,6 @@ def prepare_training_data(
 
 def prepare_credit_spread_backtest_data(
     data: pd.DataFrame,
-    data_retriever: "DataRetriever",
     symbol: str,
 ) -> pd.DataFrame:
     """
@@ -127,6 +126,7 @@ def prepare_credit_spread_backtest_data(
     """
     # Deferred so importing this module stays free of sklearn/hmmlearn/TensorFlow.
     # pylint: disable=import-outside-toplevel
+    from algo_trading_engine.data_retriever import DataRetriever
     from algo_trading_engine._internal.ml_models.model_loaders import (
         get_model_directory,
         load_hmm_model,
@@ -134,7 +134,7 @@ def prepare_credit_spread_backtest_data(
     from algo_trading_engine._internal.ml_models.calendar_features import CalendarFeatureProcessor
 
     enriched = data.copy()
-    data_retriever.calculate_features_for_data(enriched)
+    DataRetriever.calculate_features_for_data(enriched)
 
     model_dir = get_model_directory(symbol=symbol)
     try:

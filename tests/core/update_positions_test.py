@@ -55,9 +55,6 @@ class _RecordingStrategy(Strategy):
     def on_end(self, positions, remove_position, date):
         pass
 
-    def validate_data(self, data):
-        return True
-
 
 def _leg(ticker: str, strike: float) -> Option:
     return Option(

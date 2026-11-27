@@ -323,7 +323,7 @@ class TestPaperTradingEngineFromConfig:
         loaded.load = Mock()
         mock_strategy = MagicMock()
         mock_strategy.universe = loaded
-        mock_strategy.set_universe = Mock()
+        mock_strategy.set_treasury_rates = Mock()
         mock_strategy.indicators = []
         mock_strategy.options_handler = None
         mock_strategy.warm_up_period = 0
@@ -366,7 +366,7 @@ class TestPaperTradingEngineFromConfig:
     @patch("algo_trading_engine.trade.market_now", return_value=datetime(2026, 11, 11, 10, 30))
     @patch("algo_trading_engine.trade.OptionsHandler")
     @patch("algo_trading_engine.trade.DataRetriever")
-    def test_from_config_applies_live_quote_before_set_universe(
+    def test_from_config_applies_live_quote_after_load(
         self,
         mock_data_retriever,
         _mock_options_handler,
@@ -392,7 +392,7 @@ class TestPaperTradingEngineFromConfig:
         config = PaperTradingConfig(strategy_type=mock_strategy, api_key="test_key", use_free_tier=True)
         PaperTradingEngine.from_config(config)
         mock_apply_live.assert_called_once()
-        mock_strategy.set_universe.assert_called_once()
+        mock_strategy.set_treasury_rates.assert_called_once()
 
     @patch("algo_trading_engine.trade.OptionsHandler")
     @patch("algo_trading_engine.trade.DataRetriever")
@@ -405,7 +405,7 @@ class TestPaperTradingEngineFromConfig:
         mock_data_retriever.return_value = mock_retriever_instance
         config = PaperTradingConfig(strategy_type=mock_strategy, api_key="test_key", use_free_tier=True)
         PaperTradingEngine.from_config(config)
-        mock_strategy.set_universe.assert_called_once()
+        mock_strategy.set_treasury_rates.assert_called_once()
         mock_precompute.assert_called_once()
 
 
@@ -656,9 +656,6 @@ class _IndicatorStrategy(Strategy):
 
     def on_end(self, positions, remove_position, date):
         return None
-
-    def validate_data(self, data):
-        return True
 
 
 class TestPaperTradingIndicatorUpdate:

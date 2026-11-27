@@ -80,10 +80,9 @@ def _mock_strategy_with_universe(symbol: str = "SPY", periods: int = 5) -> Mock:
     loaded.load = Mock()
     mock_strategy = Mock()
     mock_strategy.universe = loaded
-    mock_strategy.set_universe = Mock()
+    mock_strategy.set_treasury_rates = Mock()
     mock_strategy.indicators = []
     mock_strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(0))
-    mock_strategy.validate_universe = Mock(return_value=True)
     return mock_strategy
 
 
@@ -198,12 +197,10 @@ class TestBacktestEngineBenchmarkRun:
     def test_benchmark_uses_separate_data_for_prices(self):
         """When benchmark_data is provided, benchmark prices come from it."""
         mock_strategy = Mock()
-        mock_strategy.validate_data = Mock(return_value=True)
         mock_strategy.on_new_date = Mock()
         mock_strategy.on_end = Mock()
         mock_strategy.indicators = []
         mock_strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(0))
-        mock_strategy.validate_universe = Mock(return_value=True)
         trading_data = _make_price_data("2024-01-01", 5, base_price=200.0)
         mock_strategy.universe = universe_from_frame("SPY", trading_data)
         benchmark_data = _make_price_data("2024-01-01", 5, base_price=400.0)
@@ -223,12 +220,10 @@ class TestBacktestEngineBenchmarkRun:
     def test_benchmark_falls_back_to_trading_data_when_no_benchmark_data(self):
         """When benchmark_data is None, benchmark uses trading data."""
         mock_strategy = Mock()
-        mock_strategy.validate_data = Mock(return_value=True)
         mock_strategy.on_new_date = Mock()
         mock_strategy.on_end = Mock()
         mock_strategy.indicators = []
         mock_strategy.get_warm_up_period_timedelta = Mock(return_value=timedelta(0))
-        mock_strategy.validate_universe = Mock(return_value=True)
         trading_data = _make_price_data("2024-01-01", 5, base_price=200.0)
         mock_strategy.universe = universe_from_frame("SPY", trading_data)
         engine = BacktestEngine(

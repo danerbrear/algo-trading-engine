@@ -8,7 +8,6 @@ import pandas as pd
 from algo_trading_engine._internal.util.market_clock import label_position, market_index, session_dates
 from algo_trading_engine._internal.util.date_formats import DateFormats
 from algo_trading_engine._internal.common.ml_pipeline import prepare_credit_spread_backtest_data
-from algo_trading_engine.data_retriever import DataRetriever
 from algo_trading_engine.strategy import Strategy
 from algo_trading_engine.vo.universe import PostLoadCallback, UniverseSet
 from algo_trading_engine.vo import Position, create_position
@@ -55,23 +54,15 @@ class CreditSpreadStrategy(Strategy):
 
         self.error_count = 0
 
-    @staticmethod
-    def on_universe_load_complete(retriever: DataRetriever) -> PostLoadCallback:
+    def on_universe_load_complete(self) -> PostLoadCallback:
         def post_load(symbol: str, data: pd.DataFrame) -> pd.DataFrame:
-            return prepare_credit_spread_backtest_data(data, retriever, symbol)
+            enriched = prepare_credit_spread_backtest_data(data, symbol)
+            if self._options_handler is None:
+                raise ValueError("options_handler is required for LSTMModel compatibility")
+            with_features = LSTMModel.calculate_option_features(enriched, self._options_handler, symbol)
+            return LSTMModel.calculate_option_signals(with_features)
 
         return post_load
-
-    def finalize_universe(self) -> None:
-        if self.universe is None:
-            raise ValueError("Universe not set")
-        if self._options_handler is None:
-            raise ValueError("options_handler is required for LSTMModel compatibility")
-        for symbol in self.universe.symbols:
-            frame = self.universe.frame(symbol)
-            with_features = LSTMModel.calculate_option_features(frame, self._options_handler, symbol)
-            with_signals = LSTMModel.calculate_option_signals(with_features)
-            self.universe.replace(symbol, with_signals)
 
     def on_new_date(
         self,
@@ -154,142 +145,6 @@ class CreditSpreadStrategy(Strategy):
         """
         _ = date
         return [option.volume for option in position.legs]
-
-    def validate_data(self, data: pd.DataFrame) -> bool:
-        """
-        Validate the data for the Credit Spread Strategy.
-
-        This strategy requires:
-        - Basic OHLCV data
-        - LSTM model features (technical indicators, market state, calendar features)
-        - Options data for spread creation
-
-        Args:
-            data: DataFrame with market data and features
-
-        Returns:
-            bool: True if data is valid for this strategy, False otherwise
-        """
-        progress_print("\n🔍 Validating data for Credit Spread Strategy...")
-        progress_print(f"   Data shape: {data.shape}")
-
-        # Check if the data has the required columns for credit spread strategy
-        required_columns = [
-            "Open",
-            "High",
-            "Low",
-            "Close",
-            "Volume",  # Basic OHLCV data
-            "Returns",
-            "Log_Returns",
-            "Volatility",  # Basic technical features
-            "RSI",
-            "MACD_Hist",
-            "Volume_Ratio",  # Technical indicators
-            "Market_State",  # HMM market state
-            "Put_Call_Ratio",
-            "Option_Volume_Ratio",  # Options features
-            "Days_Until_Next_CPI",
-            "Days_Since_Last_CPI",  # Calendar features
-            "Days_Until_Next_CC",
-            "Days_Since_Last_CC",
-            "Days_Until_Next_FFR",
-            "Days_Since_Last_FFR",
-        ]
-
-        missing_columns = [col for col in required_columns if col not in data.columns]
-        if missing_columns:
-            progress_print(f"❌ Missing required columns: {missing_columns}")
-            progress_print(f"   Available columns: {list(data.columns)}")
-            return False
-        else:
-            progress_print("✅ All required columns present")
-
-        if not self._option_feature_coverage_is_acceptable(data):
-            return False
-
-        try:
-            market_index(data)
-        except (TypeError, ValueError) as error:
-            progress_print(f"❌ Error: {error}")
-            return False
-
-        # Check if we have enough data for LSTM model (need at least sequence_length days)
-        if self.lstm_model and hasattr(self.lstm_model, "sequence_length"):
-            min_required_days = self.lstm_model.sequence_length
-            if len(data) < min_required_days:
-                progress_print(
-                    f"⚠️  Warning: Not enough data for LSTM model. Need at least {min_required_days} days, got {len(data)}"
-                )
-                return False
-        else:
-            # Fallback: need at least 50 days for technical indicators
-            if len(data) < 50:
-                progress_print(
-                    f"⚠️  Warning: Not enough data for technical analysis. Need at least 50 days, got {len(data)}"
-                )
-                return False
-
-        # Check for gaps in the data (missing trading days)
-        if len(data) > 1:
-            date_range = pd.bdate_range(start=data.index.min(), end=data.index.max())
-            expected_business_days = len(date_range)
-            actual_trading_days = len(data)
-            if actual_trading_days < expected_business_days * 0.9:  # Allow for some holidays
-                progress_print(
-                    f"⚠️  Warning: Data may have gaps. Expected ~{expected_business_days} business days, got {actual_trading_days}"
-                )
-
-        # Check for missing values in critical columns
-        critical_columns = ["Close", "Volume", "Market_State"]
-        for col in critical_columns:
-            if col in data.columns and int(data[col].isnull().sum()) > 0:
-                null_count = data[col].isnull().sum()
-                progress_print(f"⚠️  Warning: {null_count} missing values found in {col}")
-
-        progress_print("✅ Data validation complete for Credit Spread Strategy")
-        progress_print(f"   Final data shape: {data.shape}")
-        progress_print(f"   Date range: {data.index.min()} to {data.index.max()}")
-        progress_print(f"   Trading days: {len(data)}")
-
-        return True
-
-    def _option_feature_coverage_is_acceptable(self, data: pd.DataFrame) -> bool:
-        """Allow up to 10% missing values in the option features used for predictions."""
-        option_features = ["Put_Call_Ratio", "Option_Volume_Ratio"]
-        max_missing_pct_allowed = 10.0
-
-        for feature in option_features:
-            nan_count = data[feature].isna().sum()
-            if nan_count <= 0:
-                continue
-            nan_pct = (nan_count / len(data)) * 100
-            if nan_pct > max_missing_pct_allowed:
-                progress_print(
-                    f"❌ Found {nan_count} ({nan_pct:.1f}%) missing values in '{feature}' "
-                    f"(exceeds {max_missing_pct_allowed}% threshold)"
-                )
-                progress_print("   This indicates options data is not available for too many dates.")
-                missing_index = data[data[feature].isna()].index
-                preview = missing_index[:5]
-                if not isinstance(preview, pd.Index):
-                    preview = missing_index
-                progress_print(f"   Dates with missing data: {preview.tolist()}")
-                return False
-            progress_print(
-                f"⚠️  Found {nan_count} ({nan_pct:.1f}%) missing values in '{feature}' "
-                f"(within {max_missing_pct_allowed}% tolerance)"
-            )
-            progress_print(
-                "   Dates with missing data will be skipped during predictions: "
-                f"{data[data[feature].isna()].index.tolist()}"
-            )
-
-        if all(data[feature].isna().sum() == 0 for feature in option_features):
-            progress_print("✅ No missing values in critical option features")
-        else:
-            progress_print("✅ Missing values within acceptable tolerance")
-        return True
 
     def _open_predicted_position(self, date: datetime, add_position: Callable[["Position"], None], symbol: str) -> bool:
         """Open the predicted credit spread. Returns True when opening fails."""

@@ -24,7 +24,7 @@ def universe_from_frame(symbol: str, data: pd.DataFrame, schema=None) -> Univers
 def load_strategy_frame(
     strategy: Strategy,
     data: pd.DataFrame,
-    treasury_data: Optional[TreasuryRates] = None,
+    treasury_rates: Optional[TreasuryRates] = None,
     *,
     symbol: Optional[str] = None,
 ) -> None:
@@ -34,8 +34,7 @@ def load_strategy_frame(
         raise ValueError("Strategy has no universe")
     key = symbol if symbol is not None else universe.symbols[0]
     universe.replace(key, _ensure_ohlcv(data))
-    if treasury_data is not None:
-        strategy.treasury_data = treasury_data
+    strategy.set_treasury_rates(treasury_rates)
 
 
 def _ensure_ohlcv(data: pd.DataFrame) -> pd.DataFrame:

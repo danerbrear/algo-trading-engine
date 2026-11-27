@@ -57,17 +57,6 @@ class MyCustomStrategy(Strategy):
             underlying = self.get_current_underlying_price(date, position.symbol)
             remove_position(date, position, exit_price if exit_price is not None else 0.0, underlying_price=underlying)
 
-    def validate_data(self, data):
-        """
-        Validate that the data has the required columns/features.
-
-        Returns:
-            True if valid, False otherwise
-        """
-        # Check for required columns
-        required_columns = ["Close", "Open", "High", "Low", "Volume"]
-        return all(col in data.columns for col in required_columns)
-
     def _try_open_position(self, date: datetime, add_position, symbol: str):
         """
         Try to open a position.

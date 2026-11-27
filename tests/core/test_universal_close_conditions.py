@@ -14,9 +14,6 @@ class MinimalStrategy(Strategy):
     def on_end(self, positions, remove_position, date):
         pass
 
-    def validate_data(self, data):
-        return True
-
 
 class TestUniversalCloseConditionsConfig(unittest.TestCase):
     def test_default_includes_all_conditions(self):

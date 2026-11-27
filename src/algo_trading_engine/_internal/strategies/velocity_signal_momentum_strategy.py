@@ -6,15 +6,14 @@ from datetime import datetime
 from typing import Callable, Optional, Sequence
 import pandas as pd
 
-from algo_trading_engine._internal.util.market_clock import label_position, market_index
+from algo_trading_engine._internal.util.market_clock import label_position
 from algo_trading_engine._internal.util.date_formats import DateFormats
-from algo_trading_engine.data_retriever import DataRetriever
 from algo_trading_engine.strategy import Strategy
 from algo_trading_engine.vo.universe import PostLoadCallback, UniverseSet
 from algo_trading_engine.indicators.sma_indicator import SMAIndicator
 from algo_trading_engine.vo import Position, create_position
 from algo_trading_engine.enums import OptionType, StrategyType
-from algo_trading_engine.vo import Option, TreasuryRates
+from algo_trading_engine.vo import Option
 from algo_trading_engine.dto import ExpirationRangeDTO, OptionContractDTO, OptionsChainDTO, StrikeRangeDTO
 from algo_trading_engine.vo import StrikePrice
 from algo_trading_engine.logging import get_logger
@@ -68,14 +67,8 @@ class VelocitySignalMomentumStrategy(Strategy):
         enriched["Velocity_Changes"] = enriched["MA_Velocity_15_30"].diff()
         return enriched
 
-    @staticmethod
-    def on_universe_load_complete(retriever: DataRetriever) -> PostLoadCallback:
-        del retriever
-        return VelocitySignalMomentumStrategy._enrich_velocity_frame
-
-    def set_universe(self, universe, treasury_data: Optional[TreasuryRates] = None) -> None:
-        super().set_universe(universe, treasury_data)
-        self._position_entries = []
+    def on_universe_load_complete(self) -> PostLoadCallback:
+        return self._enrich_velocity_frame
 
     def on_new_date(
         self,
@@ -104,71 +97,6 @@ class VelocitySignalMomentumStrategy(Strategy):
     ):
         """End-of-run hook; plotting is handled by the engine / show_plot callers."""
         del positions, remove_position, date
-
-    def validate_data(self, data: pd.DataFrame) -> bool:
-        """
-        Validate the data for the Velocity Signal Momentum Strategy.
-
-        This strategy requires:
-        - Basic OHLCV data
-        - Moving averages (SMA_15, SMA_30) for velocity calculation
-        - Velocity changes data
-
-        Args:
-            data: DataFrame with market data and features
-
-        Returns:
-            bool: True if data is valid for this strategy, False otherwise
-        """
-        get_logger().info("\n🔍 Validating data for Velocity Signal Momentum Strategy...")
-        get_logger().info(f"   Data shape: {data.shape}")
-
-        # Check if the data has the required columns for velocity momentum strategy
-        required_columns = [
-            "Open",
-            "High",
-            "Low",
-            "Close",
-            "Volume",  # Basic OHLCV data
-        ]
-
-        missing_columns = [col for col in required_columns if col not in data.columns]
-        if missing_columns:
-            get_logger().warning(f"⚠️  Warning: Missing required columns: {missing_columns}")
-            get_logger().info(f"   Available columns: {list(data.columns)}")
-            return False
-
-        get_logger().info("✅ All required columns present")
-
-        try:
-            market_index(data)
-        except (TypeError, ValueError) as error:
-            get_logger().error(f"❌ Error: {error}")
-            return False
-
-        # Check if we have enough data for moving averages (need at least 30 days for SMA 30)
-        if len(data) < 30:
-            get_logger().warning(
-                f"⚠️  Warning: Not enough data for velocity analysis. Need at least 30 days, got {len(data)}"
-            )
-            return False
-
-        # Check for gaps in the data (missing trading days)
-        if len(data) > 1:
-            date_range = pd.bdate_range(start=data.index.min(), end=data.index.max())
-            expected_business_days = len(date_range)
-            actual_trading_days = len(data)
-            if actual_trading_days < expected_business_days * 0.9:  # Allow for some holidays
-                get_logger().warning(
-                    f"⚠️  Warning: Data may have gaps. Expected ~{expected_business_days} business days, got {actual_trading_days}"
-                )
-
-        get_logger().info("✅ Data validation complete for Velocity Signal Momentum Strategy")
-        get_logger().info(f"   Final data shape: {data.shape}")
-        get_logger().info(f"   Date range: {data.index.min()} to {data.index.max()}")
-        get_logger().info(f"   Trading days: {len(data)}")
-
-        return True
 
     def _has_buy_signal(self, date: datetime, symbol: str) -> bool:
         """
@@ -435,11 +363,11 @@ class VelocitySignalMomentumStrategy(Strategy):
         Returns:
             float: Risk-free rate (default 0.0 if not available)
         """
-        if self.treasury_data is None:
+        if self.treasury_rates is None:
             get_logger().warning("⚠️  No treasury data available, using default 2.0%")
             return 2.0
 
-        return float(self.treasury_data.get_risk_free_rate(date))
+        return float(self.treasury_rates.get_risk_free_rate(date))
 
     # ==== Helper methods (opening) ====
     def _try_open_position(self, date: datetime, add_position: Callable[["Position"], None], symbol: str):

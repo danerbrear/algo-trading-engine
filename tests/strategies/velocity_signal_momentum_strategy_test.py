@@ -698,8 +698,6 @@ class TestVelocityStrategyMarketData:
         assert len(strategy._position_entries) == 2
         assert entry_date1 in strategy._position_entries
         assert entry_date2 in strategy._position_entries
-        strategy.set_universe(strategy.universe)
-        assert len(strategy._position_entries) == 0
 
     def test_on_end_is_noop_without_plotting(self):
         """Test on_end does not require matplotlib or data."""

@@ -92,10 +92,6 @@ class MockStrategy(Strategy):
         """Mock strategy end method."""
         pass
 
-    def validate_data(self, data):
-        """Mock validate_data method."""
-        return True
-
 
 class TestVolumeValidationIntegration:
     """Integration tests for volume validation in backtest scenarios."""
@@ -646,7 +642,7 @@ class TestUniversalCloseCallback:
 
 
 def _minimal_spy_df(periods: int) -> pd.DataFrame:
-    """Minimal OHLCV frame for backtest run() (strategy.validate_data may still pass)."""
+    """Minimal OHLCV frame for backtest run()."""
     dates = pd.date_range("2024-01-01", periods=periods, freq="B")
     return pd.DataFrame(
         {
@@ -674,9 +670,6 @@ class OnNewDateOrderStrategy(Strategy):
 
     def on_end(self, positions, remove_position, date):
         pass
-
-    def validate_data(self, data):
-        return True
 
 
 class TestBacktestOnNewDateDateRange:
