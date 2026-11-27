@@ -29,14 +29,13 @@ def default_ohlcv_schema() -> DataFrameSchema:
     """Pandera schema for yfinance OHLCV bars (additional columns allowed after ``post_load``)."""
     return DataFrameSchema(
         {
-            "Open": Column(float, nullable=True),
-            "High": Column(float, nullable=True),
-            "Low": Column(float, nullable=True),
-            "Close": Column(float, nullable=True),
-            "Volume": Column(float, nullable=True),
+            "Open": Column(float, coerce=True),
+            "High": Column(float, coerce=True),
+            "Low": Column(float, coerce=True),
+            "Close": Column(float, coerce=True),
+            "Volume": Column(float, coerce=True),
         },
-        strict=False,
-        coerce=True,
+        strict=True,
     )
 
 

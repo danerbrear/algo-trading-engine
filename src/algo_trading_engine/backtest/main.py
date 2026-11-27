@@ -7,6 +7,7 @@ from typing import List, Optional, Sequence, Union
 
 import numpy as np
 import pandas as pd
+from pandera.errors import SchemaError, SchemaErrors
 
 from algo_trading_engine.options_handler import OptionsHandler
 
@@ -118,6 +119,8 @@ class BacktestEngine(TradingEngine):
 
         Raises:
             ValueError: If configuration is invalid or data fetching fails
+            SchemaError, SchemasError: If the data fetched doesn't match the strategy's specified schema
+            SystemExit: If loaded market data fails schema validation
         """
         if not isinstance(config, BacktestConfigDTO):
             raise TypeError("BacktestEngine.from_config requires BacktestConfig")
@@ -893,6 +896,9 @@ def main():
             sys.exit(1)
     except KeyboardInterrupt:
         print("Backtest interrupted by user.")
+        sys.exit(1)
+    except (SchemaError, SchemaErrors) as e:
+        print(f"Error during backtest while validating the fetched data: {e}")
         sys.exit(1)
     except Exception as e:
         print(f"Error during backtest: {e}")

@@ -241,6 +241,62 @@ def test_backtest_main_failure(mock_getenv, mock_engine_class):
         assert exc_info.value.code == 1
 
 
+@patch("algo_trading_engine.backtest.main.BacktestEngine")
+@patch("os.getenv")
+def test_backtest_main_schema_error(mock_getenv, mock_engine_class, capsys):
+    """Schema validation failures print a dedicated message and exit 1."""
+    from pandera.errors import SchemaError
+
+    from algo_trading_engine.backtest.main import main
+
+    mock_getenv.return_value = "test_api_key"
+    mock_engine_class.from_config.side_effect = SchemaError(None, None, "missing Close")
+    test_args = ["prog", "--strategy", "credit_spread", "--start-date", "2024-01-01", "--end-date", "2024-01-31"]
+
+    with patch.object(sys, "argv", test_args):
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+
+    assert exc_info.value.code == 1
+    assert "validating the fetched data" in capsys.readouterr().out
+
+
+@patch("algo_trading_engine.backtest.main.BacktestEngine")
+@patch("os.getenv")
+def test_backtest_main_schema_errors(mock_getenv, mock_engine_class, capsys):
+    """Collected SchemaErrors (extra columns) print a dedicated message and exit 1."""
+    import pandas as pd
+    from pandera.errors import SchemaErrors
+
+    from algo_trading_engine.backtest.main import main
+    from algo_trading_engine.vo.universe import default_ohlcv_schema
+
+    frame = pd.DataFrame(
+        {
+            "Open": [100.0],
+            "High": [101.0],
+            "Low": [99.0],
+            "Close": [100.5],
+            "Volume": [1_000_000.0],
+            "Dividends": [0.0],
+        },
+        index=pd.date_range("2024-01-01", periods=1, freq="D"),
+    )
+    with pytest.raises(SchemaErrors) as schema_exc:
+        default_ohlcv_schema().validate(frame)
+
+    mock_getenv.return_value = "test_api_key"
+    mock_engine_class.from_config.side_effect = schema_exc.value
+    test_args = ["prog", "--strategy", "credit_spread", "--start-date", "2024-01-01", "--end-date", "2024-01-31"]
+
+    with patch.object(sys, "argv", test_args):
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+
+    assert exc_info.value.code == 1
+    assert "validating the fetched data" in capsys.readouterr().out
+
+
 def test_cli_entrypoint_definitions():
     """Test that CLI entrypoints are defined in pyproject.toml."""
     from pathlib import Path

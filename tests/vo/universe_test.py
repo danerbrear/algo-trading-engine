@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 import pytest
-from pandera.errors import SchemaError
+from pandera.errors import SchemaError, SchemaErrors
 
 from algo_trading_engine.vo.universe import Universe
 
@@ -34,7 +34,18 @@ class TestUniverse:
         with pytest.raises(SchemaError):
             universe.replace("SPY", bad)
 
-    def test_post_load_adds_columns_before_validation(self) -> None:
+    def test_post_load_runs_before_validation(self) -> None:
+        def double_close(symbol: str, data: pd.DataFrame) -> pd.DataFrame:
+            del symbol
+            out = data.copy()
+            out["Close"] = out["Close"] * 2
+            return out
+
+        universe = Universe(["SPY"], post_load=double_close)
+        universe.replace("SPY", _ohlcv_frame())
+        assert universe.frame("SPY")["Close"].iloc[0] == pytest.approx(201.0)
+
+    def test_post_load_extra_columns_rejected(self) -> None:
         def add_derived(symbol: str, data: pd.DataFrame) -> pd.DataFrame:
             del symbol
             out = data.copy()
@@ -42,10 +53,8 @@ class TestUniverse:
             return out
 
         universe = Universe(["SPY"], post_load=add_derived)
-        universe.replace("SPY", _ohlcv_frame())
-        frame = universe.frame("SPY")
-        assert "Derived" in frame.columns
-        assert frame["Derived"].iloc[0] == pytest.approx(201.0)
+        with pytest.raises(SchemaErrors):
+            universe.replace("SPY", _ohlcv_frame())
 
     def test_timestamps_union(self) -> None:
         universe = Universe(["A", "B"])

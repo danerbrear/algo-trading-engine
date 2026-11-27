@@ -7,8 +7,11 @@ from typing import Optional
 
 import pandas as pd
 
+from pandera.pandas import DataFrameSchema
+
 from algo_trading_engine.strategy import Strategy
 from algo_trading_engine.vo import TreasuryRates, Universe
+from algo_trading_engine.vo.universe import identity_post_load
 
 # Non-interactive backend before any test imports matplotlib.
 os.environ.setdefault("MPLBACKEND", "Agg")
@@ -17,7 +20,7 @@ os.environ.setdefault("MPLBACKEND", "Agg")
 def universe_from_frame(symbol: str, data: pd.DataFrame, schema=None) -> Universe:
     """Build a single-symbol universe from an in-memory OHLCV frame."""
     universe = Universe([symbol], schema=schema)
-    universe.replace(symbol, _ensure_ohlcv(data))
+    _store_fixture_frame(universe, symbol, data)
     return universe
 
 
@@ -33,8 +36,21 @@ def load_strategy_frame(
     if universe is None:
         raise ValueError("Strategy has no universe")
     key = symbol if symbol is not None else universe.symbols[0]
-    universe.replace(key, _ensure_ohlcv(data))
+    _store_fixture_frame(universe, key, data)
     strategy.set_treasury_rates(treasury_rates)
+
+
+def _store_fixture_frame(universe: Universe, symbol: str, data: pd.DataFrame) -> None:
+    """Store a test frame without re-running enrich or rejecting extra columns."""
+    original_post_load = universe.post_load
+    original_schema = universe.schema
+    universe.post_load = identity_post_load
+    universe.schema = DataFrameSchema(original_schema.columns, strict=False, coerce=True)
+    try:
+        universe.replace(symbol, _ensure_ohlcv(data))
+    finally:
+        universe.post_load = original_post_load
+        universe.schema = original_schema
 
 
 def _ensure_ohlcv(data: pd.DataFrame) -> pd.DataFrame:

@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from typing import cast
 from unittest.mock import Mock
 import pandas as pd
-from pandera.errors import SchemaError
+from pandera.errors import SchemaError, SchemaErrors
 from pandera.pandas import Column, DataFrameSchema
 from algo_trading_engine.strategy import Strategy
 from algo_trading_engine.indicators.indicator import Indicator
@@ -852,5 +852,5 @@ class TestStrategyUniverseSchema:
 
         strategy = EnrichOnlyStrategy()
         invalid = pd.DataFrame({"NotAColumn": [1.0, 2.0, 3.0]})
-        with pytest.raises(SchemaError):
+        with pytest.raises((SchemaError, SchemaErrors)):
             strategy.universe.replace("SPY", invalid)

@@ -8,12 +8,14 @@ import pytest
 from datetime import datetime, timedelta
 from unittest.mock import Mock, patch
 import pandas as pd
+from pandera.errors import SchemaError, SchemaErrors
+
 from algo_trading_engine.backtest.main import BacktestEngine
 from algo_trading_engine.enums import BarTimeInterval
 from algo_trading_engine.models.config import BacktestConfig
 from algo_trading_engine.models.config import VolumeConfig
 from tests.conftest import universe_from_frame
-from algo_trading_engine.vo.universe import identity_post_load
+from algo_trading_engine.vo.universe import default_ohlcv_schema, identity_post_load
 
 
 def _sample_frame() -> pd.DataFrame:
@@ -27,6 +29,25 @@ def _sample_frame() -> pd.DataFrame:
         },
         index=pd.date_range("2024-01-01", periods=3, freq="D"),
     )
+
+
+def _schema_errors_from_extra_columns() -> SchemaErrors:
+    frame = pd.DataFrame(
+        {
+            "Open": [100.0],
+            "High": [101.0],
+            "Low": [99.0],
+            "Close": [100.5],
+            "Volume": [1_000_000.0],
+            "Dividends": [0.0],
+            "Stock Splits": [0.0],
+            "Capital Gains": [0.0],
+        },
+        index=pd.date_range("2024-01-01", periods=1, freq="D"),
+    )
+    with pytest.raises(SchemaErrors) as exc_info:
+        default_ohlcv_schema().validate(frame)
+    return exc_info.value
 
 
 def _mock_strategy():
@@ -139,6 +160,46 @@ class TestBacktestEngineFactory:
             strategy_type="credit_spread",
         )
         with pytest.raises(ValueError, match="Failed to fetch data"):
+            BacktestEngine.from_config(config)
+
+    @patch("algo_trading_engine.backtest.main.OptionsHandler")
+    @patch("algo_trading_engine.backtest.main.DataRetriever")
+    def test_from_config_propagates_schema_errors(self, mock_data_retriever, _mock_options_handler):
+        """Callers such as CLI main and custom_strategy catch SchemaErrors from from_config."""
+        mock_strategy = _mock_strategy()
+        mock_strategy.options_handler = None
+        mock_strategy.universe.load.side_effect = _schema_errors_from_extra_columns()
+        mock_retriever_instance = Mock()
+        mock_retriever_instance.load_treasury_rates.return_value = None
+        mock_data_retriever.return_value = mock_retriever_instance
+        config = BacktestConfig(
+            initial_capital=100000,
+            start_date=datetime(2024, 1, 1),
+            end_date=datetime(2024, 1, 31),
+            strategy_type=mock_strategy,
+            api_key="test_key",
+        )
+        with pytest.raises(SchemaErrors):
+            BacktestEngine.from_config(config)
+
+    @patch("algo_trading_engine.backtest.main.OptionsHandler")
+    @patch("algo_trading_engine.backtest.main.DataRetriever")
+    def test_from_config_propagates_schema_error(self, mock_data_retriever, _mock_options_handler):
+        """Callers such as CLI main and custom_strategy catch SchemaError from from_config."""
+        mock_strategy = _mock_strategy()
+        mock_strategy.options_handler = None
+        mock_strategy.universe.load.side_effect = SchemaError(None, None, "missing Close")
+        mock_retriever_instance = Mock()
+        mock_retriever_instance.load_treasury_rates.return_value = None
+        mock_data_retriever.return_value = mock_retriever_instance
+        config = BacktestConfig(
+            initial_capital=100000,
+            start_date=datetime(2024, 1, 1),
+            end_date=datetime(2024, 1, 31),
+            strategy_type=mock_strategy,
+            api_key="test_key",
+        )
+        with pytest.raises(SchemaError, match="missing Close"):
             BacktestEngine.from_config(config)
 
     @patch("algo_trading_engine.backtest.main.create_strategy_from_args")
